@@ -163,6 +163,27 @@
   - In `brain.py` Phase A, dispatched `AUTOEXPLORE` as the foundational macro-exploration action when safe. When `zone_fully_explored` is reported, seamlessly transitions to stairs down (`USE_STAIRS_DOWN`) or adjacent zone exits.
   - Instant Combat Suspension: Any incoming damage, nearby hostiles, or active targets immediately halt autoexplore and switch control to LM Studio / class fallback matrix in Phase B/C.
 
+### Iteration 9: Esper Tactical Psychic Overhaul & MinEvent Event Dispatch
+- **The Problem:** When playing an Esper (Apostle), the character entered an infinite orbit around stationary hostiles (glowpads) at distance 4–5, never casting offensive psychic powers (`Light Manipulation` / `Lase`, `Stunning Force`, `Sunder Mind`) and refusing to engage.
+- **Root Cause Analysis:**
+  1. `LightManipulation`'s active beam attack command is `CommandLase` (labeled "Lase" in game), whereas `brain.py` searched for `"light manipulation"`.
+  2. Abilities like `Lase` and `Stunning Force` were not classified as directional in `brain.py`, omitting directional vectors (`:SE`).
+  3. Non-combat utility powers (`Clairvoyance`, `Ambient Light`) polluted combat choices, causing LM Studio to repeatedly cast Clairvoyance.
+  4. **Engine Architecture Discovery:** In `Assembly-CSharp.dll`, modern abilities implement `HandleEvent(CommandEvent)` (`MinEvent`), NOT the legacy `FireEvent(Event)`. In `AIBrainPart.cs`, calling `player.FireEvent(Event.New(cmd, "User", player))` was silently ignored by `LightManipulation.HandleEvent(CommandEvent)`.
+  5. Ray-tracing beam abilities (`LightManipulation.Lase`) execute `PickLine(...)` which invokes `PickTarget.ShowPicker(...)`. Without active target cell interception in `AIPickTargetPatch`, `PickLine` returned empty and aborted the attack.
+  6. Glowpads and turrets have 0 movement speed. Kiting at distance < 5 and repositioning at distance $\ge$ 5 formed an endless 4 $\leftrightarrow$ 5 tile orbit.
+- **Implementation:**
+  - In `AIBrainPart.cs`:
+    - Updated `USE_ABILITY` to dispatch via `CommandEvent.Send(player, cmd, targetObj, targetCell, 0, false, false, null)` and auto-acquire `PreferredTargetCell`, `PreferredTargetObj`, and `PreferredDirection`.
+    - Patched `XRL.UI.PickTarget.ShowPicker` and `ShowFieldPicker` to automatically return `PreferredTargetCell` during ability execution.
+    - Patched `XRL.UI.PickDirection.ShowPicker` to infer direction from `PreferredTargetCell` or closest hostile.
+  - In `brain.py`:
+    - Filtered utility mutations (`clairvoyance`, `ambient light`) from combat prompts.
+    - Added `lase`, `stunning force`, `syphon vim`, `cryokinesis`, `pyrokinesis` to `DIRECTIONAL_ABILITIES`.
+    - Overhauled `fallback_esper` to prioritize `Sunder Mind` $\rightarrow$ `Lase` $\rightarrow$ `Cryo/Pyro` $\rightarrow$ `Stunning Force` $\rightarrow$ `Syphon Vim`.
+    - Added stationary enemy detection (`glowpad`, `turret`, `fungus`) to halt orbit loops and strike decisively.
+  - Verified across all 11 multi-class tactical dry run test suites with 100% pass rate.
+
 ---
 
 ## 4. Current Codebase Specification (v1.0.0)
