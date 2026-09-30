@@ -200,6 +200,37 @@
   - Added automatic direction vector injection in `query_llm_decision` if the LLM returns `USE_ABILITY:CommandLase` without direction.
   - Overhauled stationary enemy handling in `fallback_esper` to hold ground and recharge laser charges rather than wandering off, and enabled psychic assault at distance $\ge 1$.
 
+#### Ability Rotation Architecture & Depleted Charge Tracking Resolution
+- **Observed Behavior:** The Esper used `Lase` to kill some enemies, but once Lase ran out, it didn't rotate to other abilities (`Stunning Force`, `Teleport Other`, `Intimidate`). During cooldowns, it moved north and zoned off the map. Furthermore, approaching the dragonfly triggered a modal `[A]/[B]` prompt for Proselytize.
+- **Root Causes Discovered:**
+  1. **Depleted Charge Reporting in Qud:** In Caves of Qud, `Light Manipulation` when out of charges remains marked `IsUsable = true` and `CooldownTurns = 0`, but its name changes to `"Lase (0 charges)"`. Previously, `is_ability_ready()` only verified `usable` and `cooldown <= 0`. As a result, empty Lase was perpetually treated as ready, causing the brain to continually attempt `CommandLase` with 0 charges instead of rotating to `Stunning Force`.
+  2. **Loop Breaker Combat Zoning:** When repeated actions failed, the loop breaker in `brain.py` called `get_valid_moves(surroundings, cur_pos, None)` without passing `is_in_combat=is_in_combat`, allowing `MOVE_N` across the zone boundary during active combat.
+  3. **Lack of an Explicit Tactical Sequence:** The brain lacked a structured rotation sequence informing the LLM and fallback logic which ability serves as Opener CC, Sustained DPS, Heavy Execution, and Emergency Defense.
+- **Implementation & Resolution:**
+  - **Depleted Charge Filtering:** Added `is_ability_ready(ab)` in `brain.py` to inspect for `"0 charge"` or `"(0 charges)"`. Depleted abilities are flagged as recharging and removed from valid action choices.
+  - **Structured Ability Rotations (`build_templates.py`):** Added explicit `ability_rotation` doctrines to all 5 archetypes:
+    - *Esper*: 1. Opener CC (`Stunning Force`) $\rightarrow$ 2. Heavy Execution (`Sunder Mind`) $\rightarrow$ 3. Sustained DPS (`Lase`) $\rightarrow$ 4. Elemental Rays $\rightarrow$ 5. Secondary CC $\rightarrow$ 6. Emergency Close Defense (`Force Bubble`, `Teleport Other`, `Intimidate`).
+    - *Axe Berserker*: Charge opener $\rightarrow$ Dismember $\rightarrow$ Cleave $\rightarrow$ Decapitate.
+    - *Akimbo Gunslinger*: Disarming Shot $\rightarrow$ Chain Fire $\rightarrow$ Sustained dual missile fire.
+  - **LLM Prompt Integration:** Injected `ABILITY ROTATION & COMBO DOCTRINE` into the LLM system prompt and tagged valid actions with explicit tactical roles (`OPENER CC`, `SUSTAINED BEAM DPS`, `HEAVY MENTAL EXECUTION`, `EMERGENCY BANISH`, `EMERGENCY FEAR`).
+  - **Deterministic Fallback Synchronization:** Updated `fallback_esper` to execute the full rotation in priority order, including `Intimidate` and `Stunning Force` CC openers on approaching mobile targets.
+  - **Combat Zoning Protection:** Fixed the loop breaker in `brain.py` to enforce `is_in_combat=is_in_combat` so the AI never flees across zone borders while fighting.
+  - **Modal Interception Patch (`AIBrainPart.cs`):** Added Harmony patch `AIPickGameObjectPatch` for `XRL.UI.Popup.PickGameObject` to automatically select hostile targets and suppress modal target dialogs.
+  - Verified with live state: with `Lase (0 charges)`, LM Studio immediately and correctly chose `USE_ABILITY:CommandStunningForce:SW` as the opener. All 11 tactical test suites pass with 100% success rate.
+
+#### Pet Recruitment & Thrall Vanguard Architecture (`Proselytize`)
+- **Objective:** Enable the Esper/Apostle to recruit living beasts and humanoids as loyal combat thralls using `Proselytize` and fight tactically alongside companions without friendly fire.
+- **Engine Mechanics:**
+  - `AIBrainPart.cs` scans `The.Player.CurrentCell.ParentZone.GetObjects()` for living objects with `brain.PartyLeader == player`, exporting `has_companion` and `companions` array (name, HP, max HP, distance, direction).
+  - Individual entities in `visible_entities` are tagged with `is_companion: true/false`.
+  - In `ExecuteCommand`, when `USE_ABILITY:CommandProselytize:DIR` is invoked, `AIBrainPart` acquires the adjacent candidate in that direction (living non-player creature) and sets `PreferredTargetObj` and `PreferredTargetCell`.
+  - In `AIPickGameObjectPatch`, modal prompts prioritize hostile/neutral candidate creatures and strictly exclude the player or existing companions.
+- **Tactical Doctrine & Integration:**
+  - `brain.py`: Defined `is_proselytizable(entity)` to filter out plants, fungi, slime, turrets, robots, and corpses while targeting beasts, animals, and humanoids.
+  - Excluded companions from `enemies` list and adjacent melee threat radar to prevent friendly fire.
+  - **Flora & Brainless Object Filtering:** Fixed issue where the agent attempted to proselytize a `brimestalk` (plant stalk). In `AIBrainPart.cs`, candidate acquisition and `AIPickGameObjectPatch` now strictly require `obj.Brain != null && !obj.HasPart("Plant") && !obj.HasPart("Fungus") && !obj.HasPart("Robot")`, and export an engine-verified `can_proselytize: true/false`. In `brain.py`, `PROSELYTIZE_EXCLUSIONS` was expanded to cover all stalks (`brimestalk`, `brinestalk`), starapples, ferns, roots, lichen, and fungi, and `is_proselytizable()` strictly rejects any entity with `can_proselytize: false`.
+  - Verified with LM Studio: When presented with an adjacent `snapjaw brute`, LM Studio reasoned *"Recruit snapjaw brute as frontline tank to absorb damage and enable safe ranged combat"* and executed `USE_ABILITY:CommandProselytize:E`. All 11 verification tests pass.
+
 ---
 
 ## 4. Current Codebase Specification (v1.0.0)
@@ -248,11 +279,44 @@ All communication occurs via files in `%USERPROFILE%\AppData\LocalLow\Freehold G
    - Formats a 5x5 ASCII grid, active threat radar, ready abilities, and valid action choices.
    - Passes the character's exact class doctrine and ancestral wisdom to LM Studio (`http://localhost:1234/v1/chat/completions`).
    - Parses the JSON response with strict timeout safeguards (6.0s).
-3. **Phase C (Deterministic Fallback Matrix)**:
-   - **Melee (`axe_berserker`, `praetorian_tank`)**: Charges enemies at dist 2–4; executes Dismember / Shield Slam or bump-attacks adjacent threats; only retreats if surrounded by $\ge 3$ hostiles and HP $< 35\%$.
-   - **Mental (`esper_mindflayer`)**: Pops Force Bubble or Teleports when pressed close; casts Sunder Mind or Cryokinesis / Pyrokinesis at range; maintains distance $\ge 6$.
-   - **Gunslinger (`akimbo_gunslinger`)**: Holds 3–6 tiles; fires Chain Fire and Disarming Shot; step-and-shoots if enemy closes in; tactical reloads when disengaged.
-   - **Sniper (`rifle_nomad`)**: Freezes pursuers with Freezing Ray; snipes at distance $\ge 2$; sprint-kites when dry.
+   - Validates directional abilities and checks raytraced line-of-fire to eliminate companion friendly fire.
+3. **Phase C (Deterministic Fallback Matrix - 9 Guide Archetypes)**:
+   - **Melee (`auspicious_beginnings`, `limb_off`, `axe_berserker`, `classic_punchkin`)**: Charges enemies at dist 2–4; executes Dismember / Cleave / Cudgel Slam / Flurry or bump-attacks adjacent threats; only retreats if surrounded by $\ge 3$ hostiles and HP $< 35\%$.
+   - **Mental (`esper_ited_away`, `esper_mindflayer`, `uncle_iroh`, `gas_giant`)**: Recruits pet tanks with Proselytize; pops Force Bubble / Force Wall; channels Sunder Mind (pure mental, 100% safe over allies); fires Lase / rays only when raytraced LOF is clear; manifests gas clouds safely.
+   - **Gunslinger (`gunkin`, `bullet_specter`, `akimbo_gunslinger`)**: Holds 3–6 tiles; fires Chain Fire and Disarming Shot; verifies LOF before bursting; tactical reloads when disengaged.
+   - **Sniper (`praetorian_generalist`, `rifle_nomad`)**: Freezes pursuers with Freezing Ray; snipes with desert rifle at distance $\ge 2$ along clear LOF; sprint-kites when dry.
+
+---
+
+### Iteration 8: Build Guide Integration, Raytraced LOF & Pet Safety
+* **Implementation Date**: September 2026
+* **Key Achievements**:
+  1. **Engine Difficulty & Threat Tier Export**: Updated `AIBrainPart.cs` to calculate relative difficulty tiers (`Trivial`, `Easy`, `Average`, `Tough`, `Very Tough`, `Impossible`), entity level, zone tier, and stationary status.
+  2. **Glowpad & Distant Trivial Entity Policy**: Addressed the agent's tendency to halt exploration and cross entire swamps to kill every glowpad. Distant stationary trivial entities ($dist > 3$) are excluded from combat locking, allowing autoexplore to continue smoothly. Real threats and adjacent enemies are prioritized.
+  3. **Bresenham Raytraced Line-of-Fire (LOF)**: Implemented 2D grid ray-tracing. Beam attacks (`Lase`, `Freezing Ray`, `Flaming Ray`) and missile weapons verify that friendly pets are not in the line of trajectory. If an ally is in the way, the AI redirects to `Sunder Mind` (pure mental attack with zero projectile collision), targets an unblocked enemy, or repositions.
+  4. **9 Archetypes from Build Guide**: Harmonized `build_templates.py` to support Auspicious Beginnings, Praetorian Generalist, Limb-Off, Esper-ited Away, Uncle Iroh, Bullet Specter, Classic Punchkin, Gunkin, and Gas Giant.
+  5. **10-Criteria Item Evaluator (`item_evaluator.py`)**: Implemented the scoring rubric and hard overrides from the guide (never discard sole light source, sole ranged weapon, recoiler, or uninspected artifacts).
+  6. **15 Multi-Class Verification Tests**: Expanded `dry_run.py` to 15 comprehensive unit tests covering all 9 archetypes, LOF raytracing, companion protection, glowpad de-prioritization, and item scoring. All 15 tests pass cleanly.
+
+---
+
+### Iteration 9: Companion Absolute Immunity & Post-Proselytize State Resolution
+* **Implementation Date**: September 2026
+* **Key Achievements**:
+  1. **Engine-Level Companion Rule 0 (`AIBrainPart.cs`)**:
+     - Discovered root cause of friendly fire post-charm: when a creature was charmed, `player.Target` or `Sidebar.CurrentTarget` in the game engine remained set to the creature from before the charm succeeded.
+     - `CheckIsEnemy()` previously evaluated `player.Target == obj` before party leader status. Inverted check: Rule 0 is now `var ctBrain = obj.Brain ?? obj.GetPart<Brain>(); if ((ctBrain != null && ctBrain.PartyLeader == player) || obj.IsLedBy(player)) return false;` strictly before any target or hostility check.
+     - Added automatic purging of `player.Target` and `Sidebar.CurrentTarget` if pointing to a companion.
+     - Added companion labeling `[COMPANION: {name}]` in `GetCellSummary()`.
+  2. **Comprehensive Companion Immunity in Python (`brain.py`)**:
+     - Implemented `filter_hostile_enemies(entities, companions)` which aggressively purges any entity whose coordinate matches a companion, whose name contains the companion name, or whose `is_companion` flag is set.
+     - Integrated `filter_hostile_enemies` across `main()`, `query_decision()`, `query_llm_decision()`, and all 4 tactical class fallbacks (`fallback_melee`, `fallback_esper`, `fallback_gunslinger`, `fallback_nomad`).
+     - Updated `get_adjacent_threats(surroundings, companions=companions)` to ignore `[COMPANION:` tiles and filter out companion names, preventing false close-contact alarms that previously caused the agent to backpedal in circles around its own pet.
+     - Hardened `is_line_of_fire_clear`: If the target endpoint `(x1, y1)` itself is a friendly companion, immediately returns `(False, "Target coordinate IS friendly companion!")`, preventing any ranged weapon or beam ability from targeting a pet.
+     - Updated 5x5 ASCII grid display: companions are now rendered as `C` (distinguishing `@` player, `C` companion, and `E` enemy).
+  3. **Verification Suite Expansion (`dry_run.py`)**:
+     - Added Test 16: Simulates a post-proselytize state with an adjacent charmed goat and stale engine flags. Verifies that `filter_hostile_enemies` purges the entity, `is_line_of_fire_clear` blocks targeting, `get_adjacent_threats` returns empty, the 5x5 grid shows `C`, and the decision engine cleanly selects `AUTOEXPLORE` instead of attacking or backpedaling.
+     - All 16 verification tests pass with 100% success.
 
 ---
 
