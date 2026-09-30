@@ -1731,6 +1731,60 @@ namespace QudAIBrain
         }
     }
 
+    [HarmonyPatch(typeof(XRL.UI.Popup), "PickGameObject")]
+    public static class AIPickGameObjectPatch
+    {
+        public static bool Prefix(List<GameObject> Objects, ref GameObject __result)
+        {
+            if (File.Exists(AIPlayerTurnPatch.FlagFile))
+            {
+                if (Objects != null && Objects.Count > 0)
+                {
+                    if (AIPlayerTurnPatch.PreferredTargetObj != null && Objects.Contains(AIPlayerTurnPatch.PreferredTargetObj))
+                    {
+                        __result = AIPlayerTurnPatch.PreferredTargetObj;
+                    }
+                    else
+                    {
+                        GameObject enemy = null;
+                        foreach (var obj in Objects)
+                        {
+                            if (obj != null && !obj.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(obj, The.Player))
+                            {
+                                enemy = obj;
+                                break;
+                            }
+                        }
+                        if (enemy != null)
+                        {
+                            __result = enemy;
+                        }
+                        else
+                        {
+                            GameObject nonPlayer = null;
+                            foreach (var obj in Objects)
+                            {
+                                if (obj != null && !obj.IsPlayer())
+                                {
+                                    nonPlayer = obj;
+                                    break;
+                                }
+                            }
+                            __result = nonPlayer ?? Objects[0];
+                        }
+                    }
+                }
+                else
+                {
+                    __result = null;
+                }
+                UnityEngine.Debug.Log($"[QudAI AIPickGameObjectPatch] Auto-selected GameObject: '{__result?.DisplayNameOnly}'");
+                return false;
+            }
+            return true;
+        }
+    }
+
     [HarmonyPatch(typeof(XRL.UI.PickTarget), "ShowPicker")]
     public static class AIPickTargetPatch
     {
