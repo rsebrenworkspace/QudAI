@@ -1,0 +1,1581 @@
+using System;
+using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using HarmonyLib;
+using XRL;
+using XRL.Core;
+using XRL.World;
+using XRL.World.Parts;
+using XRL.UI;
+using XRL.World.Skills;
+using XRL.World.Parts.Mutation;
+using XRL.World.Parts.Skill;
+using XRL.Messages;
+
+using GameObject = XRL.World.GameObject;
+using Physics = XRL.World.Parts.Physics;
+using Event = XRL.World.Event;
+
+namespace QudAIBrain
+{
+    [HarmonyPatch(typeof(XRLCore), "PlayerTurn")]
+    public static class AIPlayerTurnPatch
+    {
+        private const string ExchangeDir = @"C:\Users\rsebr\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI";
+        public static string FlagFile => Path.Combine(ExchangeDir, "active.flag");
+        private static string StateFile => Path.Combine(ExchangeDir, "state.json");
+        private static string ActionFile => Path.Combine(ExchangeDir, "action.json");
+
+        private static bool lastMoveFailed = false;
+        private static string lastFailedDir = "";
+        private static MethodInfo cachedFireMethod = null;
+
+        private static readonly Regex QudColorRegex = new Regex(@"(&[a-zA-Z0-9]|\^[a-zA-Z0-9]|\{\{|\}\})", RegexOptions.Compiled);
+        private static readonly Regex PipePrefixRegex = new Regex(@"(\b|^)[a-zA-Z]\|", RegexOptions.Compiled);
+
+        private static readonly (string Dir, int DX, int DY)[] Offsets = new (string, int, int)[]
+        {
+            ("NW", -1, -1), ("N", 0, -1), ("NE", 1, -1),
+            ("W",  -1,  0),                ("E",  1,  0),
+            ("SW", -1,  1), ("S", 0,  1), ("SE", 1,  1),
+
+            ("NW2", -2, -2), ("NNW", -1, -2), ("NN", 0, -2), ("NNE", 1, -2), ("NE2", 2, -2),
+            ("WNW", -2, -1),                                                  ("ENE", 2, -1),
+            ("WW",  -2,  0),                                                  ("EE",  2,  0),
+            ("WSW", -2,  1),                                                  ("ESE", 2,  1),
+            ("SW2", -2,  2), ("SSW", -1,  2), ("SS", 0,  2), ("SSE", 1,  2), ("SE2", 2,  2)
+        };
+
+        public static string PreferredDirection = "";
+
+        public static string GetBestAdjacentEnemyDirection(GameObject player)
+        {
+            if (player == null || player.CurrentCell == null) return "";
+
+            try
+            {
+                GameObject target = player.Target ?? Sidebar.CurrentTarget;
+                if (target != null && target.CurrentCell != null)
+                {
+                    string tDir = player.CurrentCell.GetDirectionFromCell(target.CurrentCell);
+                    if (!string.IsNullOrEmpty(tDir) && tDir.Length <= 2)
+                    {
+                        return tDir;
+                    }
+                }
+            }
+            catch { }
+
+            try
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    string dir = Offsets[i].Dir;
+                    Cell c = player.CurrentCell.GetCellFromDirection(dir, false);
+                    if (c != null && c.Objects != null)
+                    {
+                        if (c.Objects.Any(o => o != null && CheckIsEnemy(o, player)))
+                        {
+                            return dir;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return "";
+        }
+
+        public static bool CheckIsEnemy(GameObject obj, GameObject player)
+        {
+            if (obj == null || player == null || obj == player || obj.IsPlayer()) return false;
+            if (!obj.IsAlive) return false;
+            if (obj.Blueprint != null && obj.Blueprint.EndsWith("Corpse")) return false;
+
+            try
+            {
+                // 1. Direct combat targets
+                if (player.Target == obj || Sidebar.CurrentTarget == obj) return true;
+                if (obj.Target == player) return true;
+
+                // 2. Engine native hostility: does obj consider player hostile?
+                if (obj.IsHostileTowards(player)) return true;
+
+                // 3. Brain hostility checks
+                var brain = obj.Brain ?? obj.GetPart<Brain>();
+                if (brain != null)
+                {
+                    if (brain.PartyLeader == player) return false;
+                    if (brain.Target == player) return true;
+                    if (brain.IsHostileTowards(player)) return true;
+                    if (brain.GetFeelingLevel(player) == 0) return true; // FeelingLevel.Hostile
+                    if (brain.GetFeeling(player) < 0) return true;
+                }
+
+                // 4. Targetable aggressive creatures excluding peaceful townsfolk
+                if (!obj.IsNonAggressive())
+                {
+                    if (obj.HasTag("ExcludeFromHostiles")) return false;
+                    string faction = obj.GetPrimaryFaction();
+                    if (!string.IsNullOrEmpty(faction))
+                    {
+                        string f = faction.ToLower();
+                        if (f.Contains("villager") || f.Contains("fellow") || f.Contains("friend") || f.Contains("joppa"))
+                        {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI CheckIsEnemy Error] " + ex.ToString());
+            }
+
+            return false;
+        }
+
+        public static bool Prefix()
+        {
+            try
+            {
+                UnityEngine.Application.runInBackground = true;
+
+                if (!File.Exists(FlagFile) || !UnityEngine.Application.isPlaying)
+                {
+                    try { Popup.bSuppressPopups = false; } catch { }
+                    try { Popup.Suppress = false; } catch { }
+                    return true;
+                }
+
+                // AI is active: suppress all blocking popups and ensure engine doesn't wait on UI thread
+                try { Popup.bSuppressPopups = true; } catch { }
+                try { Popup.Suppress = true; } catch { }
+                try { GameManager.runPlayerTurnOnUIThread = false; } catch { }
+
+                GameObject player = The.Player;
+                if (player == null || player.CurrentCell == null) return true;
+
+                if (!player.IsAlive || player.hitpoints <= 0)
+                {
+                    ExportDeath(player);
+                    return true;
+                }
+
+                EnsureLightSource(player);
+                ExportState(player);
+                string action = ReadAction();
+
+                if (!UnityEngine.Application.isPlaying) return true;
+
+                ExecuteCommand(player, action);
+
+                try
+                {
+                    if (The.Core != null) The.Core.RenderBase();
+                }
+                catch { }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI Prefix Error] " + ex.ToString());
+                return true;
+            }
+        }
+
+        private static void EnsureLightSource(GameObject player)
+        {
+            if (player == null || player.CurrentCell == null || player.CurrentCell.ParentZone == null) return;
+
+            var body = player.GetPart<Body>();
+            if (body == null) return;
+
+            try
+            {
+                bool hasLit = false;
+                GameObject unburnt = null;
+
+                foreach (var part in body.GetParts())
+                {
+                    if (part.Equipped != null)
+                    {
+                        var eq = part.Equipped;
+                        var ls = eq.GetPart<LightSource>();
+                        if (ls != null && ls.Lit) { hasLit = true; break; }
+
+                        string name = (eq.DisplayName ?? "").ToLower();
+                        if (name.Contains("torch") && (name.Contains("unburnt") || name.Contains("unlit") || ls == null || !ls.Lit))
+                        {
+                            unburnt = eq;
+                        }
+                    }
+                }
+
+                if (!hasLit)
+                {
+                    if (unburnt != null)
+                    {
+                        try { unburnt.GetPart<TorchProperties>()?.Light(); } catch { }
+                        try { var ls = unburnt.GetPart<LightSource>(); if (ls != null) ls.Lit = true; } catch { }
+                        unburnt.FireEvent(Event.New("CommandActivate", "User", player));
+                        unburnt.FireEvent(Event.New("LightTorch", "User", player));
+                    }
+                    else
+                    {
+                        var inv = player.GetPart<Inventory>();
+                        if (inv != null && inv.Objects != null)
+                        {
+                            var invTorch = inv.Objects.FirstOrDefault(o => (o.DisplayName ?? "").ToLower().Contains("torch"));
+                            if (invTorch != null)
+                            {
+                                player.FireEvent(Event.New("CommandEquipObject", "Object", invTorch));
+                                try { invTorch.GetPart<TorchProperties>()?.Light(); } catch { }
+                                try { var ls = invTorch.GetPart<LightSource>(); if (ls != null) ls.Lit = true; } catch { }
+                                invTorch.FireEvent(Event.New("CommandActivate", "User", player));
+                                invTorch.FireEvent(Event.New("LightTorch", "User", player));
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private static void ExportState(GameObject player)
+        {
+            try
+            {
+                if (!Directory.Exists(ExchangeDir)) Directory.CreateDirectory(ExchangeDir);
+
+                int hp = player.hitpoints;
+                int maxHp = player.baseHitpoints;
+                Cell currentCell = player.CurrentCell;
+                int px = currentCell?.X ?? -1;
+                int py = currentCell?.Y ?? -1;
+                int pz = currentCell?.ParentZone?.Z ?? 10;
+                string zoneId = currentCell?.ParentZone?.ZoneID ?? "Unknown";
+                string zoneName = StripQudFormatting(currentCell?.ParentZone?.DisplayName ?? "Unknown");
+
+                bool hasMissileWeapon = false;
+                int missileCurrentAmmo = 0;
+                int missileMaxAmmo = 0;
+                int inventoryAmmo = 0;
+
+                var bodyParts = player.GetPart<Body>()?.GetParts();
+                if (bodyParts != null)
+                {
+                    foreach (var part in bodyParts)
+                    {
+                        if (part.Type == "Missile Weapon" && part.Equipped != null)
+                        {
+                            hasMissileWeapon = true;
+                            var mw = part.Equipped;
+                            if (mw.HasPart("MagazineAmmoLoader"))
+                            {
+                                var loader = mw.GetPart<MagazineAmmoLoader>();
+                                if (loader != null)
+                                {
+                                    missileCurrentAmmo = loader.Ammo != null ? loader.Ammo.Count : 0;
+                                    missileMaxAmmo = loader.MaxAmmo > 0 ? loader.MaxAmmo : 6;
+
+                                    try
+                                    {
+                                        var invObjects = player.GetInventory();
+                                        if (invObjects == null)
+                                        {
+                                            var inv = player.GetPart<Inventory>();
+                                            if (inv != null) invObjects = inv.GetObjects();
+                                        }
+                                        if (invObjects != null)
+                                        {
+                                            foreach (var obj in invObjects)
+                                            {
+                                                if (obj != null && loader.IsValidAmmo(obj))
+                                                {
+                                                    inventoryAmmo += obj.Count;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    catch { }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                bool hostilesNearby = false;
+                bool hostilesAdjacent = false;
+                try
+                {
+                    hostilesNearby = player.AreHostilesNearby();
+                    hostilesAdjacent = player.AreHostilesAdjacent();
+                }
+                catch { }
+
+                int waterDrams = 0;
+                try
+                {
+                    waterDrams = player.GetFreeDrams();
+                }
+                catch { }
+
+                List<string> effectStrs = new List<string>();
+                try
+                {
+                    if (player.Effects != null)
+                    {
+                        foreach (var fx in player.Effects)
+                        {
+                            if (fx != null)
+                            {
+                                string desc = StripQudFormatting(fx.GetDescription());
+                                if (!string.IsNullOrEmpty(desc))
+                                {
+                                    effectStrs.Add($"\"{EscapeJson(desc)}\"");
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                bool isSprinting = false;
+                try { isSprinting = player.HasEffect("Running") || player.HasEffect("Sprinting"); } catch { }
+
+                List<string> abilityStrs = new List<string>();
+                try
+                {
+                    var abilities = player.GetPart<ActivatedAbilities>();
+                    if (abilities != null && abilities.AbilityByGuid != null)
+                    {
+                        foreach (var kvp in abilities.AbilityByGuid)
+                        {
+                            var ab = kvp.Value;
+                            if (ab != null && ab.Enabled)
+                            {
+                                int cd = ab.CooldownTurns > 0 ? ab.CooldownTurns : ab.Cooldown;
+                                bool usable = ab.IsUsable;
+                                string name = StripQudFormatting(ab.DisplayName);
+                                string cmd = ab.Command ?? "";
+                                bool active = ab.ToggleState || (name.ToLower().Contains("sprint") && isSprinting);
+                                abilityStrs.Add($"{{\"name\": \"{EscapeJson(name)}\", \"command\": \"{EscapeJson(cmd)}\", \"cooldown\": {cd}, \"usable\": {(usable ? "true" : "false")}, \"active\": {(active ? "true" : "false")}}}");
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                int playerLevel = player.Stat("Level", 1);
+                int playerXP = player.Stat("XP", 0);
+                int apPoints = player.Stat("AP", 0);
+                int spPoints = player.Stat("SP", 0);
+                int mpPoints = player.Stat("MP", 0);
+
+                int statStr = player.Stat("Strength", 10);
+                int statAgi = player.Stat("Agility", 10);
+                int statTou = player.Stat("Toughness", 10);
+                int statInt = player.Stat("Intelligence", 10);
+                int statWil = player.Stat("Willpower", 10);
+                int statEgo = player.Stat("Ego", 10);
+
+                List<string> learnedSkills = new List<string>();
+                try
+                {
+                    var sPart = player.GetPart<Skills>();
+                    if (sPart != null && sPart.SkillList != null)
+                    {
+                        foreach (var sk in sPart.SkillList)
+                        {
+                            if (sk != null) learnedSkills.Add($"\"{EscapeJson(sk.Name)}\"");
+                        }
+                    }
+                }
+                catch { }
+
+                List<string> mutationEntries = new List<string>();
+                try
+                {
+                    var mPart = player.GetPart<Mutations>();
+                    if (mPart != null && mPart.ActiveMutationList != null)
+                    {
+                        foreach (var m in mPart.ActiveMutationList)
+                        {
+                            if (m != null)
+                            {
+                                string mName = m.GetDisplayName(false);
+                                int mLevel = m.Level;
+                                int mCap = m.GetMutationCap();
+                                bool canLvl = m.CanLevel();
+                                mutationEntries.Add($"{{\"name\": \"{EscapeJson(mName)}\", \"class\": \"{EscapeJson(m.Name)}\", \"level\": {mLevel}, \"cap\": {mCap}, \"can_level\": {(canLvl ? "true" : "false")}}}");
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                StringBuilder sb = new StringBuilder(16384);
+                sb.Append("{");
+                sb.Append($"\"hp\": {hp},");
+                sb.Append($"\"max_hp\": {maxHp},");
+                sb.Append($"\"level\": {playerLevel},");
+                sb.Append($"\"xp\": {playerXP},");
+                sb.Append($"\"ap\": {apPoints},");
+                sb.Append($"\"sp\": {spPoints},");
+                sb.Append($"\"mp\": {mpPoints},");
+                sb.Append($"\"attributes\": {{\"Strength\": {statStr}, \"Agility\": {statAgi}, \"Toughness\": {statTou}, \"Intelligence\": {statInt}, \"Willpower\": {statWil}, \"Ego\": {statEgo}}},");
+                sb.Append($"\"skills\": [{string.Join(",", learnedSkills)}],");
+                sb.Append($"\"mutations\": [{string.Join(",", mutationEntries)}],");
+                sb.Append($"\"x\": {px},");
+                sb.Append($"\"y\": {py},");
+                sb.Append($"\"z\": {pz},");
+                sb.Append($"\"is_sprinting\": {(isSprinting ? "true" : "false")},");
+                sb.Append($"\"hostiles_nearby\": {(hostilesNearby ? "true" : "false")},");
+                sb.Append($"\"hostiles_adjacent\": {(hostilesAdjacent ? "true" : "false")},");
+                sb.Append($"\"water_drams\": {waterDrams},");
+                sb.Append($"\"effects\": [{string.Join(",", effectStrs)}],");
+                sb.Append($"\"abilities\": [{string.Join(",", abilityStrs)}],");
+                sb.Append($"\"has_missile_weapon\": {(hasMissileWeapon ? "true" : "false")},");
+                sb.Append($"\"missile_ammo\": {missileCurrentAmmo},");
+                sb.Append($"\"missile_max_ammo\": {missileMaxAmmo},");
+                sb.Append($"\"inventory_ammo\": {inventoryAmmo},");
+                sb.Append($"\"zone_id\": \"{EscapeJson(zoneId)}\",");
+                sb.Append($"\"zone_name\": \"{EscapeJson(zoneName)}\",");
+                string genotype = "";
+                string subtype = "";
+                try { genotype = player.GetGenotype() ?? ""; } catch { }
+                try { subtype = player.GetSubtype() ?? ""; } catch { }
+
+                sb.Append($"\"genotype\": \"{EscapeJson(genotype)}\",");
+                sb.Append($"\"subtype\": \"{EscapeJson(subtype)}\",");
+                sb.Append($"\"calling\": \"{EscapeJson(subtype)}\",");
+                sb.Append($"\"last_move_failed\": {(lastMoveFailed ? "true" : "false")},");
+                sb.Append($"\"last_failed_dir\": \"{lastFailedDir}\",");
+                sb.Append($"\"equipped_summary\": \"{EscapeJson(GetEquippedSummary(player))}\",");
+
+                // Expanded spatial scan & active target capture
+                sb.Append("\"visible_entities\": [");
+                List<string> entityEntries = new List<string>();
+                if (currentCell?.ParentZone != null)
+                {
+                    Zone zone = currentCell.ParentZone;
+                    int minX = Math.Max(0, px - 25);
+                    int maxX = Math.Min(79, px + 25);
+                    int minY = Math.Max(0, py - 20);
+                    int maxY = Math.Min(24, py + 20);
+
+                    for (int x = minX; x <= maxX; x++)
+                    {
+                        for (int y = minY; y <= maxY; y++)
+                        {
+                            if (x == px && y == py) continue;
+                            Cell c = zone.GetCell(x, y);
+                            if (c != null && c.Objects != null)
+                            {
+                                foreach (GameObject obj in c.Objects)
+                                {
+                                    if (obj == null || obj.IsPlayer()) continue;
+
+                                    string name = StripQudFormatting(!string.IsNullOrEmpty(obj.DisplayName) ? obj.DisplayName : obj.Blueprint);
+                                    if (string.IsNullOrEmpty(name) || name.IndexOf("widget", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+
+                                    int dist = Math.Max(Math.Abs(x - px), Math.Abs(y - py));
+                                    string dir = GetApproximateDirection(px, py, x, y);
+                                    string bp = obj.Blueprint ?? "";
+                                    bool isEnemy = CheckIsEnemy(obj, player);
+
+                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}}}");
+                                }
+                            }
+                        }
+                    }
+
+                    // Active combat target from engine or sidebar
+                    try
+                    {
+                        GameObject currentTarget = Sidebar.CurrentTarget ?? player.Target;
+                        if (currentTarget != null && currentTarget != player && !currentTarget.HasPart("Corpse"))
+                        {
+                            Cell tc = currentTarget.CurrentCell;
+                            int tx = tc?.X ?? -1;
+                            int ty = tc?.Y ?? -1;
+                            if (tx >= 0 && ty >= 0)
+                            {
+                                string name = StripQudFormatting(!string.IsNullOrEmpty(currentTarget.DisplayName) ? currentTarget.DisplayName : currentTarget.Blueprint);
+                                int dist = Math.Max(Math.Abs(tx - px), Math.Abs(ty - py));
+                                string dir = GetApproximateDirection(px, py, tx, ty);
+                                string bp = currentTarget.Blueprint ?? "";
+                                entityEntries.Insert(0, $"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {tx}, \"ty\": {ty}, \"is_enemy\": true}}");
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                sb.Append(string.Join(",", entityEntries));
+                sb.Append("],");
+
+                // 5x5 Surroundings Grid
+                sb.Append("\"surroundings\": {");
+                for (int i = 0; i < Offsets.Length; i++)
+                {
+                    var offset = Offsets[i];
+                    string summary = "Blocked";
+
+                    if (currentCell?.ParentZone != null)
+                    {
+                        int targetX = currentCell.X + offset.DX;
+                        int targetY = currentCell.Y + offset.DY;
+
+                        if (targetX < 0 || targetX >= 80 || targetY < 0 || targetY >= 25)
+                        {
+                            summary = $"[ZONE_EXIT: {offset.Dir}]";
+                        }
+                        else
+                        {
+                            Cell neighbor = currentCell.ParentZone.GetCell(targetX, targetY);
+                            if (neighbor != null) summary = GetCellSummary(neighbor, player);
+                        }
+                    }
+
+                    sb.Append($"\"{offset.Dir}\": \"{EscapeJson(summary)}\"");
+                    if (i < Offsets.Length - 1) sb.Append(",");
+                }
+                sb.Append("}}");
+
+                string tempFile = StateFile + ".tmp";
+                File.WriteAllText(tempFile, sb.ToString(), Encoding.UTF8);
+                if (File.Exists(StateFile)) File.Delete(StateFile);
+                File.Move(tempFile, StateFile);
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI ExportState Error] " + ex.ToString());
+            }
+        }
+
+        private static string GetEquippedSummary(GameObject player)
+        {
+            var body = player?.GetPart<Body>();
+            if (body == null) return "None";
+
+            List<string> gear = new List<string>();
+            try
+            {
+                foreach (var part in body.GetParts())
+                {
+                    if (part?.Equipped != null)
+                    {
+                        gear.Add($"{part.Type}: {StripQudFormatting(part.Equipped.DisplayName)}");
+                    }
+                }
+            }
+            catch { }
+
+            return gear.Count > 0 ? string.Join("; ", gear) : "Nothing Equipped";
+        }
+
+        private static string GetApproximateDirection(int fromX, int fromY, int toX, int toY)
+        {
+            int dx = toX - fromX;
+            int dy = toY - fromY;
+            if (dx == 0 && dy < 0) return "N";
+            if (dx == 0 && dy > 0) return "S";
+            if (dx > 0 && dy == 0) return "E";
+            if (dx < 0 && dy == 0) return "W";
+            if (dx > 0 && dy < 0) return "NE";
+            if (dx < 0 && dy < 0) return "NW";
+            if (dx > 0 && dy > 0) return "SE";
+            return "SW";
+        }
+
+        private static string GetCellSummary(Cell cell, GameObject player)
+        {
+            if (cell?.Objects == null) return "Empty ground";
+
+            List<string> names = new List<string>();
+            foreach (GameObject obj in cell.Objects)
+            {
+                if (obj == null || obj.IsPlayer()) continue;
+
+                string rawName = !string.IsNullOrEmpty(obj.DisplayName) ? obj.DisplayName : obj.Blueprint;
+                string cleanName = StripQudFormatting(rawName);
+                if (string.IsNullOrEmpty(cleanName) || cleanName.IndexOf("widget", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+
+                if (CheckIsEnemy(obj, player))
+                {
+                    names.Insert(0, $"[ENEMY: {cleanName}]");
+                    continue;
+                }
+
+                if (obj.HasPart("StairsDown"))
+                {
+                    names.Insert(0, $"[STAIRS_DOWN: {cleanName}]");
+                    continue;
+                }
+                if (obj.HasPart("StairsUp"))
+                {
+                    names.Insert(0, $"[STAIRS_UP: {cleanName}]");
+                    continue;
+                }
+                if (obj.HasPart("Door"))
+                {
+                    var door = obj.GetPart<Door>();
+#pragma warning disable CS0618
+                    names.Insert(0, $"{(door != null && door.bOpen ? "Open Door" : "Closed Door")} ({cleanName})");
+#pragma warning restore CS0618
+                    continue;
+                }
+
+                string lower = cleanName.ToLower();
+                if (lower.Contains("acid") || lower.Contains("lava") || lower.Contains("magma") || lower.Contains("convalessence"))
+                {
+                    names.Insert(0, $"[HAZARD: {cleanName}]");
+                    continue;
+                }
+
+                if (lower.Contains("corpse") || lower.Contains("severed"))
+                {
+                    names.Add($"[ITEM: {cleanName}]");
+                    continue;
+                }
+
+                if (obj.HasPart("Combat") || obj.Brain != null || obj.HasPart("Brain"))
+                {
+                    names.Insert(0, $"[NPC: {cleanName}]");
+                    continue;
+                }
+
+                var phys = obj.GetPart<Physics>();
+                if (phys != null && phys.Solid)
+                {
+                    names.Insert(0, $"[BLOCKED: {cleanName}]");
+                    continue;
+                }
+
+                names.Add(cleanName);
+            }
+
+            try
+            {
+                bool hasBridge = cell.Objects != null && cell.Objects.Any(o => o != null && (o.DisplayName ?? "").ToLower().Contains("bridge"));
+                if (!hasBridge && cell.HasSwimmingDepthLiquid())
+                {
+                    names.Insert(0, "[BLOCKED: deep water]");
+                }
+                else if (!cell.IsPassable(player, false))
+                {
+                    names.Insert(0, "[BLOCKED: impassable terrain]");
+                }
+            }
+            catch { }
+
+            return names.Count > 0 ? string.Join(", ", names) : "Empty ground";
+        }
+
+        public static string StripQudFormatting(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return string.Empty;
+            string clean = QudColorRegex.Replace(input, "");
+            clean = PipePrefixRegex.Replace(clean, "");
+            return clean.Trim();
+        }
+
+        private static string ReadAction()
+        {
+            int elapsed = 0;
+            while (elapsed < 6000)
+            {
+                if (!UnityEngine.Application.isPlaying) return "WAIT";
+
+                if (File.Exists(ActionFile))
+                {
+                    System.Threading.Thread.Sleep(15);
+                    try
+                    {
+                        string content = File.ReadAllText(ActionFile);
+                        File.Delete(ActionFile);
+
+                        if (content.Contains("\"action\":"))
+                        {
+                            int start = content.IndexOf("\"action\":") + 9;
+                            int quoteStart = content.IndexOf("\"", start) + 1;
+                            int quoteEnd = content.IndexOf("\"", quoteStart);
+                            return content.Substring(quoteStart, quoteEnd - quoteStart);
+                        }
+                    }
+                    catch (IOException) { }
+                }
+
+                System.Threading.Thread.Sleep(30);
+                elapsed += 30;
+            }
+
+            return "WAIT";
+        }
+
+        private static void ExecuteCommand(GameObject player, string action)
+        {
+            try
+            {
+                string actionLog = Path.Combine(ExchangeDir, "last_action_executed.txt");
+                File.WriteAllText(actionLog, $"{DateTime.UtcNow:O}: {action}", Encoding.UTF8);
+            }
+            catch { }
+
+            if (string.IsNullOrEmpty(action) || action.ToUpper() == "WAIT")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                player.UseEnergy(1000, "Pass");
+                return;
+            }
+
+            string act = action.ToUpper().Trim();
+
+            if (act == "RELOAD")
+            {
+                ExecuteReload(player);
+                return;
+            }
+
+            if (act.StartsWith("FIRE_MISSILE"))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                try
+                {
+                    int tx = -1;
+                    int ty = -1;
+                    if (act.Contains("@"))
+                    {
+                        string[] parts = act.Split('@')[1].Split(',');
+                        if (parts.Length == 2)
+                        {
+                            int.TryParse(parts[0], out tx);
+                            int.TryParse(parts[1], out ty);
+                        }
+                    }
+
+                    Cell targetCell = null;
+                    Cell current = player.CurrentCell;
+                    Zone zone = current?.ParentZone;
+
+                    if (zone != null)
+                    {
+                        if (tx >= 0 && ty >= 0 && tx < 80 && ty < 25)
+                        {
+                            targetCell = zone.GetCell(tx, ty);
+                        }
+
+                        if (targetCell == null)
+                        {
+                            var enemy = zone.GetObjects()
+                                .Where(o => o != null && !o.IsPlayer() && CheckIsEnemy(o, player) && o.CurrentCell != null)
+                                .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - current.X), Math.Abs(o.CurrentCell.Y - current.Y)))
+                                .FirstOrDefault();
+                            targetCell = enemy?.CurrentCell;
+                        }
+                    }
+
+                    if (targetCell != null)
+                    {
+                        ExecuteMissileFire(player, targetCell);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError("[QudAI FIRE_MISSILE Exception] " + ex.ToString());
+                }
+
+                if (player.Energy != null && player.Energy.Value >= 1000)
+                {
+                    player.UseEnergy(1000, "Missile");
+                }
+                return;
+            }
+
+            if (act == "USE_STAIRS_DOWN")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                int energyBefore = player.Energy?.Value ?? 0;
+                player.Move("D");
+                if (player.Energy != null && player.Energy.Value >= energyBefore)
+                {
+                    player.UseEnergy(1000, "Movement");
+                }
+                return;
+            }
+
+            if (act == "USE_STAIRS_UP")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                int energyBefore = player.Energy?.Value ?? 0;
+                player.Move("U");
+                if (player.Energy != null && player.Energy.Value >= energyBefore)
+                {
+                    player.UseEnergy(1000, "Movement");
+                }
+                return;
+            }
+
+            if (act == "GET_ITEM")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                Cell cell = player.CurrentCell;
+                if (cell?.Objects != null)
+                {
+                    var item = cell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && (o.HasPart("Physics") || o.HasPart("Corpse")));
+                    if (item != null)
+                    {
+                        player.TakeObject(item);
+                        try { player.FireEvent(Event.New("CommandAutoEquip")); } catch { }
+                    }
+                }
+                player.UseEnergy(1000, "Pickup");
+                return;
+            }
+
+            if (act.StartsWith("AUTOLEVEL"))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                ExecuteAutolevel(player, act);
+                player.UseEnergy(1000, "Pass");
+                return;
+            }
+
+            if (act == "REST" || act == "PASS")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                try
+                {
+                    if (player.Stat("AP", 0) > 0 || player.Stat("SP", 0) >= 50 || player.Stat("MP", 0) > 0)
+                    {
+                        ExecuteAutolevel(player, "AUTOLEVEL");
+                    }
+                }
+                catch { }
+                player.UseEnergy(1000, "Pass");
+                return;
+            }
+
+            if (act.StartsWith("USE_ABILITY:"))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                string cmd = action.Substring(12).Trim();
+
+                PreferredDirection = "";
+                if (cmd.Contains(":"))
+                {
+                    string[] parts = cmd.Split(':');
+                    cmd = parts[0].Trim();
+                    if (parts.Length > 1) PreferredDirection = parts[1].Trim().ToUpper();
+                }
+
+                if (string.IsNullOrEmpty(PreferredDirection))
+                {
+                    PreferredDirection = GetBestAdjacentEnemyDirection(player);
+                }
+
+                int energyBefore = player.Energy?.Value ?? 0;
+                try
+                {
+                    player.FireEvent(Event.New(cmd, "User", player));
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError("[QudAI USE_ABILITY Error] " + ex.ToString());
+                }
+
+                PreferredDirection = "";
+
+                if (player.Energy != null && player.Energy.Value >= energyBefore)
+                {
+                    player.UseEnergy(1000, "Ability");
+                }
+                return;
+            }
+
+            if (act == "ACTIVATE_SPRINT")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                try
+                {
+                    if (!player.HasEffect("Running") && !player.HasEffect("Sprinting"))
+                    {
+                        var abilities = player.GetPart<ActivatedAbilities>();
+                        if (abilities != null && abilities.AbilityByGuid != null)
+                        {
+                            foreach (var kvp in abilities.AbilityByGuid)
+                            {
+                                var ab = kvp.Value;
+                                if (ab != null && ab.Enabled && ((ab.DisplayName ?? "").ToLower().Contains("sprint") || (ab.Command ?? "").ToLower().Contains("sprint")))
+                                {
+                                    if (ab.IsUsable && ab.CooldownTurns <= 0 && ab.Cooldown <= 0)
+                                    {
+                                        player.FireEvent(Event.New(ab.Command, "User", player));
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError("[QudAI SPRINT Error] " + ex.ToString());
+                }
+
+                if (!player.HasEffect("Running") && !player.HasEffect("Sprinting"))
+                {
+                    if (player.Energy != null && player.Energy.Value >= 1000)
+                    {
+                        player.UseEnergy(1000, "SprintFail");
+                    }
+                }
+                return;
+            }
+
+            if (act.StartsWith("SPRINT_"))
+            {
+                string dir = act.Substring(7).Trim();
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                try
+                {
+                    if (!player.HasEffect("Running") && !player.HasEffect("Sprinting"))
+                    {
+                        var abilities = player.GetPart<ActivatedAbilities>();
+                        if (abilities != null && abilities.AbilityByGuid != null)
+                        {
+                            foreach (var kvp in abilities.AbilityByGuid)
+                            {
+                                var ab = kvp.Value;
+                                if (ab != null && ab.Enabled && ((ab.DisplayName ?? "").ToLower().Contains("sprint") || (ab.Command ?? "").ToLower().Contains("sprint")))
+                                {
+                                    if (ab.IsUsable && ab.CooldownTurns <= 0 && ab.Cooldown <= 0)
+                                    {
+                                        player.FireEvent(Event.New(ab.Command, "User", player));
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError("[QudAI SPRINT Error] " + ex.ToString());
+                }
+
+                int energyBefore = player.Energy?.Value ?? 0;
+                bool moved = player.Move(dir);
+                if (!moved)
+                {
+                    lastMoveFailed = true;
+                    lastFailedDir = dir.ToUpper();
+                    TryOpenDoorInDirection(player, dir);
+                }
+                else
+                {
+                    lastMoveFailed = false;
+                    lastFailedDir = "";
+                }
+                if (player.Energy != null && player.Energy.Value >= energyBefore)
+                {
+                    player.UseEnergy(1000, "Movement");
+                }
+                return;
+            }
+
+            string direction = null;
+            if (act.StartsWith("MOVE_")) direction = act.Substring(5);
+
+            if (!string.IsNullOrEmpty(direction))
+            {
+                int energyBefore = player.Energy?.Value ?? 0;
+                bool moved = player.Move(direction);
+                if (!moved)
+                {
+                    lastMoveFailed = true;
+                    lastFailedDir = direction.ToUpper();
+                    TryOpenDoorInDirection(player, direction);
+                }
+                else
+                {
+                    lastMoveFailed = false;
+                    lastFailedDir = "";
+                }
+                if (player.Energy != null && player.Energy.Value >= energyBefore)
+                {
+                    player.UseEnergy(1000, "Movement");
+                }
+            }
+            else
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                player.UseEnergy(1000, "Pass");
+            }
+        }
+
+        private static void ExecuteAutolevel(GameObject player, string command)
+        {
+            if (player == null) return;
+
+            try
+            {
+                // 1. Specific targeted allocations
+                if (command.StartsWith("AUTOLEVEL_STAT:"))
+                {
+                    string targetStat = command.Substring(15).Trim();
+                    AllocateStat(player, targetStat);
+                    return;
+                }
+
+                if (command.StartsWith("AUTOLEVEL_SKILL:"))
+                {
+                    string targetSkill = command.Substring(16).Trim();
+                    AllocateSkill(player, targetSkill);
+                    return;
+                }
+
+                if (command.StartsWith("AUTOLEVEL_MUTATION:"))
+                {
+                    string targetMut = command.Substring(19).Trim();
+                    AllocateMutation(player, targetMut);
+                    return;
+                }
+
+                // 2. Full Autolevel Doctrine
+                // A. Spend AP (Attributes)
+                int ap = player.Stat("AP", 0);
+                while (ap > 0)
+                {
+                    int tou = player.Stat("Toughness", 10);
+                    int agi = player.Stat("Agility", 10);
+                    string targetAttr = (tou < agi + 2) ? "Toughness" : "Agility";
+                    if (!AllocateStat(player, targetAttr)) break;
+                    int newAp = player.Stat("AP", 0);
+                    if (newAp >= ap) break;
+                    ap = newAp;
+                }
+
+                // B. Spend MP (Mutations)
+                int mp = player.Stat("MP", 0);
+                while (mp > 0)
+                {
+                    if (!AllocateMutation(player, null)) break;
+                    int newMp = player.Stat("MP", 0);
+                    if (newMp >= mp) break;
+                    mp = newMp;
+                }
+
+                // C. Spend SP (Skills)
+                int sp = player.Stat("SP", 0);
+                if (sp >= 50)
+                {
+                    string[] prioritySkills = new string[]
+                    {
+                        "Rifles",
+                        "Rifle_SteadyHands",
+                        "Rifle_DrawABead",
+                        "Rifle_FlatteningFire",
+                        "Rifle_SuppressiveFire",
+                        "Rifle_SureFire",
+                        "Acrobatics",
+                        "Acrobatics_Dodge",
+                        "Acrobatics_SwiftReflexes",
+                        "Acrobatics_Jump",
+                        "Endurance",
+                        "Endurance_Swimming",
+                        "Endurance_Longstrider",
+                        "Endurance_Weathered",
+                        "Endurance_ShakeItOff",
+                        "CookingAndGathering_Harvestry",
+                        "CookingAndGathering_Butchery"
+                    };
+
+                    foreach (string skillClass in prioritySkills)
+                    {
+                        if (AllocateSkill(player, skillClass))
+                        {
+                            sp = player.Stat("SP", 0);
+                            if (sp < 50) break;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI ExecuteAutolevel Exception] " + ex.ToString());
+            }
+        }
+
+        private static bool AllocateStat(GameObject player, string statName)
+        {
+            try
+            {
+                var apStat = player.GetStat("AP");
+                if (apStat == null || apStat.Value <= 0) return false;
+
+                var targetStat = player.GetStat(statName);
+                if (targetStat == null || targetStat.BaseValue >= 100) return false;
+
+                targetStat.BaseValue += 1;
+                apStat.Penalty += 1;
+
+                string msg = $"{{G|[AI Level Up] Allocated 1 AP to {statName} (Now: {targetStat.Value})}}";
+                MessageQueue.AddPlayerMessage(msg);
+                UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI AllocateStat Exception] " + ex.ToString());
+                return false;
+            }
+        }
+
+        private static bool AllocateMutation(GameObject player, string mutationName)
+        {
+            try
+            {
+                int mp = player.Stat("MP", 0);
+                if (mp <= 0) return false;
+
+                var muts = player.GetPart<Mutations>();
+                if (muts == null) return false;
+
+                BaseMutation targetMutation = null;
+                if (!string.IsNullOrEmpty(mutationName))
+                {
+                    targetMutation = muts.GetMutation(mutationName);
+                }
+                else
+                {
+                    targetMutation = muts.GetMutation("FreezingRay")
+                        ?? muts.ActiveMutationList.FirstOrDefault(m => m != null && m.CanLevel() && m.Level < m.GetMutationCap());
+                }
+
+                if (targetMutation != null && targetMutation.CanLevel() && targetMutation.Level < targetMutation.GetMutationCap())
+                {
+                    muts.LevelMutation(targetMutation, targetMutation.BaseLevel + 1);
+                    player.UseMP(1, "default");
+                    string msg = $"{{G|[AI Level Up] Leveled Mutation: {targetMutation.GetDisplayName(false)} to Rank {targetMutation.Level}}}";
+                    MessageQueue.AddPlayerMessage(msg);
+                    UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI AllocateMutation Exception] " + ex.ToString());
+            }
+            return false;
+        }
+
+        private static bool AllocateSkill(GameObject player, string skillClass)
+        {
+            try
+            {
+                if (player == null || player.HasSkill(skillClass)) return false;
+
+                int sp = player.Stat("SP", 0);
+                if (sp <= 0) return false;
+
+                var skills = player.GetPart<Skills>();
+                if (skills == null) return false;
+
+                var allSkills = SkillFactory.GetSkills();
+                if (allSkills == null) return false;
+
+                // Check skill entry
+                SkillEntry sEntry = allSkills.FirstOrDefault(s => s != null && s.Class == skillClass);
+                if (sEntry != null)
+                {
+                    if (!sEntry.Initiatory && sEntry.Cost <= sp && sEntry.MeetsRequirements(player, false))
+                    {
+                        skills.AddSkill(skillClass);
+                        player.GetStat("SP").Penalty += sEntry.Cost;
+                        string msg = $"{{G|[AI Level Up] Learned Skill: {sEntry.Name} for {sEntry.Cost} SP}}";
+                        MessageQueue.AddPlayerMessage(msg);
+                        UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);
+                        return true;
+                    }
+                    return false;
+                }
+
+                // Check power entry
+                foreach (var s in allSkills)
+                {
+                    if (s == null || s.PowerList == null) continue;
+                    PowerEntry pEntry = s.PowerList.FirstOrDefault(p => p != null && p.Class == skillClass);
+                    if (pEntry != null)
+                    {
+                        if (player.HasSkill(s.Class) && pEntry.Cost <= sp && pEntry.MeetsRequirements(player, false))
+                        {
+                            skills.AddSkill(skillClass);
+                            player.GetStat("SP").Penalty += pEntry.Cost;
+                            string msg = $"{{G|[AI Level Up] Learned Power: {pEntry.Name} for {pEntry.Cost} SP}}";
+                            MessageQueue.AddPlayerMessage(msg);
+                            UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI AllocateSkill Exception] " + ex.ToString());
+            }
+            return false;
+        }
+
+        private static void ExecuteReload(GameObject player)
+        {
+            lastMoveFailed = false;
+            lastFailedDir = "";
+
+            bool reloaded = false;
+            try
+            {
+                var body = player.GetPart<Body>();
+                if (body != null)
+                {
+                    var invObjects = player.GetInventory();
+                    if (invObjects == null)
+                    {
+                        var inv = player.GetPart<Inventory>();
+                        if (inv != null) invObjects = inv.GetObjects();
+                    }
+
+                    if (invObjects != null)
+                    {
+                        foreach (var part in body.GetParts())
+                        {
+                            if (part.Type == "Missile Weapon" && part.Equipped != null)
+                            {
+                                var weapon = part.Equipped;
+                                var loader = weapon.GetPart<MagazineAmmoLoader>();
+                                if (loader != null)
+                                {
+                                    int currentAmmo = loader.Ammo != null ? loader.Ammo.Count : 0;
+                                    int maxAmmo = loader.MaxAmmo > 0 ? loader.MaxAmmo : 6;
+
+                                    if (currentAmmo < maxAmmo)
+                                    {
+                                        GameObject slugStack = invObjects
+                                            .Where(o => o != null && loader.IsValidAmmo(o))
+                                            .OrderByDescending(o => o.Count)
+                                            .FirstOrDefault();
+
+                                        if (slugStack != null)
+                                        {
+                                            if (loader.Ammo != null && loader.Ammo.Count > 0)
+                                            {
+                                                try { loader.Unload(player); } catch { }
+                                            }
+                                            loader.Load(player, slugStack, false);
+                                            reloaded = true;
+                                            UnityEngine.Debug.Log($"[QudAI] Successfully loaded {weapon.DisplayNameOnly} with {slugStack.DisplayNameOnly} ({slugStack.Count} left in stack).");
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI ExecuteReload Error] " + ex.ToString());
+            }
+
+            if (reloaded)
+            {
+                player.UseEnergy(1000, "Reload");
+            }
+            else
+            {
+                player.UseEnergy(1000, "Pass");
+            }
+        }
+
+        private static void ExecuteMissileFire(GameObject player, Cell targetCell)
+        {
+            if (player == null || targetCell == null) return;
+
+            // Only fire if the missile weapon is equipped and has ammo loaded
+            try
+            {
+                var body = player.GetPart<Body>();
+                if (body != null)
+                {
+                    bool hasLoadedAmmo = false;
+                    foreach (var part in body.GetParts())
+                    {
+                        if (part.Type == "Missile Weapon" && part.Equipped != null)
+                        {
+                            var mw = part.Equipped;
+                            var loader = mw.GetPart<MagazineAmmoLoader>();
+                            if (loader != null && loader.Ammo != null && loader.Ammo.Count > 0)
+                            {
+                                hasLoadedAmmo = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!hasLoadedAmmo)
+                    {
+                        UnityEngine.Debug.Log("[QudAI] Missile weapon empty during fire command; redirecting to ExecuteReload.");
+                        ExecuteReload(player);
+                        return;
+                    }
+                }
+            }
+            catch { }
+
+            GameObject targetObj = null;
+            if (targetCell.Objects != null)
+            {
+                targetObj = targetCell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && CheckIsEnemy(o, player));
+            }
+
+            try
+            {
+                var brain = player.Brain ?? player.GetPart<Brain>();
+                if (brain != null && targetObj != null)
+                {
+                    brain.Target = targetObj;
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (cachedFireMethod == null)
+                {
+                    cachedFireMethod = typeof(Combat).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
+                        .FirstOrDefault(m => m.Name == "FireMissileWeapon");
+                }
+
+                if (cachedFireMethod != null)
+                {
+                    var parameters = cachedFireMethod.GetParameters();
+                    object[] args = new object[parameters.Length];
+
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        var p = parameters[i];
+                        string pName = p.Name.ToLower();
+                        Type pType = p.ParameterType;
+
+                        if (pName == "attacker")
+                        {
+                            args[i] = player;
+                        }
+                        else if (pName == "aimedat")
+                        {
+                            args[i] = targetObj;
+                        }
+                        else if (pName == "targetcell")
+                        {
+                            args[i] = targetCell;
+                        }
+                        else if (pName == "sweepwidth")
+                        {
+                            args[i] = 0; // Overrides Qud's default 90-degree fan spray
+                        }
+                        else if (pName == "sweepshots")
+                        {
+                            args[i] = 0;
+                        }
+                        else if (pName == "rapid")
+                        {
+                            args[i] = 0;
+                        }
+                        else if (pName == "skill")
+                        {
+                            args[i] = "Rifle";
+                        }
+                        else if (p.HasDefaultValue)
+                        {
+                            args[i] = p.DefaultValue;
+                        }
+                        else if (pType.IsValueType)
+                        {
+                            args[i] = Activator.CreateInstance(pType);
+                        }
+                        else
+                        {
+                            args[i] = null;
+                        }
+                    }
+
+                    object instance = cachedFireMethod.IsStatic ? null : player.GetPart<Combat>();
+                    cachedFireMethod.Invoke(instance, args);
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI ExecuteMissileFire Invocation Error] " + ex.ToString());
+            }
+        }
+
+        private static void TryOpenDoorInDirection(GameObject player, string direction)
+        {
+            try
+            {
+                Cell current = player.CurrentCell;
+                if (current?.ParentZone == null) return;
+                foreach (var offset in Offsets)
+                {
+                    if (offset.Dir.Equals(direction, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Cell target = current.ParentZone.GetCell(current.X + offset.DX, current.Y + offset.DY);
+                        var door = target?.Objects?.FirstOrDefault(o => o.HasPart("Door"));
+                        if (door != null) door.FireEvent(Event.New("Open", "Opener", player));
+                        break;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        public static void ExportDeath(GameObject player)
+        {
+            try
+            {
+                if (!Directory.Exists(ExchangeDir)) Directory.CreateDirectory(ExchangeDir);
+                string deathFile = Path.Combine(ExchangeDir, "death.json");
+                if (File.Exists(deathFile)) return;
+
+                string name = StripQudFormatting(player?.DisplayName ?? "Unknown Nomad");
+                int level = 1;
+                try { if (player != null && player.HasStat("Level")) level = player.Stat("Level"); } catch { }
+                long turns = The.Game != null ? The.Game.Turns : 0;
+                string zone = StripQudFormatting(player?.CurrentCell?.ParentZone?.DisplayName ?? "Unknown Sands");
+                string reason = StripQudFormatting(The.Game?.DeathReason ?? "Slain in the salt wastes");
+                string category = StripQudFormatting(The.Game?.DeathCategory ?? "Combat");
+
+                string json = $"{{\"player_name\": \"{EscapeJson(name)}\", \"level\": {level}, \"turns\": {turns}, \"zone\": \"{EscapeJson(zone)}\", \"death_reason\": \"{EscapeJson(reason)}\", \"death_category\": \"{EscapeJson(category)}\", \"timestamp\": \"{DateTime.UtcNow:O}\"}}";
+                File.WriteAllText(deathFile, json, Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI ExportDeath Error] " + ex.ToString());
+            }
+        }
+
+        private static string EscapeJson(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            StringBuilder sb = new StringBuilder(s.Length);
+            foreach (char c in s)
+            {
+                if (c == '\\') sb.Append("\\\\");
+                else if (c == '\"') sb.Append("\\\"");
+                else if (c == '\r') { }
+                else if (c == '\n' || c == '\t') sb.Append(" ");
+                else if (c >= 32) sb.Append(c);
+            }
+            return sb.ToString();
+        }
+    }
+
+    [HarmonyPatch(typeof(XRL.UI.PickDirection), "ShowPicker")]
+    public static class AIPickDirectionPatch
+    {
+        public static bool Prefix(ref string __result)
+        {
+            if (File.Exists(AIPlayerTurnPatch.FlagFile))
+            {
+                string dir = AIPlayerTurnPatch.PreferredDirection;
+                if (string.IsNullOrEmpty(dir))
+                {
+                    dir = AIPlayerTurnPatch.GetBestAdjacentEnemyDirection(The.Player);
+                }
+                __result = !string.IsNullOrEmpty(dir) ? dir : null;
+                UnityEngine.Debug.Log($"[QudAI AIPickDirectionPatch] Auto-selected direction: '{__result}'");
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(XRL.UI.PickItem), "ShowPickerInternal")]
+    public static class AIPickItemPatch
+    {
+        public static bool Prefix(IList<GameObject> Items, ref GameObject __result)
+        {
+            if (File.Exists(AIPlayerTurnPatch.FlagFile))
+            {
+                __result = (Items != null && Items.Count > 0) ? Items[0] : null;
+                UnityEngine.Debug.Log($"[QudAI AIPickItemPatch] Auto-selected item: '{__result?.DisplayNameOnly}'");
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(XRL.UI.PickTarget), "ShowPicker")]
+    public static class AIPickTargetPatch
+    {
+        public static bool Prefix(ref Cell __result)
+        {
+            if (File.Exists(AIPlayerTurnPatch.FlagFile))
+            {
+                GameObject player = The.Player;
+                GameObject target = player?.Target ?? Sidebar.CurrentTarget;
+                if (target != null && target.CurrentCell != null)
+                {
+                    __result = target.CurrentCell;
+                    UnityEngine.Debug.Log($"[QudAI AIPickTargetPatch] Auto-selected target cell: {__result.X},{__result.Y}");
+                    return false;
+                }
+                __result = null;
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(XRL.UI.PickTarget), "ShowFieldPicker")]
+    public static class AIPickFieldTargetPatch
+    {
+        public static bool Prefix(ref List<Cell> __result)
+        {
+            if (File.Exists(AIPlayerTurnPatch.FlagFile))
+            {
+                GameObject player = The.Player;
+                GameObject target = player?.Target ?? Sidebar.CurrentTarget;
+                if (target != null && target.CurrentCell != null)
+                {
+                    __result = new List<Cell> { target.CurrentCell };
+                    return false;
+                }
+                __result = new List<Cell>();
+                return false;
+            }
+            return true;
+        }
+    }
+}

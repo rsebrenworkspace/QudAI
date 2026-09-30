@@ -1,0 +1,7 @@
+{
+  "channel": "your_channel_name",
+  "bot_username": "your_bot_username",
+  "oauth_token": "oauth:your_oauth_token_here",
+  "enabled": false,
+  "vote_duration_seconds": 60
+}

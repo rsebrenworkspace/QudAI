@@ -1,0 +1,32 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# Temporary & backup files
+*.bak
+*.tmp
+*.tmp.*
+.tmp.*
+
+# IPC & Runtime Exchange Data
+action.json
+state.json
+active.flag
+death.json
+last_state.json
+last_action_executed.txt
+missile_api.txt
+
+# Sensitive Configs (Keep template version in repo)
+twitch_config.json
+!twitch_config.example.json
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.suo
+*.user
+*.swp
+*.swo

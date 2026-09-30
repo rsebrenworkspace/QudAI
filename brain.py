@@ -1,0 +1,1062 @@
+import os
+import time
+import json
+import re
+import threading
+import requests
+from collections import deque, defaultdict
+import chronicler
+import twitch_bot
+import build_templates
+
+# Paths
+EXCHANGE_DIR = r"C:\Users\rsebr\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI"
+STATE_FILE = os.path.join(EXCHANGE_DIR, "state.json")
+ACTION_FILE = os.path.join(EXCHANGE_DIR, "action.json")
+FLAG_FILE = os.path.join(EXCHANGE_DIR, "active.flag")
+DEATH_FILE = os.path.join(EXCHANGE_DIR, "death.json")
+
+# LM Studio Config
+LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
+LM_STUDIO_MODELS_URL = "http://localhost:1234/v1/models"
+
+# Pacing and Thresholds
+EXPLORE_STEP_DELAY = 0.25  # Seconds per exploration turn (250ms makes movement comfortable to watch)
+COMBAT_STEP_DELAY = 0.20   # Seconds per combat action
+REST_HP_THRESHOLD = 0.75   # Only rest when HP drops below 75% of max HP
+
+if not os.path.exists(EXCHANGE_DIR):
+    os.makedirs(EXCHANGE_DIR)
+
+if os.path.exists(FLAG_FILE):
+    try:
+        os.remove(FLAG_FILE)
+    except OSError:
+        pass
+
+CARDINAL_OFFSETS = {
+    "NW": (-1, -1), "N":  (0, -1), "NE": (1, -1),
+    "W":  (-1, 0),                 "E":  (1, 0),
+    "SW": (-1, 1),  "S":  (0, 1),  "SE": (1, 1),
+}
+
+OPPOSITE_DIR = {
+    "N": "S", "S": "N", "E": "W", "W": "E",
+    "NE": "SW", "SW": "NE", "NW": "SE", "SE": "NW"
+}
+
+ENVIRONMENTAL_TERRAIN = [
+    "watervine", "tree", "trunk", "bush", "shrub", "reed", "grass",
+    "door", "stairs", "wall", "rock", "boulder", "chest", "fence", "chasm"
+]
+
+ai_active = False
+move_history = deque(maxlen=8)
+recent_actions = deque(maxlen=40)
+blocked_coords = set()
+visit_counts = defaultdict(int)
+
+NON_COMBAT_KEYWORDS = {
+    "camp", "harvest", "butcher", "cook", "tinker", "disassemble",
+    "look", "chat", "talk", "sleep", "wait", "ritual", "worship", "pray"
+}
+
+DIRECTIONAL_ABILITIES = {
+    "freezingray", "flamingray", "spitpoison", "teleportother",
+    "teleport", "charge", "meleecharge", "lunge", "slam", "juke", "jump"
+}
+
+MELEE_TARGETED_ABILITIES = {
+    "dismember", "swipe", "cleave", "decapitate", "hookanddrag"
+}
+
+current_zone_id = None
+zone_step_count = 0
+last_action = None
+last_hp = None
+consecutive_kites = 0
+active_model_id = None
+twitch_manager = None
+
+action_repeat_count = 0
+last_executed_action = None
+last_executed_pos = None
+
+
+def detect_lm_studio_model():
+    global active_model_id
+    try:
+        res = requests.get(LM_STUDIO_MODELS_URL, timeout=3)
+        if res.status_code == 200:
+            data = res.json().get("data", [])
+            if data:
+                active_model_id = data[0]["id"]
+                print(f"[LM Studio Connected] Active model: {active_model_id}")
+                return active_model_id
+    except Exception as e:
+        print(f"[LM Studio Warning] Could not reach LM Studio on port 1234: {e}")
+    return None
+
+
+def input_listener():
+    global ai_active
+    while True:
+        input()
+        ai_active = not ai_active
+        if ai_active:
+            try:
+                with open(FLAG_FILE, "w", encoding="utf-8") as f:
+                    f.write("active")
+            except OSError:
+                pass
+            print("\n>>> [AI ENGAGED] Autonomous Driver Active. Press Enter to pause. <<<\n")
+        else:
+            if os.path.exists(FLAG_FILE):
+                try:
+                    os.remove(FLAG_FILE)
+                except OSError:
+                    pass
+            print("\n>>> [AI PAUSED] Manual control restored. Press Enter to resume. <<<\n")
+
+
+def get_step_direction(from_pos, to_pos):
+    fx, fy = from_pos
+    tx, ty = to_pos
+    dx = tx - fx
+    dy = ty - fy
+
+    step_x = 1 if dx > 0 else (-1 if dx < 0 else 0)
+    step_y = 1 if dy > 0 else (-1 if dy < 0 else 0)
+
+    for dir_name, (ox, oy) in CARDINAL_OFFSETS.items():
+        if ox == step_x and oy == step_y:
+            return dir_name
+    return "N"
+
+
+def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=False):
+    valid = []
+    px, py = cur_pos
+
+    for dir_key, (dx, dy) in CARDINAL_OFFSETS.items():
+        move_name = f"MOVE_{dir_key}"
+        text = surroundings.get(dir_key, "").lower()
+        target_pos = (px + dx, py + dy)
+
+        if target_pos in blocked_coords or move_name == last_failed_action:
+            continue
+        has_bridge = "bridge" in text
+        if any(w in text for w in ["wall", "rock", "chasm", "closed door", "[blocked"]):
+            continue
+        if not has_bridge and any(w in text for w in ["deep pool", "deep water", "deep liquid"]):
+            continue
+        # During active combat, avoid blindly fleeing off the map into unknown zones
+        if is_in_combat and ("[zone_exit" in text or "exit" in text):
+            continue
+
+        valid.append(move_name)
+
+    # Emergency: if all moves are zone exits and we have no other escape, allow zone exit
+    if is_in_combat and not valid:
+        for dir_key, (dx, dy) in CARDINAL_OFFSETS.items():
+            move_name = f"MOVE_{dir_key}"
+            text = surroundings.get(dir_key, "").lower()
+            target_pos = (px + dx, py + dy)
+            if target_pos in blocked_coords or move_name == last_failed_action:
+                continue
+            has_bridge = "bridge" in text
+            if any(w in text for w in ["wall", "rock", "chasm", "closed door", "[blocked"]):
+                continue
+            if not has_bridge and any(w in text for w in ["deep pool", "deep water", "deep liquid"]):
+                continue
+            valid.append(move_name)
+
+    return valid
+
+
+OFFSETS_5X5 = [
+    [('NW2', -2, -2), ('NNW', -1, -2), ('NN', 0, -2), ('NNE', 1, -2), ('NE2', 2, -2)],
+    [('WNW', -2, -1), ('NW', -1, -1),  ('N', 0, -1),  ('NE', 1, -1),  ('ENE', 2, -1)],
+    [('WW', -2, 0),   ('W', -1, 0),    ('CENTER', 0, 0), ('E', 1, 0),  ('EE', 2, 0)],
+    [('WSW', -2, 1),  ('SW', -1, 1),   ('S', 0, 1),   ('SE', 1, 1),   ('ESE', 2, 1)],
+    [('SW2', -2, 2),  ('SSW', -1, 2),  ('SS', 0, 2),  ('SSE', 1, 2),  ('SE2', 2, 2)]
+]
+
+
+def render_5x5_grid(surroundings):
+    def get_sym(text, is_center):
+        if is_center:
+            return '@'
+        t = text.lower()
+        if '[enemy' in t:
+            return 'E'
+        if '[npc' in t:
+            return 'N'
+        if '[hazard' in t or any(h in t for h in ['acid', 'lava', 'magma', 'convalessence']):
+            return '!'
+        if '[blocked' in t or 'wall' in t or 'rock' in t or 'fence' in t or 'boulder' in t or 'deep pool' in t or 'deep water' in t or 'deep liquid' in t:
+            return '#'
+        if 'door' in t:
+            return '+'
+        if '[item' in t:
+            return '$'
+        if 'exit' in t:
+            return '|'
+        if 'water' in t or 'pool' in t or 'puddle' in t:
+            return '~'
+        return '.'
+
+    rows = []
+    for r in OFFSETS_5X5:
+        chars = [get_sym(surroundings.get(k, ''), (dx == 0 and dy == 0)) for (k, dx, dy) in r]
+        rows.append('  ' + ' '.join(chars))
+    return '\n'.join(rows)
+
+
+def get_adjacent_threats(surroundings):
+    adj = {}
+    for d in ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]:
+        text = surroundings.get(d, "")
+        if "[ENEMY:" in text:
+            m = re.search(r"\[ENEMY:\s*([^\]]+)\]", text)
+            adj[d] = m.group(1).strip() if m else "Enemy"
+    return adj
+
+
+def find_ready_ability(abilities, keywords):
+    """Finds an enabled, usable ability off cooldown matching any keyword in name or command."""
+    for ab in abilities:
+        if ab.get("usable", True) and ab.get("cooldown", 0) <= 0 and not ab.get("active", False):
+            name = ab.get("name", "").lower()
+            cmd = ab.get("command", "").lower()
+            if any(k in name or k in cmd for k in keywords):
+                return ab
+    return None
+
+
+def query_llm_decision(game_state, enemies, valid_moves, abilities, template=None, took_damage=False):
+    """Invokes LM Studio for high-level tactical combat decisions tailored to the character class."""
+    global active_model_id
+    if not active_model_id:
+        active_model_id = detect_lm_studio_model()
+    if not active_model_id:
+        return None
+
+    if template is None:
+        template = build_templates.detect_build(game_state)
+
+    px = game_state.get("x", 0)
+    py = game_state.get("y", 0)
+    hp = game_state.get("hp", 0)
+    max_hp = game_state.get("max_hp", 1)
+    ammo = game_state.get("missile_ammo", 0)
+    max_ammo = game_state.get("missile_max_ammo", 0)
+    inv_ammo = game_state.get("inventory_ammo", 0)
+    has_mw = game_state.get("has_missile_weapon", False)
+    effects = game_state.get("effects", [])
+    surroundings = game_state.get("surroundings", {})
+    is_sprinting = game_state.get("is_sprinting", False) or any(e in ef.lower() for ef in effects for e in ["running", "sprint"])
+    sprint_ab = next((ab for ab in abilities if "sprint" in ab.get("name", "").lower() or "sprint" in ab.get("command", "").lower()), None)
+    can_sprint = (not is_sprinting) and (sprint_ab is not None) and sprint_ab.get("usable", True) and sprint_ab.get("cooldown", 0) <= 0
+
+    adj_threats = get_adjacent_threats(surroundings)
+    grid_ascii = render_5x5_grid(surroundings)
+
+    # Format threat list (including directly adjacent threats from 5x5 scan)
+    threat_lines = []
+    for d, ename in adj_threats.items():
+        threat_lines.append(f"- [MELEE THREAT] {ename} directly {d} (Distance 1!)")
+    for e in enemies[:4]:
+        name = e.get("name", "Unknown")
+        dist = e.get("dist", 0)
+        direction = e.get("dir", "?")
+        tx = e.get("tx", 0)
+        ty = e.get("ty", 0)
+        if dist > 1:
+            threat_lines.append(f"- {name} at ({tx}, {ty}), dist: {dist} ({direction})")
+
+    if threat_lines:
+        threat_str = "\n".join(threat_lines)
+    elif took_damage:
+        threat_str = "[!] UNSEEN HOSTILE ATTACKER (Active threat firing from beyond sight or concealed!)"
+    else:
+        threat_str = "None in direct sight"
+
+    # Format ready combat abilities
+    ready_abilities = []
+    for ab in abilities:
+        if ab.get("usable", True) and ab.get("cooldown", 0) <= 0 and not ab.get("active", False):
+            name = ab.get("name", "")
+            cmd = ab.get("command", "")
+            combined = f"{name} {cmd}".lower()
+            if any(nc in combined for nc in NON_COMBAT_KEYWORDS):
+                continue
+            if "sprint" in combined:
+                if can_sprint:
+                    ready_abilities.append("- Sprint: Ready (Action: ACTIVATE_SPRINT)")
+            elif name and cmd:
+                ready_abilities.append(f"- {name}: Ready (Action: USE_ABILITY:{cmd})")
+    if is_sprinting:
+        ready_abilities.append("- Sprinting: ACTIVE (+Double Move Speed!)")
+    ability_str = "\n".join(ready_abilities) if ready_abilities else "None off cooldown"
+
+    # Assemble possible valid actions
+    open_moves = [vm for vm in valid_moves if vm[5:] not in adj_threats]
+    action_choices = []
+
+    if is_sprinting:
+        # SPRINT ACTIVE: Use double move speed to escape/kite into open ground!
+        if adj_threats and open_moves:
+            for vm in open_moves:
+                vdir = vm[5:]
+                action_choices.append(f"{vm} (Sprint Retreat {vdir} into open ground)")
+        else:
+            if has_mw and ammo > 0 and enemies and not adj_threats:
+                closest = enemies[0]
+                action_choices.append(f"FIRE_MISSILE@{closest.get('tx')},{closest.get('ty')} (Ranged Snipe {closest.get('name')} at dist {closest.get('dist')})")
+            for vm in open_moves:
+                vdir = vm[5:]
+                action_choices.append(f"{vm} (Sprint Maneuver {vdir})")
+            for d, ename in adj_threats.items():
+                action_choices.append(f"MOVE_{d} (Melee Attack {ename})")
+    else:
+        # 1. Ranged Missile Fire (HIGHEST PRIORITY WHEN DISENGAGED AT DISTANCE >= 2)
+        if has_mw and ammo > 0 and enemies:
+            closest = enemies[0]
+            c_name = closest.get('name', 'Enemy')
+            c_dist = closest.get('dist', 0)
+            c_tx = closest.get('tx', 0)
+            c_ty = closest.get('ty', 0)
+            if not adj_threats:
+                action_choices.append(f"FIRE_MISSILE@{c_tx},{c_ty} (Ranged Snipe {c_name} at dist {c_dist} - SAFE RANGED ATTACK)")
+            elif len(adj_threats) == 1 and not open_moves:
+                action_choices.append(f"FIRE_MISSILE@{c_tx},{c_ty} (Point-blank blast at {c_name})")
+
+        # 2. Melee strikes on adjacent enemies
+        for d, ename in adj_threats.items():
+            action_choices.append(f"MOVE_{d} (Melee Attack {ename})")
+
+        # 3. Tactical moves / retreats to open ground
+        for vm in open_moves:
+            vdir = vm[5:]
+            if adj_threats:
+                action_choices.append(f"{vm} (Retreat/Step {vdir} into open ground)")
+            elif not (has_mw and ammo > 0 and enemies):
+                action_choices.append(f"{vm} (Maneuver {vdir})")
+            else:
+                action_choices.append(f"{vm} (Reposition {vdir})")
+
+        # 4. Sprint escapes: ONLY WHEN ADJACENT TO MELEE THREATS!
+        if can_sprint and adj_threats and open_moves:
+            for vm in open_moves:
+                vdir = vm[5:]
+                action_choices.append(f"SPRINT_{vdir} (Sprint & Escape {vdir} into open ground)")
+        elif can_sprint and adj_threats:
+            action_choices.append("ACTIVATE_SPRINT")
+
+        # 5. Reloading: STRICTLY FORBIDDEN IN MELEE RANGE
+        if has_mw and ammo < max_ammo and inv_ammo > 0 and not adj_threats:
+            action_choices.append("RELOAD")
+
+        # 6. Class & Combat abilities
+        closest = enemies[0] if enemies else None
+        c_dist = closest.get("dist", 999) if closest else 999
+        c_name = closest.get("name", "Enemy") if closest else "Enemy"
+        c_tx = closest.get("tx", px) if closest else px
+        c_ty = closest.get("ty", py) if closest else py
+
+        for ab in abilities:
+            if ab.get("usable", True) and ab.get("cooldown", 0) <= 0 and not ab.get("active", False) and ab.get("command"):
+                name = ab.get("name", "")
+                cmd = ab.get("command", "")
+                combined = f"{name} {cmd}".lower()
+                if any(nc in combined for nc in NON_COMBAT_KEYWORDS) or "sprint" in combined:
+                    continue
+
+                # Melee targeted (Dismember, Cleave, Shield Slam, Swipe)
+                if any(mta in combined for mta in ["dismember", "cleave", "shieldslam", "slam", "swipe", "decapitate"]):
+                    if adj_threats:
+                        for d, ename in adj_threats.items():
+                            action_choices.append(f"USE_ABILITY:{cmd}:{d} (Execute {name} on {ename} {d})")
+                    continue
+
+                # Gap-closer / Charge
+                if any(cg in combined for cg in ["charge", "meleecharge", "chargingstrike", "lunge"]):
+                    if closest and 2 <= c_dist <= 4 and not adj_threats:
+                        s_dir = get_step_direction((px, py), (c_tx, c_ty))
+                        action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Charge at {c_name} {s_dir} to close gap and daze)")
+                    continue
+
+                # Beam / Ray / Projectile
+                if any(ray in combined for ray in ["freezingray", "flamingray", "spitpoison", "cryokinesis", "pyrokinesis"]):
+                    if closest and 2 <= c_dist <= 10:
+                        s_dir = get_step_direction((px, py), (c_tx, c_ty))
+                        action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast {name} at {c_name} {s_dir})")
+                    continue
+
+                # Disarm
+                if "disarm" in combined:
+                    if adj_threats:
+                        for d, ename in adj_threats.items():
+                            action_choices.append(f"USE_ABILITY:{cmd}:{d} (Disarm {ename} {d})")
+                    continue
+
+                # Mental / Self buff / Area
+                action_choices.append(f"USE_ABILITY:{cmd} (Activate {name})")
+
+    ancestral_lore = chronicler.format_ancestral_memory_for_prompt()
+    class_name = template.get("name", "Nomad Wanderer")
+    archetype = template.get("archetype", "General Combatant")
+    strengths = template.get("strengths", [])
+    doctrine = template.get("combat_doctrine", {})
+    doctrine_name = doctrine.get("doctrine_name", "Combat Doctrine")
+    open_action = doctrine.get("open_combat_action", "Engage hostile targets")
+    close_policy = doctrine.get("close_contact_policy", "Manage distance")
+    pref_range = template.get("preferred_range", 4)
+    strengths_str = "\n".join(f"   - {s}" for s in strengths)
+
+    system_prompt = (
+        f"You are an expert tactical AI controlling a {class_name} ({archetype}) in Caves of Qud.\n"
+        f"{ancestral_lore}\n\n"
+        f"CLASS TACTICAL DOCTRINE ({doctrine_name.upper()} - Preferred Range: {pref_range} tiles):\n"
+        f"1. PRIMARY COMBAT GOAL: {open_action}.\n"
+        f"2. CLOSE CONTACT POLICY: {close_policy}.\n"
+        f"3. CLASS STRENGTHS TO EXPLOIT:\n{strengths_str}\n"
+        "4. DO NOT ZONE DURING COMBAT: Stay in the current tactical arena. Never run off the map into unknown zones while fighting.\n"
+        "5. TARGET PRIORITY: Prioritize the highest-threat pursuer, elite, or legendary creature.\n"
+        "Choose exactly ONE optimal action from the provided VALID ACTIONS list.\n"
+        "Respond ONLY with valid JSON in this exact structure:\n"
+        "{\n"
+        '  "action": "<ACTION_STRING>",\n'
+        '  "thought": "<Short tactical reason, max 20 words>"\n'
+        "}"
+    )
+
+    damage_alert = "- COMBAT ALERT: [!HIT!] YOU TOOK DAMAGE LAST TURN! You are actively taking damage in combat!\n" if took_damage else ""
+    if has_mw:
+        if ammo > 0:
+            ammo_display = f"Loaded {ammo}/{max_ammo} (Spare inventory slugs: {inv_ammo})"
+        elif inv_ammo > 0:
+            ammo_display = f"Empty 0/{max_ammo} (Can reload! Spare slugs: {inv_ammo})"
+        else:
+            ammo_display = f"EMPTY 0/{max_ammo} [OUT OF AMMO! No slugs left in inventory. Must fight in melee or disengage!]"
+    else:
+        ammo_display = "None"
+
+    user_prompt = f"""STATUS:
+- Location: {game_state.get('zone_name', 'Unknown')}
+- HP: {hp}/{max_hp}
+{damage_alert}- Water: {game_state.get('water_drams', 0)} drams
+- Active Effects: {', '.join(effects) if effects else 'None'}
+- Missile Weapon: {ammo_display}
+- Sprint Status: {'ACTIVE' if is_sprinting else 'Off'}
+
+SURROUNDINGS (5x5 GRID - Legend: @=You, E=Enemy, N=Neutral/Friend, !=Hazard, #=Wall, +=Door, $=Item, ~=Shallow Water [safe ground], .=Clear):
+{grid_ascii}
+- Note: Shallow water/pools (~) are normal walkable marsh ground and NOT dangerous hazards.
+
+VISIBLE HOSTILE ENEMIES:
+{threat_str}
+
+AVAILABLE ABILITIES:
+{ability_str}
+
+VALID ACTIONS:
+{chr(10).join(f"- {a}" for a in action_choices)}"""
+
+    payload = {
+        "model": active_model_id,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.1,
+        "max_tokens": 128
+    }
+
+    try:
+        t0 = time.time()
+        res = requests.post(LM_STUDIO_URL, json=payload, timeout=6.0)
+        if res.status_code == 200:
+            content = res.json()["choices"][0]["message"]["content"]
+            # Clean possible markdown fence
+            clean = re.sub(r"^```json\s*", "", content.strip(), flags=re.IGNORECASE)
+            clean = re.sub(r"^```\s*", "", clean)
+            clean = re.sub(r"\s*```$", "", clean).strip()
+            data = json.loads(clean)
+            raw_action = data.get("action", "").strip()
+            thought = data.get("thought", "").strip()
+
+            # Sanitize action (e.g. "MOVE_N (Melee Attack snapjaw)" -> "MOVE_N")
+            action = raw_action.split()[0] if raw_action else ""
+
+            if action:
+                dt = time.time() - t0
+                return {"action": action, "thought": f"[LLM in {dt:.2f}s] {thought}"}
+    except Exception as e:
+        print(f"[LLM Error / Timeout] {e}")
+
+    return None
+
+
+def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo):
+    """Melee Bruiser & Tank Tactical Fallback (Axe Berserker / Praetorian)."""
+    closest_enemy = enemies[0] if enemies else None
+    closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
+    c_name = closest_enemy.get("name", "Enemy") if closest_enemy else ""
+    c_tx = closest_enemy.get("tx", px) if closest_enemy else px
+    c_ty = closest_enemy.get("ty", py) if closest_enemy else py
+
+    # 1. Critical Encirclement: Melee warriors hold ground; only retreat if HP < 35% AND surrounded by 3+ hostiles
+    if hp / max(1, max_hp) < 0.35 and len(adj_threats) >= 3 and open_moves:
+        best_retreat = open_moves[0]
+        r_dir = best_retreat[5:]
+        if can_sp:
+            return {"action": f"SPRINT_{r_dir}", "reason": f"[{template['name']} Fallback] Critical HP ({hp}/{max_hp})! Sprinting {r_dir} from 3+ hostiles"}
+        return {"action": best_retreat, "reason": f"[{template['name']} Fallback] Critical HP ({hp}/{max_hp})! Disengaging {r_dir}"}
+
+    # 2. Adjacent Combat: Prioritize heavy melee abilities (Dismember, Cleave, Shield Slam, Charging Strike)
+    if adj_threats:
+        target_dir = list(adj_threats.keys())[0]
+        target_name = adj_threats[target_dir]
+
+        ab_strike = find_ready_ability(abilities, ["dismember", "cleave", "shieldslam", "slam", "swipe", "decapitate"])
+        if ab_strike and ab_strike.get("command"):
+            cmd = ab_strike["command"]
+            name = ab_strike.get("name", "Strike")
+            return {"action": f"USE_ABILITY:{cmd}:{target_dir}", "reason": f"[{template['name']} Fallback] Executing {name} on adjacent {target_name} ({target_dir})"}
+
+        # Basic melee bump-attack
+        return {"action": f"MOVE_{target_dir}", "reason": f"[{template['name']} Fallback] Relentless melee strike on {target_name} ({target_dir})"}
+
+    # 3. Gap Closer: If enemy at distance 2-4, use Charge!
+    if closest_enemy and 2 <= closest_dist <= 4:
+        ab_charge = find_ready_ability(abilities, ["charge", "meleecharge", "chargingstrike", "lunge"])
+        s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
+        if ab_charge and ab_charge.get("command"):
+            cmd = ab_charge["command"]
+            return {"action": f"USE_ABILITY:{cmd}:{s_dir}", "reason": f"[{template['name']} Fallback] Charging {c_name} ({s_dir}) to close gap and daze target"}
+
+        # Charge not ready -> Advance directly into melee
+        step_move = f"MOVE_{s_dir}"
+        if step_move in valid_moves:
+            return {"action": step_move, "reason": f"[{template['name']} Fallback] Advancing into melee contact on {c_name} ({s_dir})"}
+
+    # 4. Long-range approach or suppressive missile fire
+    if closest_enemy and closest_dist <= 10:
+        if closest_dist >= 6 and has_missile and ammo > 0:
+            return {"action": f"FIRE_MISSILE@{c_tx},{c_ty}", "reason": f"[{template['name']} Fallback] Suppressive fire at {c_name} while closing distance"}
+        s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
+        step_move = f"MOVE_{s_dir}"
+        if step_move in valid_moves:
+            return {"action": step_move, "reason": f"[{template['name']} Fallback] Pursuing {c_name} ({s_dir})"}
+
+    if valid_moves:
+        ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+        return {"action": ranked[0], "reason": f"[{template['name']} Fallback] Maneuvering into position"}
+
+    return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Holding ground"}
+
+
+def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo):
+    """Pure Mental Sorcerer Tactical Fallback (Esper Mindflayer)."""
+    closest_enemy = enemies[0] if enemies else None
+    closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
+    c_name = closest_enemy.get("name", "Enemy") if closest_enemy else ""
+    c_tx = closest_enemy.get("tx", px) if closest_enemy else px
+    c_ty = closest_enemy.get("ty", py) if closest_enemy else py
+
+    # 1. Close-Contact Emergency: Defensive Mental Shielding & Evasion
+    if adj_threats or closest_dist <= 2:
+        ab_bubble = find_ready_ability(abilities, ["force bubble", "forcebubble", "bubble"])
+        if ab_bubble and ab_bubble.get("command"):
+            return {"action": f"USE_ABILITY:{ab_bubble['command']}", "reason": f"[{template['name']} Fallback] Popping Force Bubble impenetrable barrier against close hostiles"}
+
+        ab_teleport = find_ready_ability(abilities, ["teleport", "phasing"])
+        if ab_teleport and ab_teleport.get("command"):
+            return {"action": f"USE_ABILITY:{ab_teleport['command']}", "reason": f"[{template['name']} Fallback] Teleporting away from close hostiles"}
+
+        if adj_threats and open_moves:
+            r_dir = open_moves[0][5:]
+            if can_sp:
+                return {"action": f"SPRINT_{r_dir}", "reason": f"[{template['name']} Fallback] Sprint kiting away from fragile melee engagement"}
+            return {"action": open_moves[0], "reason": f"[{template['name']} Fallback] Backpedaling away from melee threat"}
+
+    # 2. Long-Range Psychic Assault (Distance >= 2)
+    if closest_enemy and closest_dist >= 2:
+        ab_sunder = find_ready_ability(abilities, ["sunder mind", "sundermind", "sunder"])
+        if ab_sunder and ab_sunder.get("command"):
+            return {"action": f"USE_ABILITY:{ab_sunder['command']}", "reason": f"[{template['name']} Fallback] Channeling Sunder Mind against {c_name} (dist: {closest_dist})"}
+
+        s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
+        ab_mental_beam = find_ready_ability(abilities, ["cryokinesis", "pyrokinesis", "light manipulation"])
+        if ab_mental_beam and ab_mental_beam.get("command"):
+            return {"action": f"USE_ABILITY:{ab_mental_beam['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Manifesting {ab_mental_beam.get('name')} at {c_name} ({s_dir})"}
+
+        if has_missile and ammo > 0 and not adj_threats:
+            return {"action": f"FIRE_MISSILE@{c_tx},{c_ty}", "reason": f"[{template['name']} Fallback] Firing ranged weapon at {c_name} while mental cooldowns reset"}
+
+        if closest_dist < 5 and open_moves:
+            kites = [m for m in open_moves if max(abs(px + CARDINAL_OFFSETS[m[5:]][0] - c_tx), abs(py + CARDINAL_OFFSETS[m[5:]][1] - c_ty)) > closest_dist]
+            if kites:
+                return {"action": kites[0], "reason": f"[{template['name']} Fallback] Preserving safe distance (dist {closest_dist} -> {kites[0][5:]})"}
+
+    # 3. Last Resort Melee
+    if adj_threats:
+        d, ename = list(adj_threats.items())[0]
+        return {"action": f"MOVE_{d}", "reason": f"[{template['name']} Fallback] Emergency defense: striking {ename} ({d})"}
+
+    if valid_moves:
+        ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+        return {"action": ranked[0], "reason": f"[{template['name']} Fallback] Repositioning"}
+
+    return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Meditating / Passing turn"}
+
+
+def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo):
+    """Rapid-Fire Pistol Gunslinger Tactical Fallback (Akimbo Gunslinger)."""
+    closest_enemy = enemies[0] if enemies else None
+    closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
+    c_name = closest_enemy.get("name", "Enemy") if closest_enemy else ""
+    c_tx = closest_enemy.get("tx", px) if closest_enemy else px
+    c_ty = closest_enemy.get("ty", py) if closest_enemy else py
+
+    # 1. Encirclement Break (2+ threats)
+    if len(adj_threats) >= 2 and open_moves:
+        best_retreat = open_moves[0]
+        r_dir = best_retreat[5:]
+        if can_sp:
+            return {"action": f"SPRINT_{r_dir}", "reason": f"[{template['name']} Fallback] Sprinting {r_dir} to escape {len(adj_threats)} melee threats"}
+        return {"action": best_retreat, "reason": f"[{template['name']} Fallback] Stepping {r_dir} to break encirclement"}
+
+    # 2. Adjacent Combat: Disarming Shot or Step-and-Shoot
+    if adj_threats:
+        target_dir = list(adj_threats.keys())[0]
+        target_name = adj_threats[target_dir]
+
+        ab_disarm = find_ready_ability(abilities, ["disarm", "disarmingshot"])
+        if ab_disarm and ab_disarm.get("command"):
+            return {"action": f"USE_ABILITY:{ab_disarm['command']}:{target_dir}", "reason": f"[{template['name']} Fallback] Disarming shot on adjacent {target_name} ({target_dir})"}
+
+        if open_moves and ammo > 0:
+            return {"action": open_moves[0], "reason": f"[{template['name']} Fallback] Stepping {open_moves[0][5:]} to point pistols at {target_name}"}
+
+        if has_missile and ammo > 0:
+            return {"action": f"FIRE_MISSILE@{px + CARDINAL_OFFSETS[target_dir][0]},{py + CARDINAL_OFFSETS[target_dir][1]}", "reason": f"[{template['name']} Fallback] Point-blank pistol blast at {target_name}"}
+        return {"action": f"MOVE_{target_dir}", "reason": f"[{template['name']} Fallback] Striking {target_name} in melee"}
+
+    # 3. Chain Fire / Rapid Pistol Volley (Distance 2 to 8)
+    if closest_enemy and 2 <= closest_dist <= 8:
+        ab_chain = find_ready_ability(abilities, ["chain fire", "chainfire"])
+        if ab_chain and ab_chain.get("command") and ammo >= 3:
+            return {"action": f"USE_ABILITY:{ab_chain['command']}", "reason": f"[{template['name']} Fallback] Unleashing Chain Fire pistol volley at {c_name} (dist: {closest_dist})"}
+
+        if has_missile and ammo > 0:
+            return {"action": f"FIRE_MISSILE@{c_tx},{c_ty}", "reason": f"[{template['name']} Fallback] Firing dual pistols at {c_name} (dist: {closest_dist})"}
+
+        if has_missile and ammo <= 0 and inv_ammo > 0 and closest_dist >= 2:
+            return {"action": "RELOAD", "reason": f"[{template['name']} Fallback] Fast pistol reload (empty 0/{max_ammo})"}
+
+    # 4. Advance or reposition
+    if closest_enemy and closest_dist > 8:
+        s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
+        step_move = f"MOVE_{s_dir}"
+        if step_move in valid_moves:
+            return {"action": step_move, "reason": f"[{template['name']} Fallback] Closing to pistol range on {c_name} ({s_dir})"}
+
+    if valid_moves:
+        ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+        return {"action": ranked[0], "reason": f"[{template['name']} Fallback] Maneuver"}
+
+    return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Readying weapons"}
+
+
+def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo, is_sprinting):
+    """Ranged Sniper & Kite Specialist Fallback (Rifle Nomad)."""
+    closest_enemy = enemies[0] if enemies else None
+    closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
+    c_name = closest_enemy.get("name", "Enemy") if closest_enemy else ""
+    c_tx = closest_enemy.get("tx", px) if closest_enemy else px
+    c_ty = closest_enemy.get("ty", py) if closest_enemy else py
+
+    # 1. Encirclement Break: If surrounded by 2+ adjacent hostiles and open retreat tiles exist
+    if len(adj_threats) >= 2 and open_moves:
+        best_retreat = open_moves[0]
+        r_dir = best_retreat[5:]
+        if can_sp:
+            return {"action": f"SPRINT_{r_dir}", "reason": f"[{template['name']} Fallback] Sprinting {r_dir} to escape {len(adj_threats)} melee threats"}
+        return {"action": best_retreat, "reason": f"[{template['name']} Fallback] Stepping {r_dir} to break melee encirclement ({len(adj_threats)} threats)"}
+
+    # 2. Active Sprint Evasion: If sprinting and in melee contact, step into open ground
+    if is_sprinting and adj_threats and open_moves:
+        return {"action": open_moves[0], "reason": f"[{template['name']} Fallback] Sprint kiting {open_moves[0][5:]}"}
+
+    # 3. Crowd Control: Freezing Ray on incoming pursuers (distance 2-5)
+    if closest_enemy and 2 <= closest_dist <= 5:
+        ab_freeze = find_ready_ability(abilities, ["freezing ray", "freezingray", "freeze"])
+        if ab_freeze and ab_freeze.get("command"):
+            s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
+            return {"action": f"USE_ABILITY:{ab_freeze['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Freezing {c_name} in solid ice with Freezing Ray ({s_dir})"}
+
+    # 4. RANGED SNIPE: Disengaged at safe distance (dist >= 2) with loaded rifle -> SHOOT!
+    if closest_enemy and closest_dist >= 2 and has_missile and ammo > 0 and not adj_threats:
+        return {"action": f"FIRE_MISSILE@{c_tx},{c_ty}", "reason": f"[{template['name']} Fallback] Firing rifle at {c_name} (dist: {closest_dist})"}
+
+    # 5. Combat reload: ONLY if no enemies are in melee contact!
+    if has_missile and max_ammo > 0 and ammo <= 0 and inv_ammo > 0 and not adj_threats and closest_dist >= 2:
+        return {"action": "RELOAD", "reason": f"[{template['name']} Fallback] Combat reload: magazine dry ({ammo}/{max_ammo}, Inv: {inv_ammo})"}
+
+    # 6. Disengage & Kite: When threat is close (dist <= 2) and out of ammo or need distance
+    if closest_enemy and closest_dist <= 2 and not adj_threats and ammo <= 0:
+        safe_moves = []
+        for vm in valid_moves:
+            vdir = vm[5:]
+            vdx, vdy = CARDINAL_OFFSETS[vdir]
+            npos = (px + vdx, py + vdy)
+            new_dist = max(abs(npos[0] - c_tx), abs(npos[1] - c_ty))
+            if new_dist > closest_dist:
+                safe_moves.append(vm)
+
+        if safe_moves:
+            if can_sp:
+                return {"action": f"SPRINT_{safe_moves[0][5:]}", "reason": f"[{template['name']} Fallback] Sprint kiting {safe_moves[0][5:]} to reload"}
+            return {"action": safe_moves[0], "reason": f"[{template['name']} Fallback] Kiting threat {safe_moves[0]} to reload"}
+
+        if has_missile and ammo > 0:
+            return {"action": f"FIRE_MISSILE@{c_tx},{c_ty}", "reason": f"[{template['name']} Fallback] Cornered: point-blank blast at ({c_tx},{c_ty})"}
+
+    # 7. Adjacent Melee Engagement (1 threat)
+    if adj_threats:
+        d, ename = list(adj_threats.items())[0]
+        return {"action": f"MOVE_{d}", "reason": f"[{template['name']} Fallback] Striking adjacent threat {ename} ({d})"}
+
+    # 8. Advance to melee if no ammo available
+    if closest_enemy and closest_dist <= 10:
+        s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
+        step_move = f"MOVE_{s_dir}"
+        if step_move in valid_moves:
+            return {"action": step_move, "reason": f"[{template['name']} Fallback] Closing in on {c_name} ({s_dir})"}
+
+    if valid_moves:
+        ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+        return {"action": ranked[0], "reason": f"[{template['name']} Fallback] Maneuver"}
+
+    return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Wait"}
+
+
+def query_decision(game_state, took_damage, enemies):
+    global last_action, consecutive_kites
+
+    template = build_templates.detect_build(game_state)
+
+    surroundings = game_state.get("surroundings", {})
+    has_missile = game_state.get("has_missile_weapon", False)
+    ammo = game_state.get("missile_ammo", 0)
+    max_ammo = game_state.get("missile_max_ammo", 0)
+    inv_ammo = game_state.get("inventory_ammo", 0)
+    hp = game_state.get("hp", 0)
+    max_hp = game_state.get("max_hp", 1)
+    px = game_state.get("x", 0)
+    py = game_state.get("y", 0)
+    cur_pos = (px, py)
+    abilities = game_state.get("abilities", [])
+
+    adj_threats = get_adjacent_threats(surroundings)
+    close_threats = [e for e in enemies if e.get("dist", 999) <= 10]
+    engine_hostiles = game_state.get("hostiles_nearby", False) or game_state.get("hostiles_adjacent", False)
+    is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
+
+    last_failed = None
+    if game_state.get("last_move_failed"):
+        f_dir = game_state.get("last_failed_dir", "")
+        if f_dir:
+            last_failed = f"MOVE_{f_dir}"
+            fdx, fdy = CARDINAL_OFFSETS.get(f_dir, (0, 0))
+            blocked_coords.add((px + fdx, py + fdy))
+
+    valid_moves = get_valid_moves(surroundings, cur_pos, last_failed, is_in_combat=is_in_combat)
+
+    # ==========================================================
+    # PHASE A: DETERMINISTIC SAFE MODE (Zero Latency / 0ms tokens)
+    # ==========================================================
+    if not is_in_combat:
+        consecutive_kites = 0
+
+        # 1. Autolevel unspent character points according to class doctrine
+        ap = game_state.get("ap", 0)
+        sp = game_state.get("sp", 0)
+        mp = game_state.get("mp", 0)
+        if (ap > 0 or sp >= 50 or mp > 0) and not took_damage:
+            if twitch_manager:
+                top_stat = twitch_manager.get_top_stat()
+                if ap > 0 and top_stat:
+                    stat_name, count = top_stat
+                    twitch_manager.reset_stat_votes()
+                    return {"action": f"AUTOLEVEL_STAT:{stat_name}", "reason": f"Twitch Chat Vote winner: {stat_name} ({count} votes)"}
+                top_skill = twitch_manager.get_top_skill()
+                if sp >= 50 and top_skill:
+                    skill_class, count = top_skill
+                    twitch_manager.reset_skill_votes()
+                    return {"action": f"AUTOLEVEL_SKILL:{skill_class}", "reason": f"Twitch Chat Vote winner: {skill_class} ({count} votes)"}
+
+            # Class template allocation priorities
+            if ap > 0:
+                attrs = game_state.get("attributes", {})
+                rec_stat, reason = build_templates.get_stat_allocation_recommendation(template, attrs)
+                return {"action": f"AUTOLEVEL_STAT:{rec_stat}", "reason": f"Class Progression ({template['name']}): {reason}"}
+
+            if sp >= 50:
+                learned = set(game_state.get("skills", []))
+                for cand in template.get("skill_progression", []):
+                    if cand not in learned:
+                        return {"action": f"AUTOLEVEL_SKILL:{cand}", "reason": f"Class Progression ({template['name']}): Unlocking priority skill {cand}"}
+
+            if mp > 0:
+                muts = game_state.get("mutations", [])
+                for p_mut in template.get("mutation_priorities", []):
+                    m_obj = next((m for m in muts if m.get("class", "").lower() == p_mut.lower() and m.get("can_level", False)), None)
+                    if m_obj:
+                        return {"action": f"AUTOLEVEL_MUTATION:{m_obj.get('class')}", "reason": f"Class Progression ({template['name']}): Leveling {m_obj.get('name')}"}
+
+            return {"action": "AUTOLEVEL", "reason": f"Safe autoleveling: allocating unspent points (AP:{ap}, SP:{sp}, MP:{mp})"}
+
+        # 2. Rest until healed if safe and damaged below threshold (default 75%)
+        hp_ratio = hp / max(1, max_hp)
+        if hp_ratio < REST_HP_THRESHOLD and not took_damage:
+            pct = int(hp_ratio * 100)
+            return {"action": "REST", "reason": f"Safe resting: HP at {pct}% (< {int(REST_HP_THRESHOLD*100)}%)"}
+
+        # 3. Top-off ammo while area is secure (only if we have spare ammo in inventory!)
+        if has_missile and max_ammo > 0 and ammo < max_ammo and inv_ammo > 0:
+            return {"action": "RELOAD", "reason": f"Safe top-off: reloading rifle ({ammo}/{max_ammo}, Inv: {inv_ammo})"}
+
+        # 4. Autonomous area exploration (least visited tiles)
+        if valid_moves:
+            ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+            return {"action": ranked[0], "reason": f"Exploration: frontier move {ranked[0]}"}
+
+        return {"action": "WAIT", "reason": "Exploration: no valid moves open"}
+
+    # ==========================================================
+    # PHASE B: TACTICAL COMBAT (The Conversation Model)
+    # ==========================================================
+    # Query LM Studio for high-level tactical decisions tailored to class archetype
+    llm_decision = query_llm_decision(game_state, enemies, valid_moves, abilities, template=template, took_damage=took_damage)
+    if llm_decision:
+        return {"action": llm_decision["action"], "reason": llm_decision["thought"]}
+
+    # ==========================================================
+    # PHASE C: DETERMINISTIC TACTICAL FALLBACK MATRIX (Class-Specific)
+    # ==========================================================
+    open_moves = [vm for vm in valid_moves if vm[5:] not in adj_threats]
+    effects = game_state.get("effects", [])
+    is_sprinting = game_state.get("is_sprinting", False) or any(e in ef.lower() for ef in effects for e in ["running", "sprint"])
+    sprint_ab = next((ab for ab in abilities if "sprint" in ab.get("name", "").lower() or "sprint" in ab.get("command", "").lower()), None)
+    can_sp = (not is_sprinting) and (sprint_ab is not None) and sprint_ab.get("usable", True) and sprint_ab.get("cooldown", 0) <= 0
+
+    cid = template.get("id", "rifle_nomad")
+    if cid in ("axe_berserker", "praetorian_tank"):
+        return fallback_melee(
+            game_state, enemies, adj_threats, open_moves, valid_moves, abilities,
+            template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo
+        )
+    elif cid == "esper_mindflayer":
+        return fallback_esper(
+            game_state, enemies, adj_threats, open_moves, valid_moves, abilities,
+            template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo
+        )
+    elif cid == "akimbo_gunslinger":
+        return fallback_gunslinger(
+            game_state, enemies, adj_threats, open_moves, valid_moves, abilities,
+            template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo
+        )
+    else:
+        return fallback_nomad(
+            game_state, enemies, adj_threats, open_moves, valid_moves, abilities,
+            template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo, is_sprinting
+        )
+
+
+def main():
+    global current_zone_id, zone_step_count, last_action, last_hp, consecutive_kites
+    global action_repeat_count, last_executed_action, last_executed_pos, twitch_manager
+
+    twitch_manager = twitch_bot.start_twitch_in_background()
+
+    print("==================================================")
+    print(" Caves of Qud Autonomous Agent (Hierarchical)")
+    print(" Connecting to LM Studio on port 1234...")
+    detect_lm_studio_model()
+    print(" Status: MANUAL MODE")
+    print(" Press ENTER in this console to TOGGLE AI control")
+    print("==================================================\n")
+
+    t = threading.Thread(target=input_listener, daemon=True)
+    t.start()
+
+    while True:
+        if os.path.exists(DEATH_FILE):
+            time.sleep(0.05)
+            try:
+                with open(DEATH_FILE, "r", encoding="utf-8-sig") as f:
+                    death_data = json.load(f, strict=False)
+                try:
+                    os.remove(DEATH_FILE)
+                except OSError:
+                    pass
+                if death_data:
+                    chronicler.process_death_event(death_data, list(recent_actions), active_model_id)
+            except Exception as ex:
+                print(f"[Death Processing Error] {ex}")
+
+        if os.path.exists(STATE_FILE):
+            time.sleep(0.015)
+            game_state = None
+            try:
+                with open(STATE_FILE, "r", encoding="utf-8-sig") as f:
+                    game_state = json.load(f, strict=False)
+                try:
+                    with open(os.path.join(EXCHANGE_DIR, "last_state.json"), "w", encoding="utf-8") as lf:
+                        json.dump(game_state, lf, indent=2)
+                except Exception:
+                    pass
+                try:
+                    os.remove(STATE_FILE)
+                except OSError:
+                    pass
+            except Exception:
+                continue
+
+            if not game_state:
+                continue
+
+            try:
+                zone_id = game_state.get("zone_id")
+                if current_zone_id is not None and zone_id != current_zone_id:
+                    visit_counts.clear()
+                    blocked_coords.clear()
+                    zone_step_count = 0
+                    consecutive_kites = 0
+
+                current_zone_id = zone_id
+                zone_step_count += 1
+
+                hp = game_state.get("hp", 0)
+                max_hp = game_state.get("max_hp", 1)
+                took_damage = (last_hp is not None and hp < last_hp)
+                last_hp = hp
+
+                px = game_state.get("x", 0)
+                py = game_state.get("y", 0)
+                cur_pos = (px, py)
+                visit_counts[cur_pos] += 1
+
+                raw_entities = game_state.get("visible_entities", [])
+                enemies = [e for e in raw_entities if e.get("is_enemy", False)]
+                enemies.sort(key=lambda x: x.get("dist", 999))
+
+                has_mw = game_state.get("has_missile_weapon", False)
+                cur_ammo = game_state.get("missile_ammo", 0)
+                max_ammo = game_state.get("missile_max_ammo", 0)
+                inv_ammo = game_state.get("inventory_ammo", 0)
+                ammo_str = f"Ammo: {cur_ammo}/{max_ammo} (Inv: {inv_ammo})" if has_mw else "Rifle: Unequipped"
+
+                surroundings = game_state.get("surroundings", {})
+                grid_display = render_5x5_grid(surroundings)
+                adj_threats = get_adjacent_threats(surroundings)
+                close_threats = [e for e in enemies if e.get("dist", 999) <= 10]
+                engine_hostiles = game_state.get("hostiles_nearby", False) or game_state.get("hostiles_adjacent", False)
+                is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
+                mode_str = "[COMBAT]" if is_in_combat else "[EXPLORE]"
+                active_template = build_templates.detect_build(game_state)
+                class_label = active_template.get("name", "Nomad Wanderer")
+
+                if adj_threats:
+                    adj_str = ", ".join([f"{ename} ({d})" for d, ename in adj_threats.items()])
+                    print(f"[MELEE ENGAGEMENT ({class_label})]: {adj_str}")
+                elif enemies:
+                    enemy_summary = ", ".join([f"{e['name']} ({e['dist']}t {e['dir']})" for e in enemies[:3]])
+                    print(f"(!) {mode_str} [{class_label}] THREATS: [{enemy_summary}] | {ammo_str}")
+
+                print(f"SURROUNDINGS (5x5):\n{grid_display}\n")
+
+                decision = query_decision(game_state, took_damage, enemies)
+                action = decision.get("action", "WAIT")
+                reason = decision.get("reason", "None given")
+
+                # Enforce: Never execute ACTIVATE_SPRINT twice in a row
+                if action == "ACTIVATE_SPRINT" and last_executed_action == "ACTIVATE_SPRINT":
+                    valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
+                    if valid_m:
+                        action = valid_m[0]
+                        reason = f"[Sprint Cooldown] Sprint fired last turn. Repositioning {action}."
+                    elif has_mw and cur_ammo > 0 and enemies:
+                        closest = enemies[0]
+                        action = f"FIRE_MISSILE@{closest.get('tx')},{closest.get('ty')}"
+                        reason = f"[Sprint Cooldown] Sprint fired last turn. Firing missile."
+                    else:
+                        action = "PASS"
+                        reason = "[Sprint Cooldown] Passing turn."
+
+                # Loop Breaker: Detect and break repeated non-progressing actions
+                # (Ignore if player is actively bump-attacking an adjacent enemy in melee!)
+                is_attacking = action.startswith("MOVE_") and (action[5:] in adj_threats)
+                if action == last_executed_action and cur_pos == last_executed_pos and not is_attacking:
+                    action_repeat_count += 1
+                    if action_repeat_count >= 2:
+                        open_m = [vm for vm in get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat) if vm[5:] not in adj_threats]
+                        if len(adj_threats) >= 2 and open_m:
+                            action = open_m[0]
+                            reason = f"[Loop Breaker] Surrounded by {len(adj_threats)} threats! Breaking encirclement via {open_m[0]}."
+                        elif adj_threats:
+                            atk_dir = list(adj_threats.keys())[0]
+                            action = f"MOVE_{atk_dir}"
+                            reason = f"[Loop Breaker] Counter-attacking adjacent threat {adj_threats[atk_dir]} ({atk_dir}) in melee."
+                        elif has_mw and cur_ammo > 0 and enemies:
+                            closest = enemies[0]
+                            action = f"FIRE_MISSILE@{closest.get('tx')},{closest.get('ty')}"
+                            reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Forcing missile shot."
+                        else:
+                            valid_m = get_valid_moves(surroundings, cur_pos, None)
+                            if valid_m:
+                                action = valid_m[0]
+                                reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Forcing reposition {action}."
+                            else:
+                                action = "PASS"
+                                reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Passing turn."
+                        action_repeat_count = 0
+                else:
+                    action_repeat_count = 0
+
+                last_executed_action = action
+                last_executed_pos = cur_pos
+                last_action = action
+                if action.startswith("MOVE_"):
+                    move_history.append(action)
+                recent_actions.append({"action": action, "reason": reason, "pos": cur_pos, "hp": hp})
+
+                dmg_flag = " [!HIT!]" if took_damage else ""
+                lvl = game_state.get("level", 1)
+                g_ap = game_state.get("ap", 0)
+                g_sp = game_state.get("sp", 0)
+                g_mp = game_state.get("mp", 0)
+                prog_str = f" | Lvl {lvl} [AP:{g_ap} SP:{g_sp} MP:{g_mp}]" if (g_ap > 0 or g_sp > 0 or g_mp > 0) else f" | Lvl {lvl}"
+                print(f"[{zone_step_count}] {mode_str} [{active_template.get('id', 'nomad')}] Pos: ({px}, {py}){dmg_flag} | HP: {hp}/{max_hp}{prog_str} | Action: {action} -> {reason}\n")
+
+                with open(ACTION_FILE, "w", encoding="utf-8") as f:
+                    json.dump({"action": action, "reason": reason}, f)
+
+                # Configurable pacing delays to make actions easy to follow on screen
+                if not is_in_combat:
+                    time.sleep(EXPLORE_STEP_DELAY)
+                else:
+                    time.sleep(COMBAT_STEP_DELAY)
+
+            except Exception as e:
+                print(f"[Loop Error] {e}")
+
+        time.sleep(0.02)
+
+
+if __name__ == "__main__":
+    main()
