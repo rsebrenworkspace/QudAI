@@ -129,6 +129,67 @@ def get_best_move_towards(cur_pos, target_pos, valid_moves):
     return sorted_moves[0]
 
 
+RECENT_ZONES = deque(maxlen=10)
+LAST_ZONE_ENTRY = None  # {"from_zone": str, "to_zone": str, "entry_pos": (x,y), "reverse_dir": str}
+ZONE_HOPPING_DETECTED = False
+CURRENT_TRACKED_ZONE = None
+ZONE_STEP_COUNT = 0
+
+
+def update_zone_records(game_state):
+    """
+    Tracks zone transition history and detects rapid border ping-pong oscillations.
+    Determines entry border and reverse transition direction to prevent immediate bounce-back.
+    """
+    global CURRENT_TRACKED_ZONE, current_zone_id, ZONE_STEP_COUNT, ZONE_HOPPING_DETECTED, LAST_ZONE_ENTRY
+    zone_id = game_state.get("zone_id", "")
+    px = game_state.get("x", 0)
+    py = game_state.get("y", 0)
+    cur_pos = (px, py)
+
+    if not zone_id:
+        return
+
+    if CURRENT_TRACKED_ZONE is not None and zone_id != CURRENT_TRACKED_ZONE:
+        RECENT_ZONES.append(zone_id)
+        # Determine entry border and reverse direction
+        rev_dir = None
+        if px <= 1:
+            rev_dir = "W"
+        elif px >= 78:
+            rev_dir = "E"
+        elif py <= 1:
+            rev_dir = "N"
+        elif py >= 23:
+            rev_dir = "S"
+
+        LAST_ZONE_ENTRY = {
+            "from_zone": CURRENT_TRACKED_ZONE,
+            "to_zone": zone_id,
+            "entry_pos": cur_pos,
+            "reverse_dir": rev_dir
+        }
+
+        # Check for 2-cycle ping-pong oscillation (e.g. A -> B -> A)
+        if len(RECENT_ZONES) >= 3 and RECENT_ZONES[-1] == RECENT_ZONES[-3]:
+            ZONE_HOPPING_DETECTED = True
+            print(f"[ZONE HOPPING BREAKER] Border oscillation between {RECENT_ZONES[-2]} and {RECENT_ZONES[-1]} detected! Enforcing inward zone navigation.")
+        else:
+            ZONE_HOPPING_DETECTED = False
+
+        visit_counts.clear()
+        blocked_coords.clear()
+        recent_positions.clear()
+        ZONE_STEP_COUNT = 0
+    elif CURRENT_TRACKED_ZONE is None and zone_id:
+        RECENT_ZONES.append(zone_id)
+        ZONE_STEP_COUNT = 0
+
+    CURRENT_TRACKED_ZONE = zone_id
+    current_zone_id = zone_id
+    ZONE_STEP_COUNT += 1
+
+
 def update_stair_records(game_state):
     """
     Ingests stairs_down and stairs_up telemetry from state.json,
@@ -1455,6 +1516,7 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     global last_action, consecutive_kites, RETREAT_TARGET_LEVEL
 
+    update_zone_records(game_state)
     update_stair_records(game_state)
 
     template = build_templates.detect_build(game_state)
@@ -1579,16 +1641,49 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             if ap > 0 or mp > 0:
                 return {"action": "AUTOLEVEL", "reason": f"Safe autoleveling: allocating unspent points (AP:{ap}, SP:{sp}, MP:{mp})"}
 
-        # 2. Rest until healed if safe and damaged below threshold (default 75%)
+        # 2. Survival & Sustenance Routine: Butchering, Cooking, Camping & Relieving Hunger
+        hunger = game_state.get("hunger_level", "Satisfied")
+        effects = game_state.get("effects", [])
+        is_famished = game_state.get("is_famished", False) or hunger == "Famished" or any("famished" in ef.lower() or "starving" in ef.lower() for ef in effects)
+        is_hungry = game_state.get("is_hungry", False) or is_famished or hunger == "Hungry" or any("hungry" in ef.lower() for ef in effects)
+        has_food = game_state.get("has_food", False) or game_state.get("food_count", 0) > 0
+        food_count = game_state.get("food_count", 0)
+        campfire_nearby = game_state.get("campfire_nearby", False)
+        corpses_nearby = game_state.get("corpses_nearby", 0)
+        harvestable_nearby = game_state.get("harvestable_nearby", 0)
+        learned_skills = set(game_state.get("skills", []))
+        can_make_camp = game_state.get("can_make_camp", False) or ("Survival_Camp" in learned_skills)
+        can_cook = game_state.get("can_cook", False) or (campfire_nearby and (food_count > 0 or "CookingAndGathering" in learned_skills))
+        can_butcher = game_state.get("can_butcher", False) or ("CookingAndGathering_Butchery" in learned_skills and corpses_nearby > 0)
+        can_harvest = game_state.get("can_harvest", False) or ("CookingAndGathering_Harvestry" in learned_skills and harvestable_nearby > 0)
+
+        # 2A. Field harvesting & butchery: opportunistically butcher animal corpses and harvest plants when safe
+        if can_butcher:
+            return {"action": "BUTCHER", "reason": "Survival: Butchering animal corpse for meat & cooking ingredients"}
+        if can_harvest:
+            return {"action": "HARVEST", "reason": "Survival: Harvesting wild plant for fresh cooking ingredients"}
+
+        # 2B. Relief of hunger (Famished or Hungry)
+        if is_famished or is_hungry:
+            if campfire_nearby:
+                return {"action": "COOK_MEAL", "reason": f"Survival ({hunger}): Cooking meal at adjacent campfire"}
+            if can_make_camp and (food_count > 0 or "CookingAndGathering" in learned_skills or corpses_nearby > 0):
+                return {"action": "MAKE_CAMP", "reason": f"Survival ({hunger}): Starting campfire to cook and preserve food"}
+            if has_food:
+                return {"action": "EAT", "reason": f"Survival ({hunger}): Eating food from inventory to relieve hunger"}
+            if corpses_nearby > 0:
+                return {"action": "BUTCHER", "reason": f"Survival ({hunger}): Butchering nearby corpse to acquire food"}
+
+        # 3. Rest until healed if safe and damaged below threshold (default 75%)
         if hp_ratio < REST_HP_THRESHOLD and not took_damage:
             pct = int(hp_ratio * 100)
             return {"action": "REST", "reason": f"Safe resting: HP at {pct}% (< {int(REST_HP_THRESHOLD*100)}%)"}
 
-        # 3. Top-off ammo while area is secure (only if we have spare ammo in inventory!)
+        # 4. Top-off ammo while area is secure (only if we have spare ammo in inventory!)
         if has_missile and max_ammo > 0 and ammo < max_ammo and inv_ammo > 0:
             return {"action": "RELOAD", "reason": f"Safe top-off: reloading rifle ({ammo}/{max_ammo}, Inv: {inv_ammo})"}
 
-        # 4. Stratum Progression & Staircase Delving (Gated by minimum level)
+        # 5. Stratum Progression & Staircase Delving (Gated by minimum level)
         req_depth_lvl = min_level_for_depth(cur_z + 1)
         can_delve = (cur_lvl >= req_depth_lvl) and (RETREAT_TARGET_LEVEL is None)
 
@@ -1610,14 +1705,42 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 delve_type = "Dungeon Delving" if cur_z > 10 else "Dungeon Entry"
                 return {"action": best_m, "reason": f"{delve_type}: Navigating to stairs down at {sd_pos} to delve stratum {cur_z + 1} (Level {cur_lvl} >= Req {req_depth_lvl})"}
 
-        # 5. Autonomous area exploration via Caves of Qud native Autoexplore
+        # 6. Inward Border Navigation & Zone Hopping Prevention
+        rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
+        rev_exit = f"MOVE_{rev_dir}" if rev_dir else None
+        is_on_border = (px in (0, 79) or py in (0, 24))
+
+        if is_on_border and (ZONE_STEP_COUNT <= 4 or ZONE_HOPPING_DETECTED):
+            target_interior = (40, 12)
+            inward_moves = []
+            for vm in valid_moves:
+                vdir = vm[5:]
+                dx, dy = CARDINAL_OFFSETS.get(vdir, (0, 0))
+                nx, ny = px + dx, py + dy
+                if 1 <= nx <= 78 and 1 <= ny <= 23:
+                    if vm != rev_exit:
+                        inward_moves.append(vm)
+
+            if inward_moves:
+                best_inward = get_best_move_towards(cur_pos, target_interior, inward_moves)
+                if best_inward:
+                    tag = "Zone Hopping Breaker" if ZONE_HOPPING_DETECTED else "Border Navigation"
+                    return {"action": best_inward, "reason": f"{tag}: Stepping inward {best_inward} toward zone interior to establish stable foothold"}
+
+        # 7. Autonomous area exploration via Caves of Qud native Autoexplore
         if not game_state.get("zone_fully_explored", False) and not is_stuck_explore:
             return {"action": "AUTOEXPLORE", "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder"}
 
-        # 6. Zone is fully explored -> Search for zone transitions, or frontier moves
+        # 8. Zone is fully explored -> Search for zone transitions, or frontier moves
         exit_moves = [m for m in valid_moves if "[zone_exit" in surroundings.get(m[5:], "").lower() or "exit" in surroundings.get(m[5:], "").lower()]
         if exit_moves:
-            return {"action": exit_moves[0], "reason": f"Zone fully explored: transitioning to adjacent zone via {exit_moves[0]}"}
+            forward_exits = [m for m in exit_moves if m != rev_exit]
+            if forward_exits:
+                return {"action": forward_exits[0], "reason": f"Zone fully explored: transitioning to adjacent zone via {forward_exits[0]}"}
+            elif not ZONE_HOPPING_DETECTED and (ZONE_STEP_COUNT > 6):
+                return {"action": exit_moves[0], "reason": f"Zone fully explored: backtracking to prior zone via {exit_moves[0]}"}
+            else:
+                print(f"[Zone Hopping Breaker] Suppressed immediate backtrack {exit_moves[0]} to avoid border ping-pong loop.")
 
         if valid_moves:
             ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
@@ -1722,25 +1845,22 @@ def main():
                 continue
 
             try:
+                px = game_state.get("x", 0)
+                py = game_state.get("y", 0)
+                cur_pos = (px, py)
                 zone_id = game_state.get("zone_id")
                 if current_zone_id is not None and zone_id != current_zone_id:
-                    visit_counts.clear()
-                    blocked_coords.clear()
-                    recent_positions.clear()
-                    zone_step_count = 0
                     consecutive_kites = 0
 
+                update_zone_records(game_state)
                 current_zone_id = zone_id
-                zone_step_count += 1
+                zone_step_count = ZONE_STEP_COUNT
 
                 hp = game_state.get("hp", 0)
                 max_hp = game_state.get("max_hp", 1)
                 took_damage = (last_hp is not None and hp < last_hp)
                 last_hp = hp
 
-                px = game_state.get("x", 0)
-                py = game_state.get("y", 0)
-                cur_pos = (px, py)
                 visit_counts[cur_pos] += 1
                 recent_positions.append(cur_pos)
                 pos_frequency = recent_positions.count(cur_pos)

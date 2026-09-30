@@ -166,7 +166,10 @@ BUILD_TEMPLATES = {
             "Axe_Decapitate",
             "Endurance",
             "Endurance_ShakeItOff",
-            "Endurance_Calloused"
+            "Endurance_Calloused",
+            "CookingAndGathering",
+            "CookingAndGathering_MealPreparation",
+            "CookingAndGathering_Butchery"
         ],
         "mutation_priorities": ["MultipleArms", "Carapace", "Regeneration", "NightVision"],
         "combat_doctrine": {
@@ -279,7 +282,10 @@ BUILD_TEMPLATES = {
             "SingleWeaponFighting",
             "SingleWeaponFighting_OpportuneAttacks",
             "SingleWeaponFighting_WeaponExpertise",
-            "SingleWeaponFighting_PenetratingStrikes"
+            "SingleWeaponFighting_PenetratingStrikes",
+            "CookingAndGathering",
+            "CookingAndGathering_MealPreparation",
+            "CookingAndGathering_Butchery"
         ],
         "mutation_priorities": ["ElectricalGeneration", "FlamingRay", "HeightenedHearing", "ForceWall"],
         "combat_doctrine": {
@@ -335,7 +341,10 @@ BUILD_TEMPLATES = {
             "Pistol_DisarmingShot",
             "Pistol_DeadShot",
             "Pistol_EmptyTheClips",
-            "Pistol_FastestGun"
+            "Pistol_FastestGun",
+            "CookingAndGathering",
+            "CookingAndGathering_MealPreparation",
+            "CookingAndGathering_Butchery"
         ],
         "mutation_priorities": ["Phasing", "TripleJointed", "TimeDilation", "SunderMind", "NightVision"],
         "combat_doctrine": {
@@ -390,7 +399,10 @@ BUILD_TEMPLATES = {
             "Cudgel_Slam",
             "Endurance",
             "Endurance_ShakeItOff",
-            "Endurance_Calloused"
+            "Endurance_Calloused",
+            "CookingAndGathering",
+            "CookingAndGathering_MealPreparation",
+            "CookingAndGathering_Butchery"
         ],
         "mutation_priorities": [],  # True Kin uses Cybernetics (Hand bones, giant hands)
         "combat_doctrine": {
@@ -447,7 +459,10 @@ BUILD_TEMPLATES = {
             "Tactics_Juke",
             "Acrobatics",
             "Acrobatics_SwiftReflexes",
-            "Acrobatics_Dodge"
+            "Acrobatics_Dodge",
+            "CookingAndGathering",
+            "CookingAndGathering_MealPreparation",
+            "CookingAndGathering_Butchery"
         ],
         "mutation_priorities": [],  # True Kin uses Cybernetics (Gun rack, Flexors)
         "combat_doctrine": {

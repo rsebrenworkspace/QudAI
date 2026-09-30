@@ -557,6 +557,7 @@ assert breakout_action == "MOVE_S", f"Expected MOVE_S breakout action, got {brea
 # Test subsequent query_decision switches to frontier exploration
 test_zone_id = "Joppa.10"
 brain.current_zone_id = test_zone_id
+brain.CURRENT_TRACKED_ZONE = test_zone_id
 brain.stuck_autoexplore_zones.add(test_zone_id)
 osc_state = {
     "hp": 24, "max_hp": 24, "x": 14, "y": 10, "z": 10,
@@ -835,7 +836,211 @@ dec_telem = brain.query_decision(praetorian_state_telem, took_damage=False, enem
 print(f"Engine learnable_skills decision: {dec_telem['action']} | Reason: {dec_telem['reason']}")
 assert dec_telem["action"] == "AUTOLEVEL_SKILL:Shield_Slam", f"Expected AUTOLEVEL_SKILL:Shield_Slam, got {dec_telem['action']}"
 
+
+# =====================================================================
+# TEST 23: Zone Hopping Prevention & Inward Border Navigation
+# =====================================================================
+print("\n" + "="*50)
+print("TEST 23: Zone Hopping Prevention & Inward Border Navigation")
+print("="*50)
+
+# Reset global tracking variables
+brain.CURRENT_TRACKED_ZONE = None
+brain.RECENT_ZONES.clear()
+brain.ZONE_STEP_COUNT = 0
+brain.ZONE_HOPPING_DETECTED = False
+brain.LAST_ZONE_ENTRY = None
+
+# Scenario 23.1: Entering a new zone at border x=0, y=12
+# Character enters "Joppa.1.1.1.10" from west, landing at (0, 12).
+# West tile is the reverse zone exit back to prior zone.
+# East tile is open terrain towards the zone center.
+border_state_1 = {
+    "hp": 20, "max_hp": 20, "x": 0, "y": 12, "z": 10,
+    "zone_id": "Joppa.1.1.1.10",
+    "calling": "Warden",
+    "level": 1, "ap": 0, "sp": 0, "mp": 0,
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "W": "[ZONE_EXIT: W]", "E": "grass", "N": "grass", "S": "grass"},
+    "visible_entities": []
+}
+
+# First zone registration
+brain.update_zone_records({"zone_id": "Joppa.1.1.0.10", "x": 79, "y": 12})
+dec_inward = brain.query_decision(border_state_1, took_damage=False, enemies=[])
+print(f"Border entry decision: {dec_inward['action']} | Reason: {dec_inward['reason']}")
+assert dec_inward["action"] == "MOVE_E", f"Expected inward MOVE_E from western border, got: {dec_inward['action']}"
+assert "Border Navigation" in dec_inward["reason"] or "interior" in dec_inward["reason"]
+
+# Scenario 23.2: Zone Hopping Breaker (Oscillation between Zone A and Zone B)
+# Simulate ping-pong: Zone A -> Zone B -> Zone A
+brain.CURRENT_TRACKED_ZONE = None
+brain.RECENT_ZONES.clear()
+brain.ZONE_HOPPING_DETECTED = False
+
+# Step into Zone A
+brain.update_zone_records({"zone_id": "ZoneA", "x": 40, "y": 12})
+# Step into Zone B
+brain.update_zone_records({"zone_id": "ZoneB", "x": 0, "y": 12})
+# Hop back into Zone A (oscillation!)
+hop_back_state = {
+    "hp": 20, "max_hp": 20, "x": 79, "y": 12, "z": 10,
+    "zone_id": "ZoneA",
+    "calling": "Warden",
+    "level": 1, "ap": 0, "sp": 0, "mp": 0,
+    "zone_fully_explored": True,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "E": "[ZONE_EXIT: E]", "W": "grass", "N": "grass", "S": "grass"},
+    "visible_entities": []
+}
+dec_hop = brain.query_decision(hop_back_state, took_damage=False, enemies=[])
+print(f"Zone hopping breaker decision: {dec_hop['action']} | Reason: {dec_hop['reason']}")
+assert brain.ZONE_HOPPING_DETECTED, "ZONE_HOPPING_DETECTED must be True after A -> B -> A oscillation!"
+assert dec_hop["action"] == "MOVE_W", f"Expected inward MOVE_W away from eastern border, got: {dec_hop['action']}"
+assert "Zone Hopping Breaker" in dec_hop["reason"]
+
+# Scenario 23.3: Backtrack Exit Suppression when fully explored
+# When zone is fully explored, character must NOT immediately reverse exit if ZONE_HOPPING_DETECTED
+suppress_state = {
+    "hp": 20, "max_hp": 20, "x": 10, "y": 12, "z": 10,
+    "zone_id": "ZoneA",
+    "calling": "Warden",
+    "level": 1, "ap": 0, "sp": 0, "mp": 0,
+    "zone_fully_explored": True,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "W": "[ZONE_EXIT: W]", "E": "wall", "N": "grass", "S": "grass"},
+    "visible_entities": []
+}
+brain.LAST_ZONE_ENTRY = {"from_zone": "ZoneB", "to_zone": "ZoneA", "reverse_dir": "W"}
+brain.ZONE_HOPPING_DETECTED = True
+brain.ZONE_STEP_COUNT = 2
+dec_suppress = brain.query_decision(suppress_state, took_damage=False, enemies=[])
+print(f"Reverse exit suppression decision: {dec_suppress['action']} | Reason: {dec_suppress['reason']}")
+assert dec_suppress["action"] != "MOVE_W", f"Must NOT backtrack into reverse exit during oscillation! Got: {dec_suppress['action']}"
+
+
+# =====================================================================
+# TEST 24: Sustenance & Survival (Butchering, Cooking, Camping & Eating)
+# =====================================================================
+print("\n" + "="*50)
+print("TEST 24: Sustenance & Survival Routines")
+print("="*50)
+
+# Scenario 24.1: Opportunistic Field Butchery when Safe
+butcher_state = {
+    "hp": 20, "max_hp": 20, "x": 10, "y": 10, "z": 10,
+    "calling": "Warden",
+    "level": 2, "ap": 0, "sp": 0, "mp": 0,
+    "can_butcher": True,
+    "corpses_nearby": 1,
+    "skills": ["CookingAndGathering", "CookingAndGathering_Butchery"],
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass"},
+    "visible_entities": []
+}
+dec_b = brain.query_decision(butcher_state, took_damage=False, enemies=[])
+print(f"Opportunistic butcher decision: {dec_b['action']} | Reason: {dec_b['reason']}")
+assert dec_b["action"] == "BUTCHER", f"Expected BUTCHER, got {dec_b['action']}"
+
+# Scenario 24.2: Opportunistic Field Harvesting when Safe
+harvest_state = {
+    "hp": 20, "max_hp": 20, "x": 10, "y": 10, "z": 10,
+    "calling": "Warden",
+    "level": 2, "ap": 0, "sp": 0, "mp": 0,
+    "can_harvest": True,
+    "harvestable_nearby": 1,
+    "skills": ["CookingAndGathering", "CookingAndGathering_Harvestry"],
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass"},
+    "visible_entities": []
+}
+dec_h = brain.query_decision(harvest_state, took_damage=False, enemies=[])
+print(f"Opportunistic harvest decision: {dec_h['action']} | Reason: {dec_h['reason']}")
+assert dec_h["action"] == "HARVEST", f"Expected HARVEST, got {dec_h['action']}"
+
+# Scenario 24.3: Adjacent Campfire Cooking when Hungry
+cook_state = {
+    "hp": 20, "max_hp": 20, "x": 10, "y": 10, "z": 10,
+    "calling": "Warden",
+    "level": 2, "ap": 0, "sp": 0, "mp": 0,
+    "is_hungry": True,
+    "hunger_level": "Hungry",
+    "campfire_nearby": True,
+    "food_count": 2,
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass"},
+    "visible_entities": []
+}
+dec_c = brain.query_decision(cook_state, took_damage=False, enemies=[])
+print(f"Campfire cook decision: {dec_c['action']} | Reason: {dec_c['reason']}")
+assert dec_c["action"] == "COOK_MEAL", f"Expected COOK_MEAL at adjacent campfire, got {dec_c['action']}"
+
+# Scenario 24.4: Starting a Campfire (Make Camp) when Famished with ingredients
+camp_state = {
+    "hp": 20, "max_hp": 20, "x": 10, "y": 10, "z": 10,
+    "calling": "Warden",
+    "level": 2, "ap": 0, "sp": 0, "mp": 0,
+    "is_famished": True,
+    "hunger_level": "Famished",
+    "campfire_nearby": False,
+    "can_make_camp": True,
+    "food_count": 3,
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass"},
+    "visible_entities": []
+}
+dec_camp = brain.query_decision(camp_state, took_damage=False, enemies=[])
+print(f"Make camp decision: {dec_camp['action']} | Reason: {dec_camp['reason']}")
+assert dec_camp["action"] == "MAKE_CAMP", f"Expected MAKE_CAMP, got {dec_camp['action']}"
+
+# Scenario 24.5: Eating Food from Inventory when Hungry
+eat_state = {
+    "hp": 20, "max_hp": 20, "x": 10, "y": 10, "z": 10,
+    "calling": "Warden",
+    "level": 2, "ap": 0, "sp": 0, "mp": 0,
+    "is_hungry": True,
+    "hunger_level": "Hungry",
+    "campfire_nearby": False,
+    "can_make_camp": False,
+    "has_food": True,
+    "food_count": 1,
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass"},
+    "visible_entities": []
+}
+dec_eat = brain.query_decision(eat_state, took_damage=False, enemies=[])
+print(f"Eat inventory food decision: {dec_eat['action']} | Reason: {dec_eat['reason']}")
+assert dec_eat["action"] == "EAT", f"Expected EAT, got {dec_eat['action']}"
+
+# Scenario 24.6: Sustenance Priority over Resting (Famished with low HP)
+# Famished resting causes starvation damage or failure to heal. Sustenance must precede resting.
+famished_rest_state = {
+    "hp": 5, "max_hp": 25, "x": 10, "y": 10, "z": 10, # HP is 20% (< 75% rest threshold)
+    "calling": "Warden",
+    "level": 2, "ap": 0, "sp": 0, "mp": 0,
+    "is_famished": True,
+    "hunger_level": "Famished",
+    "campfire_nearby": False,
+    "can_make_camp": False,
+    "has_food": True,
+    "food_count": 2,
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass"},
+    "visible_entities": []
+}
+dec_f_rest = brain.query_decision(famished_rest_state, took_damage=False, enemies=[])
+print(f"Famished low-HP decision: {dec_f_rest['action']} | Reason: {dec_f_rest['reason']}")
+assert dec_f_rest["action"] == "EAT", f"Expected EAT before REST when famished, got {dec_f_rest['action']}"
+
 print("\n==================================================")
-print(">>> ALL 22 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 24 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
+
 

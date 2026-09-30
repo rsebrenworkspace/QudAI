@@ -541,6 +541,108 @@ namespace QudAIBrain
                 }
                 catch { }
 
+                string hungerStatus = "Satisfied";
+                bool isHungry = false;
+                bool isFamished = false;
+                try
+                {
+                    var stomach = player.GetPart<Stomach>();
+                    if (stomach != null)
+                    {
+                        isFamished = stomach.IsFamished() || player.HasEffect("Famished") || player.HasEffect("Starving");
+                        isHungry = isFamished || stomach.HungerLevel > 0 || player.HasEffect("Hungry");
+                        hungerStatus = isFamished ? "Famished" : isHungry ? "Hungry" : "Satisfied";
+                    }
+                    else
+                    {
+                        if (player.HasEffect("Famished") || player.HasEffect("Starving"))
+                        {
+                            isFamished = true;
+                            hungerStatus = "Famished";
+                        }
+                        else if (player.HasEffect("Hungry"))
+                        {
+                            isHungry = true;
+                            hungerStatus = "Hungry";
+                        }
+                    }
+                }
+                catch { }
+
+                int foodCount = 0;
+                List<string> foodItemNames = new List<string>();
+                try
+                {
+                    var invObjects = player.GetInventory();
+                    if (invObjects == null)
+                    {
+                        var inv = player.GetPart<Inventory>();
+                        if (inv != null) invObjects = inv.GetObjects();
+                    }
+                    if (invObjects != null)
+                    {
+                        foreach (var obj in invObjects)
+                        {
+                            if (obj != null && obj.HasPart("Food"))
+                            {
+                                foodCount += obj.Count;
+                                string fName = StripQudFormatting(!string.IsNullOrEmpty(obj.DisplayName) ? obj.DisplayName : obj.Blueprint);
+                                if (!string.IsNullOrEmpty(fName))
+                                {
+                                    foodItemNames.Add($"\"{EscapeJson(fName)}\"");
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                int corpsesNearby = 0;
+                int harvestableNearby = 0;
+                bool campfireNearby = false;
+                try
+                {
+                    if (currentCell != null)
+                    {
+                        var checkCells = currentCell.GetLocalAdjacentCells();
+                        if (checkCells == null) checkCells = new List<Cell>();
+                        checkCells.Add(currentCell);
+
+                        foreach (Cell c in checkCells)
+                        {
+                            if (c?.Objects == null) continue;
+                            foreach (var o in c.Objects)
+                            {
+                                if (o == null || o.IsPlayer()) continue;
+                                if (o.HasPart("Campfire") || (o.Blueprint ?? "").IndexOf("Campfire", StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    campfireNearby = true;
+                                }
+                                if (o.HasPart("Corpse") || o.HasPart("Butcherable"))
+                                {
+                                    corpsesNearby++;
+                                }
+                                if (o.HasPart("Harvestable"))
+                                {
+                                    harvestableNearby++;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                bool canMakeCamp = false;
+                try
+                {
+                    canMakeCamp = player.HasSkill("Survival_Camp") && !hostilesNearby && !(currentCell?.ParentZone?.IsWorldMap() ?? false);
+                }
+                catch { }
+
+                bool canCook = campfireNearby && (player.HasSkill("CookingAndGathering") || foodCount > 0);
+                bool canButcher = player.HasSkill("CookingAndGathering_Butchery") && corpsesNearby > 0;
+                bool canHarvest = player.HasSkill("CookingAndGathering_Harvestry") && harvestableNearby > 0;
+
                 List<string> effectStrs = new List<string>();
                 try
                 {
@@ -690,6 +792,19 @@ namespace QudAIBrain
                 sb.Append($"\"hostiles_nearby\": {(hostilesNearby ? "true" : "false")},");
                 sb.Append($"\"hostiles_adjacent\": {(hostilesAdjacent ? "true" : "false")},");
                 sb.Append($"\"water_drams\": {waterDrams},");
+                sb.Append($"\"hunger_level\": \"{hungerStatus}\",");
+                sb.Append($"\"is_hungry\": {(isHungry ? "true" : "false")},");
+                sb.Append($"\"is_famished\": {(isFamished ? "true" : "false")},");
+                sb.Append($"\"has_food\": {(foodCount > 0 ? "true" : "false")},");
+                sb.Append($"\"food_count\": {foodCount},");
+                sb.Append($"\"food_items\": [{string.Join(",", foodItemNames)}],");
+                sb.Append($"\"corpses_nearby\": {corpsesNearby},");
+                sb.Append($"\"harvestable_nearby\": {harvestableNearby},");
+                sb.Append($"\"campfire_nearby\": {(campfireNearby ? "true" : "false")},");
+                sb.Append($"\"can_make_camp\": {(canMakeCamp ? "true" : "false")},");
+                sb.Append($"\"can_cook\": {(canCook ? "true" : "false")},");
+                sb.Append($"\"can_butcher\": {(canButcher ? "true" : "false")},");
+                sb.Append($"\"can_harvest\": {(canHarvest ? "true" : "false")},");
                 sb.Append($"\"effects\": [{string.Join(",", effectStrs)}],");
                 sb.Append($"\"abilities\": [{string.Join(",", abilityStrs)}],");
                 sb.Append($"\"has_missile_weapon\": {(hasMissileWeapon ? "true" : "false")},");
@@ -1251,6 +1366,196 @@ namespace QudAIBrain
                     }
                 }
                 player.UseEnergy(1000, "Pickup");
+                return;
+            }
+
+            if (act == "EAT")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                try
+                {
+                    var invObjects = player.GetInventory();
+                    if (invObjects == null)
+                    {
+                        var inv = player.GetPart<Inventory>();
+                        if (inv != null) invObjects = inv.GetObjects();
+                    }
+                    if (invObjects != null)
+                    {
+                        var foodObj = invObjects.FirstOrDefault(o => o != null && o.HasPart("Food"));
+                        if (foodObj != null)
+                        {
+                            UnityEngine.Debug.Log($"[QudAI EAT] Consuming food item '{foodObj.DisplayNameOnly}'");
+                            try { foodObj.FireEvent(Event.New("Eat", "Eater", player)); } catch { }
+                            try { foodObj.FireEvent(Event.New("Eating", "Eater", player)); } catch { }
+                            try { player.pStomach?.ClearHunger(); } catch { }
+                            try { player.GetPart<Stomach>()?.ClearHunger(); } catch { }
+                            if (player.Energy != null) player.UseEnergy(1000, "Eat");
+                            return;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError("[QudAI EAT Error] " + ex.ToString());
+                }
+                if (player.Energy != null) player.UseEnergy(1000, "Pass");
+                return;
+            }
+
+            if (act == "MAKE_CAMP")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                try
+                {
+                    UnityEngine.Debug.Log("[QudAI MAKE_CAMP] Deploying campfire via CommandSurvivalCamp");
+                    try { CommandEvent.Send(player, "CommandSurvivalCamp"); } catch { }
+                    try { player.FireEvent(Event.New("CommandSurvivalCamp", "User", player)); } catch { }
+                    var campSkill = player.GetPart<Survival_Camp>();
+                    if (campSkill != null)
+                    {
+                        try { campSkill.AttemptCamp(player); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError("[QudAI MAKE_CAMP Error] " + ex.ToString());
+                }
+                if (player.Energy != null) player.UseEnergy(1000, "MakeCamp");
+                return;
+            }
+
+            if (act == "COOK_MEAL")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                try
+                {
+                    GameObject campfireObj = null;
+                    if (player.CurrentCell != null)
+                    {
+                        var cells = player.CurrentCell.GetLocalAdjacentCells();
+                        if (cells == null) cells = new List<Cell>();
+                        cells.Add(player.CurrentCell);
+                        foreach (Cell c in cells)
+                        {
+                            if (c?.Objects != null)
+                            {
+                                campfireObj = c.Objects.FirstOrDefault(o => o != null && (o.HasPart("Campfire") || (o.Blueprint ?? "").IndexOf("Campfire", StringComparison.OrdinalIgnoreCase) >= 0));
+                                if (campfireObj != null) break;
+                            }
+                        }
+                    }
+
+                    if (campfireObj != null)
+                    {
+                        UnityEngine.Debug.Log($"[QudAI COOK_MEAL] Cooking at campfire '{campfireObj.DisplayNameOnly}'");
+                        try { campfireObj.FireEvent(Event.New("CookWhipUp", "Actor", player)); } catch { }
+                        try { campfireObj.FireEvent(Event.New("CookWhipUp", "User", player)); } catch { }
+                        var campPart = campfireObj.GetPart<Campfire>();
+                        if (campPart != null)
+                        {
+                            try { campPart.Cook(); } catch { }
+                        }
+                        try { player.pStomach?.ClearHunger(); } catch { }
+                        try { player.GetPart<Stomach>()?.ClearHunger(); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError("[QudAI COOK_MEAL Error] " + ex.ToString());
+                }
+                if (player.Energy != null) player.UseEnergy(1000, "Cook");
+                return;
+            }
+
+            if (act == "BUTCHER")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                try
+                {
+                    GameObject corpseObj = null;
+                    if (player.CurrentCell != null)
+                    {
+                        var cells = player.CurrentCell.GetLocalAdjacentCells();
+                        if (cells == null) cells = new List<Cell>();
+                        cells.Add(player.CurrentCell);
+                        foreach (Cell c in cells)
+                        {
+                            if (c?.Objects != null)
+                            {
+                                corpseObj = c.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && (o.HasPart("Corpse") || o.HasPart("Butcherable")));
+                                if (corpseObj != null) break;
+                            }
+                        }
+                    }
+
+                    if (corpseObj != null)
+                    {
+                        UnityEngine.Debug.Log($"[QudAI BUTCHER] Butchering '{corpseObj.DisplayNameOnly}'");
+                        var bPart = corpseObj.GetPart<Butcherable>();
+                        if (bPart != null)
+                        {
+                            try { bPart.AttemptButcher(player); } catch { }
+                        }
+                        else
+                        {
+                            try { corpseObj.FireEvent(Event.New("Butcher", "Actor", player)); } catch { }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError("[QudAI BUTCHER Error] " + ex.ToString());
+                }
+                if (player.Energy != null) player.UseEnergy(1000, "Butcher");
+                return;
+            }
+
+            if (act == "HARVEST")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                try
+                {
+                    GameObject plantObj = null;
+                    if (player.CurrentCell != null)
+                    {
+                        var cells = player.CurrentCell.GetLocalAdjacentCells();
+                        if (cells == null) cells = new List<Cell>();
+                        cells.Add(player.CurrentCell);
+                        foreach (Cell c in cells)
+                        {
+                            if (c?.Objects != null)
+                            {
+                                plantObj = c.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && o.HasPart("Harvestable"));
+                                if (plantObj != null) break;
+                            }
+                        }
+                    }
+
+                    if (plantObj != null)
+                    {
+                        UnityEngine.Debug.Log($"[QudAI HARVEST] Harvesting '{plantObj.DisplayNameOnly}'");
+                        var hPart = plantObj.GetPart<Harvestable>();
+                        if (hPart != null)
+                        {
+                            try { hPart.AttemptHarvest(player); } catch { }
+                        }
+                        else
+                        {
+                            try { plantObj.FireEvent(Event.New("Harvest", "Actor", player)); } catch { }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError("[QudAI HARVEST Error] " + ex.ToString());
+                }
+                if (player.Energy != null) player.UseEnergy(1000, "Harvest");
                 return;
             }
 

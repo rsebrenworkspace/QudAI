@@ -1,7 +1,7 @@
 # Caves of Qud Autonomous Agent (QudAI)
 ## Project History, System Architecture & Future Roadmap
 
-**Document Version:** 1.0.0  
+**Document Version:** 1.2.0  
 **Current Date:** September 2026  
 **Primary Language Stack:** Python 3.10+, C# (.NET Framework 4.8 / Unity / Harmony), Local LLM (OpenAI-compatible / LM Studio)
 
@@ -19,10 +19,14 @@
    - [Iteration 5: Decompiling Leveling & Headless Point Allocation](#iteration-5-decompiling-leveling--headless-point-allocation)
    - [Iteration 6: Interactive Twitch Chat Voting Integration](#iteration-6-interactive-twitch-chat-voting-integration)
    - [Iteration 7: Multi-Class Archetypes & Tactical Fallback Matrix](#iteration-7-multi-class-archetypes--tactical-fallback-matrix)
-   - [Iteration 8: Pet Recruitment & Companion Absolute Immunity](#iteration-8-pet-recruitment--companion-absolute-immunity-esper-mindflayer)
-   - [Iteration 9: Conversational NPC & Settlement Townsfolk Immunity](#iteration-9-conversational-npc--settlement-townsfolk-immunity-the-joppa-incident)
+   - [Iteration 8: Pet Recruitment & Companion Absolute Immunity](#iteration-8-pet-recruitment--companion-absolute-immunity)
+   - [Iteration 9: Conversational NPC & Settlement Townsfolk Immunity](#iteration-9-conversational-npc--settlement-townsfolk-immunity)
    - [Iteration 10: Multi-Tile Oscillation Loop Breaker & Door Navigation](#iteration-10-multi-tile-oscillation-loop-breaker--door-navigation)
-4. [Current Codebase Specification (v1.0.0)](#4-current-codebase-specification-v100)
+   - [Iteration 11: Shoreline Two-Tile Oscillation, Autolevel Casing & Circuit Breaker](#iteration-11-shoreline-two-tile-oscillation-autolevel-casing--circuit-breaker)
+   - [Iteration 12: Staircase Navigation, Stratum Delving & Tactical Retreat](#iteration-12-staircase-navigation-stratum-delving--tactical-retreat)
+   - [Iteration 13: Class Skill Trees, Prerequisite Gating & SP Savings Doctrine](#iteration-13-class-skill-trees-prerequisite-gating--sp-savings-doctrine)
+   - [Iteration 14: Zone Hopping Prevention & Sustenance / Survival Routines](#iteration-14-zone-hopping-prevention--sustenance--survival-routines)
+4. [Current Codebase Specification (v1.2.0)](#4-current-codebase-specification-v120)
    - [Directory Structure](#directory-structure)
    - [Telemetry & IPC Protocol](#telemetry--ipc-protocol)
    - [Decision Pipeline (Phases A, B, C)](#decision-pipeline-phases-a-b-c)
@@ -40,7 +44,7 @@
 *Caves of Qud* is one of the most complex, emergent, and unforgiving permadeath roguelikes ever developed. With thousands of interacting physics entities, fluid dynamics, limb dismemberment, psychic glimmer, mutation trees, and intricate faction diplomacy, standard reinforcement learning or raw heuristic scripts struggle to make meaningful progress.
 
 **QudAI** is an autonomous, streaming-ready artificial intelligence agent that plays *Caves of Qud* live without human intervention. It leverages a **Hierarchical Decision Engine**:
-- **Phase A (Zero-Latency Deterministic Safe Mode)**: Instant response for out-of-combat exploration, resting, ammo top-offs, and safe leveling.
+- **Phase A (Zero-Latency Deterministic Safe Mode)**: Instant response for out-of-combat exploration, survival/sustenance, resting, ammo top-offs, staircase delving, and safe autoleveling.
 - **Phase B (Conversational LLM Reasoning)**: High-level tactical reasoning powered by local vision/reasoning models (LM Studio, e.g. Qwen 2.5 / Qwen 3 VL / Llama 3) that analyze spatial grids, status effects, and character doctrines.
 - **Phase C (Class-Specific Deterministic Fallback)**: A zero-latency tactical safety net that ensures survival even when the local LLM is slow, offline, or returns invalid outputs.
 
@@ -57,8 +61,8 @@
 │  │  - Patches XRL.Core.PlayerTurn.Prefix                            │  │
 │  │  - Suppresses all blocking UI dialogs & popups                   │  │
 │  │  - Intercepts PickDirection, PickTarget, PickItem                │  │
-│  │  - Interrogates player body, inventory, stats, mutations, radar  │  │
-│  │  - Headlessly executes movement, missile fire, abilities, leveling│  │
+│  │  - Telemetry: HP, grid, radar, hunger, food, stairs, skills, pet │  │
+│  │  - Headless actions: move, missiles, powers, camping, eating, lvl │  │
 │  └───────────────────▲──────────────────────────────┬───────────────┘  │
 └──────────────────────┼──────────────────────────────┼──────────────────┘
                        │ JSON IPC (action.json)       │ JSON IPC (state.json,
@@ -77,9 +81,9 @@
 │  ┌──────────────┐          ┌────────────────┐         ┌──────────────┐ │
 │  │   PHASE A    │          │    PHASE B     │         │   PHASE C    │ │
 │  │ Safe Rest,   │          │ Tactical LLM   │         │ Deterministic│ │
-│  │ Explore &    │◄──Combat?│ (LM Studio API)│◄─Fail/──│ Multi-Class  │ │
-│  │ Class-Based  │    No    │ Injects Lore,  │  Timeout│ Fallback     │ │
-│  │ Autoleveling │          │ Doctrine, Grid │         │ Safety Net   │ │
+│  │ Delve, Camp, │◄──Combat?│ (LM Studio API)│◄─Fail/──│ Multi-Class  │ │
+│  │ Eat & Level  │    No    │ Injects Lore,  │  Timeout│ Fallback     │ │
+│  │              │          │ Doctrine, Grid │         │ Safety Net   │ │
 │  └──────────────┘          └────────────────┘         └──────────────┘ │
 │         ▲                                                              │
 │         │ (Stat/Skill Votes)                                           │
@@ -154,148 +158,98 @@
   - Patched `XRL.UI.PickDirection`, `XRL.UI.PickTarget`, and `XRL.UI.PickFieldTarget` so directional abilities (`Charge`, `Dismember`, `Freezing Ray`, `Cryokinesis`) execute headlessly without UI stalls.
   - Replaced the single rifle fallback in `brain.py` with 4 dedicated fallback routines (`fallback_melee`, `fallback_esper`, `fallback_gunslinger`, `fallback_nomad`).
 
-### Iteration 8: Native Autoexplore Foundation (Macro-Navigation Engine)
-- **The Challenge:** Peaceful exploration previously relied on a rudimentary 1-tile frontier movement heuristic (`visit_counts`). Characters could get wedged in complex corners or water edges, failed to systematically open chests or retrieve floor loot across 80x25 zones, and had no native awareness of when a zone was fully explored.
-- **Decompilation Findings:** Decompiled `Assembly-CSharp.dll` with `Trivial.Mono.Cecil` and analyzed Qud's native Autoexplore architecture:
-  - `XRL.World.Capabilities.FasterDMapAutoexplore.FindAutoexploreStep(out string step, out bool blackout)`
-  - `XRL.World.Capabilities.AutoAct.FindAutoexploreStep(bool Force, out string step, out bool blackout)`
-  - `step` returns optimal direction strings (`"N"`, `"S"`, `"E"`, `"W"`, etc.) towards unrevealed tiles, loot, and containers, or returns `"."` / `null` when the zone is completely traversed.
-- **Implementation:**
-  - Added `ExecuteAutoexplore` in `AIBrainPart.cs`: queries `FasterDMapAutoexplore` / `AutoAct`, executes movement, handles door opening, and auto-loots ground items.
-  - Exported `zone_fully_explored` boolean in `state.json` (resets upon zone transition).
-  - In `brain.py` Phase A, dispatched `AUTOEXPLORE` as the foundational macro-exploration action when safe. When `zone_fully_explored` is reported, seamlessly transitions to stairs down (`USE_STAIRS_DOWN`) or adjacent zone exits.
-  - Instant Combat Suspension: Any incoming damage, nearby hostiles, or active targets immediately halt autoexplore and switch control to LM Studio / class fallback matrix in Phase B/C.
+### Iteration 8: Pet Recruitment & Companion Absolute Immunity
+- **Problem**: When the Apostle / Esper Mindflayer charmed wild creatures (e.g. giant dragonflies, goats, seahorses) using `CommandProselytize`:
+  1. The C# mod only checked `brain.PartyLeader == player`, which failed because charmed creatures in Caves of Qud receive effects (`Proselytized`, `Beguiled`, `Rebuked`) and AI parts (`AllyProselytize`). Furthermore, `zone.GetObjects()` was throwing `InvalidOperationException: Collection was modified` during turn processing, silently wiping `companions` to `[]`.
+  2. Because `companions: []`, the charmed creature was exported as `is_enemy: true` and appeared in `surroundings` as `[ENEMY: giant dragonfly]`.
+  3. The Python Esper fallback policy saw an adjacent threat and backpedaled to escape melee range. The charmed pet followed its master, repeating turn after turn.
+  4. Once distance reached 2-3 tiles or cooldowns reset, the AI fired `CommandStunningForce` or `CommandLase` directly at its own pet, killing it.
+- **Solution**:
+  1. **Comprehensive C# `IsCompanion` Hook**: Added `IsCompanion(GameObject obj, GameObject player)` checking active effects (`Proselytized`, `Beguiled`, `Rebuked`, `Lovesick`), parts (`AllyProselytize`, `AllyBeguile`), and leader relationships (`IsLedBy(player)`, `PartyLeader == player`).
+  2. **Safe Zone Traversal (`GetSafeZoneObjects`)**: Replaced all throwing `ParentZone.GetObjects()` enumerations with safe cell-by-cell `zone.GetCell(x, y)?.Objects` traversal.
+  3. **Zero-Latency In-Memory Companion Whitelist (`brain.py`)**: Added global sets `CHARMED_COMPANION_NAMES` and `CHARMED_COMPANION_COORDS`. As soon as `USE_ABILITY:CommandProselytize:<DIR>` is dispatched, the target tile's entity is registered with 0 latency, instantly immunizing it across `filter_hostile_enemies`, `get_adjacent_threats`, `is_line_of_fire_clear`, and tactical fallbacks.
+  4. **Offensive Target Interception Guardrails**: Updated `AIPickGameObjectPatch`, `AIPickTargetPatch`, and `AIPickFieldTargetPatch` to never auto-select or target friendly companions.
+  5. **Bresenham Raytraced LOF**: Added ray-tracing to verify no friendly companions are in the line of projectile or beam fire.
 
-### Iteration 9: Esper Tactical Psychic Overhaul & MinEvent Event Dispatch
-- **The Problem:** When playing an Esper (Apostle), the character entered an infinite orbit around stationary hostiles (glowpads) at distance 4–5, never casting offensive psychic powers (`Light Manipulation` / `Lase`, `Stunning Force`, `Sunder Mind`) and refusing to engage.
-- **Root Cause Analysis:**
-  1. `LightManipulation`'s active beam attack command is `CommandLase` (labeled "Lase" in game), whereas `brain.py` searched for `"light manipulation"`.
-  2. Abilities like `Lase` and `Stunning Force` were not classified as directional in `brain.py`, omitting directional vectors (`:SE`).
-  3. Non-combat utility powers (`Clairvoyance`, `Ambient Light`) polluted combat choices, causing LM Studio to repeatedly cast Clairvoyance.
-  4. **Engine Architecture Discovery:** In `Assembly-CSharp.dll`, modern abilities implement `HandleEvent(CommandEvent)` (`MinEvent`), NOT the legacy `FireEvent(Event)`. In `AIBrainPart.cs`, calling `player.FireEvent(Event.New(cmd, "User", player))` was silently ignored by `LightManipulation.HandleEvent(CommandEvent)`.
-  5. Ray-tracing beam abilities (`LightManipulation.Lase`) execute `PickLine(...)` which invokes `PickTarget.ShowPicker(...)`. Without active target cell interception in `AIPickTargetPatch`, `PickLine` returned empty and aborted the attack.
-  6. Glowpads and turrets have 0 movement speed. Kiting at distance < 5 and repositioning at distance $\ge$ 5 formed an endless 4 $\leftrightarrow$ 5 tile orbit.
-- **Implementation:**
-  - In `AIBrainPart.cs`:
-    - Updated `USE_ABILITY` to dispatch via `CommandEvent.Send(player, cmd, targetObj, targetCell, 0, false, false, null)` and auto-acquire `PreferredTargetCell`, `PreferredTargetObj`, and `PreferredDirection`.
-    - Patched `XRL.UI.PickTarget.ShowPicker` and `ShowFieldPicker` to automatically return `PreferredTargetCell` during ability execution.
-    - Patched `XRL.UI.PickDirection.ShowPicker` to infer direction from `PreferredTargetCell` or closest hostile.
-  - In `brain.py`:
-    - Filtered utility mutations (`clairvoyance`, `ambient light`) from combat prompts.
-    - Added `lase`, `stunning force`, `syphon vim`, `cryokinesis`, `pyrokinesis` to `DIRECTIONAL_ABILITIES`.
-    - Overhauled `fallback_esper` to prioritize `Sunder Mind` $\rightarrow$ `Lase` $\rightarrow$ `Cryo/Pyro` $\rightarrow$ `Stunning Force` $\rightarrow$ `Syphon Vim`.
-    - Added stationary enemy detection (`glowpad`, `turret`, `fungus`) to halt orbit loops and strike decisively.
-  - Verified across all 11 multi-class tactical dry run test suites with 100% pass rate.
-
-#### Post-Deployment Telemetry Analysis (Concussive Knockback & Autoexplore Handoff)
-- **Observed Behavior:** The Esper successfully engaged the glowpad with concussive blasts (`Stunning Force`) twice, but did not finish the kill and subsequently started wandering away north without re-engaging.
-- **Root Causes Discovered:**
-  1. **Concussive Knockback Physics:** `Stunning Force` deals bludgeoning concussive damage and physically knocks targets backward. Two blasts pushed the wet glowpad from distance 5 to distance 10.
-  2. **Premature Combat Exit:** In `brain.py`, `close_threats` was hardcoded to `dist <= 10`. The moment the enemy was pushed to distance 10+, `is_in_combat` evaluated to `False`, immediately triggering Phase A `AUTOEXPLORE`. Native Autoexplore began pathfinding to unexplored tiles to the north, abandoning the surviving hostile.
-  3. **Touch-Range & Non-Combat Abilities Polluting Prompt:** Dialogue and touch abilities (`Proselytize`, `Teleport Other`, `Intimidate`) were presented to LM Studio as valid combat choices at distance 10, causing the model to attempt recruitment rather than firing `Lase`.
-- **Refinements Implemented:**
-  - Expanded `close_threats` and tactical engagement ceiling from 10 to 20 tiles to maintain combat lock across full screen view distance and prevent zoning or premature autoexplore.
-  - Added `proselytize`, `beguile`, and `berate` to `NON_COMBAT_KEYWORDS`.
-  - Filtered touch-only abilities (`Teleport Other` restricted to adjacent, `Intimidate` to distance $\le 2$).
-  - Reordered `VALID ACTIONS` in `query_llm_decision`: Ranged attacks (`FIRE_MISSILE`, `CommandLase`, `CommandSunderMind`, elemental rays) are now prepended at the very top of the list, before movement options, preventing smaller LLMs from defaulting to movement options.
-  - Added strict ATTACK PRIORITY doctrine to LLM system prompt: character must attack when an offensive ability or missile is ready rather than wasting turns repositioning.
-  - Updated Esper Mindflayer preferred range to 15 tiles and doctrine to fire Lase immediately at any range up to 25 tiles.
-  - Added automatic direction vector injection in `query_llm_decision` if the LLM returns `USE_ABILITY:CommandLase` without direction.
-  - Overhauled stationary enemy handling in `fallback_esper` to hold ground and recharge laser charges rather than wandering off, and enabled psychic assault at distance $\ge 1$.
-
-#### Ability Rotation Architecture & Depleted Charge Tracking Resolution
-- **Observed Behavior:** The Esper used `Lase` to kill some enemies, but once Lase ran out, it didn't rotate to other abilities (`Stunning Force`, `Teleport Other`, `Intimidate`). During cooldowns, it moved north and zoned off the map. Furthermore, approaching the dragonfly triggered a modal `[A]/[B]` prompt for Proselytize.
-- **Root Causes Discovered:**
-  1. **Depleted Charge Reporting in Qud:** In Caves of Qud, `Light Manipulation` when out of charges remains marked `IsUsable = true` and `CooldownTurns = 0`, but its name changes to `"Lase (0 charges)"`. Previously, `is_ability_ready()` only verified `usable` and `cooldown <= 0`. As a result, empty Lase was perpetually treated as ready, causing the brain to continually attempt `CommandLase` with 0 charges instead of rotating to `Stunning Force`.
-  2. **Loop Breaker Combat Zoning:** When repeated actions failed, the loop breaker in `brain.py` called `get_valid_moves(surroundings, cur_pos, None)` without passing `is_in_combat=is_in_combat`, allowing `MOVE_N` across the zone boundary during active combat.
-  3. **Lack of an Explicit Tactical Sequence:** The brain lacked a structured rotation sequence informing the LLM and fallback logic which ability serves as Opener CC, Sustained DPS, Heavy Execution, and Emergency Defense.
-- **Implementation & Resolution:**
-  - **Depleted Charge Filtering:** Added `is_ability_ready(ab)` in `brain.py` to inspect for `"0 charge"` or `"(0 charges)"`. Depleted abilities are flagged as recharging and removed from valid action choices.
-  - **Structured Ability Rotations (`build_templates.py`):** Added explicit `ability_rotation` doctrines to all 5 archetypes:
-    - *Esper*: 1. Opener CC (`Stunning Force`) $\rightarrow$ 2. Heavy Execution (`Sunder Mind`) $\rightarrow$ 3. Sustained DPS (`Lase`) $\rightarrow$ 4. Elemental Rays $\rightarrow$ 5. Secondary CC $\rightarrow$ 6. Emergency Close Defense (`Force Bubble`, `Teleport Other`, `Intimidate`).
-    - *Axe Berserker*: Charge opener $\rightarrow$ Dismember $\rightarrow$ Cleave $\rightarrow$ Decapitate.
-    - *Akimbo Gunslinger*: Disarming Shot $\rightarrow$ Chain Fire $\rightarrow$ Sustained dual missile fire.
-  - **LLM Prompt Integration:** Injected `ABILITY ROTATION & COMBO DOCTRINE` into the LLM system prompt and tagged valid actions with explicit tactical roles (`OPENER CC`, `SUSTAINED BEAM DPS`, `HEAVY MENTAL EXECUTION`, `EMERGENCY BANISH`, `EMERGENCY FEAR`).
-  - **Deterministic Fallback Synchronization:** Updated `fallback_esper` to execute the full rotation in priority order, including `Intimidate` and `Stunning Force` CC openers on approaching mobile targets.
-  - **Combat Zoning Protection:** Fixed the loop breaker in `brain.py` to enforce `is_in_combat=is_in_combat` so the AI never flees across zone borders while fighting.
-  - **Modal Interception Patch (`AIBrainPart.cs`):** Added Harmony patch `AIPickGameObjectPatch` for `XRL.UI.Popup.PickGameObject` to automatically select hostile targets and suppress modal target dialogs.
-  - Verified with live state: with `Lase (0 charges)`, LM Studio immediately and correctly chose `USE_ABILITY:CommandStunningForce:SW` as the opener. All 11 tactical test suites pass with 100% success rate.
-
-#### Pet Recruitment & Thrall Vanguard Architecture (`Proselytize`)
-- **Objective:** Enable the Esper/Apostle to recruit living beasts and humanoids as loyal combat thralls using `Proselytize` and fight tactically alongside companions without friendly fire.
-- **Engine Mechanics:**
-  - `AIBrainPart.cs` scans `The.Player.CurrentCell.ParentZone.GetObjects()` for living objects with `brain.PartyLeader == player`, exporting `has_companion` and `companions` array (name, HP, max HP, distance, direction).
-  - Individual entities in `visible_entities` are tagged with `is_companion: true/false`.
-  - In `ExecuteCommand`, when `USE_ABILITY:CommandProselytize:DIR` is invoked, `AIBrainPart` acquires the adjacent candidate in that direction (living non-player creature) and sets `PreferredTargetObj` and `PreferredTargetCell`.
-  - In `AIPickGameObjectPatch`, modal prompts prioritize hostile/neutral candidate creatures and strictly exclude the player or existing companions.
-- **Tactical Doctrine & Integration:**
-  - `brain.py`: Defined `is_proselytizable(entity)` to filter out plants, fungi, slime, turrets, robots, and corpses while targeting beasts, animals, and humanoids.
-  - Excluded companions from `enemies` list and adjacent melee threat radar to prevent friendly fire.
-  - **Flora & Brainless Object Filtering:** Fixed issue where the agent attempted to proselytize a `brimestalk` (plant stalk). In `AIBrainPart.cs`, candidate acquisition and `AIPickGameObjectPatch` now strictly require `obj.Brain != null && !obj.HasPart("Plant") && !obj.HasPart("Fungus") && !obj.HasPart("Robot")`, and export an engine-verified `can_proselytize: true/false`. In `brain.py`, `PROSELYTIZE_EXCLUSIONS` was expanded to cover all stalks (`brimestalk`, `brinestalk`), starapples, ferns, roots, lichen, and fungi, and `is_proselytizable()` strictly rejects any entity with `can_proselytize: false`.
-  - Verified with LM Studio: When presented with an adjacent `snapjaw brute`, LM Studio reasoned *"Recruit snapjaw brute as frontline tank to absorb damage and enable safe ranged combat"* and executed `USE_ABILITY:CommandProselytize:E`. All 11 verification tests pass.
-
-### Iteration 9: Conversational NPC & Settlement Townsfolk Immunity (The Joppa Incident)
-- **Problem Statement:** Upon starting a new Apostle character in the town of Joppa, the agent took one step, immediately treated the adjacent `watervine farmer and Mechanimist convert` and nearby `Warden Yrame` as hostile enemies, and cast `Teleport Other` to banish the farmer. Banishment of a peaceful citizen provoked the entire town of Joppa into open warfare, resulting in the character taking lethal damage and dying in town. In a parallel incident, the character charged across Joppa into an isolated pond to melee an aquatic glowfish with a staff, which retaliated with bleed and killed the adventurer.
-- **Root Cause Analysis:**
-  1. *UI Pointer Pollution in `AIBrainPart.cs`:* The mod had `if (player.Target == obj || Sidebar.CurrentTarget == obj) return true;`. In Caves of Qud, `Sidebar.CurrentTarget` automatically points to whatever entity the player is standing next to in town for inspection! This marked peaceful townsfolk as enemies.
-  2. *Inverted `IsNonAggressive()` Fallback:* The mod had checked `if (!obj.IsNonAggressive()) ... return true;`. In Qud's engine, `IsNonAggressive()` is only true for inert plants or training dummies; all living humanoid NPCs return `false`. Because Joppa citizens belong to diverse factions (`Mechanimists`, `Wardens`, `Dromad`, `Hindren`) that did not contain `"villager"` or `"joppa"`, all townsfolk were flagged as lethal enemies.
-  3. *Unfiltered Combat Mode:* When `watervine farmer` was marked as an enemy, `is_in_combat` evaluated to `True`, skipping Phase A (`AUTOEXPLORE`) and forcing the LLM into combat panic.
-  4. *Unchecked Aquatic Proximity:* Aquatic creatures swimming in ponds (`wet glowfish [swimming]`) at dist 20 were evaluated as active threats (`dist <= 20`), triggering combat lock and causing the agent to cross the screen into the pond to attack.
-- **Two-Layer Solution Architecture:**
-  1. *Layer 1 (C# Harmony Mod Engine Hostility):*
-     - Replaced custom faction string checks with native Qud engine hostility: `obj.IsHostileTowards(player) || player.IsHostileTowards(obj)`.
-     - Explicitly checked conversational parts: `bool hasConversation = obj.HasPart("ConversationScript") || obj.HasPart("Converser");`. If an NPC has a conversation and is not actively hostile towards the player, they are strictly rejected as an enemy and tagged as `[NPC: Name]` instead of `[ENEMY: Name]`.
-     - Removed unconditioned `Sidebar.CurrentTarget` and `obj.Target` checks from enemy classification.
-     - Preserved explicit character preference for hunting wild marsh `Glowpad` plants.
-  2. *Layer 2 (Python Driver NPC Keyword & Settlement Filtering):*
-     - Added `is_peaceful_npc(name, blueprint)` with comprehensive coverage of townsfolk, wardens, elders, merchants, pariahs, priests, and unique questgivers (`farmer`, `warden`, `elder`, `convert`, `zealot`, `merchant`, `trader`, `dromad`, `irudad`, `yrame`, `mehmet`, `argyve`, `tam`).
-     - Hardened `get_adjacent_threats` and `filter_hostile_enemies` to permanently exclude peaceful NPCs.
-     - Hardened `is_proselytizable` to reject peaceful questgivers/townsfolk, preventing disruptive recruitment attempts.
-     - Enhanced `is_ignorable_stationary_enemy` to treat distant swimming aquatic creatures (`dist > 3`) in isolated pools as ignorable, preventing suicide rushes into ponds.
-     - Constrained `engine_hostiles`: `hostiles_adjacent` now requires confirmed adjacent threats (`bool(adj_threats)`), and `hostiles_nearby` requires confirmed close threats (`bool(close_threats)`).
-  3. *Loot Goblin Resolution (Beds & Owned Items in Settlements):*
-     - *Issue:* During `AUTOEXPLORE`, `ExecuteAutoexplore` attempted to grab any non-solid physical object on the player's tile. When stepping into homes in Joppa, the agent picked up wooden beds (carrying 50 lb furniture) and prompted to steal owned canteens sitting on tables, stopping exploration and risking town hostility.
-     - *Fix (`CanSafelyLoot`):* Added engine-level loot verification in `AIBrainPart.cs`:
-       - `item.IsOwned()` & `!string.IsNullOrEmpty(item.Owner)`: Strictly rejects owned items.
-       - Settlement Exclusion: Completely disables ad-hoc looting while inside peaceful settlements (`Joppa`, `Stilt`, `Grit Gate`, `Kyakukya`, etc.).
-       - Furniture & Fixture Rejection: Excludes beds, bedrolls, chairs, tables, cushions, benches, sconces, chests, dressers, fans, and baskets.
-       - Weight & Encumbrance: Caps loose item pickup at 15 lbs to prevent encumbrance.
-       - Integrated into `ExecuteAutoexplore`, `GET_ITEM`, and `AIPickItemPatch`.
-  4. *Verification:* Tested against actual Joppa save state. Fresh Apostle state evaluates cleanly to `AUTOEXPLORE`. Added Test 18 to `dry_run.py` verifying full Joppa peaceful immunity; all 18 test suite scenarios pass.
+### Iteration 9: Conversational NPC & Settlement Townsfolk Immunity
+- **Problem**: When exploring Joppa or other settlements, peaceful NPCs, quest givers, and merchants were occasionally flagged by generic hostile filters or bumped into during autoexplore.
+- **Solution**:
+  - Implemented `is_peaceful_npc(name, blueprint)` checking peaceful keywords (`farmer`, `warden`, `elder`, `convert`, `zealot`, `merchant`, `trader`, `dromad`, `pariah`, `villager`, `citizen`, `settler`, `irudad`, `yrame`, `mehmet`, `argyve`, `tam`, `priest`).
+  - Added hostile overrides to ensure aggressive factions (`snapjaw`, `raider`, `cannibal`, `goatfolk`, `putus`) are always engaged.
+  - Immunized peaceful NPCs across combat detection, radar, and line-of-fire targeting.
 
 ### Iteration 10: Multi-Tile Oscillation Loop Breaker & Door Navigation
-- **Problem Statement:** After resolving peaceful NPC attacks and preventing town theft, the agent entered a building in Joppa and became trapped in an infinite 2-tile oscillation loop between an unreadable solid sign and a solid table. The player moved East <-> West repeatedly without progressing or leaving the house.
-- **Root Cause Analysis:**
-  1. *Unfulfilled POI Goals in FasterDMapAutoexplore:* Caves of Qud's Dijkstra autoexplore engine includes signs, book tables, and display cases as destination targets. Because these objects are solid and cannot be stepped onto, and because our headless mod did not open UI inspection dialogs to read signs or search empty tables, neither object was ever satisfied or removed from the destination map. FindAutoexploreStep alternated between targeting the sign and table turn after turn.
-  2. *Single-Turn Repeat Check Limitation:* In brain.py, the loop breaker only checked cur_pos == last_executed_pos (stationary obstacles/walls). In a multi-tile cycle (A <-> B <-> A), cur_pos changes every single step, completely bypassing stationary loop detection.
-  3. *Closed Door Blindness in get_valid_moves:* get_valid_moves had explicitly filtered out 'closed door' alongside walls and chasms. While closed doors are obstacles, in Caves of Qud walking into an unlocked closed door opens it. By treating closed doors as impassable walls, the agent was physically unable to pathfind out of enclosed rooms.
-- **Two-Layer Solution Architecture:**
-  1. *Layer 1 (C# Mod Engine POI Suppression & Cycle Break):*
-     - In ExecuteAutoexplore (AIBrainPart.cs), maintain autoexplorePosHistory (sliding window of 10 positions).
-     - When repeatVisits >= 2: Inspect all adjacent cells. Any non-combat, non-safe-loot object (signs, tables, bookshelves, chests) is immediately suppressed with obj.SetIntProperty('AutoexploreSuppressed', 1), removing it from FasterDMapAutoexplore's goal map.
-     - When repeatVisits >= 3: Mark isZoneFullyExplored = true and yield to Python brain frontier navigation.
-     - Target Cell Suppression on Move Failure: If player.Move(step) fails, automatically suppress any solid blocking object in that direction.
-  2. *Layer 2 (Python Driver Coordinate Oscillation & Frontier Escape):*
-     - Maintained recent_positions = deque(maxlen=10) in brain.py.
-     - Dual Loop Breaker: Detects both stationary repeats (is_stationary_repeat) and coordinate cycling (is_oscillating = pos_frequency >= 3 and not is_attacking).
-     - Escape Pathfinding: Filters valid moves to open_escapes (tiles NOT in recent_positions), picking the lowest-visited coordinate (visit_counts).
-     - Autoexplore Exhaustion: If caught in a cycle during AUTOEXPLORE, flags stuck_autoexplore_zones.add(current_zone_id), immediately transitioning subsequent decisions to Step 5 (frontier and exit navigation).
-     - Unlocked Door Navigation: Removed 'closed door' from impassable obstacles in get_valid_moves, allowing the agent to open and walk through closed doorways to exit buildings.
-  3. *Verification:*
-     - Added Test 19 to dry_run.py simulating 2-tile oscillation inside a house with walls, table, sign, and an open doorway. Verified detection of 3x frequency, rejection of cyclic moves, execution of MOVE_S breakout, and automatic switch to frontier exploration.
-     - All 19 regression and tactical test scenarios pass with 100% success rate.
+- **The Problem:** The character occasionally entered tight ping-pong loops inside buildings (e.g. oscillating between a sign and a table or doorway).
+- **Solution:**
+  - Implemented spatial memory tracking (`recent_positions` deque and `pos_frequency`).
+  - When the agent detects it has visited a coordinate 3+ times in the last 10 turns, the oscillation breaker engages:
+    - If stuck in `AUTOEXPLORE`, marks the zone's autoexplore as exhausted in `stuck_autoexplore_zones`.
+    - Gathers valid open escapes that avoid recently visited coordinates.
+    - Selects the least-visited frontier tile (`visit_counts`) to break out of the room or obstacle enclosure.
+
+### Iteration 11: Shoreline Two-Tile Oscillation, Autolevel Casing & Circuit Breaker
+- **The Problem:**
+  - Characters moving along bodies of water or marshlands could get trapped oscillating between two shore tiles when a companion was blocking one path and deep water blocked the others.
+  - A runtime compilation error occurred in `AIBrainPart.cs` where `GameObject.SetProperty` was called (which does not exist on `GameObject` in modern Caves of Qud).
+  - When autolevel failed to allocate points (e.g. prerequisites unmet), the character could enter an infinite loop trying to spend points every turn.
+- **Solution:**
+  - **Companion Pathing & Swapping:** In `get_valid_moves()`, added companion awareness: companions occupying adjacent tiles are deferred to `companion_moves`, allowing tactical repositioning into open tiles first, but allowing companion tile swapping if completely trapped.
+  - **C# Engine Property Fix:** Replaced invalid `SetProperty` calls in `AIBrainPart.cs` with proper Caves of Qud API methods (`stat.BaseValue += 1`, `stat.Penalty += 1`, `skills.AddSkill()`).
+  - **Autolevel Circuit Breaker:** In `main()`, tracked `autolevel_failed_attempts`. If the same unspent points fail to allocate across 2 consecutive attempts, `suppress_autolevel=True` is engaged, safely falling through to exploration.
+
+### Iteration 12: Staircase Navigation, Stratum Delving & Tactical Retreat
+- **The Problem:** The character had no deliberate concept of vertical dungeon delving, did not seek stairs, entered stairs at Level 1 before being strong enough, and could not tactically retreat when overwhelmed underground.
+- **Solution:**
+  - **Staircase Telemetry & Ingestion:** Exported `stairs_down`, `stairs_up`, `standing_on_stairs_down`, and `standing_on_stairs_up` in `AIBrainPart.cs`. Added `update_stair_records()` in `brain.py` to maintain persistent spatial memory of stairs across zones (`KNOWN_STAIRS_DOWN`, `KNOWN_STAIRS_UP`).
+  - **Depth-Gated Delving (`min_level_for_depth`):**
+    - Surface ($z \le 10$): Level 1
+    - Stratum 1 ($z = 11$): Level 3
+    - Stratum 2+ ($z \ge 12$): Level $3 + (z - 11) \times 2$
+  - **Surface Level-Up & Re-Delving:** If standing on stairs down below the required level, delves are held until sufficient levels are attained. When a zone is cleared, the agent navigates directly to known stairs down to delve.
+  - **Tactical Retreat Protocol:** When overwhelmed underground ($z > 10$) with critical HP ($< 35\%$), heavy damage, or Impossible hostiles:
+    - Flees towards known stairs up.
+    - Ascends stairs (`USE_STAIRS_UP`) back to safety.
+    - Sets `RETREAT_TARGET_LEVEL = cur_level + 1`.
+    - Explores the surface or higher strata to heal and level up, then returns to re-delve once recovered.
+
+### Iteration 13: Class Skill Trees, Prerequisite Gating & SP Savings Doctrine
+- **The Problem:** Autoleveling spent Attribute Points and Mutation Points, but failed to intelligently spend Skill Points (SP) according to class doctrine, occasionally stalling or spending points on suboptimal filler.
+- **Solution:**
+  - **Skill Hierarchy & Prerequisites:** Decompiled Qud's `SkillFactory` and `SkillEntry` architecture. Built `build_templates.get_best_skill_to_learn()` to inspect `learnable_skills` from engine telemetry and class priority trees.
+  - **Parent Skill Gating:** Ensures parent skills (e.g. `Axe`, `Shield`, `Tactics`) are unlocked before attempting to purchase subskills (e.g. `Dismember`, `Shield_Slam`).
+  - **Free 0-Cost Subskills:** Immediately claims 0-cost baseline powers (e.g. `Axe_Expertise`, `Shield_Block`) upon parent acquisition.
+  - **SP Savings Doctrine:** If a character needs 150 SP for their next priority milestone (e.g. `Customs`), the agent deliberately saves its 75 SP rather than wasting it on filler skills.
+
+### Iteration 14: Zone Hopping Prevention & Sustenance / Survival Routines
+- **The Problem:**
+  - When transitioning between adjacent zones, characters landing on border edges ($x=0$ or $x=79$) would immediately detect the reverse zone exit and step back, causing a rapid ping-pong oscillation loop ("zone hoping event").
+  - Characters were starving and becoming famished with no automated butchering, cooking, camping, or eating.
+- **Solution:**
+  - **Zone Hopping Breaker & Inward Steering:**
+    - Added `update_zone_records()` tracking `RECENT_ZONES` and `LAST_ZONE_ENTRY`.
+    - Detects 2-cycle $A \leftrightarrow B$ oscillation (`ZONE_HOPPING_DETECTED`).
+    - Enforces inward steering towards zone interior $(40, 12)$ whenever the character is on a boundary tile within the first 4 turns or during oscillation.
+    - Suppresses immediate reverse exit backtracking (`rev_exit`).
+  - **Survival & Sustenance System:**
+    - Decompiled `Stomach`, `Campfire`, `Food`, `Butcherable`, `Harvestable`, and `Survival_Camp` in `Assembly-CSharp.dll`.
+    - Exported comprehensive engine telemetry: `hunger_level`, `is_hungry`, `is_famished`, `has_food`, `food_count`, `campfire_nearby`, `corpses_nearby`, `harvestable_nearby`, `can_make_camp`, `can_cook`, `can_butcher`, `can_harvest`.
+    - Implemented C# action handlers: `EAT`, `MAKE_CAMP`, `COOK_MEAL`, `BUTCHER`, `HARVEST`.
+    - Integrated Sustenance as Step 2 of Phase A in `brain.py` (strictly before resting at Step 3, because resting while famished causes starvation damage/death).
+    - Updated all 9 build templates to prioritize `CookingAndGathering`, `CookingAndGathering_MealPreparation`, and `CookingAndGathering_Butchery`.
+  - **Expanded Verification Suite:** Added Tests 23 & 24 to `dry_run.py`, verifying zone hopping prevention, inward border steering, campfire cooking, camping, eating, and opportunistic butchery/harvesting with 100% pass rate across 24 tests.
 
 ---
 
-## 4. Current Codebase Specification (v1.0.0)
+## 4. Current Codebase Specification (v1.2.0)
 
 ### Directory Structure
 ```
 D:\QudAI\
 ├── brain.py                    # Master autonomous AI driver & hierarchical decision loop
-├── build_templates.py          # 5 build archetypes, combat doctrines, stat/skill priority trees
+├── build_templates.py          # 9 build archetypes, combat doctrines, stat/skill priority trees
+├── item_evaluator.py           # Item scoring rubric & hard overrides (light, ranged, recoilers)
 ├── chronicler.py               # Post-mortem death analyzer & ancestral memory generator
-├── dry_run.py                  # 9-scenario multi-class verification test suite
+├── dry_run.py                  # 24-scenario multi-class verification test suite
 ├── twitch_bot.py               # IRC Twitch chat listener for live viewer voting
 ├── twitch_config.example.json  # Twitch bot configuration template
 ├── sync_mod.py                 # Sync utility between repo and Qud's LocalLow mod folder
@@ -318,17 +272,21 @@ All communication occurs via files in `%USERPROFILE%\AppData\LocalLow\Freehold G
 
 | File | Direction | Format | Purpose |
 |---|---|---|---|
-| `state.json` | Game $\rightarrow$ Python | JSON (UTF-8) | Full turn state: HP, position, 5x5 grid, radar entities, attributes, skills, mutations, calling, ammo |
-| `action.json` | Python $\rightarrow$ Game | JSON (UTF-8) | Dispatched action command (`MOVE_N`, `FIRE_MISSILE@x,y`, `USE_ABILITY:cmd:dir`, `AUTOLEVEL`, etc.) |
+| `state.json` | Game $\rightarrow$ Python | JSON (UTF-8) | Full turn state: HP, position, 5x5 grid, radar entities, attributes, skills, mutations, calling, ammo, hunger, food, stairs |
+| `action.json` | Python $\rightarrow$ Game | JSON (UTF-8) | Dispatched action command (`MOVE_N`, `FIRE_MISSILE@x,y`, `USE_ABILITY:cmd:dir`, `EAT`, `MAKE_CAMP`, `COOK_MEAL`, `BUTCHER`, `HARVEST`, `USE_STAIRS_DOWN`, `USE_STAIRS_UP`, `AUTOLEVEL`, etc.) |
 | `active.flag` | Python $\leftrightarrow$ Game | Text | Presence indicates autonomous AI is engaged; deletion pauses AI and restores manual control |
 | `death.json` | Game $\rightarrow$ Python | JSON (UTF-8) | Exported upon player death containing cause, killer, killer level, recent damage, and recent actions |
 
 ### Decision Pipeline (Phases A, B, C)
-1. **Phase A (Safe Mode)**: Runs when no enemies are visible within 10 tiles, no damage was taken, and no adjacent hostiles exist.
-   - Allocates unspent AP/SP/MP (Twitch vote winner or class milestone).
-   - Rests until HP $\ge 75\%$.
-   - Reloads missile magazines from spare inventory ammo.
-   - Explores least-visited frontier tiles using spatial coordinate tracking.
+1. **Phase A (Safe Mode)**: Runs when no enemies are visible within 20 tiles, no damage was taken, and no adjacent hostiles exist.
+   - **Step 1: Autolevel**: Spends unspent AP/SP/MP according to class doctrine or Twitch chat vote winner.
+   - **Step 2: Sustenance**: Opportunistically butchers corpses / harvests plants; cooks at campfire, pitches camp, or eats food when hungry/famished.
+   - **Step 3: Rest**: Rests until HP $\ge 75\%$ (only if not famished).
+   - **Step 4: Ammo Top-Off**: Reloads missile magazines from spare inventory ammo.
+   - **Step 5: Stratum Delving**: Navigates to known stairs down when the zone is cleared, gated by depth level requirements.
+   - **Step 6: Inward Border Steer**: Steers toward zone center $(40, 12)$ if on border tiles during the first 4 turns or during oscillation.
+   - **Step 7: Autoexplore**: Autonomous exploration via native Caves of Qud autoexplore pathfinder.
+   - **Step 8: Zone Exits / Frontier**: Transitions to adjacent zones via forward exits (suppressing immediate backtracks).
 2. **Phase B (Tactical LLM Reasoning)**: Runs when hostiles are detected or damage is sustained.
    - Formats a 5x5 ASCII grid, active threat radar, ready abilities, and valid action choices.
    - Passes the character's exact class doctrine and ancestral wisdom to LM Studio (`http://localhost:1234/v1/chat/completions`).
@@ -339,38 +297,6 @@ All communication occurs via files in `%USERPROFILE%\AppData\LocalLow\Freehold G
    - **Mental (`esper_ited_away`, `esper_mindflayer`, `uncle_iroh`, `gas_giant`)**: Recruits pet tanks with Proselytize; pops Force Bubble / Force Wall; channels Sunder Mind (pure mental, 100% safe over allies); fires Lase / rays only when raytraced LOF is clear; manifests gas clouds safely.
    - **Gunslinger (`gunkin`, `bullet_specter`, `akimbo_gunslinger`)**: Holds 3–6 tiles; fires Chain Fire and Disarming Shot; verifies LOF before bursting; tactical reloads when disengaged.
    - **Sniper (`praetorian_generalist`, `rifle_nomad`)**: Freezes pursuers with Freezing Ray; snipes with desert rifle at distance $\ge 2$ along clear LOF; sprint-kites when dry.
-
----
-
-### Iteration 8: Build Guide Integration, Raytraced LOF & Pet Safety
-* **Implementation Date**: September 2026
-* **Key Achievements**:
-  1. **Engine Difficulty & Threat Tier Export**: Updated `AIBrainPart.cs` to calculate relative difficulty tiers (`Trivial`, `Easy`, `Average`, `Tough`, `Very Tough`, `Impossible`), entity level, zone tier, and stationary status.
-  2. **Glowpad & Distant Trivial Entity Policy**: Addressed the agent's tendency to halt exploration and cross entire swamps to kill every glowpad. Distant stationary trivial entities ($dist > 3$) are excluded from combat locking, allowing autoexplore to continue smoothly. Real threats and adjacent enemies are prioritized.
-  3. **Bresenham Raytraced Line-of-Fire (LOF)**: Implemented 2D grid ray-tracing. Beam attacks (`Lase`, `Freezing Ray`, `Flaming Ray`) and missile weapons verify that friendly pets are not in the line of trajectory. If an ally is in the way, the AI redirects to `Sunder Mind` (pure mental attack with zero projectile collision), targets an unblocked enemy, or repositions.
-  4. **9 Archetypes from Build Guide**: Harmonized `build_templates.py` to support Auspicious Beginnings, Praetorian Generalist, Limb-Off, Esper-ited Away, Uncle Iroh, Bullet Specter, Classic Punchkin, Gunkin, and Gas Giant.
-  5. **10-Criteria Item Evaluator (`item_evaluator.py`)**: Implemented the scoring rubric and hard overrides from the guide (never discard sole light source, sole ranged weapon, recoiler, or uninspected artifacts).
-  6. **15 Multi-Class Verification Tests**: Expanded `dry_run.py` to 15 comprehensive unit tests covering all 9 archetypes, LOF raytracing, companion protection, glowpad de-prioritization, and item scoring. All 15 tests pass cleanly.
-
----
-
-### Iteration 9: Companion Absolute Immunity & Post-Proselytize State Resolution
-* **Implementation Date**: September 2026
-* **Key Achievements**:
-  1. **Engine-Level Companion Rule 0 (`AIBrainPart.cs`)**:
-     - Discovered root cause of friendly fire post-charm: when a creature was charmed, `player.Target` or `Sidebar.CurrentTarget` in the game engine remained set to the creature from before the charm succeeded.
-     - `CheckIsEnemy()` previously evaluated `player.Target == obj` before party leader status. Inverted check: Rule 0 is now `var ctBrain = obj.Brain ?? obj.GetPart<Brain>(); if ((ctBrain != null && ctBrain.PartyLeader == player) || obj.IsLedBy(player)) return false;` strictly before any target or hostility check.
-     - Added automatic purging of `player.Target` and `Sidebar.CurrentTarget` if pointing to a companion.
-     - Added companion labeling `[COMPANION: {name}]` in `GetCellSummary()`.
-  2. **Comprehensive Companion Immunity in Python (`brain.py`)**:
-     - Implemented `filter_hostile_enemies(entities, companions)` which aggressively purges any entity whose coordinate matches a companion, whose name contains the companion name, or whose `is_companion` flag is set.
-     - Integrated `filter_hostile_enemies` across `main()`, `query_decision()`, `query_llm_decision()`, and all 4 tactical class fallbacks (`fallback_melee`, `fallback_esper`, `fallback_gunslinger`, `fallback_nomad`).
-     - Updated `get_adjacent_threats(surroundings, companions=companions)` to ignore `[COMPANION:` tiles and filter out companion names, preventing false close-contact alarms that previously caused the agent to backpedal in circles around its own pet.
-     - Hardened `is_line_of_fire_clear`: If the target endpoint `(x1, y1)` itself is a friendly companion, immediately returns `(False, "Target coordinate IS friendly companion!")`, preventing any ranged weapon or beam ability from targeting a pet.
-     - Updated 5x5 ASCII grid display: companions are now rendered as `C` (distinguishing `@` player, `C` companion, and `E` enemy).
-  3. **Verification Suite Expansion (`dry_run.py`)**:
-     - Added Test 16: Simulates a post-proselytize state with an adjacent charmed goat and stale engine flags. Verifies that `filter_hostile_enemies` purges the entity, `is_line_of_fire_clear` blocks targeting, `get_adjacent_threats` returns empty, the 5x5 grid shows `C`, and the decision engine cleanly selects `AUTOEXPLORE` instead of attacking or backpedaling.
-     - All 16 verification tests pass with 100% success.
 
 ---
 
@@ -388,26 +314,6 @@ All communication occurs via files in `%USERPROFILE%\AppData\LocalLow\Freehold G
   - What's Eating the Watervine? (Red Rock quest)
   - A Canticle for Barathrum (Rustwells wire retrieval)
   - Golgotha descent (sewer diving and repair)
-- **Stair & Chasm Navigation**: Smart traversal of up/down stairs, detecting shafts and safe exits.
-
-### Iteration 8: Pet Recruitment & Companion Absolute Immunity (Esper Mindflayer)
-- **Problem**: When the Apostle / Esper Mindflayer charmed wild creatures (e.g. giant dragonflies, goats, seahorses) using `CommandProselytize`:
-  1. The C# mod only checked `brain.PartyLeader == player`, which failed because charmed creatures in Caves of Qud receive effects (`XRL.World.Effects.Proselytized`, `Beguiled`, `Rebuked`) and AI parts (`AllyProselytize`). Furthermore, `zone.GetObjects()` was throwing `InvalidOperationException: Collection was modified` during turn processing, silently wiping `companions` to `[]`.
-  2. Because `companions: []`, the charmed creature was exported as `is_enemy: true` and appeared in `surroundings` as `[ENEMY: giant dragonfly]`.
-  3. The Python Esper fallback policy saw an adjacent threat and backpedaled to escape melee range. The charmed pet followed its master, repeating turn after turn ("walked around him a bit").
-  4. Once distance reached 2-3 tiles or cooldowns reset, the AI fired `CommandStunningForce` or `CommandLase` directly at its own pet, killing it ("hit him with a concussive blast").
-- **Solution**:
-  1. **Comprehensive C# `IsCompanion` Hook**: Added `IsCompanion(GameObject obj, GameObject player)` checking:
-     - Active effects: `Proselytized`, `Beguiled`, `Rebuked`, `Lovesick`, `LoveTonic`.
-     - AI parts: `AllyProselytize`, `AllyBeguile`, `AllyRebuke`, `AllyPet`, `AllyClone`.
-     - Leader relationships: `obj.IsLedBy(player)`, `PartyLeader == player`, `PartyLeader.IsPlayer()`, `PartyLeader.id == player.id`.
-     - Native Qud companion list: `player.GetCompanions()?.Contains(obj)`.
-  2. **Safe Zone Traversal (`GetSafeZoneObjects`)**: Replaced all throwing `ParentZone.GetObjects()` enumerations with safe cell-by-cell `zone.GetCell(x, y)?.Objects` traversal, completely eliminating `Collection was modified` exceptions.
-  3. **Zero-Latency In-Memory Companion Whitelist (`brain.py`)**: Added global sets `CHARMED_COMPANION_NAMES` and `CHARMED_COMPANION_COORDS`. As soon as `USE_ABILITY:CommandProselytize:<DIR>` or `CommandBeguile:<DIR>` is dispatched, the target tile's entity is registered with 0 latency, instantly immunizing it across `filter_hostile_enemies`, `get_adjacent_threats`, `is_line_of_fire_clear`, and tactical fallbacks even before engine serialization occurs.
-  4. **Offensive Target Interception Guardrails**: Updated `AIPickGameObjectPatch`, `AIPickTargetPatch`, and `AIPickFieldTargetPatch` to never auto-select or target friendly companions for offensive abilities or missiles.
-  5. **Substring Contagion Elimination & Creature Whitelisting**: Fixed an issue where `register_companion` split names into 4-letter words (e.g. "salt" from "salt-encrusted glowpad") which then caused every liquid and entity in the salt marsh ("pool of salty water", "puddle of salty asphalt") to be registered as an allied pet. Replaced with `is_companion_name` (strict full-name and boundary-matching) and `CanBeProselytized` in C#, strictly rejecting liquids, puddles, watervine, brinestalks, and glowpads.
-
----
 
 ### Milestone 10: Companion & Temporal Fugue Clone Coordination
 - **Companion Orders**: For Espers with Beguile/Proselytize, command followers to tank or hold ground.
@@ -418,7 +324,7 @@ All communication occurs via files in `%USERPROFILE%\AppData\LocalLow\Freehold G
 - **Local WebSocket Server**: Stream telemetry in real-time to an HTML5/CSS canvas.
 - **On-Screen Display (HUD)**:
   - Live character portrait with calling and active doctrine.
-  - HP bar, ammo gauge, and surrounding 5x5 ASCII minimap.
+  - HP bar, ammo gauge, hunger state, and surrounding 5x5 ASCII minimap.
   - Twitch chat voting progress bar with timer countdown.
   - LLM "Thought Bubble" displaying the model's tactical rationale in real time.
 
