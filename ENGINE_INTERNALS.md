@@ -313,7 +313,8 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
 - **Harvesting:** Wild plants possess `Harvestable`. Calling `AttemptHarvest(player)` harvests ingredients.
 - **Camping & Cooking:**
   - With `CookingAndGathering` / `Survival_Camp`, dispatching `CommandSurvivalCamp` creates a campfire.
-  - At an adjacent campfire, `Campfire.Cook()` or `Stomach.ClearHunger()` whips up a meal, satisfying hunger and conferring cooking metabolic buffs.
+  - At an adjacent campfire, `Campfire.Cook()` whips up a meal, satisfying hunger and conferring cooking metabolic buffs.
+  - Stomach API: Call `player.GetPart<Stomach>()?.ClearHunger()` (Note: `player.pStomach` does NOT exist on `GameObject` in modern Qud).
   - Direct eating: `Event.New("Eat", "Eater", player)` consumes packaged food from inventory.
 
 ---

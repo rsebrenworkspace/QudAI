@@ -1389,7 +1389,6 @@ namespace QudAIBrain
                             UnityEngine.Debug.Log($"[QudAI EAT] Consuming food item '{foodObj.DisplayNameOnly}'");
                             try { foodObj.FireEvent(Event.New("Eat", "Eater", player)); } catch { }
                             try { foodObj.FireEvent(Event.New("Eating", "Eater", player)); } catch { }
-                            try { player.pStomach?.ClearHunger(); } catch { }
                             try { player.GetPart<Stomach>()?.ClearHunger(); } catch { }
                             if (player.Energy != null) player.UseEnergy(1000, "Eat");
                             return;
@@ -1459,7 +1458,6 @@ namespace QudAIBrain
                         {
                             try { campPart.Cook(); } catch { }
                         }
-                        try { player.pStomach?.ClearHunger(); } catch { }
                         try { player.GetPart<Stomach>()?.ClearHunger(); } catch { }
                     }
                 }
@@ -2172,14 +2170,14 @@ namespace QudAIBrain
                     {
                         targetMutation = muts.MutationList.FirstOrDefault(m => m != null && (
                             string.Equals(m.Name, target, StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(m.DisplayName, target, StringComparison.OrdinalIgnoreCase)
+                            string.Equals(m.GetDisplayName(), target, StringComparison.OrdinalIgnoreCase)
                         ));
                     }
                     if (targetMutation == null && muts.ActiveMutationList != null)
                     {
                         targetMutation = muts.ActiveMutationList.FirstOrDefault(m => m != null && (
                             string.Equals(m.Name, target, StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(m.DisplayName, target, StringComparison.OrdinalIgnoreCase)
+                            string.Equals(m.GetDisplayName(), target, StringComparison.OrdinalIgnoreCase)
                         ));
                     }
                 }
