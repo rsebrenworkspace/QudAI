@@ -65,7 +65,7 @@ If streaming to Twitch:
 ---
 
 ## Verification & Testing
-Run the 9-scenario multi-class verification test suite to validate all archetypes and fallback matrices:
+Run the 24-scenario multi-class verification test suite to validate all archetypes, fallback matrices, line-of-fire raytracing, pet immunity, staircase delving, skill trees, border navigation, and survival routines:
 ```powershell
 python dry_run.py
 ```
@@ -73,4 +73,5 @@ python dry_run.py
 ---
 
 ## Project Documentation
+- [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md): Definitive reverse-engineering manual, Unity/.NET Standard 2.1 architecture, headless UI picker patches, MinEvent dispatches, companion Rule 0, and survival mechanics.
 - [PROJECT_HISTORY.md](PROJECT_HISTORY.md): In-depth chronicle of every project iteration, technical breakdowns, decompiled engine mechanics, and future milestone roadmaps.
