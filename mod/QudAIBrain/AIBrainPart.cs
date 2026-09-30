@@ -568,8 +568,9 @@ namespace QudAIBrain
                                     bool isEnemy = CheckIsEnemy(obj, player);
                                     var objBrain = obj.Brain ?? obj.GetPart<Brain>();
                                     bool isCompanion = (objBrain != null && objBrain.PartyLeader == player);
+                                    bool canProselytize = (objBrain != null && obj.IsAlive && !obj.HasPart("Plant") && !obj.HasPart("Fungus") && !obj.HasPart("Corpse") && !obj.HasPart("Robot") && objBrain.PartyLeader != player);
 
-                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}}}");
+                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}, \"can_proselytize\": {(canProselytize ? "true" : "false")}}}");
                                 }
                             }
                         }
@@ -983,7 +984,7 @@ namespace QudAIBrain
                         Cell adjCell = player.CurrentCell.GetCellFromDirection(PreferredDirection, false);
                         if (adjCell != null && adjCell.Objects != null)
                         {
-                            var cand = adjCell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && o.IsAlive && !o.HasPart("Corpse") && (o.Brain == null || o.Brain.PartyLeader != player));
+                            var cand = adjCell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && o.IsAlive && o.Brain != null && !o.HasPart("Corpse") && !o.HasPart("Plant") && !o.HasPart("Fungus") && !o.HasPart("Robot") && o.Brain.PartyLeader != player);
                             if (cand != null)
                             {
                                 targetObj = cand;
@@ -1818,7 +1819,7 @@ namespace QudAIBrain
                                 if (obj != null && !obj.IsPlayer() && obj.IsAlive)
                                 {
                                     var br = obj.Brain ?? obj.GetPart<Brain>();
-                                    if (br == null || br.PartyLeader != The.Player)
+                                    if (br != null && br.PartyLeader != The.Player && !obj.HasPart("Plant") && !obj.HasPart("Fungus") && !obj.HasPart("Robot"))
                                     {
                                         nonPlayer = obj;
                                         break;

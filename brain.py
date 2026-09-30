@@ -74,8 +74,12 @@ MELEE_TARGETED_ABILITIES = {
 }
 
 PROSELYTIZE_EXCLUSIONS = {
-    "plant", "watervine", "glowpad", "tree", "bush", "vine", "fungus",
-    "turret", "robot", "chest", "door", "wall", "corpse", "slime", "ooze", "dreadroot"
+    "plant", "watervine", "glowpad", "tree", "bush", "vine", "fungus", "fungi",
+    "stalk", "brimestalk", "brinestalk", "starapple", "apple", "fern", "root", "dreadroot",
+    "lichen", "moss", "shroom", "mushroom", "flower", "leaf", "leaves", "wood", "log",
+    "boulder", "rock", "stone", "chasm", "fence", "grass", "reed", "shrub", "algae",
+    "coral", "strangler", "spore", "seed",
+    "turret", "robot", "chest", "door", "wall", "corpse", "slime", "ooze"
 }
 
 
@@ -84,6 +88,8 @@ def is_proselytizable(entity):
     if not entity or not isinstance(entity, dict):
         return False
     if entity.get("is_companion", False):
+        return False
+    if entity.get("can_proselytize") is False:
         return False
     name = entity.get("name", "").lower()
     bp = entity.get("blueprint", "").lower()
