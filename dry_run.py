@@ -367,6 +367,62 @@ can_sell_recoiler, r_rec = item_evaluator.can_safely_discard_or_sell(
 print(f"Can sell recoiler: {can_sell_recoiler} | Reason: {r_rec}")
 assert not can_sell_recoiler, "Should protect recoiler!"
 
+# 16. Test Charmed Pet Absolute Immunity (Post-Proselytize State)
+print("\n--- Test 16: Charmed Pet Absolute Immunity (Post-Proselytize State) ---")
+post_charm_state = {
+    "hp": 24, "max_hp": 24, "x": 10, "y": 10, "z": 10,
+    "calling": "Apostle",
+    "has_companion": True,
+    "companions": [{"name": "charmed goat", "tx": 11, "ty": 10, "hp": 18, "max_hp": 18, "dist": 1, "dir": "E"}],
+    "zone_fully_explored": False,
+    "hostiles_nearby": False,
+    "hostiles_adjacent": False,
+    "surroundings": {"E": "[COMPANION: goat]", "N": "Clear", "S": "Clear", "W": "Clear"},
+    "abilities": [
+        {"name": "Lase", "command": "CommandLase", "cooldown": 0, "usable": True},
+        {"name": "Force Bubble", "command": "CommandForceBubble", "cooldown": 0, "usable": True},
+        {"name": "Proselytize", "command": "CommandProselytize", "cooldown": 0, "usable": True}
+    ],
+    # Simulate a raw entity list where the engine briefly had stale flags
+    "visible_entities": [
+        {"name": "goat", "tx": 11, "ty": 10, "dist": 1, "dir": "E", "is_enemy": True, "is_companion": False}
+    ]
+}
+
+# A. filter_hostile_enemies must purge the goat
+clean_enemies = brain.filter_hostile_enemies(post_charm_state["visible_entities"], post_charm_state["companions"])
+print(f"Filtered enemies count: {len(clean_enemies)}")
+assert len(clean_enemies) == 0, f"Expected 0 enemies after filtering companion, got {clean_enemies}"
+
+# B. is_line_of_fire_clear directly to pet coordinate must return False
+lof_to_pet, lof_reason = brain.is_line_of_fire_clear((10, 10), (11, 10), companions=post_charm_state["companions"])
+print(f"LOF to pet coordinate: {lof_to_pet} | Reason: {lof_reason}")
+assert not lof_to_pet, "Expected LOF directly to companion to be blocked!"
+assert "friendly companion" in lof_reason.lower()
+
+# C. get_adjacent_threats must not treat adjacent companion as a melee threat
+adj_threats_pet = brain.get_adjacent_threats(post_charm_state["surroundings"], companions=post_charm_state["companions"])
+print(f"Adjacent threats with companion: {adj_threats_pet}")
+assert len(adj_threats_pet) == 0, f"Expected no adjacent threats from companion, got {adj_threats_pet}"
+
+# Even if surroundings had legacy [ENEMY: goat] string, companion name filter must purge it:
+stale_surroundings = {"E": "[ENEMY: goat]", "N": "Clear", "S": "Clear", "W": "Clear"}
+adj_threats_stale = brain.get_adjacent_threats(stale_surroundings, companions=post_charm_state["companions"])
+print(f"Adjacent threats with stale [ENEMY: goat]: {adj_threats_stale}")
+assert len(adj_threats_stale) == 0, f"Expected stale enemy string to be purged by companion name, got {adj_threats_stale}"
+
+# D. 5x5 ASCII grid must render companion as 'C'
+grid_text = brain.render_5x5_grid(post_charm_state["surroundings"])
+print(f"5x5 Grid representation:\n{grid_text}")
+assert 'C' in grid_text, "Expected 'C' in grid for companion tile!"
+
+# E. query_decision must NOT backpedal, pop Force Bubble, or fire Lase at pet
+dec_post_charm = brain.query_decision(post_charm_state, took_damage=False, enemies=post_charm_state["visible_entities"])
+print(f"Post-charm decision: {dec_post_charm['action']} | Reason: {dec_post_charm['reason']}")
+assert dec_post_charm['action'] == "AUTOEXPLORE", f"Expected AUTOEXPLORE in peaceful post-charm state, got {dec_post_charm['action']}"
+assert "lase" not in dec_post_charm['action'].lower()
+assert "bubble" not in dec_post_charm['action'].lower()
+
 print("\n==================================================")
-print(">>> ALL 15 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 16 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")

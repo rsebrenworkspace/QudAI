@@ -83,7 +83,7 @@ PROSELYTIZE_EXCLUSIONS = {
 }
 
 
-def is_proselytizable(entity):
+def is_proselytizable(entity, companions=None):
     """Checks if an entity is a biological living creature with a mind capable of being proselytized."""
     if not entity or not isinstance(entity, dict):
         return False
@@ -91,6 +91,14 @@ def is_proselytizable(entity):
         return False
     if entity.get("can_proselytize") is False:
         return False
+    if companions:
+        comp_coords = {(c.get("tx"), c.get("ty")) for c in companions if c.get("tx") is not None and c.get("ty") is not None}
+        if (entity.get("tx"), entity.get("ty")) in comp_coords:
+            return False
+        comp_names = {c.get("name", "").lower() for c in companions if c.get("name")}
+        ename = entity.get("name", "").lower()
+        if any(cn in ename for cn in comp_names if len(cn) > 2):
+            return False
     name = entity.get("name", "").lower()
     bp = entity.get("blueprint", "").lower()
     combined = f"{name} {bp}"
@@ -216,6 +224,8 @@ def render_5x5_grid(surroundings):
         if is_center:
             return '@'
         t = text.lower()
+        if '[companion' in t:
+            return 'C'
         if '[enemy' in t:
             return 'E'
         if '[npc' in t:
@@ -241,14 +251,65 @@ def render_5x5_grid(surroundings):
     return '\n'.join(rows)
 
 
-def get_adjacent_threats(surroundings):
+def get_adjacent_threats(surroundings, companions=None):
     adj = {}
+    comp_names = set()
+    if companions:
+        for c in companions:
+            cname = c.get("name", "").lower()
+            if cname:
+                comp_names.add(cname)
+                for part in cname.split():
+                    if len(part) > 2:
+                        comp_names.add(part)
+
     for d in ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]:
         text = surroundings.get(d, "")
+        if "[COMPANION:" in text or "[companion" in text.lower():
+            continue
         if "[ENEMY:" in text:
             m = re.search(r"\[ENEMY:\s*([^\]]+)\]", text)
-            adj[d] = m.group(1).strip() if m else "Enemy"
+            ename = m.group(1).strip() if m else "Enemy"
+            if comp_names and any(cn in ename.lower() for cn in comp_names):
+                continue
+            adj[d] = ename
     return adj
+
+
+def filter_hostile_enemies(entities, companions=None):
+    """
+    Strictly filters a list of entities to only include true hostiles.
+    Companions, pets, and followers are permanently excluded by flag, coordinate, and name.
+    """
+    if not entities:
+        return []
+    comp_coords = set()
+    comp_names = set()
+    if companions:
+        for c in companions:
+            cx, cy = c.get("tx"), c.get("ty")
+            if cx is not None and cy is not None:
+                comp_coords.add((cx, cy))
+            cname = c.get("name", "").lower()
+            if cname:
+                comp_names.add(cname)
+                for part in cname.split():
+                    if len(part) > 2:
+                        comp_names.add(part)
+
+    result = []
+    for e in entities:
+        if not e.get("is_enemy", False):
+            continue
+        if e.get("is_companion", False):
+            continue
+        if (e.get("tx"), e.get("ty")) in comp_coords:
+            continue
+        ename = e.get("name", "").lower()
+        if comp_names and any(cn in ename for cn in comp_names):
+            continue
+        result.append(e)
+    return result
 
 
 def is_ability_ready(ab):
@@ -304,6 +365,7 @@ def is_line_of_fire_clear(from_pos, to_pos, companions=None, blocked_set=None):
     """
     Checks if a direct ray from from_pos to to_pos is unblocked.
     Returns (is_clear: bool, reason: str).
+    - If target coordinate is itself a companion, returns (False, f"Target coordinate ({x1}, {y1}) IS friendly companion {comp_name}!").
     - If any companion's tile lies strictly between from_pos and to_pos,
       returns (False, f"Blocked by companion {comp_name} at {pt}").
     - If any known solid wall/obstacle lies strictly between from_pos and to_pos,
@@ -314,16 +376,20 @@ def is_line_of_fire_clear(from_pos, to_pos, companions=None, blocked_set=None):
     if x0 == x1 and y0 == y1:
         return True, "Adjacent/Self"
 
-    line = bresenham_line(x0, y0, x1, y1)
-    # Check intermediate points (exclude origin and target)
-    intermediate = line[1:-1]
-
     comp_map = {}
     if companions:
         for c in companions:
             cx, cy = c.get("tx", -1), c.get("ty", -1)
             if cx >= 0 and cy >= 0:
                 comp_map[(cx, cy)] = c.get("name", "Companion")
+
+    # Guardrail: Never aim direct rays or missile attacks directly at friendly companions!
+    if (x1, y1) in comp_map:
+        return False, f"Target coordinate ({x1}, {y1}) IS friendly companion {comp_map[(x1, y1)]}!"
+
+    line = bresenham_line(x0, y0, x1, y1)
+    # Check intermediate points (exclude origin and target)
+    intermediate = line[1:-1]
 
     for pt in intermediate:
         if pt in comp_map:
@@ -376,6 +442,9 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     if template is None:
         template = build_templates.detect_build(game_state)
 
+    companions = game_state.get("companions", [])
+    enemies = filter_hostile_enemies(enemies, companions)
+
     px = game_state.get("x", 0)
     py = game_state.get("y", 0)
     hp = game_state.get("hp", 0)
@@ -390,7 +459,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     sprint_ab = next((ab for ab in abilities if "sprint" in ab.get("name", "").lower() or "sprint" in ab.get("command", "").lower()), None)
     can_sprint = (not is_sprinting) and (sprint_ab is not None) and sprint_ab.get("usable", True) and sprint_ab.get("cooldown", 0) <= 0
 
-    adj_threats = get_adjacent_threats(surroundings)
+    adj_threats = get_adjacent_threats(surroundings, companions=companions)
     grid_ascii = render_5x5_grid(surroundings)
 
     # Format threat list (including directly adjacent threats from 5x5 scan)
@@ -474,7 +543,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                     combined = f"{name} {cmd}".lower()
                     if "proselytize" in combined or "beguile" in combined:
                         for ent in game_state.get("visible_entities", []):
-                            if ent.get("dist") == 1 and is_proselytizable(ent):
+                            if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions):
                                 edir = ent.get("dir", "")
                                 ename = ent.get("name", "Creature")
                                 if edir:
@@ -656,7 +725,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
 - Missile Weapon: {ammo_display}
 - Sprint Status: {'ACTIVE' if is_sprinting else 'Off'}
 
-SURROUNDINGS (5x5 GRID - Legend: @=You, E=Enemy, N=Neutral/Friend, !=Hazard, #=Wall, +=Door, $=Item, ~=Shallow Water [safe ground], .=Clear):
+SURROUNDINGS (5x5 GRID - Legend: @=You, C=Companion/Pet, E=Enemy, N=Neutral/Friend, !=Hazard, #=Wall, +=Door, $=Item, ~=Shallow Water [safe ground], .=Clear):
 {grid_ascii}
 - Note: Shallow water/pools (~) are normal walkable marsh ground and NOT dangerous hazards.
 
@@ -737,6 +806,15 @@ VALID ACTIONS:
 
 def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo):
     """Melee Bruiser & Tank Tactical Fallback (Axe Berserker / Praetorian)."""
+    companions = game_state.get("companions", [])
+    enemies = filter_hostile_enemies(enemies, companions)
+    if companions and adj_threats:
+        comp_names = {c.get("name", "").lower() for c in companions if c.get("name")}
+        adj_threats = {
+            d: ename for d, ename in adj_threats.items()
+            if not any(cn in ename.lower() for cn in comp_names if len(cn) > 2)
+        }
+
     closest_enemy = enemies[0] if enemies else None
     closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
     c_name = closest_enemy.get("name", "Enemy") if closest_enemy else ""
@@ -799,6 +877,16 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
 def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo):
     """Pure Mental Sorcerer Tactical Fallback (Esper Mindflayer)."""
+    companions = game_state.get("companions", [])
+    has_companion = game_state.get("has_companion", False) or bool(companions)
+    enemies = filter_hostile_enemies(enemies, companions)
+    if companions and adj_threats:
+        comp_names = {c.get("name", "").lower() for c in companions if c.get("name")}
+        adj_threats = {
+            d: ename for d, ename in adj_threats.items()
+            if not any(cn in ename.lower() for cn in comp_names if len(cn) > 2)
+        }
+
     closest_enemy = enemies[0] if enemies else None
     closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
     c_name = closest_enemy.get("name", "Enemy") if closest_enemy else ""
@@ -807,15 +895,12 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     s_dir = get_step_direction(cur_pos, (c_tx, c_ty)) if closest_enemy else ""
     is_stationary = any(st in c_name.lower() for st in ["glowpad", "plant", "turret", "fungus", "vine", "tree"])
 
-    companions = game_state.get("companions", [])
-    has_companion = game_state.get("has_companion", False) or bool(companions)
-
     # 0. Pet Recruitment: If without an active companion, proselytize adjacent beasts or humanoids into combat thralls
     if not has_companion:
         ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
         if ab_proselytize and ab_proselytize.get("command"):
             for ent in game_state.get("visible_entities", []):
-                if ent.get("dist") == 1 and is_proselytizable(ent) and ent.get("dir"):
+                if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions) and ent.get("dir"):
                     p_dir = ent["dir"]
                     p_name = ent.get("name", "Creature")
                     return {"action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}", "reason": f"[{template['name']} Fallback] Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"}
@@ -936,6 +1021,15 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
 def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo):
     """Rapid-Fire Pistol Gunslinger Tactical Fallback (Akimbo Gunslinger)."""
+    companions = game_state.get("companions", [])
+    enemies = filter_hostile_enemies(enemies, companions)
+    if companions and adj_threats:
+        comp_names = {c.get("name", "").lower() for c in companions if c.get("name")}
+        adj_threats = {
+            d: ename for d, ename in adj_threats.items()
+            if not any(cn in ename.lower() for cn in comp_names if len(cn) > 2)
+        }
+
     closest_enemy = enemies[0] if enemies else None
     closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
     c_name = closest_enemy.get("name", "Enemy") if closest_enemy else ""
@@ -1006,6 +1100,15 @@ def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_move
 
 def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo, is_sprinting):
     """Ranged Sniper & Kite Specialist Fallback (Rifle Nomad)."""
+    companions = game_state.get("companions", [])
+    enemies = filter_hostile_enemies(enemies, companions)
+    if companions and adj_threats:
+        comp_names = {c.get("name", "").lower() for c in companions if c.get("name")}
+        adj_threats = {
+            d: ename for d, ename in adj_threats.items()
+            if not any(cn in ename.lower() for cn in comp_names if len(cn) > 2)
+        }
+
     closest_enemy = enemies[0] if enemies else None
     closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
     c_name = closest_enemy.get("name", "Enemy") if closest_enemy else ""
@@ -1108,8 +1211,10 @@ def query_decision(game_state, took_damage, enemies):
     py = game_state.get("y", 0)
     cur_pos = (px, py)
     abilities = game_state.get("abilities", [])
+    companions = game_state.get("companions", [])
 
-    adj_threats = get_adjacent_threats(surroundings)
+    enemies = filter_hostile_enemies(enemies, companions)
+    adj_threats = get_adjacent_threats(surroundings, companions=companions)
     close_threats = [e for e in enemies if not is_ignorable_stationary_enemy(e) and e.get("dist", 999) <= 20]
     engine_hostiles = game_state.get("hostiles_adjacent", False) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
     is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
@@ -1319,8 +1424,13 @@ def main():
                 cur_pos = (px, py)
                 visit_counts[cur_pos] += 1
 
+                companions = game_state.get("companions", [])
+                if companions:
+                    comp_str = ", ".join(f"{c.get('name')} (HP {c.get('hp')}/{c.get('max_hp')})" for c in companions)
+                    print(f"[PET TANK]: {comp_str}")
+
                 raw_entities = game_state.get("visible_entities", [])
-                enemies = [e for e in raw_entities if e.get("is_enemy", False) and not e.get("is_companion", False)]
+                enemies = filter_hostile_enemies(raw_entities, companions)
 
                 # Prioritize active threats ahead of distant stationary trivial entities, then difficulty, then distance
                 diff_weights = {"Impossible": 0, "Very Tough": 1, "Tough": 2, "Average": 3, "Easy": 4, "Trivial": 5, "": 4}
@@ -1330,11 +1440,6 @@ def main():
                     x.get("dist", 999)
                 ))
 
-                companions = game_state.get("companions", [])
-                if companions:
-                    comp_str = ", ".join(f"{c.get('name')} (HP {c.get('hp')}/{c.get('max_hp')})" for c in companions)
-                    print(f"[PET TANK]: {comp_str}")
-
                 has_mw = game_state.get("has_missile_weapon", False)
                 cur_ammo = game_state.get("missile_ammo", 0)
                 max_ammo = game_state.get("missile_max_ammo", 0)
@@ -1343,7 +1448,7 @@ def main():
 
                 surroundings = game_state.get("surroundings", {})
                 grid_display = render_5x5_grid(surroundings)
-                adj_threats = get_adjacent_threats(surroundings)
+                adj_threats = get_adjacent_threats(surroundings, companions=companions)
                 close_threats = [e for e in enemies if not is_ignorable_stationary_enemy(e) and e.get("dist", 999) <= 20]
                 engine_hostiles = game_state.get("hostiles_adjacent", False) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
                 is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles

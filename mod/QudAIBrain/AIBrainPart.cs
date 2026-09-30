@@ -136,7 +136,12 @@ namespace QudAIBrain
 
             try
             {
-                // 1. Direct combat targets
+                // 0. ABSOLUTE COMPANION CHECK: If this entity is led by the player, it is NEVER an enemy!
+                var brain = obj.Brain ?? obj.GetPart<Brain>();
+                if (brain != null && brain.PartyLeader == player) return false;
+                if (obj.IsLedBy(player)) return false;
+
+                // 1. Direct combat targets (only if not led by player)
                 if (player.Target == obj || Sidebar.CurrentTarget == obj) return true;
                 if (obj.Target == player) return true;
 
@@ -144,10 +149,8 @@ namespace QudAIBrain
                 if (obj.IsHostileTowards(player)) return true;
 
                 // 3. Brain hostility checks
-                var brain = obj.Brain ?? obj.GetPart<Brain>();
                 if (brain != null)
                 {
-                    if (brain.PartyLeader == player) return false;
                     if (brain.Target == player) return true;
                     if (brain.IsHostileTowards(player)) return true;
                     if (brain.GetFeelingLevel(player) == 0) return true; // FeelingLevel.Hostile
@@ -567,11 +570,10 @@ namespace QudAIBrain
 
                                     int dist = Math.Max(Math.Abs(x - px), Math.Abs(y - py));
                                     string dir = GetApproximateDirection(px, py, x, y);
-                                    string bp = obj.Blueprint ?? "";
-                                    bool isEnemy = CheckIsEnemy(obj, player);
                                     var objBrain = obj.Brain ?? obj.GetPart<Brain>();
-                                    bool isCompanion = (objBrain != null && objBrain.PartyLeader == player);
-                                    bool canProselytize = (objBrain != null && obj.IsAlive && !obj.HasPart("Plant") && !obj.HasPart("Fungus") && !obj.HasPart("Corpse") && !obj.HasPart("Robot") && objBrain.PartyLeader != player);
+                                    bool isCompanion = (objBrain != null && objBrain.PartyLeader == player) || obj.IsLedBy(player);
+                                    bool isEnemy = !isCompanion && CheckIsEnemy(obj, player);
+                                    bool canProselytize = (objBrain != null && obj.IsAlive && !obj.HasPart("Plant") && !obj.HasPart("Fungus") && !obj.HasPart("Corpse") && !obj.HasPart("Robot") && !isCompanion);
 
                                     int objLevel = 1;
                                     try { objLevel = obj.Stat("Level", 1); } catch { }
@@ -591,21 +593,31 @@ namespace QudAIBrain
                         GameObject currentTarget = Sidebar.CurrentTarget ?? player.Target;
                         if (currentTarget != null && currentTarget != player && !currentTarget.HasPart("Corpse"))
                         {
-                            Cell tc = currentTarget.CurrentCell;
-                            int tx = tc?.X ?? -1;
-                            int ty = tc?.Y ?? -1;
-                            if (tx >= 0 && ty >= 0)
+                            var ctBrain = currentTarget.Brain ?? currentTarget.GetPart<Brain>();
+                            bool isCtCompanion = (ctBrain != null && ctBrain.PartyLeader == player) || currentTarget.IsLedBy(player);
+                            if (isCtCompanion)
                             {
-                                string name = StripQudFormatting(!string.IsNullOrEmpty(currentTarget.DisplayName) ? currentTarget.DisplayName : currentTarget.Blueprint);
-                                int dist = Math.Max(Math.Abs(tx - px), Math.Abs(ty - py));
-                                string dir = GetApproximateDirection(px, py, tx, ty);
-                                string bp = currentTarget.Blueprint ?? "";
-                                int objLevel = 1;
-                                try { objLevel = currentTarget.Stat("Level", 1); } catch { }
-                                int levelDiff = objLevel - playerLevel;
-                                string diffStr = levelDiff <= -5 ? "Trivial" : levelDiff <= -2 ? "Easy" : levelDiff <= 2 ? "Average" : levelDiff <= 5 ? "Tough" : levelDiff <= 9 ? "Very Tough" : "Impossible";
-                                bool isStationary = currentTarget.HasPart("Plant") || currentTarget.HasPart("Fungus") || currentTarget.HasTag("Immobile") || currentTarget.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
-                                entityEntries.Insert(0, $"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {tx}, \"ty\": {ty}, \"is_enemy\": true, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}}}");
+                                if (player.Target == currentTarget) player.Target = null;
+                                if (Sidebar.CurrentTarget == currentTarget) Sidebar.CurrentTarget = null;
+                            }
+                            else if (CheckIsEnemy(currentTarget, player))
+                            {
+                                Cell tc = currentTarget.CurrentCell;
+                                int tx = tc?.X ?? -1;
+                                int ty = tc?.Y ?? -1;
+                                if (tx >= 0 && ty >= 0)
+                                {
+                                    string name = StripQudFormatting(!string.IsNullOrEmpty(currentTarget.DisplayName) ? currentTarget.DisplayName : currentTarget.Blueprint);
+                                    int dist = Math.Max(Math.Abs(tx - px), Math.Abs(ty - py));
+                                    string dir = GetApproximateDirection(px, py, tx, ty);
+                                    string bp = currentTarget.Blueprint ?? "";
+                                    int objLevel = 1;
+                                    try { objLevel = currentTarget.Stat("Level", 1); } catch { }
+                                    int levelDiff = objLevel - playerLevel;
+                                    string diffStr = levelDiff <= -5 ? "Trivial" : levelDiff <= -2 ? "Easy" : levelDiff <= 2 ? "Average" : levelDiff <= 5 ? "Tough" : levelDiff <= 9 ? "Very Tough" : "Impossible";
+                                    bool isStationary = currentTarget.HasPart("Plant") || currentTarget.HasPart("Fungus") || currentTarget.HasTag("Immobile") || currentTarget.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
+                                    entityEntries.Insert(0, $"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {tx}, \"ty\": {ty}, \"is_enemy\": true, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}}}");
+                                }
                             }
                         }
                     }
@@ -700,6 +712,14 @@ namespace QudAIBrain
                 string rawName = !string.IsNullOrEmpty(obj.DisplayName) ? obj.DisplayName : obj.Blueprint;
                 string cleanName = StripQudFormatting(rawName);
                 if (string.IsNullOrEmpty(cleanName) || cleanName.IndexOf("widget", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+
+                var objBrain = obj.Brain ?? obj.GetPart<Brain>();
+                bool isCompanion = (objBrain != null && objBrain.PartyLeader == player) || obj.IsLedBy(player);
+                if (isCompanion)
+                {
+                    names.Insert(0, $"[COMPANION: {cleanName}]");
+                    continue;
+                }
 
                 if (CheckIsEnemy(obj, player))
                 {
