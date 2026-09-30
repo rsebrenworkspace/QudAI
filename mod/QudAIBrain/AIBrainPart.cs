@@ -54,6 +54,8 @@ namespace QudAIBrain
         };
 
         public static string PreferredDirection = "";
+        public static Cell PreferredTargetCell = null;
+        public static GameObject PreferredTargetObj = null;
 
         public static string GetBestAdjacentEnemyDirection(GameObject player)
         {
@@ -938,17 +940,64 @@ namespace QudAIBrain
                     PreferredDirection = GetBestEnemyDirection(player);
                 }
 
+                GameObject targetObj = player.Target ?? Sidebar.CurrentTarget;
+                Cell targetCell = targetObj?.CurrentCell;
+                if (targetObj == null && player.CurrentCell?.ParentZone != null)
+                {
+                    Cell pCell = player.CurrentCell;
+                    if (!string.IsNullOrEmpty(PreferredDirection))
+                    {
+                        targetObj = pCell.ParentZone.GetObjects()
+                            .Where(o => o != null && !o.IsPlayer() && CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .Where(o => pCell.GetDirectionFromCell(o.CurrentCell).Equals(PreferredDirection, StringComparison.OrdinalIgnoreCase))
+                            .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
+                            .FirstOrDefault();
+                    }
+
+                    if (targetObj == null)
+                    {
+                        targetObj = pCell.ParentZone.GetObjects()
+                            .Where(o => o != null && !o.IsPlayer() && CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
+                            .FirstOrDefault();
+                    }
+                    targetCell = targetObj?.CurrentCell;
+                }
+
+                if (targetCell == null && !string.IsNullOrEmpty(PreferredDirection) && player.CurrentCell != null)
+                {
+                    targetCell = player.CurrentCell.GetCellFromDirection(PreferredDirection, false);
+                }
+
+                PreferredTargetCell = targetCell;
+                PreferredTargetObj = targetObj;
+
                 int energyBefore = player.Energy?.Value ?? 0;
+                try
+                {
+                    CommandEvent.Send(player, cmd, targetObj, targetCell, 0, false, false, null);
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError("[QudAI CommandEvent Error] " + ex.ToString());
+                }
+
                 try
                 {
                     player.FireEvent(Event.New(cmd, "User", player));
                 }
-                catch (Exception ex)
+                catch { }
+
+                try
                 {
-                    UnityEngine.Debug.LogError("[QudAI USE_ABILITY Error] " + ex.ToString());
+                    Sidebar.UpdateState();
+                    Sidebar.Update();
                 }
+                catch { }
 
                 PreferredDirection = "";
+                PreferredTargetCell = null;
+                PreferredTargetObj = null;
 
                 if (player.Energy != null && player.Energy.Value >= energyBefore)
                 {
@@ -1649,6 +1698,10 @@ namespace QudAIBrain
             if (File.Exists(AIPlayerTurnPatch.FlagFile))
             {
                 string dir = AIPlayerTurnPatch.PreferredDirection;
+                if (string.IsNullOrEmpty(dir) && AIPlayerTurnPatch.PreferredTargetCell != null && The.Player?.CurrentCell != null)
+                {
+                    try { dir = The.Player.CurrentCell.GetDirectionFromCell(AIPlayerTurnPatch.PreferredTargetCell); } catch { }
+                }
                 if (string.IsNullOrEmpty(dir))
                 {
                     dir = AIPlayerTurnPatch.GetBestEnemyDirection(The.Player);
@@ -1683,15 +1736,33 @@ namespace QudAIBrain
         {
             if (File.Exists(AIPlayerTurnPatch.FlagFile))
             {
+                if (AIPlayerTurnPatch.PreferredTargetCell != null)
+                {
+                    __result = AIPlayerTurnPatch.PreferredTargetCell;
+                    UnityEngine.Debug.Log($"[QudAI AIPickTargetPatch] Auto-selected preferred target cell: {__result.X},{__result.Y}");
+                    return false;
+                }
+
                 GameObject player = The.Player;
                 GameObject target = player?.Target ?? Sidebar.CurrentTarget;
                 if (target == null && player?.CurrentCell?.ParentZone != null)
                 {
                     Cell pCell = player.CurrentCell;
-                    target = pCell.ParentZone.GetObjects()
-                        .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
-                        .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
-                        .FirstOrDefault();
+                    if (!string.IsNullOrEmpty(AIPlayerTurnPatch.PreferredDirection))
+                    {
+                        target = pCell.ParentZone.GetObjects()
+                            .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .Where(o => pCell.GetDirectionFromCell(o.CurrentCell).Equals(AIPlayerTurnPatch.PreferredDirection, StringComparison.OrdinalIgnoreCase))
+                            .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
+                            .FirstOrDefault();
+                    }
+                    if (target == null)
+                    {
+                        target = pCell.ParentZone.GetObjects()
+                            .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
+                            .FirstOrDefault();
+                    }
                 }
 
                 if (target != null && target.CurrentCell != null)
@@ -1700,6 +1771,18 @@ namespace QudAIBrain
                     UnityEngine.Debug.Log($"[QudAI AIPickTargetPatch] Auto-selected target cell: {__result.X},{__result.Y}");
                     return false;
                 }
+
+                if (!string.IsNullOrEmpty(AIPlayerTurnPatch.PreferredDirection) && player?.CurrentCell != null)
+                {
+                    Cell dirCell = player.CurrentCell.GetCellFromDirection(AIPlayerTurnPatch.PreferredDirection, false);
+                    if (dirCell != null)
+                    {
+                        __result = dirCell;
+                        UnityEngine.Debug.Log($"[QudAI AIPickTargetPatch] Auto-selected direction cell: {__result.X},{__result.Y}");
+                        return false;
+                    }
+                }
+
                 __result = null;
                 return false;
             }
@@ -1714,15 +1797,33 @@ namespace QudAIBrain
         {
             if (File.Exists(AIPlayerTurnPatch.FlagFile))
             {
+                if (AIPlayerTurnPatch.PreferredTargetCell != null)
+                {
+                    __result = new List<Cell> { AIPlayerTurnPatch.PreferredTargetCell };
+                    UnityEngine.Debug.Log($"[QudAI AIPickFieldTargetPatch] Auto-selected preferred field target cell: {AIPlayerTurnPatch.PreferredTargetCell.X},{AIPlayerTurnPatch.PreferredTargetCell.Y}");
+                    return false;
+                }
+
                 GameObject player = The.Player;
                 GameObject target = player?.Target ?? Sidebar.CurrentTarget;
                 if (target == null && player?.CurrentCell?.ParentZone != null)
                 {
                     Cell pCell = player.CurrentCell;
-                    target = pCell.ParentZone.GetObjects()
-                        .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
-                        .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
-                        .FirstOrDefault();
+                    if (!string.IsNullOrEmpty(AIPlayerTurnPatch.PreferredDirection))
+                    {
+                        target = pCell.ParentZone.GetObjects()
+                            .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .Where(o => pCell.GetDirectionFromCell(o.CurrentCell).Equals(AIPlayerTurnPatch.PreferredDirection, StringComparison.OrdinalIgnoreCase))
+                            .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
+                            .FirstOrDefault();
+                    }
+                    if (target == null)
+                    {
+                        target = pCell.ParentZone.GetObjects()
+                            .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
+                            .FirstOrDefault();
+                    }
                 }
 
                 if (target != null && target.CurrentCell != null)
@@ -1730,6 +1831,17 @@ namespace QudAIBrain
                     __result = new List<Cell> { target.CurrentCell };
                     return false;
                 }
+
+                if (!string.IsNullOrEmpty(AIPlayerTurnPatch.PreferredDirection) && player?.CurrentCell != null)
+                {
+                    Cell dirCell = player.CurrentCell.GetCellFromDirection(AIPlayerTurnPatch.PreferredDirection, false);
+                    if (dirCell != null)
+                    {
+                        __result = new List<Cell> { dirCell };
+                        return false;
+                    }
+                }
+
                 __result = new List<Cell>();
                 return false;
             }
