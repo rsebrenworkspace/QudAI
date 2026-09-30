@@ -52,7 +52,12 @@ BUILD_TEMPLATES = {
             "open_combat_action": "Draw a bead and fire rifle at maximum range",
             "close_contact_policy": "Activate Sprint and disengage to safe distance (dist >= 3)",
             "melee_engagement": "Only as emergency fallback when out of ammo or cornered",
-            "preferred_weapons": ["Issachar rifle", "Sniper rifle", "Laser rifle", "Carbine"]
+            "preferred_weapons": ["Issachar rifle", "Sniper rifle", "Laser rifle", "Carbine"],
+            "ability_rotation": [
+                "1. Opener & Freeze CC: Cast Freezing Ray (dist 2-8) to freeze pursuers in solid ice.",
+                "2. Primary Sniping: Fire high-velocity rifle slugs (FIRE_MISSILE) at maximum range.",
+                "3. Emergency Disengage: Activate Sprint and kite into open ground if enemies close to dist <= 2."
+            ]
         }
     },
 
@@ -98,7 +103,13 @@ BUILD_TEMPLATES = {
             "open_combat_action": "Use Charge to close distance into melee range and daze target",
             "close_contact_policy": "Full melee attack, prioritize high-value enemy limbs with Dismember",
             "melee_engagement": "Relentless aggressive bump-attacks",
-            "preferred_weapons": ["Folded carbide battle axe", "Crysteel battle axe", "Vibro-axe"]
+            "preferred_weapons": ["Folded carbide battle axe", "Crysteel battle axe", "Vibro-axe"],
+            "ability_rotation": [
+                "1. Gap-Closer Opener: Melee Charge (dist 2-4) to close distance instantly and daze target.",
+                "2. Limb Severing: Dismember adjacent enemies to sever limbs and inflict severe bleed.",
+                "3. Armor Shred: Cleave adjacent enemies to permanently reduce their AV.",
+                "4. Lethal Finisher: Decapitate or Berserk on wounded targets."
+            ]
         }
     },
 
@@ -142,7 +153,12 @@ BUILD_TEMPLATES = {
             "open_combat_action": "Open fire with Akimbo dual pistols at range 4-6",
             "close_contact_policy": "Disarm opponent if armed, cycle Chain Fire",
             "melee_engagement": "Point blank pistol bursts",
-            "preferred_weapons": ["Border revolver", "Semi-automatic pistol", "Chain pistol"]
+            "preferred_weapons": ["Border revolver", "Semi-automatic pistol", "Chain pistol"],
+            "ability_rotation": [
+                "1. Weapon Denial: Disarming Shot (dist 2-8) to knock ranged/melee weapons out of enemy hands.",
+                "2. High Burst Volley: Chain Fire (dist 2-6) to unleash rapid-fire lead storm into target.",
+                "3. Sustained Fire: FIRE_MISSILE at optimal distance (dist 2-6)."
+            ]
         }
     },
 
@@ -180,10 +196,17 @@ BUILD_TEMPLATES = {
         "mutation_priorities": ["LightManipulation", "SunderMind", "Cryokinesis", "Pyrokinesis", "StunningForce", "Teleportation", "ForceBubble"],
         "combat_doctrine": {
             "doctrine_name": "Psychic Dominion",
-            "open_combat_action": "Fire Lase laser beams (Light Manipulation) / Sunder Mind / Cryokinesis immediately from range (up to 25 tiles) until targets are annihilated. NEVER walk towards enemies when ranged abilities are ready",
+            "open_combat_action": "Cycle through psychic abilities in rotation: Stunning Force to daze/stop advancing enemies, Sunder Mind against heavy threats, and Lase laser beams for sustained DPS. Pop Force Bubble or Teleport Other if pressed into melee.",
             "close_contact_policy": "Pop Force Bubble or cast Stunning Force to blast enemies away, then resume ranged fire",
             "melee_engagement": "Strictly avoid; blast enemies at range with psychic mutations",
-            "preferred_weapons": ["Light mental focus weapons", "Shield", "Torch"]
+            "preferred_weapons": ["Light mental focus weapons", "Shield", "Torch"],
+            "ability_rotation": [
+                "1. Opener & Crowd Control: Cast Stunning Force (dist 3-8) to stun, daze, and blast advancing enemies backward.",
+                "2. Heavy Lethal Channel: Sunder Mind (dist 2-25) against tough, elite, or armored enemies.",
+                "3. Sustained Beam Assault: Fire Lase laser beams (dist 1-25, charges permitting) to eliminate targets at range.",
+                "4. Elemental Damage: Cast Cryokinesis / Pyrokinesis / Rays to burn or freeze hostile zones.",
+                "5. Emergency Close Defense: When enemies breach within dist <= 2, pop Force Bubble, cast Teleport Other to banish them, or use Intimidate to make them flee."
+            ]
         }
     },
 
@@ -226,7 +249,13 @@ BUILD_TEMPLATES = {
             "open_combat_action": "Fire heavy ordnance or advance behind raised tower shield",
             "close_contact_policy": "Shield Slam to knock down enemies, hold frontline",
             "melee_engagement": "Face-tank and trade blows while completely mitigating damage",
-            "preferred_weapons": ["Tower shield", "Folded carbide long sword", "Chain gun"]
+            "preferred_weapons": ["Tower shield", "Folded carbide long sword", "Chain gun"],
+            "ability_rotation": [
+                "1. Suppressive Barrage: Heavy Weapons fire (dist 3-10) to stagger enemy approaches.",
+                "2. Melee Stun Bash: Shield Slam adjacent enemies to stun and daze them.",
+                "3. Weapon Denial: Swipe / Disarm adjacent enemies to disarm their primary weapon.",
+                "4. Defensive Stance: Maintain Duelist Stance for maximum parry and AV."
+            ]
         }
     }
 }

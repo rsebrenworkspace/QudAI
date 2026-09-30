@@ -226,10 +226,21 @@ def get_adjacent_threats(surroundings):
     return adj
 
 
+def is_ability_ready(ab):
+    """Checks if an ability is enabled, usable, off cooldown, and has available charges (not '0 charges')."""
+    if not ab or not ab.get("usable", True) or ab.get("cooldown", 0) > 0 or ab.get("active", False):
+        return False
+    name = ab.get("name", "").lower()
+    # Check for depleted charges like 'Lase (0 charges)'
+    if "0 charge" in name or "(0 charges)" in name:
+        return False
+    return True
+
+
 def find_ready_ability(abilities, keywords):
     """Finds an enabled, usable ability off cooldown matching any keyword in name or command."""
     for ab in abilities:
-        if ab.get("usable", True) and ab.get("cooldown", 0) <= 0 and not ab.get("active", False):
+        if is_ability_ready(ab):
             name = ab.get("name", "").lower()
             cmd = ab.get("command", "").lower()
             if any(k in name or k in cmd for k in keywords):
@@ -288,7 +299,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     # Format ready combat abilities
     ready_abilities = []
     for ab in abilities:
-        if ab.get("usable", True) and ab.get("cooldown", 0) <= 0 and not ab.get("active", False):
+        if is_ability_ready(ab):
             name = ab.get("name", "")
             cmd = ab.get("command", "")
             combined = f"{name} {cmd}".lower()
@@ -299,6 +310,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                     ready_abilities.append("- Sprint: Ready (Action: ACTIVATE_SPRINT)")
             elif name and cmd:
                 ready_abilities.append(f"- {name}: Ready (Action: USE_ABILITY:{cmd})")
+        elif "0 charge" in ab.get("name", "").lower():
+            ready_abilities.append(f"- {ab.get('name')}: Empty charges (Recharging...)")
     if is_sprinting:
         ready_abilities.append("- Sprinting: ACTIVE (+Double Move Speed!)")
     ability_str = "\n".join(ready_abilities) if ready_abilities else "None off cooldown"
@@ -338,23 +351,29 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
             elif len(adj_threats) == 1 and not open_moves:
                 action_choices.append(f"FIRE_MISSILE@{c_tx},{c_ty} (Point-blank blast at {c_name})")
 
-        # B. Ranged Mental & Beam Abilities (Lase, Sunder Mind, Freezing Ray, etc.)
+        # B. Ranged Mental & Beam Abilities (Stunning Force CC opener, Sunder Mind execution, Lase sustained DPS, etc.)
         for ab in abilities:
-            if ab.get("usable", True) and ab.get("cooldown", 0) <= 0 and not ab.get("active", False) and ab.get("command"):
+            if is_ability_ready(ab) and ab.get("command"):
                 name = ab.get("name", "")
                 cmd = ab.get("command", "")
                 combined = f"{name} {cmd}".lower()
                 if any(nc in combined for nc in NON_COMBAT_KEYWORDS) or "sprint" in combined:
                     continue
 
-                if any(ray in combined for ray in ["freezingray", "flamingray", "spitpoison", "cryokinesis", "pyrokinesis", "lase", "stunningforce", "stunning force", "syphonvim", "syphon vim", "sundermind", "sunder mind"]):
+                if any(ray in combined for ray in ["freezingray", "flamingray", "spitpoison", "cryokinesis", "pyrokinesis", "lase", "stunningforce", "stunning force", "syphonvim", "syphon vim", "sundermind", "sunder mind", "chainfire", "disarmingshot"]):
                     if closest and c_dist <= 25 and s_dir:
-                        if "lase" in combined:
-                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Focus Light Manipulation laser beam at {c_name} {s_dir} - PRIMARY OFFENSIVE ATTACK)")
+                        if "stunning" in combined:
+                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast Stunning Force concussive blast - OPENER CC: Stun & knock back {c_name} {s_dir})")
                         elif "sunder" in combined:
-                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Channel Sunder Mind against {c_name} {s_dir} - LETHAL PSYCHIC CRUSH)")
-                        elif "stunning" in combined:
-                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast Stunning Force concussive blast at {c_name} {s_dir})")
+                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Channel Sunder Mind against {c_name} {s_dir} - HEAVY MENTAL EXECUTION)")
+                        elif "lase" in combined:
+                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Focus Light Manipulation laser beam at {c_name} {s_dir} - SUSTAINED BEAM DPS)")
+                        elif "chainfire" in combined:
+                            action_choices.append(f"USE_ABILITY:{cmd} (Unleash Chain Fire lead storm - HIGH BURST VOLLEY)")
+                        elif "disarmingshot" in combined:
+                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Disarming Shot at {c_name} {s_dir} - WEAPON DENIAL)")
+                        elif "freezingray" in combined or "freezing ray" in combined:
+                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast Freezing Ray at {c_name} {s_dir} - FREEZE CC)")
                         else:
                             action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast {name} at {c_name} {s_dir})")
 
@@ -365,7 +384,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
 
         # B. Melee targeted abilities (Dismember, Cleave, Shield Slam, Swipe) & Gap-closers
         for ab in abilities:
-            if ab.get("usable", True) and ab.get("cooldown", 0) <= 0 and not ab.get("active", False) and ab.get("command"):
+            if is_ability_ready(ab) and ab.get("command"):
                 name = ab.get("name", "")
                 cmd = ab.get("command", "")
                 combined = f"{name} {cmd}".lower()
@@ -375,14 +394,14 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 if any(mta in combined for mta in ["dismember", "cleave", "shieldslam", "slam", "swipe", "decapitate"]):
                     if adj_threats:
                         for d, ename in adj_threats.items():
-                            action_choices.append(f"USE_ABILITY:{cmd}:{d} (Execute {name} on {ename} {d})")
+                            action_choices.append(f"USE_ABILITY:{cmd}:{d} (Execute {name} on {ename} {d} - MELEE BURST & BLEED)")
                 elif any(cg in combined for cg in ["charge", "meleecharge", "chargingstrike", "lunge"]):
                     if closest and 2 <= c_dist <= 4 and not adj_threats and s_dir:
-                        action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Charge at {c_name} {s_dir} to close gap and daze)")
+                        action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Charge at {c_name} {s_dir} - GAP-CLOSER OPENER: Close gap & daze)")
                 elif any(touch in combined for touch in ["teleportother", "teleport other"]):
-                    if adj_threats or (closest and c_dist <= 1):
+                    if adj_threats or (closest and c_dist <= 2):
                         t_dir = list(adj_threats.keys())[0] if adj_threats else s_dir
-                        action_choices.append(f"USE_ABILITY:{cmd}:{t_dir} (Banish adjacent threat with Teleport Other {t_dir})")
+                        action_choices.append(f"USE_ABILITY:{cmd}:{t_dir} (EMERGENCY BANISH: Cast Teleport Other on adjacent threat {t_dir} across map)")
                 elif "disarm" in combined:
                     if adj_threats:
                         for d, ename in adj_threats.items():
@@ -390,7 +409,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
 
         # 3. DEFENSIVE & BUFF ABILITIES (Force Bubble, Phasing, Intimidate)
         for ab in abilities:
-            if ab.get("usable", True) and ab.get("cooldown", 0) <= 0 and not ab.get("active", False) and ab.get("command"):
+            if is_ability_ready(ab) and ab.get("command"):
                 name = ab.get("name", "")
                 cmd = ab.get("command", "")
                 combined = f"{name} {cmd}".lower()
@@ -400,6 +419,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 if any(k in combined for k in [
                     "freezingray", "flamingray", "spitpoison", "cryokinesis", "pyrokinesis",
                     "lase", "stunningforce", "stunning force", "syphonvim", "syphon vim", "sundermind", "sunder mind",
+                    "chainfire", "disarmingshot",
                     "dismember", "cleave", "shieldslam", "slam", "swipe", "decapitate",
                     "charge", "meleecharge", "chargingstrike", "lunge",
                     "teleportother", "teleport other", "disarm"
@@ -407,9 +427,9 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                     continue
                 if "intimidate" in combined:
                     if adj_threats or (closest and c_dist <= 2):
-                        action_choices.append(f"USE_ABILITY:{cmd} (Intimidate close threats)")
+                        action_choices.append(f"USE_ABILITY:{cmd} (EMERGENCY FEAR: Terrify close threats with Intimidate)")
                 else:
-                    action_choices.append(f"USE_ABILITY:{cmd} (Activate {name})")
+                    action_choices.append(f"USE_ABILITY:{cmd} (Activate {name} - DEFENSIVE BARRIER)")
 
         # 4. RELOADING: Strictly forbidden in melee range
         if has_mw and ammo < max_ammo and inv_ammo > 0 and not adj_threats:
@@ -443,6 +463,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     close_policy = doctrine.get("close_contact_policy", "Manage distance")
     pref_range = template.get("preferred_range", 4)
     strengths_str = "\n".join(f"   - {s}" for s in strengths)
+    rot_list = doctrine.get("ability_rotation", [])
+    rot_str = "\n".join(f"   {r}" for r in rot_list) if rot_list else "   - Use class abilities when in range."
 
     system_prompt = (
         f"You are an expert tactical AI controlling a {class_name} ({archetype}) in Caves of Qud.\n"
@@ -450,10 +472,11 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
         f"CLASS TACTICAL DOCTRINE ({doctrine_name.upper()} - Preferred Range: {pref_range} tiles):\n"
         f"1. PRIMARY COMBAT GOAL: {open_action}.\n"
         f"2. ATTACK PRIORITY: If an offensive action (Missile Snipe, Lase, Sunder Mind, Ray, Charge, or Melee Attack) is listed in VALID ACTIONS, YOU MUST ATTACK. Never waste a turn walking toward an enemy when you can already fire, lase, or blast them from your current tile!\n"
-        f"3. CLOSE CONTACT POLICY: {close_policy}.\n"
-        f"4. CLASS STRENGTHS TO EXPLOIT:\n{strengths_str}\n"
-        "5. DO NOT ZONE DURING COMBAT: Stay in the current tactical arena. Never run off the map into unknown zones while fighting.\n"
-        "6. TARGET PRIORITY: Prioritize the highest-threat pursuer, elite, or legendary creature.\n"
+        f"3. ABILITY ROTATION & COMBO DOCTRINE:\n{rot_str}\n"
+        f"4. CLOSE CONTACT POLICY: {close_policy}.\n"
+        f"5. CLASS STRENGTHS TO EXPLOIT:\n{strengths_str}\n"
+        "6. DO NOT ZONE DURING COMBAT: Stay in the current tactical arena. Never run off the map into unknown zones while fighting.\n"
+        "7. TARGET PRIORITY: Prioritize the highest-threat pursuer, elite, or legendary creature.\n"
         "Choose exactly ONE optimal action from the provided VALID ACTIONS list.\n"
         "Respond ONLY with valid JSON in this exact structure:\n"
         "{\n"
@@ -620,6 +643,10 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
         if ab_banish and ab_banish.get("command") and s_dir:
             return {"action": f"USE_ABILITY:{ab_banish['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Banishing close hostile {c_name} with Teleport Other ({s_dir})"}
 
+        ab_intimidate = find_ready_ability(abilities, ["intimidate"])
+        if ab_intimidate and ab_intimidate.get("command"):
+            return {"action": f"USE_ABILITY:{ab_intimidate['command']}", "reason": f"[{template['name']} Fallback] Terrifying close hostile with Intimidate"}
+
         ab_teleport = find_ready_ability(abilities, ["teleportation", "phasing"])
         if ab_teleport and ab_teleport.get("command"):
             return {"action": f"USE_ABILITY:{ab_teleport['command']}", "reason": f"[{template['name']} Fallback] Teleporting away from close hostiles"}
@@ -632,32 +659,36 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
     # 2. Long-Range Psychic Assault (Distance >= 1)
     if closest_enemy and closest_dist >= 1:
-        # A. Sunder Mind (Uncapped psychic annihilation)
+        # A. Opener CC: Stunning Force on approaching mobile enemies (dist 3-8)
+        ab_stun = find_ready_ability(abilities, ["stunning force", "stunningforce"])
+        if ab_stun and ab_stun.get("command") and 3 <= closest_dist <= 8 and not is_stationary and s_dir:
+            return {"action": f"USE_ABILITY:{ab_stun['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Blasting approaching {c_name} with Stunning Force CC opener ({s_dir})"}
+
+        # B. Sunder Mind (Uncapped psychic annihilation)
         ab_sunder = find_ready_ability(abilities, ["sunder mind", "sundermind", "sunder"])
-        if ab_sunder and ab_sunder.get("command"):
+        if ab_sunder and ab_sunder.get("command") and s_dir:
             return {"action": f"USE_ABILITY:{ab_sunder['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Channeling Sunder Mind against {c_name} (dist: {closest_dist})"}
 
-        # B. Lase (Light Manipulation focused laser beam - high damage ray)
+        # C. Lase (Light Manipulation focused laser beam - high damage ray)
         ab_lase = find_ready_ability(abilities, ["lase", "light manipulation"])
-        if ab_lase and ab_lase.get("command"):
+        if ab_lase and ab_lase.get("command") and s_dir:
             return {"action": f"USE_ABILITY:{ab_lase['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Firing Lase light beam at {c_name} ({s_dir}, dist: {closest_dist})"}
 
-        # C. Cryokinesis / Pyrokinesis / Ray attacks
+        # D. Cryokinesis / Pyrokinesis / Ray attacks
         ab_elemental = find_ready_ability(abilities, ["cryokinesis", "pyrokinesis", "flaming ray", "freezing ray", "spit poison"])
-        if ab_elemental and ab_elemental.get("command"):
+        if ab_elemental and ab_elemental.get("command") and s_dir:
             return {"action": f"USE_ABILITY:{ab_elemental['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Manifesting {ab_elemental.get('name')} at {c_name} ({s_dir})"}
 
-        # D. Stunning Force (Concussive mental blast - effective at dist <= 8)
-        ab_stun = find_ready_ability(abilities, ["stunning force", "stunningforce"])
-        if ab_stun and ab_stun.get("command") and closest_dist <= 8:
+        # E. Stunning Force (Secondary / Stationary / Close Finisher - dist <= 8)
+        if ab_stun and ab_stun.get("command") and closest_dist <= 8 and s_dir:
             return {"action": f"USE_ABILITY:{ab_stun['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Blasting {c_name} with Stunning Force ({s_dir})"}
 
-        # E. Syphon Vim (Life drain if within 4 tiles)
+        # F. Syphon Vim (Life drain if within 4 tiles)
         ab_syphon = find_ready_ability(abilities, ["syphon vim", "syphonvim"])
-        if ab_syphon and ab_syphon.get("command") and closest_dist <= 4:
+        if ab_syphon and ab_syphon.get("command") and closest_dist <= 4 and s_dir:
             return {"action": f"USE_ABILITY:{ab_syphon['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Draining life force from {c_name} ({s_dir})"}
 
-        # F. Equipped missile weapon fire
+        # G. Equipped missile weapon fire
         if has_missile and ammo > 0 and not adj_threats:
             return {"action": f"FIRE_MISSILE@{c_tx},{c_ty}", "reason": f"[{template['name']} Fallback] Firing ranged weapon at {c_name} while mental cooldowns reset"}
 
@@ -1120,7 +1151,7 @@ def main():
                             action = f"FIRE_MISSILE@{closest.get('tx')},{closest.get('ty')}"
                             reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Forcing missile shot."
                         else:
-                            valid_m = get_valid_moves(surroundings, cur_pos, None)
+                            valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
                             if valid_m:
                                 action = valid_m[0]
                                 reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Forcing reposition {action}."
