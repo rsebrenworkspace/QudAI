@@ -259,6 +259,7 @@ def get_step_direction(from_pos, to_pos):
 
 def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=False):
     valid = []
+    companion_moves = []
     px, py = cur_pos
 
     for dir_key, (dx, dy) in CARDINAL_OFFSETS.items():
@@ -277,7 +278,16 @@ def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=Fals
         if is_in_combat and ("[zone_exit" in text or "exit" in text):
             continue
 
+        # If a friendly companion occupies this adjacent cell, avoid bumping into them
+        if target_pos in CHARMED_COMPANION_COORDS or "[companion" in text:
+            companion_moves.append(move_name)
+            continue
+
         valid.append(move_name)
+
+    # If all open tiles are blocked, allow swapping with companion if available
+    if not valid and companion_moves:
+        return companion_moves
 
     # Emergency: if all moves are zone exits and we have no other escape, allow zone exit
     if is_in_combat and not valid:
@@ -1346,7 +1356,7 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Wait"}
 
 
-def query_decision(game_state, took_damage, enemies):
+def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     global last_action, consecutive_kites
 
     template = build_templates.detect_build(game_state)
@@ -1390,7 +1400,7 @@ def query_decision(game_state, took_damage, enemies):
         ap = game_state.get("ap", 0)
         sp = game_state.get("sp", 0)
         mp = game_state.get("mp", 0)
-        if (ap > 0 or sp >= 50 or mp > 0) and not took_damage:
+        if not suppress_autolevel and (ap > 0 or sp >= 50 or mp > 0) and not took_damage:
             if twitch_manager:
                 top_stat = twitch_manager.get_top_stat()
                 if ap > 0 and top_stat:
@@ -1507,6 +1517,9 @@ def main():
     global action_repeat_count, last_executed_action, last_executed_pos, twitch_manager
 
     twitch_manager = twitch_bot.start_twitch_in_background()
+
+    autolevel_failed_attempts = 0
+    last_autolevel_points = None
 
     print("==================================================")
     print(" Caves of Qud Autonomous Agent (Hierarchical)")
@@ -1641,9 +1654,29 @@ def main():
 
                 print(f"SURROUNDINGS (5x5):\n{grid_display}\n")
 
-                decision = query_decision(game_state, took_damage, enemies)
+                cur_points = (game_state.get("ap", 0), game_state.get("sp", 0), game_state.get("mp", 0))
+                suppress_auto = (autolevel_failed_attempts >= 2 and cur_points == last_autolevel_points)
+
+                decision = query_decision(game_state, took_damage, enemies, suppress_autolevel=suppress_auto)
                 action = decision.get("action", "WAIT")
                 reason = decision.get("reason", "None given")
+
+                if action.startswith("AUTOLEVEL"):
+                    if cur_points == last_autolevel_points:
+                        autolevel_failed_attempts += 1
+                    else:
+                        last_autolevel_points = cur_points
+                        autolevel_failed_attempts = 1
+
+                    if autolevel_failed_attempts >= 2:
+                        print(f"[AUTOLEVEL CIRCUIT BREAKER] Unspent points {cur_points} failed to allocate after {autolevel_failed_attempts} attempts. Suppressing autolevel to prevent loop freeze.")
+                        decision = query_decision(game_state, took_damage, enemies, suppress_autolevel=True)
+                        action = decision.get("action", "WAIT")
+                        reason = decision.get("reason", "None given")
+                else:
+                    if cur_points != last_autolevel_points:
+                        autolevel_failed_attempts = 0
+                        last_autolevel_points = cur_points
 
                 # If Proselytize or Beguile action chosen, immediately register target companion!
                 if "proselytize" in action.lower() or "beguile" in action.lower():

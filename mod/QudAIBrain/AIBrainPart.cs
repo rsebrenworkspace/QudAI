@@ -1169,7 +1169,7 @@ namespace QudAIBrain
             {
                 lastMoveFailed = false;
                 lastFailedDir = "";
-                ExecuteAutolevel(player, act);
+                ExecuteAutolevel(player, action);
                 player.UseEnergy(1000, "Pass");
                 return;
             }
@@ -1622,26 +1622,26 @@ namespace QudAIBrain
 
         private static void ExecuteAutolevel(GameObject player, string command)
         {
-            if (player == null) return;
+            if (player == null || string.IsNullOrEmpty(command)) return;
 
             try
             {
-                // 1. Specific targeted allocations
-                if (command.StartsWith("AUTOLEVEL_STAT:"))
+                // 1. Specific targeted allocations (case-insensitive command parsing)
+                if (command.StartsWith("AUTOLEVEL_STAT:", StringComparison.OrdinalIgnoreCase))
                 {
                     string targetStat = command.Substring(15).Trim();
                     AllocateStat(player, targetStat);
                     return;
                 }
 
-                if (command.StartsWith("AUTOLEVEL_SKILL:"))
+                if (command.StartsWith("AUTOLEVEL_SKILL:", StringComparison.OrdinalIgnoreCase))
                 {
                     string targetSkill = command.Substring(16).Trim();
                     AllocateSkill(player, targetSkill);
                     return;
                 }
 
-                if (command.StartsWith("AUTOLEVEL_MUTATION:"))
+                if (command.StartsWith("AUTOLEVEL_MUTATION:", StringComparison.OrdinalIgnoreCase))
                 {
                     string targetMut = command.Substring(19).Trim();
                     AllocateMutation(player, targetMut);
@@ -1717,16 +1717,37 @@ namespace QudAIBrain
         {
             try
             {
+                if (player == null || string.IsNullOrEmpty(statName)) return false;
+
                 var apStat = player.GetStat("AP");
                 if (apStat == null || apStat.Value <= 0) return false;
 
-                var targetStat = player.GetStat(statName);
+                string[] validStats = new string[] { "Strength", "Agility", "Toughness", "Intelligence", "Willpower", "Ego" };
+                string canonicalStat = validStats.FirstOrDefault(s => string.Equals(s, statName.Trim(), StringComparison.OrdinalIgnoreCase)) ?? statName.Trim();
+
+                var targetStat = player.GetStat(canonicalStat);
+                if (targetStat == null)
+                {
+                    foreach (var s in validStats)
+                    {
+                        if (s.IndexOf(statName.Trim(), StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            targetStat = player.GetStat(s);
+                            if (targetStat != null)
+                            {
+                                canonicalStat = s;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 if (targetStat == null || targetStat.BaseValue >= 100) return false;
 
                 targetStat.BaseValue += 1;
                 apStat.Penalty += 1;
 
-                string msg = $"{{G|[AI Level Up] Allocated 1 AP to {statName} (Now: {targetStat.Value})}}";
+                string msg = $"{{G|[AI Level Up] Allocated 1 AP to {canonicalStat} (Now: {targetStat.Value})}}";
                 MessageQueue.AddPlayerMessage(msg);
                 UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);
                 return true;
@@ -1751,7 +1772,22 @@ namespace QudAIBrain
                 BaseMutation targetMutation = null;
                 if (!string.IsNullOrEmpty(mutationName))
                 {
-                    targetMutation = muts.GetMutation(mutationName);
+                    string target = mutationName.Trim();
+                    targetMutation = muts.GetMutation(target);
+                    if (targetMutation == null && muts.MutationList != null)
+                    {
+                        targetMutation = muts.MutationList.FirstOrDefault(m => m != null && (
+                            string.Equals(m.Name, target, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(m.DisplayName, target, StringComparison.OrdinalIgnoreCase)
+                        ));
+                    }
+                    if (targetMutation == null && muts.ActiveMutationList != null)
+                    {
+                        targetMutation = muts.ActiveMutationList.FirstOrDefault(m => m != null && (
+                            string.Equals(m.Name, target, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(m.DisplayName, target, StringComparison.OrdinalIgnoreCase)
+                        ));
+                    }
                 }
                 else
                 {
@@ -1780,7 +1816,7 @@ namespace QudAIBrain
         {
             try
             {
-                if (player == null || player.HasSkill(skillClass)) return false;
+                if (player == null || string.IsNullOrEmpty(skillClass)) return false;
 
                 int sp = player.Stat("SP", 0);
                 if (sp <= 0) return false;
@@ -1791,14 +1827,21 @@ namespace QudAIBrain
                 var allSkills = SkillFactory.GetSkills();
                 if (allSkills == null) return false;
 
+                string target = skillClass.Trim();
+
                 // Check skill entry
-                SkillEntry sEntry = allSkills.FirstOrDefault(s => s != null && s.Class == skillClass);
+                SkillEntry sEntry = allSkills.FirstOrDefault(s => s != null && (
+                    string.Equals(s.Class, target, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(s.Name, target, StringComparison.OrdinalIgnoreCase)
+                ));
                 if (sEntry != null)
                 {
+                    if (player.HasSkill(sEntry.Class)) return false;
                     if (!sEntry.Initiatory && sEntry.Cost <= sp && sEntry.MeetsRequirements(player, false))
                     {
-                        skills.AddSkill(skillClass);
-                        player.GetStat("SP").Penalty += sEntry.Cost;
+                        skills.AddSkill(sEntry.Class);
+                        var spStat = player.GetStat("SP");
+                        if (spStat != null) spStat.Penalty += sEntry.Cost;
                         string msg = $"{{G|[AI Level Up] Learned Skill: {sEntry.Name} for {sEntry.Cost} SP}}";
                         MessageQueue.AddPlayerMessage(msg);
                         UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);
@@ -1811,13 +1854,18 @@ namespace QudAIBrain
                 foreach (var s in allSkills)
                 {
                     if (s == null || s.PowerList == null) continue;
-                    PowerEntry pEntry = s.PowerList.FirstOrDefault(p => p != null && p.Class == skillClass);
+                    PowerEntry pEntry = s.PowerList.FirstOrDefault(p => p != null && (
+                        string.Equals(p.Class, target, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(p.Name, target, StringComparison.OrdinalIgnoreCase)
+                    ));
                     if (pEntry != null)
                     {
+                        if (player.HasSkill(pEntry.Class)) return false;
                         if (player.HasSkill(s.Class) && pEntry.Cost <= sp && pEntry.MeetsRequirements(player, false))
                         {
-                            skills.AddSkill(skillClass);
-                            player.GetStat("SP").Penalty += pEntry.Cost;
+                            skills.AddSkill(pEntry.Class);
+                            var spStat = player.GetStat("SP");
+                            if (spStat != null) spStat.Penalty += pEntry.Cost;
                             string msg = $"{{G|[AI Level Up] Learned Power: {pEntry.Name} for {pEntry.Cost} SP}}";
                             MessageQueue.AddPlayerMessage(msg);
                             UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);

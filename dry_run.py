@@ -569,7 +569,73 @@ print(f"Decision with stuck autoexplore: {dec_post_osc['action']} | Reason: {dec
 assert dec_post_osc['action'] != "AUTOEXPLORE", "Must NOT call AUTOEXPLORE when zone is in stuck_autoexplore_zones!"
 assert dec_post_osc['action'] == "MOVE_S", f"Expected MOVE_S frontier move, got {dec_post_osc['action']}"
 
+# 20. Test Companion Avoidance in Pathfinding & Autolevel Circuit Breaker
+print("\n--- Test 20: Companion Avoidance & Autolevel Circuit Breaker ---")
+brain.CHARMED_COMPANION_COORDS.clear()
+brain.CHARMED_COMPANION_COORDS.add((65, 17))  # Amoeba at East
+
+water_shore_surroundings = {
+    "NW": "[BLOCKED: deep water]",
+    "N": "[BLOCKED: deep water]",
+    "NE": "[BLOCKED: deep water]",
+    "W": "[BLOCKED: deep water]",
+    "E": "[COMPANION: giant amoeba], puddle of rules",  # Companion East
+    "SW": "[BLOCKED: deep water]",
+    "S": "puddle of rules|1 dram of salty asphalt",     # Open South
+    "SE": "Empty ground",                               # Open South-East
+}
+
+valid_shore_moves = brain.get_valid_moves(water_shore_surroundings, (64, 17), None, is_in_combat=False)
+print(f"Valid moves near water & pet: {valid_shore_moves}")
+assert "MOVE_E" not in valid_shore_moves, f"MOVE_E directly bumps into companion and must be excluded when open moves exist! Got: {valid_shore_moves}"
+assert "MOVE_S" in valid_shore_moves, f"MOVE_S must be open! Got: {valid_shore_moves}"
+assert "MOVE_SE" in valid_shore_moves, f"MOVE_SE must be open! Got: {valid_shore_moves}"
+
+# Test fallback to companion when completely trapped
+trapped_surroundings = {
+    "NW": "[BLOCKED: wall]",
+    "N": "[BLOCKED: wall]",
+    "NE": "[BLOCKED: wall]",
+    "W": "[BLOCKED: wall]",
+    "E": "[COMPANION: giant amoeba]",
+    "SW": "[BLOCKED: wall]",
+    "S": "[BLOCKED: wall]",
+    "SE": "[BLOCKED: wall]",
+}
+trapped_moves = brain.get_valid_moves(trapped_surroundings, (64, 17), None, is_in_combat=False)
+print(f"Trapped moves (companion swap fallback): {trapped_moves}")
+assert trapped_moves == ["MOVE_E"], f"Expected fallback swap MOVE_E when trapped, got {trapped_moves}"
+
+# Test Autolevel Circuit Breaker logic
+stuck_autolevel_state = {
+    "hp": 25, "max_hp": 25, "x": 64, "y": 17, "z": 10,
+    "calling": "Apostle",
+    "ap": 1, "sp": 234, "mp": 3,
+    "attributes": {"Strength": 15, "Agility": 16, "Toughness": 18, "Intelligence": 17, "Willpower": 18, "Ego": 21},
+    "mutations": [
+        {"name": "Clairvoyance", "class": "Clairvoyance", "level": 3, "cap": 3, "can_level": True},
+        {"name": "Light Manipulation", "class": "LightManipulation", "level": 3, "cap": 3, "can_level": True}
+    ],
+    "skills": ["Persuasion_Proselytize"],
+    "surroundings": water_shore_surroundings,
+    "visible_entities": [],
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "zone_fully_explored": False,
+    "zone_id": "JoppaWorld.10.19.1.0.10", "zone_name": "salt marsh"
+}
+
+# Normal query: proposes autolevel
+dec_lvl_normal = brain.query_decision(stuck_autolevel_state, took_damage=False, enemies=[], suppress_autolevel=False)
+print(f"Normal autolevel decision: {dec_lvl_normal['action']} | {dec_lvl_normal['reason']}")
+assert dec_lvl_normal['action'] == "AUTOLEVEL_STAT:Ego", f"Expected AUTOLEVEL_STAT:Ego, got {dec_lvl_normal['action']}"
+
+# Suppressed query (circuit breaker tripped): bypasses autolevel and explores / moves!
+dec_lvl_suppressed = brain.query_decision(stuck_autolevel_state, took_damage=False, enemies=[], suppress_autolevel=True)
+print(f"Circuit breaker suppressed decision: {dec_lvl_suppressed['action']} | {dec_lvl_suppressed['reason']}")
+assert not dec_lvl_suppressed['action'].startswith("AUTOLEVEL"), f"Must not propose autolevel when suppressed! Got: {dec_lvl_suppressed['action']}"
+assert dec_lvl_suppressed['action'] in ("AUTOEXPLORE", "MOVE_S", "MOVE_SE"), f"Expected exploration or movement, got {dec_lvl_suppressed['action']}"
+
 print("\n==================================================")
-print(">>> ALL 19 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 20 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
