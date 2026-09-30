@@ -323,51 +323,22 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
             for d, ename in adj_threats.items():
                 action_choices.append(f"MOVE_{d} (Melee Attack {ename})")
     else:
-        # 1. Ranged Missile Fire (HIGHEST PRIORITY WHEN DISENGAGED AT DISTANCE >= 2)
-        if has_mw and ammo > 0 and enemies:
-            closest = enemies[0]
-            c_name = closest.get('name', 'Enemy')
-            c_dist = closest.get('dist', 0)
-            c_tx = closest.get('tx', 0)
-            c_ty = closest.get('ty', 0)
-            if not adj_threats:
-                action_choices.append(f"FIRE_MISSILE@{c_tx},{c_ty} (Ranged Snipe {c_name} at dist {c_dist} - SAFE RANGED ATTACK)")
-            elif len(adj_threats) == 1 and not open_moves:
-                action_choices.append(f"FIRE_MISSILE@{c_tx},{c_ty} (Point-blank blast at {c_name})")
-
-        # 2. Melee strikes on adjacent enemies
-        for d, ename in adj_threats.items():
-            action_choices.append(f"MOVE_{d} (Melee Attack {ename})")
-
-        # 3. Tactical moves / retreats to open ground
-        for vm in open_moves:
-            vdir = vm[5:]
-            if adj_threats:
-                action_choices.append(f"{vm} (Retreat/Step {vdir} into open ground)")
-            elif not (has_mw and ammo > 0 and enemies):
-                action_choices.append(f"{vm} (Maneuver {vdir})")
-            else:
-                action_choices.append(f"{vm} (Reposition {vdir})")
-
-        # 4. Sprint escapes: ONLY WHEN ADJACENT TO MELEE THREATS!
-        if can_sprint and adj_threats and open_moves:
-            for vm in open_moves:
-                vdir = vm[5:]
-                action_choices.append(f"SPRINT_{vdir} (Sprint & Escape {vdir} into open ground)")
-        elif can_sprint and adj_threats:
-            action_choices.append("ACTIVATE_SPRINT")
-
-        # 5. Reloading: STRICTLY FORBIDDEN IN MELEE RANGE
-        if has_mw and ammo < max_ammo and inv_ammo > 0 and not adj_threats:
-            action_choices.append("RELOAD")
-
-        # 6. Class & Combat abilities
         closest = enemies[0] if enemies else None
         c_dist = closest.get("dist", 999) if closest else 999
         c_name = closest.get("name", "Enemy") if closest else "Enemy"
         c_tx = closest.get("tx", px) if closest else px
         c_ty = closest.get("ty", py) if closest else py
+        s_dir = get_step_direction((px, py), (c_tx, c_ty)) if closest else ""
 
+        # 1. RANGED ATTACKS: Missile Fire & Ranged Mental/Beam Abilities (HIGHEST PRIORITY)
+        # A. Missile Fire
+        if has_mw and ammo > 0 and enemies:
+            if not adj_threats:
+                action_choices.append(f"FIRE_MISSILE@{c_tx},{c_ty} (Ranged Snipe {c_name} at dist {c_dist} - SAFE RANGED ATTACK)")
+            elif len(adj_threats) == 1 and not open_moves:
+                action_choices.append(f"FIRE_MISSILE@{c_tx},{c_ty} (Point-blank blast at {c_name})")
+
+        # B. Ranged Mental & Beam Abilities (Lase, Sunder Mind, Freezing Ray, etc.)
         for ab in abilities:
             if ab.get("usable", True) and ab.get("cooldown", 0) <= 0 and not ab.get("active", False) and ab.get("command"):
                 name = ab.get("name", "")
@@ -376,54 +347,91 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 if any(nc in combined for nc in NON_COMBAT_KEYWORDS) or "sprint" in combined:
                     continue
 
-                # Melee targeted (Dismember, Cleave, Shield Slam, Swipe)
-                if any(mta in combined for mta in ["dismember", "cleave", "shieldslam", "slam", "swipe", "decapitate"]):
-                    if adj_threats:
-                        for d, ename in adj_threats.items():
-                            action_choices.append(f"USE_ABILITY:{cmd}:{d} (Execute {name} on {ename} {d})")
-                    continue
-
-                # Gap-closer / Charge
-                if any(cg in combined for cg in ["charge", "meleecharge", "chargingstrike", "lunge"]):
-                    if closest and 2 <= c_dist <= 4 and not adj_threats:
-                        s_dir = get_step_direction((px, py), (c_tx, c_ty))
-                        action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Charge at {c_name} {s_dir} to close gap and daze)")
-                    continue
-
-                # Beam / Ray / Projectile / Ranged Mental Attacks
                 if any(ray in combined for ray in ["freezingray", "flamingray", "spitpoison", "cryokinesis", "pyrokinesis", "lase", "stunningforce", "stunning force", "syphonvim", "syphon vim", "sundermind", "sunder mind"]):
-                    if closest and 2 <= c_dist <= 18:
-                        s_dir = get_step_direction((px, py), (c_tx, c_ty))
+                    if closest and c_dist <= 25 and s_dir:
                         if "lase" in combined:
                             action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Focus Light Manipulation laser beam at {c_name} {s_dir} - PRIMARY OFFENSIVE ATTACK)")
+                        elif "sunder" in combined:
+                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Channel Sunder Mind against {c_name} {s_dir} - LETHAL PSYCHIC CRUSH)")
                         elif "stunning" in combined:
                             action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast Stunning Force concussive blast at {c_name} {s_dir})")
                         else:
                             action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast {name} at {c_name} {s_dir})")
+
+        # 2. MELEE ATTACKS & MELEE-TARGETED ABILITIES
+        # A. Bump Melee strikes on adjacent enemies
+        for d, ename in adj_threats.items():
+            action_choices.append(f"MOVE_{d} (Melee Attack {ename})")
+
+        # B. Melee targeted abilities (Dismember, Cleave, Shield Slam, Swipe) & Gap-closers
+        for ab in abilities:
+            if ab.get("usable", True) and ab.get("cooldown", 0) <= 0 and not ab.get("active", False) and ab.get("command"):
+                name = ab.get("name", "")
+                cmd = ab.get("command", "")
+                combined = f"{name} {cmd}".lower()
+                if any(nc in combined for nc in NON_COMBAT_KEYWORDS) or "sprint" in combined:
                     continue
 
-                # Touch / adjacent-only abilities (Teleport Other)
-                if any(touch in combined for touch in ["teleportother", "teleport other"]):
+                if any(mta in combined for mta in ["dismember", "cleave", "shieldslam", "slam", "swipe", "decapitate"]):
+                    if adj_threats:
+                        for d, ename in adj_threats.items():
+                            action_choices.append(f"USE_ABILITY:{cmd}:{d} (Execute {name} on {ename} {d})")
+                elif any(cg in combined for cg in ["charge", "meleecharge", "chargingstrike", "lunge"]):
+                    if closest and 2 <= c_dist <= 4 and not adj_threats and s_dir:
+                        action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Charge at {c_name} {s_dir} to close gap and daze)")
+                elif any(touch in combined for touch in ["teleportother", "teleport other"]):
                     if adj_threats or (closest and c_dist <= 1):
                         t_dir = list(adj_threats.keys())[0] if adj_threats else s_dir
                         action_choices.append(f"USE_ABILITY:{cmd}:{t_dir} (Banish adjacent threat with Teleport Other {t_dir})")
-                    continue
-
-                # Short-range Intimidate (dist <= 2)
-                if "intimidate" in combined:
-                    if adj_threats or (closest and c_dist <= 2):
-                        action_choices.append(f"USE_ABILITY:{cmd} (Intimidate close threats)")
-                    continue
-
-                # Disarm
-                if "disarm" in combined:
+                elif "disarm" in combined:
                     if adj_threats:
                         for d, ename in adj_threats.items():
                             action_choices.append(f"USE_ABILITY:{cmd}:{d} (Disarm {ename} {d})")
-                    continue
 
-                # Mental / Self buff / Area (Force Bubble, Phasing, etc.)
-                action_choices.append(f"USE_ABILITY:{cmd} (Activate {name})")
+        # 3. DEFENSIVE & BUFF ABILITIES (Force Bubble, Phasing, Intimidate)
+        for ab in abilities:
+            if ab.get("usable", True) and ab.get("cooldown", 0) <= 0 and not ab.get("active", False) and ab.get("command"):
+                name = ab.get("name", "")
+                cmd = ab.get("command", "")
+                combined = f"{name} {cmd}".lower()
+                if any(nc in combined for nc in NON_COMBAT_KEYWORDS) or "sprint" in combined:
+                    continue
+                # Skip if already handled in categories 1 or 2
+                if any(k in combined for k in [
+                    "freezingray", "flamingray", "spitpoison", "cryokinesis", "pyrokinesis",
+                    "lase", "stunningforce", "stunning force", "syphonvim", "syphon vim", "sundermind", "sunder mind",
+                    "dismember", "cleave", "shieldslam", "slam", "swipe", "decapitate",
+                    "charge", "meleecharge", "chargingstrike", "lunge",
+                    "teleportother", "teleport other", "disarm"
+                ]):
+                    continue
+                if "intimidate" in combined:
+                    if adj_threats or (closest and c_dist <= 2):
+                        action_choices.append(f"USE_ABILITY:{cmd} (Intimidate close threats)")
+                else:
+                    action_choices.append(f"USE_ABILITY:{cmd} (Activate {name})")
+
+        # 4. RELOADING: Strictly forbidden in melee range
+        if has_mw and ammo < max_ammo and inv_ammo > 0 and not adj_threats:
+            action_choices.append("RELOAD")
+
+        # 5. SPRINT ESCAPES: Only when adjacent to melee threats
+        if can_sprint and adj_threats and open_moves:
+            for vm in open_moves:
+                vdir = vm[5:]
+                action_choices.append(f"SPRINT_{vdir} (Sprint & Escape {vdir} into open ground)")
+        elif can_sprint and adj_threats:
+            action_choices.append("ACTIVATE_SPRINT")
+
+        # 6. TACTICAL REPOSITIONING & MANEUVERS
+        for vm in open_moves:
+            vdir = vm[5:]
+            if adj_threats:
+                action_choices.append(f"{vm} (Retreat/Step {vdir} into open ground)")
+            elif not (has_mw and ammo > 0 and enemies):
+                action_choices.append(f"{vm} (Maneuver {vdir})")
+            else:
+                action_choices.append(f"{vm} (Reposition {vdir})")
 
     ancestral_lore = chronicler.format_ancestral_memory_for_prompt()
     class_name = template.get("name", "Nomad Wanderer")
@@ -441,10 +449,11 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
         f"{ancestral_lore}\n\n"
         f"CLASS TACTICAL DOCTRINE ({doctrine_name.upper()} - Preferred Range: {pref_range} tiles):\n"
         f"1. PRIMARY COMBAT GOAL: {open_action}.\n"
-        f"2. CLOSE CONTACT POLICY: {close_policy}.\n"
-        f"3. CLASS STRENGTHS TO EXPLOIT:\n{strengths_str}\n"
-        "4. DO NOT ZONE DURING COMBAT: Stay in the current tactical arena. Never run off the map into unknown zones while fighting.\n"
-        "5. TARGET PRIORITY: Prioritize the highest-threat pursuer, elite, or legendary creature.\n"
+        f"2. ATTACK PRIORITY: If an offensive action (Missile Snipe, Lase, Sunder Mind, Ray, Charge, or Melee Attack) is listed in VALID ACTIONS, YOU MUST ATTACK. Never waste a turn walking toward an enemy when you can already fire, lase, or blast them from your current tile!\n"
+        f"3. CLOSE CONTACT POLICY: {close_policy}.\n"
+        f"4. CLASS STRENGTHS TO EXPLOIT:\n{strengths_str}\n"
+        "5. DO NOT ZONE DURING COMBAT: Stay in the current tactical arena. Never run off the map into unknown zones while fighting.\n"
+        "6. TARGET PRIORITY: Prioritize the highest-threat pursuer, elite, or legendary creature.\n"
         "Choose exactly ONE optimal action from the provided VALID ACTIONS list.\n"
         "Respond ONLY with valid JSON in this exact structure:\n"
         "{\n"
@@ -621,8 +630,8 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
                 return {"action": f"SPRINT_{r_dir}", "reason": f"[{template['name']} Fallback] Sprint kiting away from fragile melee engagement"}
             return {"action": open_moves[0], "reason": f"[{template['name']} Fallback] Backpedaling away from melee threat"}
 
-    # 2. Long-Range Psychic Assault (Distance >= 2)
-    if closest_enemy and closest_dist >= 2:
+    # 2. Long-Range Psychic Assault (Distance >= 1)
+    if closest_enemy and closest_dist >= 1:
         # A. Sunder Mind (Uncapped psychic annihilation)
         ab_sunder = find_ready_ability(abilities, ["sunder mind", "sundermind", "sunder"])
         if ab_sunder and ab_sunder.get("command"):
@@ -836,7 +845,7 @@ def query_decision(game_state, took_damage, enemies):
     abilities = game_state.get("abilities", [])
 
     adj_threats = get_adjacent_threats(surroundings)
-    close_threats = [e for e in enemies if e.get("dist", 999) <= 18]
+    close_threats = [e for e in enemies if e.get("dist", 999) <= 20]
     engine_hostiles = game_state.get("hostiles_nearby", False) or game_state.get("hostiles_adjacent", False)
     is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
 
@@ -1058,7 +1067,7 @@ def main():
                 surroundings = game_state.get("surroundings", {})
                 grid_display = render_5x5_grid(surroundings)
                 adj_threats = get_adjacent_threats(surroundings)
-                close_threats = [e for e in enemies if e.get("dist", 999) <= 18]
+                close_threats = [e for e in enemies if e.get("dist", 999) <= 20]
                 engine_hostiles = game_state.get("hostiles_nearby", False) or game_state.get("hostiles_adjacent", False)
                 is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
                 mode_str = "[COMBAT]" if is_in_combat else "[EXPLORE]"

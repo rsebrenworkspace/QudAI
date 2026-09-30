@@ -160,7 +160,7 @@ BUILD_TEMPLATES = {
             "Psychic Glimmer attracts interdimensional psychic hunters and assassin clones",
             "Physically frail with low Strength and carry weight"
         ],
-        "preferred_range": 8,
+        "preferred_range": 15,
         "stat_priorities": [
             {"stat": "Ego", "target": 24, "reason": "Mental mutation power and penetration scale with Ego"},
             {"stat": "Willpower", "target": 24, "reason": "Drastic cooldown reductions for mental abilities"},
@@ -180,7 +180,7 @@ BUILD_TEMPLATES = {
         "mutation_priorities": ["LightManipulation", "SunderMind", "Cryokinesis", "Pyrokinesis", "StunningForce", "Teleportation", "ForceBubble"],
         "combat_doctrine": {
             "doctrine_name": "Psychic Dominion",
-            "open_combat_action": "Fire Lase laser beams (Light Manipulation) / Sunder Mind / Cryokinesis from range until targets are annihilated",
+            "open_combat_action": "Fire Lase laser beams (Light Manipulation) / Sunder Mind / Cryokinesis immediately from range (up to 25 tiles) until targets are annihilated. NEVER walk towards enemies when ranged abilities are ready",
             "close_contact_policy": "Pop Force Bubble or cast Stunning Force to blast enemies away, then resume ranged fire",
             "melee_engagement": "Strictly avoid; blast enemies at range with psychic mutations",
             "preferred_weapons": ["Light mental focus weapons", "Shield", "Torch"]

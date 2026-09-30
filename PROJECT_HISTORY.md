@@ -191,12 +191,14 @@
   2. **Premature Combat Exit:** In `brain.py`, `close_threats` was hardcoded to `dist <= 10`. The moment the enemy was pushed to distance 10+, `is_in_combat` evaluated to `False`, immediately triggering Phase A `AUTOEXPLORE`. Native Autoexplore began pathfinding to unexplored tiles to the north, abandoning the surviving hostile.
   3. **Touch-Range & Non-Combat Abilities Polluting Prompt:** Dialogue and touch abilities (`Proselytize`, `Teleport Other`, `Intimidate`) were presented to LM Studio as valid combat choices at distance 10, causing the model to attempt recruitment rather than firing `Lase`.
 - **Refinements Implemented:**
-  - Expanded `close_threats` and tactical engagement ceiling from 10 to 18 tiles to maintain combat lock across full screen view distance.
+  - Expanded `close_threats` and tactical engagement ceiling from 10 to 20 tiles to maintain combat lock across full screen view distance and prevent zoning or premature autoexplore.
   - Added `proselytize`, `beguile`, and `berate` to `NON_COMBAT_KEYWORDS`.
   - Filtered touch-only abilities (`Teleport Other` restricted to adjacent, `Intimidate` to distance $\le 2$).
-  - Highlighted `Light Manipulation` (`Lase`) as the primary offensive beam attack in `build_templates.py` and labeled it `PRIMARY OFFENSIVE ATTACK` in LLM action formatting.
+  - Reordered `VALID ACTIONS` in `query_llm_decision`: Ranged attacks (`FIRE_MISSILE`, `CommandLase`, `CommandSunderMind`, elemental rays) are now prepended at the very top of the list, before movement options, preventing smaller LLMs from defaulting to movement options.
+  - Added strict ATTACK PRIORITY doctrine to LLM system prompt: character must attack when an offensive ability or missile is ready rather than wasting turns repositioning.
+  - Updated Esper Mindflayer preferred range to 15 tiles and doctrine to fire Lase immediately at any range up to 25 tiles.
   - Added automatic direction vector injection in `query_llm_decision` if the LLM returns `USE_ABILITY:CommandLase` without direction.
-  - Overhauled stationary enemy handling in `fallback_esper` to hold ground and recharge laser charges rather than wandering off.
+  - Overhauled stationary enemy handling in `fallback_esper` to hold ground and recharge laser charges rather than wandering off, and enabled psychic assault at distance $\ge 1$.
 
 ---
 
