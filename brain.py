@@ -87,17 +87,32 @@ CHARMED_COMPANION_NAMES = set()
 CHARMED_COMPANION_COORDS = set()
 
 
+def is_companion_name(ename, comp_names):
+    """Checks if an entity name strictly matches a known companion name or full creature species."""
+    if not ename or not comp_names:
+        return False
+    elower = ename.strip().lower()
+    for cn in comp_names:
+        if not cn:
+            continue
+        cn_lower = cn.strip().lower()
+        if elower == cn_lower:
+            return True
+        if elower.endswith(" " + cn_lower) or cn_lower.endswith(" " + elower):
+            return True
+    return False
+
+
 def register_companion(name=None, coord=None):
     """Registers an allied companion into memory for 0-latency friendly fire immunity."""
     if name:
         clean = name.strip().lower()
-        # Strip qud formatting tags if present
         clean = re.sub(r'\{\{[^}]*\}\}', '', clean).strip()
+        # Strictly reject non-creatures, liquids, terrain, and plants
+        if any(bad in clean for bad in ["pool of", "puddle of", "dram", "drams", "ground", "wall", "watervine", "glowpad", "brinestalk", "rules"]):
+            return
         if clean:
             CHARMED_COMPANION_NAMES.add(clean)
-            for word in re.findall(r'[a-z]{4,}', clean):
-                if word not in {"flying", "injured", "bloody", "young", "giant"}:
-                    CHARMED_COMPANION_NAMES.add(word)
     if coord and coord[0] is not None and coord[1] is not None:
         CHARMED_COMPANION_COORDS.add((coord[0], coord[1]))
 
@@ -111,7 +126,11 @@ def is_proselytizable(entity, companions=None):
     if entity.get("can_proselytize") is False:
         return False
     ename = entity.get("name", "").lower()
-    if CHARMED_COMPANION_NAMES and any(cn in ename for cn in CHARMED_COMPANION_NAMES):
+    bp = entity.get("blueprint", "").lower()
+    combined = f"{ename} {bp}"
+    if any(ex in combined for ex in PROSELYTIZE_EXCLUSIONS):
+        return False
+    if is_companion_name(ename, CHARMED_COMPANION_NAMES):
         return False
     etx, ety = entity.get("tx"), entity.get("ty")
     if (etx, ety) in CHARMED_COMPANION_COORDS:
@@ -121,13 +140,8 @@ def is_proselytizable(entity, companions=None):
         if (etx, ety) in comp_coords:
             return False
         comp_names = {c.get("name", "").lower() for c in companions if c.get("name")}
-        if any(cn in ename for cn in comp_names if len(cn) > 2):
+        if is_companion_name(ename, comp_names):
             return False
-    name = entity.get("name", "").lower()
-    bp = entity.get("blueprint", "").lower()
-    combined = f"{name} {bp}"
-    if any(ex in combined for ex in PROSELYTIZE_EXCLUSIONS):
-        return False
     return True
 
 current_zone_id = None
@@ -280,12 +294,9 @@ def get_adjacent_threats(surroundings, companions=None):
     comp_names = set(CHARMED_COMPANION_NAMES)
     if companions:
         for c in companions:
-            cname = c.get("name", "").lower()
+            cname = c.get("name", "").strip().lower()
             if cname:
                 comp_names.add(cname)
-                for part in cname.split():
-                    if len(part) > 2:
-                        comp_names.add(part)
 
     for d in ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]:
         text = surroundings.get(d, "")
@@ -294,8 +305,7 @@ def get_adjacent_threats(surroundings, companions=None):
         if "[ENEMY:" in text:
             m = re.search(r"\[ENEMY:\s*([^\]]+)\]", text)
             ename = m.group(1).strip() if m else "Enemy"
-            elower = ename.lower()
-            if comp_names and any(cn in elower for cn in comp_names):
+            if is_companion_name(ename, comp_names):
                 continue
             adj[d] = ename
     return adj
@@ -315,12 +325,9 @@ def filter_hostile_enemies(entities, companions=None):
             cx, cy = c.get("tx"), c.get("ty")
             if cx is not None and cy is not None:
                 comp_coords.add((cx, cy))
-            cname = c.get("name", "").lower()
+            cname = c.get("name", "").strip().lower()
             if cname:
                 comp_names.add(cname)
-                for part in cname.split():
-                    if len(part) > 2:
-                        comp_names.add(part)
 
     result = []
     for e in entities:
@@ -330,8 +337,8 @@ def filter_hostile_enemies(entities, companions=None):
             continue
         if (e.get("tx"), e.get("ty")) in comp_coords:
             continue
-        ename = e.get("name", "").lower()
-        if comp_names and any(cn in ename for cn in comp_names):
+        ename = e.get("name", "")
+        if is_companion_name(ename, comp_names):
             continue
         result.append(e)
     return result
@@ -1453,7 +1460,6 @@ def main():
                 visit_counts[cur_pos] += 1
 
                 companions = game_state.get("companions", [])
-                # Update companion registry from game state and visible entities
                 current_comp_coords = set()
                 for c in companions:
                     cx, cy = c.get("tx"), c.get("ty")
@@ -1463,18 +1469,21 @@ def main():
 
                 raw_entities = game_state.get("visible_entities", [])
                 for e in raw_entities:
-                    ename = e.get("name", "").lower()
-                    if e.get("is_companion", False) or (CHARMED_COMPANION_NAMES and any(cn in ename for cn in CHARMED_COMPANION_NAMES)):
+                    if e.get("is_companion", False):
                         ex, ey = e.get("tx"), e.get("ty")
                         if ex is not None and ey is not None:
                             current_comp_coords.add((ex, ey))
                             register_companion(e.get("name"), (ex, ey))
+                    elif is_companion_name(e.get("name"), CHARMED_COMPANION_NAMES):
+                        ex, ey = e.get("tx"), e.get("ty")
+                        if ex is not None and ey is not None:
+                            current_comp_coords.add((ex, ey))
 
                 CHARMED_COMPANION_COORDS.clear()
                 CHARMED_COMPANION_COORDS.update(current_comp_coords)
 
-                if companions or CHARMED_COMPANION_NAMES:
-                    c_display = [f"{c.get('name')} (HP {c.get('hp')}/{c.get('max_hp')})" for c in companions] if companions else list(CHARMED_COMPANION_NAMES)
+                if companions:
+                    c_display = [f"{c.get('name')} (HP {c.get('hp')}/{c.get('max_hp')})" for c in companions]
                     print(f"[ALLIED PET]: {', '.join(c_display)}")
 
                 enemies = filter_hostile_enemies(raw_entities, companions)
@@ -1526,12 +1535,12 @@ def main():
                         tgt_name = None
                         for e in raw_entities:
                             if (e.get("tx"), e.get("ty")) == tgt_coord:
-                                tgt_name = e.get("name")
+                                if is_proselytizable(e):
+                                    tgt_name = e.get("name")
                                 break
-                        if not tgt_name:
-                            tgt_name = surroundings.get(p_dir, "")
-                        register_companion(tgt_name, tgt_coord)
-                        print(f"[PET RECRUITED]: Instantly registered {tgt_name or 'creature'} at {tgt_coord} as allied companion!")
+                        if tgt_name:
+                            register_companion(tgt_name, tgt_coord)
+                            print(f"[PET RECRUITED]: Instantly registered {tgt_name} at {tgt_coord} as allied companion!")
 
                 # Enforce: Never execute ACTIVATE_SPRINT twice in a row
                 if action == "ACTIVATE_SPRINT" and last_executed_action == "ACTIVATE_SPRINT":

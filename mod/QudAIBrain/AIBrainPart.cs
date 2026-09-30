@@ -188,6 +188,30 @@ namespace QudAIBrain
             return false;
         }
 
+        public static bool CanBeProselytized(GameObject obj, GameObject player)
+        {
+            if (obj == null || player == null || obj == player || obj.IsPlayer() || !obj.IsAlive) return false;
+            if (IsCompanion(obj, player)) return false;
+            if (obj.Brain == null && !obj.HasPart("Brain")) return false;
+            if (obj.HasPart("Corpse") || obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasPart("Robot")) return false;
+            string bp = obj.Blueprint ?? "";
+            string name = obj.DisplayName ?? "";
+            if (bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                bp.IndexOf("Watervine", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                bp.IndexOf("Brinestalk", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                bp.IndexOf("Brimestalk", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                bp.IndexOf("Starapple", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("Watervine", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("Brinestalk", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("Brimestalk", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("Starapple", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return false;
+            }
+            return true;
+        }
+
         public static bool CheckIsEnemy(GameObject obj, GameObject player)
         {
             if (obj == null || player == null || obj == player || obj.IsPlayer()) return false;
@@ -662,8 +686,7 @@ namespace QudAIBrain
                                     string dir = GetApproximateDirection(px, py, x, y);
                                     bool isCompanion = IsCompanion(obj, player);
                                     bool isEnemy = !isCompanion && CheckIsEnemy(obj, player);
-                                    var objBrain = obj.Brain ?? obj.GetPart<Brain>();
-                                    bool canProselytize = (objBrain != null || obj.HasPart("Brain")) && obj.IsAlive && !obj.HasPart("Plant") && !obj.HasPart("Fungus") && !obj.HasPart("Corpse") && !obj.HasPart("Robot") && !isCompanion;
+                                    bool canProselytize = CanBeProselytized(obj, player);
 
                                     int objLevel = 1;
                                     try { objLevel = obj.Stat("Level", 1); } catch { }
@@ -1116,7 +1139,7 @@ namespace QudAIBrain
                         Cell adjCell = player.CurrentCell.GetCellFromDirection(PreferredDirection, false);
                         if (adjCell != null && adjCell.Objects != null)
                         {
-                            var cand = adjCell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && o.IsAlive && o.Brain != null && !o.HasPart("Corpse") && !o.HasPart("Plant") && !o.HasPart("Fungus") && !o.HasPart("Robot") && !IsCompanion(o, player));
+                            var cand = adjCell.Objects.FirstOrDefault(o => CanBeProselytized(o, player));
                             if (cand != null)
                             {
                                 targetObj = cand;
@@ -1967,12 +1990,18 @@ namespace QudAIBrain
                                 {
                                     if (!AIPlayerTurnPatch.IsCompanion(obj, The.Player) && !obj.HasPart("Plant") && !obj.HasPart("Fungus") && !obj.HasPart("Robot"))
                                     {
-                                        nonPlayer = obj;
-                                        break;
+                                        string bp = obj.Blueprint ?? "";
+                                        if (bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) < 0 &&
+                                            bp.IndexOf("Watervine", StringComparison.OrdinalIgnoreCase) < 0 &&
+                                            bp.IndexOf("Brinestalk", StringComparison.OrdinalIgnoreCase) < 0)
+                                        {
+                                            nonPlayer = obj;
+                                            break;
+                                        }
                                     }
                                 }
                             }
-                            __result = nonPlayer ?? Objects.Find(o => !o.IsPlayer() && !AIPlayerTurnPatch.IsCompanion(o, The.Player)) ?? Objects[0];
+                            __result = nonPlayer ?? Objects.Find(o => !o.IsPlayer() && !AIPlayerTurnPatch.IsCompanion(o, The.Player) && !(o.Blueprint ?? "").Contains("Glowpad")) ?? Objects[0];
                         }
                     }
                 }
