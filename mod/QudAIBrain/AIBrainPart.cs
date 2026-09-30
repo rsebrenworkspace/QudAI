@@ -1528,8 +1528,6 @@ namespace QudAIBrain
                                 {
                                     try { obj.SetIntProperty("AutoexploreSuppressed", 1); } catch { }
                                     try { obj.SetIntProperty("AutoexploreSuppression", 1); } catch { }
-                                    try { obj.SetProperty("AutoexploreSuppressed", "1"); } catch { }
-                                    try { obj.SetProperty("AutoexploreSuppression", "1"); } catch { }
                                     try { obj.SetIntProperty("Autoexplored", 1); } catch { }
                                     UnityEngine.Debug.Log($"[QudAI Autoexplore Oscillation] Suppressed adjacent POI '{obj.DisplayNameOnly}' at {adj.X},{adj.Y}");
                                 }
@@ -1593,8 +1591,6 @@ namespace QudAIBrain
                                 {
                                     try { obj.SetIntProperty("AutoexploreSuppressed", 1); } catch { }
                                     try { obj.SetIntProperty("AutoexploreSuppression", 1); } catch { }
-                                    try { obj.SetProperty("AutoexploreSuppressed", "1"); } catch { }
-                                    try { obj.SetProperty("AutoexploreSuppression", "1"); } catch { }
                                     try { obj.SetIntProperty("Autoexplored", 1); } catch { }
                                     UnityEngine.Debug.Log($"[QudAI Autoexplore Blocked] Suppressed blocking object '{obj.DisplayNameOnly}' in direction {step}");
                                 }
