@@ -184,6 +184,20 @@
     - Added stationary enemy detection (`glowpad`, `turret`, `fungus`) to halt orbit loops and strike decisively.
   - Verified across all 11 multi-class tactical dry run test suites with 100% pass rate.
 
+#### Post-Deployment Telemetry Analysis (Concussive Knockback & Autoexplore Handoff)
+- **Observed Behavior:** The Esper successfully engaged the glowpad with concussive blasts (`Stunning Force`) twice, but did not finish the kill and subsequently started wandering away north without re-engaging.
+- **Root Causes Discovered:**
+  1. **Concussive Knockback Physics:** `Stunning Force` deals bludgeoning concussive damage and physically knocks targets backward. Two blasts pushed the wet glowpad from distance 5 to distance 10.
+  2. **Premature Combat Exit:** In `brain.py`, `close_threats` was hardcoded to `dist <= 10`. The moment the enemy was pushed to distance 10+, `is_in_combat` evaluated to `False`, immediately triggering Phase A `AUTOEXPLORE`. Native Autoexplore began pathfinding to unexplored tiles to the north, abandoning the surviving hostile.
+  3. **Touch-Range & Non-Combat Abilities Polluting Prompt:** Dialogue and touch abilities (`Proselytize`, `Teleport Other`, `Intimidate`) were presented to LM Studio as valid combat choices at distance 10, causing the model to attempt recruitment rather than firing `Lase`.
+- **Refinements Implemented:**
+  - Expanded `close_threats` and tactical engagement ceiling from 10 to 18 tiles to maintain combat lock across full screen view distance.
+  - Added `proselytize`, `beguile`, and `berate` to `NON_COMBAT_KEYWORDS`.
+  - Filtered touch-only abilities (`Teleport Other` restricted to adjacent, `Intimidate` to distance $\le 2$).
+  - Highlighted `Light Manipulation` (`Lase`) as the primary offensive beam attack in `build_templates.py` and labeled it `PRIMARY OFFENSIVE ATTACK` in LLM action formatting.
+  - Added automatic direction vector injection in `query_llm_decision` if the LLM returns `USE_ABILITY:CommandLase` without direction.
+  - Overhauled stationary enemy handling in `fallback_esper` to hold ground and recharge laser charges rather than wandering off.
+
 ---
 
 ## 4. Current Codebase Specification (v1.0.0)
