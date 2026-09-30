@@ -88,6 +88,102 @@ PROSELYTIZE_EXCLUSIONS = {
 CHARMED_COMPANION_NAMES = set()
 CHARMED_COMPANION_COORDS = set()
 
+KNOWN_STAIRS_DOWN = {}   # zone_id -> {"tx": tx, "ty": ty, "z": z, "name": name, "req_level": int}
+KNOWN_STAIRS_UP = {}     # zone_id -> {"tx": tx, "ty": ty, "z": z, "name": name}
+RETREAT_TARGET_LEVEL = None  # Level to attain before re-delving after an emergency retreat
+
+
+def min_level_for_depth(next_z):
+    """
+    Calculates minimum recommended level to delve into a depth stratum.
+    z <= 10: Surface (requires Level 1)
+    z == 11: Stratum 1 (requires Level 3)
+    z >= 12: Stratum 2+ (requires Level 3 + (z - 11) * 2)
+    """
+    if next_z <= 10:
+        return 1
+    if next_z == 11:
+        return 3
+    return 3 + (next_z - 11) * 2
+
+
+def get_best_move_towards(cur_pos, target_pos, valid_moves):
+    """
+    Selects the valid move that gets closest to target_pos (tx, ty).
+    Uses Chebyshev distance primary, Euclidean distance secondary, breaking ties with least-visited coordinates.
+    """
+    if not valid_moves:
+        return None
+    px, py = cur_pos
+    tx, ty = target_pos
+
+    def score_move(m):
+        dx, dy = CARDINAL_OFFSETS[m[5:]]
+        nx, ny = px + dx, py + dy
+        cheb_dist = max(abs(nx - tx), abs(ny - ty))
+        euc_dist_sq = (nx - tx) ** 2 + (ny - ty) ** 2
+        visits = visit_counts.get((nx, ny), 0)
+        return (cheb_dist, euc_dist_sq, visits)
+
+    sorted_moves = sorted(valid_moves, key=score_move)
+    return sorted_moves[0]
+
+
+def update_stair_records(game_state):
+    """
+    Ingests stairs_down and stairs_up telemetry from state.json,
+    maintaining persistent spatial memory of discovered staircases across zones.
+    """
+    zone_id = game_state.get("zone_id", "")
+    cur_z = game_state.get("z", 10)
+    cur_lvl = game_state.get("level", 1)
+
+    # 1. Ingest stairs down from dedicated telemetry
+    raw_sd = game_state.get("stairs_down", [])
+    for sd in raw_sd:
+        stx, sty = sd.get("tx"), sd.get("ty")
+        if stx is not None and sty is not None and zone_id:
+            req_lvl = min_level_for_depth(cur_z + 1)
+            prev = KNOWN_STAIRS_DOWN.get(zone_id)
+            if not prev or prev.get("tx") != stx or prev.get("ty") != sty:
+                sname = sd.get("name", "stairs down")
+                print(f"[STAIRCASE NOTED]: Discovered {sname} at ({stx}, {sty}) in {zone_id}. Delving requires Level {req_lvl} (Current: {cur_lvl}).")
+            KNOWN_STAIRS_DOWN[zone_id] = {
+                "tx": stx, "ty": sty, "z": cur_z, "name": sd.get("name", "stairs down"), "req_level": req_lvl
+            }
+
+    # Fallback to visible_entities for stairs down
+    for ent in game_state.get("visible_entities", []):
+        ename = ent.get("name", "").lower()
+        ebp = ent.get("blueprint", "").lower()
+        if ("stair" in ename or "stair" in ebp or "hole" in ename or "shaft" in ename or "ladder" in ename) and "down" in ename:
+            stx, sty = ent.get("tx"), ent.get("ty")
+            if stx is not None and sty is not None and zone_id and zone_id not in KNOWN_STAIRS_DOWN:
+                req_lvl = min_level_for_depth(cur_z + 1)
+                KNOWN_STAIRS_DOWN[zone_id] = {
+                    "tx": stx, "ty": sty, "z": cur_z, "name": ent.get("name", "stairs down"), "req_level": req_lvl
+                }
+
+    # 2. Ingest stairs up from dedicated telemetry
+    raw_su = game_state.get("stairs_up", [])
+    for su in raw_su:
+        stx, sty = su.get("tx"), su.get("ty")
+        if stx is not None and sty is not None and zone_id:
+            KNOWN_STAIRS_UP[zone_id] = {
+                "tx": stx, "ty": sty, "z": cur_z, "name": su.get("name", "stairs up")
+            }
+
+    # Fallback to visible_entities for stairs up
+    for ent in game_state.get("visible_entities", []):
+        ename = ent.get("name", "").lower()
+        ebp = ent.get("blueprint", "").lower()
+        if ("stair" in ename or "stair" in ebp or "hole" in ename or "shaft" in ename or "ladder" in ename) and "up" in ename:
+            stx, sty = ent.get("tx"), ent.get("ty")
+            if stx is not None and sty is not None and zone_id and zone_id not in KNOWN_STAIRS_UP:
+                KNOWN_STAIRS_UP[zone_id] = {
+                    "tx": stx, "ty": sty, "z": cur_z, "name": ent.get("name", "stairs up")
+                }
+
 
 def is_companion_name(ename, comp_names):
     """Checks if an entity name strictly matches a known companion name or full creature species."""
@@ -1357,7 +1453,9 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
 
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
-    global last_action, consecutive_kites
+    global last_action, consecutive_kites, RETREAT_TARGET_LEVEL
+
+    update_stair_records(game_state)
 
     template = build_templates.detect_build(game_state)
 
@@ -1368,9 +1466,13 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     inv_ammo = game_state.get("inventory_ammo", 0)
     hp = game_state.get("hp", 0)
     max_hp = game_state.get("max_hp", 1)
+    hp_ratio = hp / max(1, max_hp)
     px = game_state.get("x", 0)
     py = game_state.get("y", 0)
     cur_pos = (px, py)
+    zone_id = game_state.get("zone_id", "")
+    cur_z = game_state.get("z", 10)
+    cur_lvl = game_state.get("level", 1)
     abilities = game_state.get("abilities", [])
     companions = game_state.get("companions", [])
 
@@ -1390,11 +1492,47 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
     valid_moves = get_valid_moves(surroundings, cur_pos, last_failed, is_in_combat=is_in_combat)
 
+    # Detect whether character is standing directly on stairs
+    standing_on_sd = game_state.get("standing_on_stairs_down", False)
+    standing_on_su = game_state.get("standing_on_stairs_up", False)
+    center_tile = surroundings.get("CENTER", "").lower()
+    if not standing_on_sd and ("stairs_down" in center_tile or "[stairs_down" in center_tile or ("stair" in center_tile and "down" in center_tile)):
+        standing_on_sd = True
+    if not standing_on_su and ("stairs_up" in center_tile or "[stairs_up" in center_tile or ("stair" in center_tile and "up" in center_tile)):
+        standing_on_su = True
+
+    # ==========================================================
+    # EMERGENCY TACTICAL RETREAT TO STAIRS UP (Underground Defense)
+    # ==========================================================
+    # Trigger when overwhelmed underground (z > 10): critical HP (< 35%), heavy damage (< 45%), or impossible hostiles
+    is_overwhelmed = (cur_z > 10) and (
+        (hp_ratio < 0.35) or
+        (took_damage and hp_ratio < 0.45) or
+        any(e.get("difficulty") == "Impossible" for e in enemies)
+    )
+
+    if is_overwhelmed:
+        if standing_on_su:
+            RETREAT_TARGET_LEVEL = cur_lvl + 1
+            return {"action": "USE_STAIRS_UP", "reason": f"Tactical Retreat: Ascending stairs up to stratum {cur_z - 1} to escape lethal danger! (HP {hp}/{max_hp}, Target Level: {RETREAT_TARGET_LEVEL})"}
+
+        su_info = KNOWN_STAIRS_UP.get(zone_id)
+        if su_info:
+            su_pos = (su_info["tx"], su_info["ty"])
+            best_m = get_best_move_towards(cur_pos, su_pos, valid_moves)
+            if best_m:
+                return {"action": best_m, "reason": f"Tactical Retreat: Fleeing towards stairs up at {su_pos} (HP {hp}/{max_hp}, Stratum {cur_z})"}
+
     # ==========================================================
     # PHASE A: DETERMINISTIC SAFE MODE (Zero Latency / 0ms tokens)
     # ==========================================================
     if not is_in_combat:
         consecutive_kites = 0
+
+        # Check if retreat goal is accomplished
+        if RETREAT_TARGET_LEVEL is not None and cur_lvl >= RETREAT_TARGET_LEVEL:
+            print(f"[TACTICAL COMEBACK]: Attained target Level {cur_lvl} after retreat! Ready to re-delve deeper.")
+            RETREAT_TARGET_LEVEL = None
 
         # 1. Autolevel unspent character points according to class doctrine
         ap = game_state.get("ap", 0)
@@ -1435,7 +1573,6 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             return {"action": "AUTOLEVEL", "reason": f"Safe autoleveling: allocating unspent points (AP:{ap}, SP:{sp}, MP:{mp})"}
 
         # 2. Rest until healed if safe and damaged below threshold (default 75%)
-        hp_ratio = hp / max(1, max_hp)
         if hp_ratio < REST_HP_THRESHOLD and not took_damage:
             pct = int(hp_ratio * 100)
             return {"action": "REST", "reason": f"Safe resting: HP at {pct}% (< {int(REST_HP_THRESHOLD*100)}%)"}
@@ -1444,24 +1581,33 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         if has_missile and max_ammo > 0 and ammo < max_ammo and inv_ammo > 0:
             return {"action": "RELOAD", "reason": f"Safe top-off: reloading rifle ({ammo}/{max_ammo}, Inv: {inv_ammo})"}
 
-        # 4. Autonomous area exploration via Caves of Qud native Autoexplore
+        # 4. Stratum Progression & Staircase Delving (Gated by minimum level)
+        req_depth_lvl = min_level_for_depth(cur_z + 1)
+        can_delve = (cur_lvl >= req_depth_lvl) and (RETREAT_TARGET_LEVEL is None)
+
+        if standing_on_sd:
+            if can_delve:
+                return {"action": "USE_STAIRS_DOWN", "reason": f"Stratum Progression: Descending stairs down to stratum {cur_z + 1} (Level {cur_lvl} >= Req {req_depth_lvl})"}
+            else:
+                print(f"[STAIRCASE GATED]: Standing on stairs down to stratum {cur_z + 1}, but Level {cur_lvl} < Req {req_depth_lvl} (or recovering from retreat). Exploring to gain levels first.")
+
+        # If we know stairs down and are ready to delve, check if we should navigate to them
         is_stuck_explore = (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones)
+        is_zone_cleared = game_state.get("zone_fully_explored", False) or is_stuck_explore
+
+        if can_delve and is_zone_cleared and (zone_id in KNOWN_STAIRS_DOWN):
+            sd_info = KNOWN_STAIRS_DOWN[zone_id]
+            sd_pos = (sd_info["tx"], sd_info["ty"])
+            best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
+            if best_m:
+                delve_type = "Dungeon Delving" if cur_z > 10 else "Dungeon Entry"
+                return {"action": best_m, "reason": f"{delve_type}: Navigating to stairs down at {sd_pos} to delve stratum {cur_z + 1} (Level {cur_lvl} >= Req {req_depth_lvl})"}
+
+        # 5. Autonomous area exploration via Caves of Qud native Autoexplore
         if not game_state.get("zone_fully_explored", False) and not is_stuck_explore:
             return {"action": "AUTOEXPLORE", "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder"}
 
-        # 5. Zone is fully explored -> Search for stairs down, zone transitions, or frontier moves
-        center_tile = surroundings.get("CENTER", "").lower()
-        if "stair" in center_tile and "down" in center_tile:
-            return {"action": "USE_STAIRS_DOWN", "reason": "Zone fully explored: descending stairs down to next stratum"}
-
-        for ent in game_state.get("visible_entities", []):
-            ename = ent.get("name", "").lower()
-            ebp = ent.get("blueprint", "").lower()
-            if ("stair" in ename or "stair" in ebp) and "down" in ename:
-                s_dir = ent.get("dir", "")
-                if s_dir and f"MOVE_{s_dir}" in valid_moves:
-                    return {"action": f"MOVE_{s_dir}", "reason": f"Zone fully explored: navigating towards stairs down ({s_dir})"}
-
+        # 6. Zone is fully explored -> Search for zone transitions, or frontier moves
         exit_moves = [m for m in valid_moves if "[zone_exit" in surroundings.get(m[5:], "").lower() or "exit" in surroundings.get(m[5:], "").lower()]
         if exit_moves:
             return {"action": exit_moves[0], "reason": f"Zone fully explored: transitioning to adjacent zone via {exit_moves[0]}"}

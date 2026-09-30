@@ -269,6 +269,8 @@ assert dec_explore['action'] == "AUTOEXPLORE", f"Expected AUTOEXPLORE, got {dec_
 # 11. Test Zone Fully Explored -> Stairs Down / Zone Transition
 fully_explored_state = dict(safe_state)
 fully_explored_state["hp"] = 24
+fully_explored_state["level"] = 3
+fully_explored_state["zone_id"] = "JoppaWorld.10.19.1.0.10"
 fully_explored_state["zone_fully_explored"] = True
 fully_explored_state["visible_entities"] = [
     {"name": "stairs leading down", "tx": 10, "ty": 9, "dist": 1, "dir": "N", "is_enemy": False}
@@ -635,7 +637,125 @@ print(f"Circuit breaker suppressed decision: {dec_lvl_suppressed['action']} | {d
 assert not dec_lvl_suppressed['action'].startswith("AUTOLEVEL"), f"Must not propose autolevel when suppressed! Got: {dec_lvl_suppressed['action']}"
 assert dec_lvl_suppressed['action'] in ("AUTOEXPLORE", "MOVE_S", "MOVE_SE"), f"Expected exploration or movement, got {dec_lvl_suppressed['action']}"
 
+print("\n--- Test 21: Staircase Gating, Delving, & Tactical Retreat ---")
+brain.KNOWN_STAIRS_DOWN.clear()
+brain.KNOWN_STAIRS_UP.clear()
+brain.RETREAT_TARGET_LEVEL = None
+brain.visit_counts.clear()
+brain.recent_positions.clear()
+brain.stuck_autoexplore_zones.clear()
+
+surface_zone = "JoppaWorld.10.19.1.0.10"
+# Scenario 21.1: Surface stairs down detected at Level 1
+state_surface_lvl1 = {
+    "hp": 20, "max_hp": 20, "x": 10, "y": 10, "z": 10,
+    "level": 1,
+    "zone_id": surface_zone, "zone_name": "salt marsh",
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass", "S": "grass", "E": "grass", "W": "grass", "NE": "grass", "NW": "grass", "SE": "grass", "SW": "grass"},
+    "stairs_down": [{"name": "hole in the ground", "tx": 15, "ty": 12}],
+    "standing_on_stairs_down": False,
+    "visible_entities": []
+}
+# Step 1: Ingest stairs
+brain.update_stair_records(state_surface_lvl1)
+assert surface_zone in brain.KNOWN_STAIRS_DOWN, "Stairs down must be recorded in spatial memory!"
+assert brain.KNOWN_STAIRS_DOWN[surface_zone]["req_level"] == 3, f"Surface stairs down must require Level 3, got {brain.KNOWN_STAIRS_DOWN[surface_zone]['req_level']}"
+
+# Query decision at Level 1 standing near/on stairs:
+# Even if standing directly on stairs down at Level 1, should NOT descend
+state_surface_lvl1_on_stairs = dict(state_surface_lvl1)
+state_surface_lvl1_on_stairs["x"] = 15
+state_surface_lvl1_on_stairs["y"] = 12
+state_surface_lvl1_on_stairs["standing_on_stairs_down"] = True
+dec_gated = brain.query_decision(state_surface_lvl1_on_stairs, took_damage=False, enemies=[])
+print(f"Level 1 on stairs down decision: {dec_gated['action']} | Reason: {dec_gated['reason']}")
+assert dec_gated["action"] != "USE_STAIRS_DOWN", "Level 1 character must NOT descend stairs (gated to Level 3)!"
+
+# Scenario 21.2: Character reaches Level 3, zone fully explored -> Routes back to remembered stairs down (15, 12)
+state_surface_lvl3_cleared = {
+    "hp": 28, "max_hp": 28, "x": 10, "y": 10, "z": 10,
+    "level": 3,
+    "zone_id": surface_zone, "zone_name": "salt marsh",
+    "zone_fully_explored": True,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass", "S": "grass", "E": "grass", "W": "grass", "NE": "grass", "NW": "grass", "SE": "grass", "SW": "grass"},
+    "stairs_down": [{"name": "hole in the ground", "tx": 15, "ty": 12}],
+    "standing_on_stairs_down": False,
+    "visible_entities": []
+}
+dec_route = brain.query_decision(state_surface_lvl3_cleared, took_damage=False, enemies=[])
+print(f"Level 3 cleared zone decision: {dec_route['action']} | Reason: {dec_route['reason']}")
+# From (10, 10) towards (15, 12), best move is SE or E
+assert dec_route["action"] in ("MOVE_SE", "MOVE_E", "MOVE_S"), f"Expected movement towards stairs down, got {dec_route['action']}"
+assert "Navigating to stairs down" in dec_route["reason"] or "Dungeon" in dec_route["reason"]
+
+# Scenario 21.3: Standing on stairs down at Level 3 -> Descend!
+state_surface_lvl3_on_stairs = dict(state_surface_lvl3_cleared)
+state_surface_lvl3_on_stairs["x"] = 15
+state_surface_lvl3_on_stairs["y"] = 12
+state_surface_lvl3_on_stairs["standing_on_stairs_down"] = True
+dec_descend = brain.query_decision(state_surface_lvl3_on_stairs, took_damage=False, enemies=[])
+print(f"Level 3 on stairs down decision: {dec_descend['action']} | Reason: {dec_descend['reason']}")
+assert dec_descend["action"] == "USE_STAIRS_DOWN", f"Expected USE_STAIRS_DOWN, got {dec_descend['action']}"
+
+# Scenario 21.4: Underground (z = 11) with critical HP (< 35%) -> Flees to stairs up & retreats
+stratum1_zone = "JoppaWorld.10.19.1.0.11"
+state_stratum1_retreat = {
+    "hp": 8, "max_hp": 30, "x": 20, "y": 15, "z": 11,  # hp ratio = 8/30 = 26.6% (< 35%)
+    "level": 3,
+    "zone_id": stratum1_zone, "zone_name": "underground",
+    "zone_fully_explored": False,
+    "hostiles_nearby": True, "hostiles_adjacent": False,
+    "surroundings": {"C": "tunnel floor", "N": "tunnel floor", "S": "tunnel floor", "E": "tunnel floor", "W": "tunnel floor"},
+    "stairs_up": [{"name": "iron ladder up", "tx": 20, "ty": 12}],
+    "standing_on_stairs_up": False,
+    "visible_entities": [{"name": "snapjaw hunter", "dist": 3, "tx": 23, "ty": 15, "difficulty": "Tough"}]
+}
+brain.update_stair_records(state_stratum1_retreat)
+assert stratum1_zone in brain.KNOWN_STAIRS_UP, "Stairs up must be recorded in spatial memory!"
+
+# When not standing on stairs up, should flee towards stairs up (20, 12) from (20, 15) -> MOVE_N
+dec_flee_su = brain.query_decision(state_stratum1_retreat, took_damage=True, enemies=[{"name": "snapjaw hunter", "dist": 3, "tx": 23, "ty": 15, "difficulty": "Tough"}])
+print(f"Critical HP underground decision: {dec_flee_su['action']} | Reason: {dec_flee_su['reason']}")
+assert dec_flee_su["action"] == "MOVE_N", f"Expected MOVE_N towards stairs up, got {dec_flee_su['action']}"
+assert "stairs up" in dec_flee_su["reason"].lower()
+
+# When standing on stairs up with critical HP -> USE_STAIRS_UP and sets RETREAT_TARGET_LEVEL = cur_lvl + 1 = 4
+state_stratum1_on_su = dict(state_stratum1_retreat)
+state_stratum1_on_su["x"] = 20
+state_stratum1_on_su["y"] = 12
+state_stratum1_on_su["standing_on_su"] = True
+state_stratum1_on_su["standing_on_stairs_up"] = True
+dec_ascend = brain.query_decision(state_stratum1_on_su, took_damage=True, enemies=[{"name": "snapjaw hunter", "dist": 3, "tx": 23, "ty": 12, "difficulty": "Tough"}])
+print(f"Standing on stairs up decision: {dec_ascend['action']} | Reason: {dec_ascend['reason']}")
+assert dec_ascend["action"] == "USE_STAIRS_UP", f"Expected USE_STAIRS_UP, got {dec_ascend['action']}"
+assert brain.RETREAT_TARGET_LEVEL == 4, f"Expected RETREAT_TARGET_LEVEL to be 4, got {brain.RETREAT_TARGET_LEVEL}"
+
+# Scenario 21.5: Character ascends back to surface (z = 10) to recover.
+# While still Level 3, stairs down are blocked by retreat recovery goal
+state_surface_recovery = dict(state_surface_lvl3_cleared)
+state_surface_recovery["hp"] = 12
+state_surface_recovery["standing_on_stairs_down"] = True
+state_surface_recovery["x"] = 15
+state_surface_recovery["y"] = 12
+dec_rec = brain.query_decision(state_surface_recovery, took_damage=False, enemies=[])
+print(f"Surface recovery at Level 3 decision: {dec_rec['action']} | Reason: {dec_rec['reason']}")
+# Should REST (since hp 12/28 < 75%) and NOT descend because RETREAT_TARGET_LEVEL is 4
+assert dec_rec["action"] != "USE_STAIRS_DOWN", "Must NOT descend while recovering from retreat!"
+
+# Once Level 4 is attained, RETREAT_TARGET_LEVEL clears and character can re-delve
+state_surface_lvl4 = dict(state_surface_recovery)
+state_surface_lvl4["level"] = 4
+state_surface_lvl4["hp"] = 35
+state_surface_lvl4["max_hp"] = 35
+dec_redelve = brain.query_decision(state_surface_lvl4, took_damage=False, enemies=[])
+print(f"Surface at Level 4 (goal met) decision: {dec_redelve['action']} | Reason: {dec_redelve['reason']}")
+assert brain.RETREAT_TARGET_LEVEL is None, "RETREAT_TARGET_LEVEL must clear upon reaching target level!"
+assert dec_redelve["action"] == "USE_STAIRS_DOWN", f"Expected re-descent USE_STAIRS_DOWN at Level 4, got {dec_redelve['action']}"
+
 print("\n==================================================")
-print(">>> ALL 20 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 21 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 

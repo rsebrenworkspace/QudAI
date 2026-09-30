@@ -744,6 +744,21 @@ namespace QudAIBrain
                 // Expanded spatial scan & active target capture
                 sb.Append("\"visible_entities\": [");
                 List<string> entityEntries = new List<string>();
+                List<string> stairsDownEntries = new List<string>();
+                List<string> stairsUpEntries = new List<string>();
+                bool standingOnStairsDown = false;
+                bool standingOnStairsUp = false;
+
+                if (currentCell != null && currentCell.Objects != null)
+                {
+                    foreach (var o in currentCell.Objects)
+                    {
+                        if (o == null || o.IsPlayer()) continue;
+                        if (o.HasPart("StairsDown")) standingOnStairsDown = true;
+                        if (o.HasPart("StairsUp")) standingOnStairsUp = true;
+                    }
+                }
+
                 if (currentCell?.ParentZone != null)
                 {
                     Zone zone = currentCell.ParentZone;
@@ -770,6 +785,16 @@ namespace QudAIBrain
 
                                     int dist = Math.Max(Math.Abs(x - px), Math.Abs(y - py));
                                     string dir = GetApproximateDirection(px, py, x, y);
+
+                                    if (obj.HasPart("StairsDown"))
+                                    {
+                                        stairsDownEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}}}");
+                                    }
+                                    if (obj.HasPart("StairsUp"))
+                                    {
+                                        stairsUpEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}}}");
+                                    }
+
                                     bool isCompanion = IsCompanion(obj, player);
                                     bool isEnemy = !isCompanion && CheckIsEnemy(obj, player);
                                     bool canProselytize = CanBeProselytized(obj, player);
@@ -823,6 +848,10 @@ namespace QudAIBrain
                 }
                 sb.Append(string.Join(",", entityEntries));
                 sb.Append("],");
+                sb.Append($"\"standing_on_stairs_down\": {(standingOnStairsDown ? "true" : "false")},");
+                sb.Append($"\"standing_on_stairs_up\": {(standingOnStairsUp ? "true" : "false")},");
+                sb.Append($"\"stairs_down\": [{string.Join(",", stairsDownEntries)}],");
+                sb.Append($"\"stairs_up\": [{string.Join(",", stairsUpEntries)}],");
 
                 // 5x5 Surroundings Grid
                 sb.Append("\"surroundings\": {");
@@ -1126,7 +1155,19 @@ namespace QudAIBrain
                 lastMoveFailed = false;
                 lastFailedDir = "";
                 int energyBefore = player.Energy?.Value ?? 0;
-                player.Move("D");
+                bool moved = player.Move("D");
+                if (!moved)
+                {
+                    try
+                    {
+                        var stairs = player.CurrentCell?.Objects?.FirstOrDefault(o => o != null && o.HasPart("StairsDown"));
+                        if (stairs != null)
+                        {
+                            stairs.FireEvent(Event.New("CommandMoveDown", "User", player));
+                        }
+                    }
+                    catch { }
+                }
                 if (player.Energy != null && player.Energy.Value >= energyBefore)
                 {
                     player.UseEnergy(1000, "Movement");
@@ -1139,7 +1180,19 @@ namespace QudAIBrain
                 lastMoveFailed = false;
                 lastFailedDir = "";
                 int energyBefore = player.Energy?.Value ?? 0;
-                player.Move("U");
+                bool moved = player.Move("U");
+                if (!moved)
+                {
+                    try
+                    {
+                        var stairs = player.CurrentCell?.Objects?.FirstOrDefault(o => o != null && o.HasPart("StairsUp"));
+                        if (stairs != null)
+                        {
+                            stairs.FireEvent(Event.New("CommandMoveUp", "User", player));
+                        }
+                    }
+                    catch { }
+                }
                 if (player.Energy != null && player.Energy.Value >= energyBefore)
                 {
                     player.UseEnergy(1000, "Movement");
