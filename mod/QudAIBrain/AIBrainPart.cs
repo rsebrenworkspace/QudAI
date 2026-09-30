@@ -614,6 +614,41 @@ namespace QudAIBrain
                 }
                 catch { }
 
+                List<string> learnableSkillEntries = new List<string>();
+                try
+                {
+                    var allSkills = SkillFactory.GetSkills();
+                    if (allSkills != null)
+                    {
+                        foreach (var s in allSkills)
+                        {
+                            if (s == null) continue;
+                            if (!player.HasSkill(s.Class))
+                            {
+                                if (!s.Initiatory && s.Cost <= spPoints && s.MeetsRequirements(player, false))
+                                {
+                                    learnableSkillEntries.Add($"{{\"class\": \"{EscapeJson(s.Class)}\", \"name\": \"{EscapeJson(s.Name)}\", \"cost\": {s.Cost}, \"is_parent\": true, \"parent\": \"\"}}");
+                                }
+                            }
+                            if (s.PowerList != null)
+                            {
+                                foreach (var p in s.PowerList)
+                                {
+                                    if (p == null) continue;
+                                    if (!player.HasSkill(p.Class))
+                                    {
+                                        if (player.HasSkill(s.Class) && p.Cost <= spPoints && p.MeetsRequirements(player, false))
+                                        {
+                                            learnableSkillEntries.Add($"{{\"class\": \"{EscapeJson(p.Class)}\", \"name\": \"{EscapeJson(p.Name)}\", \"cost\": {p.Cost}, \"is_parent\": false, \"parent\": \"{EscapeJson(s.Class)}\"}}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+
                 List<string> mutationEntries = new List<string>();
                 try
                 {
@@ -646,6 +681,7 @@ namespace QudAIBrain
                 sb.Append($"\"mp\": {mpPoints},");
                 sb.Append($"\"attributes\": {{\"Strength\": {statStr}, \"Agility\": {statAgi}, \"Toughness\": {statTou}, \"Intelligence\": {statInt}, \"Willpower\": {statWil}, \"Ego\": {statEgo}}},");
                 sb.Append($"\"skills\": [{string.Join(",", learnedSkills)}],");
+                sb.Append($"\"learnable_skills\": [{string.Join(",", learnableSkillEntries)}],");
                 sb.Append($"\"mutations\": [{string.Join(",", mutationEntries)}],");
                 sb.Append($"\"x\": {px},");
                 sb.Append($"\"y\": {py},");
@@ -1872,7 +1908,7 @@ namespace QudAIBrain
                 if (player == null || string.IsNullOrEmpty(skillClass)) return false;
 
                 int sp = player.Stat("SP", 0);
-                if (sp <= 0) return false;
+                if (sp < 0) return false;
 
                 var skills = player.GetPart<Skills>();
                 if (skills == null) return false;
@@ -1914,7 +1950,24 @@ namespace QudAIBrain
                     if (pEntry != null)
                     {
                         if (player.HasSkill(pEntry.Class)) return false;
-                        if (player.HasSkill(s.Class) && pEntry.Cost <= sp && pEntry.MeetsRequirements(player, false))
+                        if (!player.HasSkill(s.Class))
+                        {
+                            // If player doesn't have parent skill, attempt to buy parent + power together if affordable!
+                            if (!s.Initiatory && (s.Cost + pEntry.Cost) <= sp && s.MeetsRequirements(player, false) && pEntry.MeetsRequirements(player, false))
+                            {
+                                skills.AddSkill(s.Class);
+                                skills.AddSkill(pEntry.Class);
+                                var spStat = player.GetStat("SP");
+                                if (spStat != null) spStat.Penalty += (s.Cost + pEntry.Cost);
+                                string msg = $"{{G|[AI Level Up] Learned Parent Skill {s.Name} ({s.Cost} SP) and Power {pEntry.Name} ({pEntry.Cost} SP)}}";
+                                MessageQueue.AddPlayerMessage(msg);
+                                UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);
+                                return true;
+                            }
+                            return false;
+                        }
+
+                        if (pEntry.Cost <= sp && pEntry.MeetsRequirements(player, false))
                         {
                             skills.AddSkill(pEntry.Class);
                             var spStat = player.GetStat("SP");

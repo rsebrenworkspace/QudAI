@@ -755,7 +755,87 @@ print(f"Surface at Level 4 (goal met) decision: {dec_redelve['action']} | Reason
 assert brain.RETREAT_TARGET_LEVEL is None, "RETREAT_TARGET_LEVEL must clear upon reaching target level!"
 assert dec_redelve["action"] == "USE_STAIRS_DOWN", f"Expected re-descent USE_STAIRS_DOWN at Level 4, got {dec_redelve['action']}"
 
+# 22. Test Skill Trees, Prerequisite Gating & SP Savings
+print("\n--- Test 22: Skill Trees, Prerequisite Gating & SP Savings ---")
+# Scenario 22.1: Marauder has 150 SP, wants to progress in Axe tree but does NOT yet have parent skill 'Axe'
+marauder_state_no_parent = {
+    "hp": 30, "max_hp": 30, "x": 10, "y": 10, "z": 10,
+    "calling": "Marauder",
+    "equipped_summary": "Hand: folded carbide battle axe",
+    "level": 2, "ap": 0, "sp": 150, "mp": 0,
+    "attributes": {"Strength": 22, "Agility": 18, "Toughness": 20, "Intelligence": 14, "Willpower": 14, "Ego": 10},
+    "skills": [],
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass"},
+    "visible_entities": []
+}
+dec_parent = brain.query_decision(marauder_state_no_parent, took_damage=False, enemies=[])
+print(f"Parent skill decision: {dec_parent['action']} | Reason: {dec_parent['reason']}")
+assert dec_parent["action"] == "AUTOLEVEL_SKILL:Axe", f"Expected AUTOLEVEL_SKILL:Axe before powers, got {dec_parent['action']}"
+
+# Scenario 22.2: Free 0-Cost Power Instant Acquisition (even at 0 SP)
+marauder_state_free_power = dict(marauder_state_no_parent)
+marauder_state_free_power["skills"] = ["Axe"]
+marauder_state_free_power["sp"] = 0
+dec_free = brain.query_decision(marauder_state_free_power, took_damage=False, enemies=[])
+print(f"Free 0-cost power decision: {dec_free['action']} | Reason: {dec_free['reason']}")
+assert dec_free["action"] == "AUTOLEVEL_SKILL:Axe_Expertise", f"Expected AUTOLEVEL_SKILL:Axe_Expertise for 0 SP, got {dec_free['action']}"
+
+# Scenario 22.3: Attribute Requirement Gating (Apostle Wil 18 vs Wil 29)
+apostle_state_gated = {
+    "hp": 24, "max_hp": 24, "x": 10, "y": 10, "z": 10,
+    "calling": "Apostle",
+    "level": 3, "ap": 0, "sp": 150, "mp": 0,
+    "attributes": {"Strength": 14, "Agility": 16, "Toughness": 18, "Intelligence": 17, "Willpower": 18, "Ego": 21},
+    "skills": ["Tactics", "Tactics_Hurdle", "Customs", "Customs_Tactful"],
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass"},
+    "visible_entities": []
+}
+dec_apostle = brain.query_decision(apostle_state_gated, took_damage=False, enemies=[])
+print(f"Apostle next eligible skill decision: {dec_apostle['action']} | Reason: {dec_apostle['reason']}")
+assert dec_apostle["action"] == "AUTOLEVEL_SKILL:Discipline", f"Expected AUTOLEVEL_SKILL:Discipline, got {dec_apostle['action']}"
+
+# Scenario 22.4: SP Savings Doctrine (Has 75 SP, next is Customs which costs 150 SP)
+apostle_state_saving = {
+    "hp": 24, "max_hp": 24, "x": 10, "y": 10, "z": 10,
+    "calling": "Apostle",
+    "level": 3, "ap": 0, "sp": 75, "mp": 0,
+    "attributes": {"Strength": 14, "Agility": 16, "Toughness": 18, "Intelligence": 17, "Willpower": 18, "Ego": 21},
+    "skills": ["Tactics", "Tactics_Hurdle"],
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass"},
+    "visible_entities": []
+}
+dec_save = brain.query_decision(apostle_state_saving, took_damage=False, enemies=[])
+print(f"SP saving decision: {dec_save['action']} | Reason: {dec_save['reason']}")
+# Must NOT lock into invalid autolevel or waste points on random filler; should save SP and explore!
+assert not dec_save["action"].startswith("AUTOLEVEL"), f"Must NOT attempt invalid autolevel when saving SP! Got: {dec_save['action']}"
+assert dec_save["action"] == "AUTOEXPLORE", f"Expected AUTOEXPLORE while saving SP, got {dec_save['action']}"
+
+# Scenario 22.5: Engine learnable_skills Telemetry Verification
+praetorian_state_telem = {
+    "hp": 30, "max_hp": 30, "x": 10, "y": 10, "z": 10,
+    "calling": "Praetorian",
+    "level": 3, "ap": 0, "sp": 100, "mp": 0,
+    "attributes": {"Strength": 20, "Agility": 18, "Toughness": 20, "Intelligence": 16, "Willpower": 14, "Ego": 10},
+    "skills": ["Rifles", "Rifle_SteadyHands", "Rifle_DrawABead", "Shield", "Shield_Block"],
+    "learnable_skills": [
+        {"class": "Shield_Slam", "name": "Shield Slam", "cost": 100, "parent": "Shield", "is_parent": False}
+    ],
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "dirt", "N": "grass"},
+    "visible_entities": []
+}
+dec_telem = brain.query_decision(praetorian_state_telem, took_damage=False, enemies=[])
+print(f"Engine learnable_skills decision: {dec_telem['action']} | Reason: {dec_telem['reason']}")
+assert dec_telem["action"] == "AUTOLEVEL_SKILL:Shield_Slam", f"Expected AUTOLEVEL_SKILL:Shield_Slam, got {dec_telem['action']}"
+
 print("\n==================================================")
-print(">>> ALL 21 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 22 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 

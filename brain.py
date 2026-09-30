@@ -1538,7 +1538,13 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         ap = game_state.get("ap", 0)
         sp = game_state.get("sp", 0)
         mp = game_state.get("mp", 0)
-        if not suppress_autolevel and (ap > 0 or sp >= 50 or mp > 0) and not took_damage:
+        has_points_to_spend = (ap > 0) or (sp >= 50) or (mp > 0)
+
+        # Check for eligible skills or free (0-cost) powers
+        best_skill, skill_reason, is_saving_sp = build_templates.get_best_skill_to_learn(game_state, template)
+        can_learn_skill = (best_skill is not None)
+
+        if not suppress_autolevel and (has_points_to_spend or can_learn_skill) and not took_damage:
             if twitch_manager:
                 top_stat = twitch_manager.get_top_stat()
                 if ap > 0 and top_stat:
@@ -1557,11 +1563,11 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 rec_stat, reason = build_templates.get_stat_allocation_recommendation(template, attrs)
                 return {"action": f"AUTOLEVEL_STAT:{rec_stat}", "reason": f"Class Progression ({template['name']}): {reason}"}
 
-            if sp >= 50:
-                learned = set(game_state.get("skills", []))
-                for cand in template.get("skill_progression", []):
-                    if cand not in learned:
-                        return {"action": f"AUTOLEVEL_SKILL:{cand}", "reason": f"Class Progression ({template['name']}): Unlocking priority skill {cand}"}
+            if can_learn_skill:
+                return {"action": f"AUTOLEVEL_SKILL:{best_skill}", "reason": skill_reason}
+            elif is_saving_sp:
+                # Character is purposefully saving SP for the next priority milestone in the tree
+                pass
 
             if mp > 0:
                 muts = game_state.get("mutations", [])
@@ -1570,7 +1576,8 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     if m_obj:
                         return {"action": f"AUTOLEVEL_MUTATION:{m_obj.get('class')}", "reason": f"Class Progression ({template['name']}): Leveling {m_obj.get('name')}"}
 
-            return {"action": "AUTOLEVEL", "reason": f"Safe autoleveling: allocating unspent points (AP:{ap}, SP:{sp}, MP:{mp})"}
+            if ap > 0 or mp > 0:
+                return {"action": "AUTOLEVEL", "reason": f"Safe autoleveling: allocating unspent points (AP:{ap}, SP:{sp}, MP:{mp})"}
 
         # 2. Rest until healed if safe and damaged below threshold (default 75%)
         if hp_ratio < REST_HP_THRESHOLD and not took_damage:

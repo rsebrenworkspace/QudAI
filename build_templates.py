@@ -4,6 +4,13 @@ Implements the 9 core archetypes, stat allocation doctrines, skill progression t
 and tactical sequencing defined in Caves-of-Qud-AI-Agent-Build-Guide.md.
 """
 
+from skill_database import (
+    SKILL_DATABASE,
+    get_skill_info,
+    is_skill_learnable,
+    get_best_skill_to_learn,
+)
+
 BUILD_TEMPLATES = {
     # 1. Auspicious Beginnings — freeze/axe escape mutant
     "auspicious_beginnings": {
@@ -32,13 +39,18 @@ BUILD_TEMPLATES = {
         ],
         "skill_progression": [
             "Axe",
-            "Axe_Proficiency",
+            "Axe_Expertise",
+            "Tactics",
+            "Tactics_Hurdle",
             "Tactics_Charge",
-            "Axe_Dismember",
             "Axe_Cleave",
+            "Axe_Dismember",
             "Axe_Decapitate",
-            "Endurance_Calloused",
+            "Endurance",
             "Endurance_ShakeItOff",
+            "Endurance_Calloused",
+            "CookingAndGathering",
+            "CookingAndGathering_MealPreparation",
             "CookingAndGathering_Butchery"
         ],
         "mutation_priorities": ["FreezingRay", "MultipleLegs", "Teleportation"],
@@ -89,11 +101,15 @@ BUILD_TEMPLATES = {
             "Rifle_DrawABead",
             "Shield",
             "Shield_Block",
-            "Shield_ShieldSlam",
-            "LongBlades",
-            "LongBlades_Proficiency",
-            "LongBlades_DuelistStance",
-            "Endurance_Calloused"
+            "Shield_Slam",
+            "Rifle_SuppressiveFire",
+            "Shield_DeftBlocking",
+            "Endurance",
+            "Endurance_ShakeItOff",
+            "Endurance_Calloused",
+            "CookingAndGathering",
+            "CookingAndGathering_MealPreparation",
+            "CookingAndGathering_Butchery"
         ],
         "mutation_priorities": [],  # True Kin uses Cybernetics
         "combat_doctrine": {
@@ -136,14 +152,20 @@ BUILD_TEMPLATES = {
             {"stat": "Strength", "target": 28, "reason": "Cleave and Decapitate requirements"}
         ],
         "skill_progression": [
-            "Axe",
-            "Axe_Proficiency",
-            "Tactics_Charge",
-            "Axe_Dismember",
-            "MultiweaponFighting",
+            "Multiweapon_Fighting",
             "Multiweapon_Flurry",
+            "Multiweapon_Proficiency",
+            "Axe",
+            "Axe_Expertise",
+            "Tactics",
+            "Tactics_Hurdle",
+            "Tactics_Charge",
             "Axe_Cleave",
+            "Axe_Dismember",
+            "Multiweapon_Expertise",
             "Axe_Decapitate",
+            "Endurance",
+            "Endurance_ShakeItOff",
             "Endurance_Calloused"
         ],
         "mutation_priorities": ["MultipleArms", "Carapace", "Regeneration", "NightVision"],
@@ -188,12 +210,22 @@ BUILD_TEMPLATES = {
             {"stat": "Ego", "target": 32, "reason": "Uncapped mutation level scaling"}
         ],
         "skill_progression": [
-            "Persuasion",
-            "Persuasion_Proselytize",
+            "Tactics",
+            "Tactics_Hurdle",
+            "Tactics_Juke",
+            "Customs",
             "Customs_Tactful",
-            "Discipline_MindOverBody",
+            "Discipline",
+            "Discipline_Meditate",
+            "Discipline_FastingWay",
             "Discipline_IronMind",
-            "Endurance"
+            "Discipline_Lionheart",
+            "Endurance",
+            "Endurance_ShakeItOff",
+            "Endurance_Calloused",
+            "Survival",
+            "Survival_Camp",
+            "Survival_Trailblazer"
         ],
         "mutation_priorities": ["LightManipulation", "SunderMind", "Clairvoyance", "ForceWall", "ForceBubble", "Teleportation"],
         "combat_doctrine": {
@@ -237,11 +269,17 @@ BUILD_TEMPLATES = {
             {"stat": "Willpower", "target": 26, "reason": "Continuous elemental generation"}
         ],
         "skill_progression": [
-            "Cudgel_Proficiency",
-            "Discipline_MindOverBody",
-            "Endurance_Calloused",
+            "Tactics",
+            "Tactics_Hurdle",
+            "Tactics_Juke",
+            "Endurance",
+            "Endurance_ShakeItOff",
             "Endurance_Weathered",
-            "Acrobatics_Dodge"
+            "Endurance_Calloused",
+            "SingleWeaponFighting",
+            "SingleWeaponFighting_OpportuneAttacks",
+            "SingleWeaponFighting_WeaponExpertise",
+            "SingleWeaponFighting_PenetratingStrikes"
         ],
         "mutation_priorities": ["ElectricalGeneration", "FlamingRay", "HeightenedHearing", "ForceWall"],
         "combat_doctrine": {
@@ -285,13 +323,19 @@ BUILD_TEMPLATES = {
         ],
         "skill_progression": [
             "Pistol",
+            "Pistol_SteadyHands",
             "Pistol_Akimbo",
-            "Pistol_FastReload",
+            "Pistol_WeakSpotter",
+            "Tactics",
+            "Tactics_Hurdle",
+            "Tactics_Juke",
+            "Acrobatics",
+            "Acrobatics_SwiftReflexes",
+            "Acrobatics_Dodge",
             "Pistol_DisarmingShot",
             "Pistol_DeadShot",
-            "Pistol_ChainFire",
-            "Acrobatics_Dodge",
-            "Acrobatics_SwiftReflexes"
+            "Pistol_EmptyTheClips",
+            "Pistol_FastestGun"
         ],
         "mutation_priorities": ["Phasing", "TripleJointed", "TimeDilation", "SunderMind", "NightVision"],
         "combat_doctrine": {
@@ -335,12 +379,17 @@ BUILD_TEMPLATES = {
         ],
         "skill_progression": [
             "Cudgel",
-            "Cudgel_Proficiency",
-            "Cudgel_Slam",
+            "Cudgel_Expertise",
+            "Tactics",
+            "Tactics_Hurdle",
+            "Tactics_Charge",
             "Cudgel_Bludgeon",
             "Cudgel_ChargingStrike",
-            "Cudgel_Backhand",
-            "Shield_Block",
+            "Cudgel_Conk",
+            "Cudgel_Backswing",
+            "Cudgel_Slam",
+            "Endurance",
+            "Endurance_ShakeItOff",
             "Endurance_Calloused"
         ],
         "mutation_priorities": [],  # True Kin uses Cybernetics (Hand bones, giant hands)
@@ -385,12 +434,20 @@ BUILD_TEMPLATES = {
         ],
         "skill_progression": [
             "Pistol",
+            "Pistol_SteadyHands",
             "Pistol_Akimbo",
-            "Pistol_FastReload",
+            "Pistol_WeakSpotter",
+            "Pistol_SlingAndRun",
             "Pistol_DisarmingShot",
             "Pistol_DeadShot",
-            "Pistol_ChainFire",
-            "Tinkering_Scavenger"
+            "Pistol_EmptyTheClips",
+            "Pistol_FastestGun",
+            "Tactics",
+            "Tactics_Hurdle",
+            "Tactics_Juke",
+            "Acrobatics",
+            "Acrobatics_SwiftReflexes",
+            "Acrobatics_Dodge"
         ],
         "mutation_priorities": [],  # True Kin uses Cybernetics (Gun rack, Flexors)
         "combat_doctrine": {
@@ -433,10 +490,19 @@ BUILD_TEMPLATES = {
             {"stat": "Agility", "target": 18, "reason": "Quickness and kite positioning"}
         ],
         "skill_progression": [
-            "Cudgel_Proficiency",
-            "Endurance_Calloused",
+            "Tactics",
+            "Tactics_Hurdle",
+            "Tactics_Juke",
+            "Endurance",
+            "Endurance_ShakeItOff",
+            "Endurance_Longstrider",
             "Endurance_Weathered",
-            "Acrobatics_Dodge"
+            "Endurance_Calloused",
+            "Acrobatics",
+            "Acrobatics_SwiftReflexes",
+            "Acrobatics_Dodge",
+            "Survival",
+            "Survival_Camp"
         ],
         "mutation_priorities": ["CorrosiveGasGeneration", "SleepGasGeneration", "Carapace", "HeightenedQuickness", "AdrenalControl"],
         "combat_doctrine": {
