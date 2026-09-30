@@ -58,12 +58,15 @@ visit_counts = defaultdict(int)
 
 NON_COMBAT_KEYWORDS = {
     "camp", "harvest", "butcher", "cook", "tinker", "disassemble",
-    "look", "chat", "talk", "sleep", "wait", "ritual", "worship", "pray"
+    "look", "chat", "talk", "sleep", "wait", "ritual", "worship", "pray",
+    "clairvoyance", "ambientlight", "ambient light"
 }
 
 DIRECTIONAL_ABILITIES = {
-    "freezingray", "flamingray", "spitpoison", "teleportother",
-    "teleport", "charge", "meleecharge", "lunge", "slam", "juke", "jump"
+    "freezingray", "flamingray", "spitpoison", "teleportother", "teleport other",
+    "teleport", "charge", "meleecharge", "lunge", "slam", "juke", "jump",
+    "lase", "stunningforce", "stunning force", "cryokinesis", "pyrokinesis",
+    "syphonvim", "syphon vim", "forcewall", "force wall"
 }
 
 MELEE_TARGETED_ABILITIES = {
@@ -387,9 +390,9 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                         action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Charge at {c_name} {s_dir} to close gap and daze)")
                     continue
 
-                # Beam / Ray / Projectile
-                if any(ray in combined for ray in ["freezingray", "flamingray", "spitpoison", "cryokinesis", "pyrokinesis"]):
-                    if closest and 2 <= c_dist <= 10:
+                # Beam / Ray / Projectile / Ranged Mental Attacks
+                if any(ray in combined for ray in ["freezingray", "flamingray", "spitpoison", "cryokinesis", "pyrokinesis", "lase", "stunningforce", "stunning force", "syphonvim", "syphon vim", "sundermind", "sunder mind"]):
+                    if closest and 2 <= c_dist <= 12:
                         s_dir = get_step_direction((px, py), (c_tx, c_ty))
                         action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast {name} at {c_name} {s_dir})")
                     continue
@@ -565,14 +568,20 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     c_name = closest_enemy.get("name", "Enemy") if closest_enemy else ""
     c_tx = closest_enemy.get("tx", px) if closest_enemy else px
     c_ty = closest_enemy.get("ty", py) if closest_enemy else py
+    s_dir = get_step_direction(cur_pos, (c_tx, c_ty)) if closest_enemy else ""
+    is_stationary = any(st in c_name.lower() for st in ["glowpad", "plant", "turret", "fungus", "vine", "tree"])
 
-    # 1. Close-Contact Emergency: Defensive Mental Shielding & Evasion
+    # 1. Close-Contact Emergency: Defensive Mental Shielding, Banishment & Evasion
     if adj_threats or closest_dist <= 2:
-        ab_bubble = find_ready_ability(abilities, ["force bubble", "forcebubble", "bubble"])
+        ab_bubble = find_ready_ability(abilities, ["force bubble", "forcebubble", "bubble", "force wall", "forcewall"])
         if ab_bubble and ab_bubble.get("command"):
             return {"action": f"USE_ABILITY:{ab_bubble['command']}", "reason": f"[{template['name']} Fallback] Popping Force Bubble impenetrable barrier against close hostiles"}
 
-        ab_teleport = find_ready_ability(abilities, ["teleport", "phasing"])
+        ab_banish = find_ready_ability(abilities, ["teleport other", "teleportother"])
+        if ab_banish and ab_banish.get("command") and s_dir:
+            return {"action": f"USE_ABILITY:{ab_banish['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Banishing close hostile {c_name} with Teleport Other ({s_dir})"}
+
+        ab_teleport = find_ready_ability(abilities, ["teleportation", "phasing"])
         if ab_teleport and ab_teleport.get("command"):
             return {"action": f"USE_ABILITY:{ab_teleport['command']}", "reason": f"[{template['name']} Fallback] Teleporting away from close hostiles"}
 
@@ -584,24 +593,57 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
     # 2. Long-Range Psychic Assault (Distance >= 2)
     if closest_enemy and closest_dist >= 2:
+        # A. Sunder Mind (Uncapped psychic annihilation)
         ab_sunder = find_ready_ability(abilities, ["sunder mind", "sundermind", "sunder"])
         if ab_sunder and ab_sunder.get("command"):
-            return {"action": f"USE_ABILITY:{ab_sunder['command']}", "reason": f"[{template['name']} Fallback] Channeling Sunder Mind against {c_name} (dist: {closest_dist})"}
+            return {"action": f"USE_ABILITY:{ab_sunder['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Channeling Sunder Mind against {c_name} (dist: {closest_dist})"}
 
-        s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
-        ab_mental_beam = find_ready_ability(abilities, ["cryokinesis", "pyrokinesis", "light manipulation"])
-        if ab_mental_beam and ab_mental_beam.get("command"):
-            return {"action": f"USE_ABILITY:{ab_mental_beam['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Manifesting {ab_mental_beam.get('name')} at {c_name} ({s_dir})"}
+        # B. Lase (Light Manipulation focused laser beam - high damage ray)
+        ab_lase = find_ready_ability(abilities, ["lase", "light manipulation"])
+        if ab_lase and ab_lase.get("command"):
+            return {"action": f"USE_ABILITY:{ab_lase['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Firing Lase light beam at {c_name} ({s_dir}, dist: {closest_dist})"}
 
+        # C. Cryokinesis / Pyrokinesis / Ray attacks
+        ab_elemental = find_ready_ability(abilities, ["cryokinesis", "pyrokinesis", "flaming ray", "freezing ray", "spit poison"])
+        if ab_elemental and ab_elemental.get("command"):
+            return {"action": f"USE_ABILITY:{ab_elemental['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Manifesting {ab_elemental.get('name')} at {c_name} ({s_dir})"}
+
+        # D. Stunning Force (Concussive mental blast)
+        ab_stun = find_ready_ability(abilities, ["stunning force", "stunningforce"])
+        if ab_stun and ab_stun.get("command"):
+            return {"action": f"USE_ABILITY:{ab_stun['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Blasting {c_name} with Stunning Force ({s_dir})"}
+
+        # E. Syphon Vim (Life drain if within 4 tiles)
+        ab_syphon = find_ready_ability(abilities, ["syphon vim", "syphonvim"])
+        if ab_syphon and ab_syphon.get("command") and closest_dist <= 4:
+            return {"action": f"USE_ABILITY:{ab_syphon['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Draining life force from {c_name} ({s_dir})"}
+
+        # F. Equipped missile weapon fire
         if has_missile and ammo > 0 and not adj_threats:
             return {"action": f"FIRE_MISSILE@{c_tx},{c_ty}", "reason": f"[{template['name']} Fallback] Firing ranged weapon at {c_name} while mental cooldowns reset"}
 
-        if closest_dist < 5 and open_moves:
+        # G. Mobile hostile kiting: if enemy is moving toward us (dist < 5) and NOT stationary, step back
+        if closest_dist < 5 and open_moves and not is_stationary:
             kites = [m for m in open_moves if max(abs(px + CARDINAL_OFFSETS[m[5:]][0] - c_tx), abs(py + CARDINAL_OFFSETS[m[5:]][1] - c_ty)) > closest_dist]
             if kites:
                 return {"action": kites[0], "reason": f"[{template['name']} Fallback] Preserving safe distance (dist {closest_dist} -> {kites[0][5:]})"}
 
-    # 3. Last Resort Melee
+        # H. Check if character has ANY offensive ranged power at all
+        has_any_ranged_offense = has_missile or any(
+            any(k in f"{ab.get('name','')} {ab.get('command','')}".lower() for k in ["sunder", "lase", "cryo", "pyro", "stun", "syphon", "flaming", "freezing"])
+            for ab in abilities
+        )
+
+        # If no ranged offensive power exists, or stationary enemy while full HP, advance to melee
+        if (not has_any_ranged_offense) or (is_stationary and hp >= int(max_hp * 0.8)):
+            step_move = f"MOVE_{s_dir}"
+            if step_move in valid_moves:
+                return {"action": step_move, "reason": f"[{template['name']} Fallback] Advancing to engage stationary {c_name} with staff/torch ({s_dir})"}
+
+        # Otherwise, hold ground and recharge mental energy/cooldowns
+        return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Recharging mental focus for next psychic strike on {c_name} (dist: {closest_dist})"}
+
+    # 3. Last Resort Melee (Adjacent Threat)
     if adj_threats:
         d, ename = list(adj_threats.items())[0]
         return {"action": f"MOVE_{d}", "reason": f"[{template['name']} Fallback] Emergency defense: striking {ename} ({d})"}

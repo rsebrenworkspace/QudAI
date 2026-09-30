@@ -93,6 +93,39 @@ namespace QudAIBrain
             return "";
         }
 
+        public static string GetBestEnemyDirection(GameObject player)
+        {
+            string adjDir = GetBestAdjacentEnemyDirection(player);
+            if (!string.IsNullOrEmpty(adjDir)) return adjDir;
+
+            if (player == null || player.CurrentCell == null) return "";
+
+            try
+            {
+                Zone zone = player.CurrentCell.ParentZone;
+                if (zone != null)
+                {
+                    Cell pCell = player.CurrentCell;
+                    var closestEnemy = zone.GetObjects()
+                        .Where(o => o != null && !o.IsPlayer() && CheckIsEnemy(o, player) && o.CurrentCell != null)
+                        .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
+                        .FirstOrDefault();
+
+                    if (closestEnemy != null && closestEnemy.CurrentCell != null)
+                    {
+                        string cDir = pCell.GetDirectionFromCell(closestEnemy.CurrentCell);
+                        if (!string.IsNullOrEmpty(cDir) && cDir.Length <= 2)
+                        {
+                            return cDir;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return "";
+        }
+
         public static bool CheckIsEnemy(GameObject obj, GameObject player)
         {
             if (obj == null || player == null || obj == player || obj.IsPlayer()) return false;
@@ -902,7 +935,7 @@ namespace QudAIBrain
 
                 if (string.IsNullOrEmpty(PreferredDirection))
                 {
-                    PreferredDirection = GetBestAdjacentEnemyDirection(player);
+                    PreferredDirection = GetBestEnemyDirection(player);
                 }
 
                 int energyBefore = player.Energy?.Value ?? 0;
@@ -1618,7 +1651,7 @@ namespace QudAIBrain
                 string dir = AIPlayerTurnPatch.PreferredDirection;
                 if (string.IsNullOrEmpty(dir))
                 {
-                    dir = AIPlayerTurnPatch.GetBestAdjacentEnemyDirection(The.Player);
+                    dir = AIPlayerTurnPatch.GetBestEnemyDirection(The.Player);
                 }
                 __result = !string.IsNullOrEmpty(dir) ? dir : null;
                 UnityEngine.Debug.Log($"[QudAI AIPickDirectionPatch] Auto-selected direction: '{__result}'");
@@ -1652,6 +1685,15 @@ namespace QudAIBrain
             {
                 GameObject player = The.Player;
                 GameObject target = player?.Target ?? Sidebar.CurrentTarget;
+                if (target == null && player?.CurrentCell?.ParentZone != null)
+                {
+                    Cell pCell = player.CurrentCell;
+                    target = pCell.ParentZone.GetObjects()
+                        .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
+                        .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
+                        .FirstOrDefault();
+                }
+
                 if (target != null && target.CurrentCell != null)
                 {
                     __result = target.CurrentCell;
@@ -1674,6 +1716,15 @@ namespace QudAIBrain
             {
                 GameObject player = The.Player;
                 GameObject target = player?.Target ?? Sidebar.CurrentTarget;
+                if (target == null && player?.CurrentCell?.ParentZone != null)
+                {
+                    Cell pCell = player.CurrentCell;
+                    target = pCell.ParentZone.GetObjects()
+                        .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
+                        .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
+                        .FirstOrDefault();
+                }
+
                 if (target != null && target.CurrentCell != null)
                 {
                     __result = new List<Cell> { target.CurrentCell };

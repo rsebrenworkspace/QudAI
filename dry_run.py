@@ -121,7 +121,24 @@ dec_sunder = brain.fallback_esper(
 )
 print("\n--- Test 6: Esper Ranged Channel (Sunder Mind) ---")
 print(f"Action: {dec_sunder['action']} | Reason: {dec_sunder['reason']}")
-assert dec_sunder['action'] == "USE_ABILITY:CommandSunderMind", f"Expected Sunder Mind, got {dec_sunder['action']}"
+assert dec_sunder['action'].startswith("USE_ABILITY:CommandSunderMind"), f"Expected Sunder Mind, got {dec_sunder['action']}"
+
+# 6b. Test Esper Light Manipulation - Fire Lase at Glowpad
+esper_lase_state = {
+    "abilities": [
+        {"name": "Lase", "command": "CommandLase", "cooldown": 0, "usable": True},
+        {"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 0, "usable": True}
+    ]
+}
+dec_lase = brain.fallback_esper(
+    esper_lase_state, [{"name": "wet glowpad", "tx": 18, "ty": 10, "dist": 8, "dir": "E", "is_enemy": True}],
+    {}, ["MOVE_W"], ["MOVE_W"],
+    esper_lase_state["abilities"], build_templates.BUILD_TEMPLATES["esper_mindflayer"],
+    (10, 10), 10, 10, 18, 18, False, False, 0, 0, 0
+)
+print("\n--- Test 6b: Esper Lase Light Beam (Target: Glowpad at dist 8) ---")
+print(f"Action: {dec_lase['action']} | Reason: {dec_lase['reason']}")
+assert dec_lase['action'] == "USE_ABILITY:CommandLase:E", f"Expected CommandLase:E, got {dec_lase['action']}"
 
 # 7. Test Akimbo Gunslinger - Chain Fire
 gunslinger_state = {
