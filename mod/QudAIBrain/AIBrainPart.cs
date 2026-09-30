@@ -35,6 +35,7 @@ namespace QudAIBrain
         private static string lastFailedDir = "";
         private static bool isZoneFullyExplored = false;
         private static string lastZoneId = "";
+        private static readonly List<Tuple<int, int>> autoexplorePosHistory = new List<Tuple<int, int>>();
         private static MethodInfo cachedFireMethod = null;
 
         private static readonly Regex QudColorRegex = new Regex(@"(&[a-zA-Z0-9]|\^[a-zA-Z0-9]|\{\{|\}\})", RegexOptions.Compiled);
@@ -472,6 +473,7 @@ namespace QudAIBrain
                 {
                     lastZoneId = zoneId;
                     isZoneFullyExplored = false;
+                    autoexplorePosHistory.Clear();
                 }
 
                 bool hasMissileWeapon = false;
@@ -1498,7 +1500,59 @@ namespace QudAIBrain
             }
             catch { }
 
-            // 2. Query native Autoexplore step
+            // 2. Oscillation & cycling detection: track recent coordinates
+            int curX = player.CurrentCell.X;
+            int curY = player.CurrentCell.Y;
+            autoexplorePosHistory.Add(Tuple.Create(curX, curY));
+            if (autoexplorePosHistory.Count > 10)
+            {
+                autoexplorePosHistory.RemoveAt(0);
+            }
+
+            int repeatVisits = autoexplorePosHistory.Count(p => p.Item1 == curX && p.Item2 == curY);
+            if (repeatVisits >= 2)
+            {
+                // We are cycling between coordinates! Suppress adjacent non-combat POIs (signs, tables, bookshelves, chests)
+                try
+                {
+                    var adjCells = player.CurrentCell.GetLocalAdjacentCells();
+                    if (adjCells != null)
+                    {
+                        foreach (Cell adj in adjCells)
+                        {
+                            if (adj?.Objects == null) continue;
+                            foreach (var obj in adj.Objects)
+                            {
+                                if (obj == null || obj.IsPlayer() || obj.HasPart("Combat") || obj.HasPart("Brain")) continue;
+                                if (!CanSafelyLoot(obj, player))
+                                {
+                                    try { obj.SetIntProperty("AutoexploreSuppressed", 1); } catch { }
+                                    try { obj.SetIntProperty("AutoexploreSuppression", 1); } catch { }
+                                    try { obj.SetProperty("AutoexploreSuppressed", "1"); } catch { }
+                                    try { obj.SetProperty("AutoexploreSuppression", "1"); } catch { }
+                                    try { obj.SetIntProperty("Autoexplored", 1); } catch { }
+                                    UnityEngine.Debug.Log($"[QudAI Autoexplore Oscillation] Suppressed adjacent POI '{obj.DisplayNameOnly}' at {adj.X},{adj.Y}");
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            if (repeatVisits >= 3)
+            {
+                // Persistent cycling: mark zone fully explored and yield to Python brain navigation
+                isZoneFullyExplored = true;
+                autoexplorePosHistory.Clear();
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                UnityEngine.Debug.LogWarning($"[QudAI Autoexplore Oscillation] Zone marked fully explored due to cycling at ({curX}, {curY}). Yielding to brain navigation.");
+                if (player.Energy != null) player.UseEnergy(1000, "Pass");
+                return;
+            }
+
+            // 3. Query native Autoexplore step
             string step = null;
             bool blackout = false;
 
@@ -1526,6 +1580,28 @@ namespace QudAIBrain
                     lastMoveFailed = true;
                     lastFailedDir = step.ToUpper();
                     TryOpenDoorInDirection(player, step);
+
+                    // If autoexplore told us to move into an impassable object (e.g. table, sign, wall), suppress that object so it won't target it again!
+                    try
+                    {
+                        Cell targetCell = player.CurrentCell.GetCellFromDirection(step, false);
+                        if (targetCell?.Objects != null)
+                        {
+                            foreach (var obj in targetCell.Objects)
+                            {
+                                if (obj != null && !obj.IsPlayer() && !obj.HasPart("Combat") && !CanSafelyLoot(obj, player))
+                                {
+                                    try { obj.SetIntProperty("AutoexploreSuppressed", 1); } catch { }
+                                    try { obj.SetIntProperty("AutoexploreSuppression", 1); } catch { }
+                                    try { obj.SetProperty("AutoexploreSuppressed", "1"); } catch { }
+                                    try { obj.SetProperty("AutoexploreSuppression", "1"); } catch { }
+                                    try { obj.SetIntProperty("Autoexplored", 1); } catch { }
+                                    UnityEngine.Debug.Log($"[QudAI Autoexplore Blocked] Suppressed blocking object '{obj.DisplayNameOnly}' in direction {step}");
+                                }
+                            }
+                        }
+                    }
+                    catch { }
                 }
                 else
                 {
@@ -1540,8 +1616,9 @@ namespace QudAIBrain
                 return;
             }
 
-            // 3. Mark zone fully explored when no autoexplore targets remain
+            // 4. Mark zone fully explored when no autoexplore targets remain
             isZoneFullyExplored = true;
+            autoexplorePosHistory.Clear();
             lastMoveFailed = false;
             lastFailedDir = "";
             if (player.Energy != null) player.UseEnergy(1000, "Pass");

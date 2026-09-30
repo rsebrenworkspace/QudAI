@@ -53,6 +53,8 @@ ENVIRONMENTAL_TERRAIN = [
 ai_active = False
 move_history = deque(maxlen=8)
 recent_actions = deque(maxlen=40)
+recent_positions = deque(maxlen=10)
+stuck_autoexplore_zones = set()
 blocked_coords = set()
 visit_counts = defaultdict(int)
 
@@ -267,7 +269,7 @@ def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=Fals
         if target_pos in blocked_coords or move_name == last_failed_action:
             continue
         has_bridge = "bridge" in text
-        if any(w in text for w in ["wall", "rock", "chasm", "closed door", "[blocked"]):
+        if any(w in text for w in ["wall", "rock", "chasm", "[blocked"]):
             continue
         if not has_bridge and any(w in text for w in ["deep pool", "deep water", "deep liquid"]):
             continue
@@ -286,7 +288,7 @@ def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=Fals
             if target_pos in blocked_coords or move_name == last_failed_action:
                 continue
             has_bridge = "bridge" in text
-            if any(w in text for w in ["wall", "rock", "chasm", "closed door", "[blocked"]):
+            if any(w in text for w in ["wall", "rock", "chasm", "[blocked"]):
                 continue
             if not has_bridge and any(w in text for w in ["deep pool", "deep water", "deep liquid"]):
                 continue
@@ -1433,7 +1435,8 @@ def query_decision(game_state, took_damage, enemies):
             return {"action": "RELOAD", "reason": f"Safe top-off: reloading rifle ({ammo}/{max_ammo}, Inv: {inv_ammo})"}
 
         # 4. Autonomous area exploration via Caves of Qud native Autoexplore
-        if not game_state.get("zone_fully_explored", False):
+        is_stuck_explore = (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones)
+        if not game_state.get("zone_fully_explored", False) and not is_stuck_explore:
             return {"action": "AUTOEXPLORE", "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder"}
 
         # 5. Zone is fully explored -> Search for stairs down, zone transitions, or frontier moves
@@ -1557,6 +1560,7 @@ def main():
                 if current_zone_id is not None and zone_id != current_zone_id:
                     visit_counts.clear()
                     blocked_coords.clear()
+                    recent_positions.clear()
                     zone_step_count = 0
                     consecutive_kites = 0
 
@@ -1572,6 +1576,8 @@ def main():
                 py = game_state.get("y", 0)
                 cur_pos = (px, py)
                 visit_counts[cur_pos] += 1
+                recent_positions.append(cur_pos)
+                pos_frequency = recent_positions.count(cur_pos)
 
                 companions = game_state.get("companions", [])
                 current_comp_coords = set()
@@ -1670,10 +1676,13 @@ def main():
                         action = "PASS"
                         reason = "[Sprint Cooldown] Passing turn."
 
-                # Loop Breaker: Detect and break repeated non-progressing actions
+                # Loop Breaker: Detect and break repeated non-progressing actions or coordinate oscillation
                 # (Ignore if player is actively bump-attacking an adjacent enemy in melee!)
                 is_attacking = action.startswith("MOVE_") and (action[5:] in adj_threats)
-                if action == last_executed_action and cur_pos == last_executed_pos and not is_attacking:
+                is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_attacking)
+                is_oscillating = (pos_frequency >= 3 and not is_attacking)
+
+                if is_stationary_repeat:
                     action_repeat_count += 1
                     if action_repeat_count >= 2:
                         open_m = [vm for vm in get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat) if vm[5:] not in adj_threats]
@@ -1697,6 +1706,29 @@ def main():
                                 action = "PASS"
                                 reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Passing turn."
                         action_repeat_count = 0
+                elif is_oscillating:
+                    if action == "AUTOEXPLORE":
+                        if current_zone_id:
+                            stuck_autoexplore_zones.add(current_zone_id)
+                        print(f"[Loop Breaker] Autoexplore oscillation detected at {cur_pos} ({pos_frequency}x in last 10). Marking zone autoexplore exhausted; forcing frontier breakout.")
+
+                    open_escapes = [m for m in get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
+                                    if (cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]) not in recent_positions]
+                    if open_escapes:
+                        open_escapes.sort(key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+                        action = open_escapes[0]
+                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos} ({pos_frequency}x in 10). Escaping cycle towards unvisited frontier {action}."
+                    else:
+                        valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
+                        if valid_m:
+                            valid_m.sort(key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+                            action = valid_m[0]
+                            reason = f"[Loop Breaker] Oscillation detected at {cur_pos} ({pos_frequency}x in 10). Forcing least-visited move {action}."
+                        else:
+                            action = "PASS"
+                            reason = f"[Loop Breaker] Oscillation trapped at {cur_pos}. Passing turn."
+                    recent_positions.clear()
+                    action_repeat_count = 0
                 else:
                     action_repeat_count = 0
 

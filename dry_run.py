@@ -513,6 +513,63 @@ assert dec_joppa['action'] == "AUTOEXPLORE", f"Expected AUTOEXPLORE in Joppa, go
 assert "teleport" not in dec_joppa['action'].lower(), f"Must not banish town NPC! Action: {dec_joppa['action']}"
 assert not dec_joppa['action'].startswith("MOVE_N"), f"Must not bump-attack town NPC! Action: {dec_joppa['action']}"
 
+# 19. Test Multi-Tile Oscillation Loop Detection & Room Breakout
+print("\n--- Test 19: Multi-Tile Oscillation Loop Detection & Room Breakout ---")
+brain.recent_positions.clear()
+brain.stuck_autoexplore_zones.clear()
+brain.visit_counts.clear()
+
+# Simulate bouncing between (14, 10) [Sign adjacent] and (15, 10) [Table adjacent]
+pos_A = (14, 10)
+pos_B = (15, 10)
+brain.recent_positions.extend([pos_A, pos_B, pos_A, pos_B, pos_A])
+brain.visit_counts[pos_A] = 3
+brain.visit_counts[pos_B] = 2
+pos_freq = brain.recent_positions.count(pos_A)
+assert pos_freq == 3, f"Expected pos_freq 3, got {pos_freq}"
+
+house_surroundings = {
+    "N": "[BLOCKED: wooden sign]",
+    "E": "dirt floor",        # Leads to (15, 10) [already in recent_positions]
+    "W": "[BLOCKED: wooden wall]",
+    "S": "open doorway",       # Leads to (14, 11) [FRESH ESCAPE TILE]
+    "NW": "[BLOCKED: wooden wall]",
+    "NE": "[BLOCKED: wooden wall]",
+    "SW": "[BLOCKED: wooden wall]",
+    "SE": "[BLOCKED: wooden wall]",
+}
+valid_m = brain.get_valid_moves(house_surroundings, pos_A, None, is_in_combat=False)
+open_escapes = [m for m in valid_m if (pos_A[0] + brain.CARDINAL_OFFSETS[m[5:]][0], pos_A[1] + brain.CARDINAL_OFFSETS[m[5:]][1]) not in brain.recent_positions]
+
+print(f"Valid moves from {pos_A}: {valid_m}")
+print(f"Open escapes avoiding cycle: {open_escapes}")
+assert "MOVE_S" in open_escapes, f"Expected MOVE_S as open escape, got {open_escapes}"
+assert "MOVE_E" not in open_escapes, "MOVE_E leads to (15, 10) in recent_positions and must be excluded!"
+
+# Test breakout action selection
+open_escapes.sort(key=lambda m: brain.visit_counts[(pos_A[0] + brain.CARDINAL_OFFSETS[m[5:]][0], pos_A[1] + brain.CARDINAL_OFFSETS[m[5:]][1])])
+breakout_action = open_escapes[0]
+print(f"Selected breakout action: {breakout_action}")
+assert breakout_action == "MOVE_S", f"Expected MOVE_S breakout action, got {breakout_action}"
+
+# Test subsequent query_decision switches to frontier exploration
+test_zone_id = "Joppa.10"
+brain.current_zone_id = test_zone_id
+brain.stuck_autoexplore_zones.add(test_zone_id)
+osc_state = {
+    "hp": 24, "max_hp": 24, "x": 14, "y": 10, "z": 10,
+    "zone_id": test_zone_id, "zone_name": "Joppa",
+    "zone_fully_explored": False,  # Engine still thinks unexplored
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": house_surroundings,
+    "visible_entities": []
+}
+dec_post_osc = brain.query_decision(osc_state, took_damage=False, enemies=[])
+print(f"Decision with stuck autoexplore: {dec_post_osc['action']} | Reason: {dec_post_osc['reason']}")
+assert dec_post_osc['action'] != "AUTOEXPLORE", "Must NOT call AUTOEXPLORE when zone is in stuck_autoexplore_zones!"
+assert dec_post_osc['action'] == "MOVE_S", f"Expected MOVE_S frontier move, got {dec_post_osc['action']}"
+
 print("\n==================================================")
-print(">>> ALL 18 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 19 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
+
