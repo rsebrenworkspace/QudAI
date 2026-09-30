@@ -189,13 +189,11 @@ namespace QudAIBrain
 
                 if (!File.Exists(FlagFile) || !UnityEngine.Application.isPlaying)
                 {
-                    try { Popup.bSuppressPopups = false; } catch { }
                     try { Popup.Suppress = false; } catch { }
                     return true;
                 }
 
                 // AI is active: suppress all blocking popups and ensure engine doesn't wait on UI thread
-                try { Popup.bSuppressPopups = true; } catch { }
                 try { Popup.Suppress = true; } catch { }
                 try { GameManager.runPlayerTurnOnUIThread = false; } catch { }
 
@@ -408,7 +406,7 @@ namespace QudAIBrain
                             var ab = kvp.Value;
                             if (ab != null && ab.Enabled)
                             {
-                                int cd = ab.CooldownTurns > 0 ? ab.CooldownTurns : ab.Cooldown;
+                                int cd = ab.CooldownRounds > 0 ? ab.CooldownRounds : ab.Cooldown;
                                 bool usable = ab.IsUsable;
                                 string name = StripQudFormatting(ab.DisplayName);
                                 string cmd = ab.Command ?? "";
@@ -567,6 +565,7 @@ namespace QudAIBrain
 
                                     string name = StripQudFormatting(!string.IsNullOrEmpty(obj.DisplayName) ? obj.DisplayName : obj.Blueprint);
                                     if (string.IsNullOrEmpty(name) || name.IndexOf("widget", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                                    string bp = obj.Blueprint ?? "";
 
                                     int dist = Math.Max(Math.Abs(x - px), Math.Abs(y - py));
                                     string dir = GetApproximateDirection(px, py, x, y);
@@ -1110,7 +1109,7 @@ namespace QudAIBrain
                                 var ab = kvp.Value;
                                 if (ab != null && ab.Enabled && ((ab.DisplayName ?? "").ToLower().Contains("sprint") || (ab.Command ?? "").ToLower().Contains("sprint")))
                                 {
-                                    if (ab.IsUsable && ab.CooldownTurns <= 0 && ab.Cooldown <= 0)
+                                    if (ab.IsUsable && ab.CooldownRounds <= 0 && ab.Cooldown <= 0)
                                     {
                                         player.FireEvent(Event.New(ab.Command, "User", player));
                                         break;
@@ -1152,7 +1151,7 @@ namespace QudAIBrain
                                 var ab = kvp.Value;
                                 if (ab != null && ab.Enabled && ((ab.DisplayName ?? "").ToLower().Contains("sprint") || (ab.Command ?? "").ToLower().Contains("sprint")))
                                 {
-                                    if (ab.IsUsable && ab.CooldownTurns <= 0 && ab.Cooldown <= 0)
+                                    if (ab.IsUsable && ab.CooldownRounds <= 0 && ab.Cooldown <= 0)
                                     {
                                         player.FireEvent(Event.New(ab.Command, "User", player));
                                         break;
