@@ -15,6 +15,7 @@ using XRL.World.Skills;
 using XRL.World.Parts.Mutation;
 using XRL.World.Parts.Skill;
 using XRL.Messages;
+using XRL.World.Capabilities;
 
 using GameObject = XRL.World.GameObject;
 using Physics = XRL.World.Parts.Physics;
@@ -32,6 +33,8 @@ namespace QudAIBrain
 
         private static bool lastMoveFailed = false;
         private static string lastFailedDir = "";
+        private static bool isZoneFullyExplored = false;
+        private static string lastZoneId = "";
         private static MethodInfo cachedFireMethod = null;
 
         private static readonly Regex QudColorRegex = new Regex(@"(&[a-zA-Z0-9]|\^[a-zA-Z0-9]|\{\{|\}\})", RegexOptions.Compiled);
@@ -262,6 +265,11 @@ namespace QudAIBrain
                 int pz = currentCell?.ParentZone?.Z ?? 10;
                 string zoneId = currentCell?.ParentZone?.ZoneID ?? "Unknown";
                 string zoneName = StripQudFormatting(currentCell?.ParentZone?.DisplayName ?? "Unknown");
+                if (zoneId != lastZoneId)
+                {
+                    lastZoneId = zoneId;
+                    isZoneFullyExplored = false;
+                }
 
                 bool hasMissileWeapon = false;
                 int missileCurrentAmmo = 0;
@@ -449,6 +457,7 @@ namespace QudAIBrain
                 sb.Append($"\"inventory_ammo\": {inventoryAmmo},");
                 sb.Append($"\"zone_id\": \"{EscapeJson(zoneId)}\",");
                 sb.Append($"\"zone_name\": \"{EscapeJson(zoneName)}\",");
+                sb.Append($"\"zone_fully_explored\": {(isZoneFullyExplored ? "true" : "false")},");
                 string genotype = "";
                 string subtype = "";
                 try { genotype = player.GetGenotype() ?? ""; } catch { }
@@ -739,6 +748,12 @@ namespace QudAIBrain
             }
 
             string act = action.ToUpper().Trim();
+
+            if (act == "AUTOEXPLORE")
+            {
+                ExecuteAutoexplore(player);
+                return;
+            }
 
             if (act == "RELOAD")
             {
@@ -1031,6 +1046,98 @@ namespace QudAIBrain
                 lastFailedDir = "";
                 player.UseEnergy(1000, "Pass");
             }
+        }
+
+        private static void ExecuteAutoexplore(GameObject player)
+        {
+            if (player == null || player.CurrentCell == null)
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                if (player?.Energy != null) player.UseEnergy(1000, "Pass");
+                return;
+            }
+
+            Zone zone = player.CurrentCell.ParentZone;
+            if (zone == null || zone.IsWorldMap())
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                if (player.Energy != null) player.UseEnergy(1000, "Pass");
+                return;
+            }
+
+            // 1. Pick up takeable item on current tile if any
+            try
+            {
+                Cell curCell = player.CurrentCell;
+                if (curCell != null && curCell.Objects != null)
+                {
+                    var groundItem = curCell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && !o.HasPart("Combat") && !o.HasPart("Door") && (o.HasPart("Physics") || o.HasPart("Corpse")));
+                    if (groundItem != null)
+                    {
+                        var phys = groundItem.GetPart<Physics>();
+                        if (phys == null || !phys.Solid)
+                        {
+                            player.TakeObject(groundItem);
+                            try { player.FireEvent(Event.New("CommandAutoEquip")); } catch { }
+                            if (player.Energy != null) player.UseEnergy(1000, "Pickup");
+                            lastMoveFailed = false;
+                            lastFailedDir = "";
+                            return;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // 2. Query native Autoexplore step
+            string step = null;
+            bool blackout = false;
+
+            try
+            {
+                FasterDMapAutoexplore.FindAutoexploreStep(out step, out blackout);
+            }
+            catch { }
+
+            if (string.IsNullOrEmpty(step) || step == ".")
+            {
+                try
+                {
+                    AutoAct.FindAutoexploreStep(true, out step, out blackout);
+                }
+                catch { }
+            }
+
+            if (!string.IsNullOrEmpty(step) && step != ".")
+            {
+                int energyBefore = player.Energy != null ? player.Energy.Value : 0;
+                bool moved = player.Move(step);
+                if (!moved)
+                {
+                    lastMoveFailed = true;
+                    lastFailedDir = step.ToUpper();
+                    TryOpenDoorInDirection(player, step);
+                }
+                else
+                {
+                    lastMoveFailed = false;
+                    lastFailedDir = "";
+                }
+
+                if (player.Energy != null && player.Energy.Value >= energyBefore)
+                {
+                    player.UseEnergy(1000, "Movement");
+                }
+                return;
+            }
+
+            // 3. Mark zone fully explored when no autoexplore targets remain
+            isZoneFullyExplored = true;
+            lastMoveFailed = false;
+            lastFailedDir = "";
+            if (player.Energy != null) player.UseEnergy(1000, "Pass");
         }
 
         private static void ExecuteAutolevel(GameObject player, string command)

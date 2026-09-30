@@ -151,6 +151,18 @@
   - Patched `XRL.UI.PickDirection`, `XRL.UI.PickTarget`, and `XRL.UI.PickFieldTarget` so directional abilities (`Charge`, `Dismember`, `Freezing Ray`, `Cryokinesis`) execute headlessly without UI stalls.
   - Replaced the single rifle fallback in `brain.py` with 4 dedicated fallback routines (`fallback_melee`, `fallback_esper`, `fallback_gunslinger`, `fallback_nomad`).
 
+### Iteration 8: Native Autoexplore Foundation (Macro-Navigation Engine)
+- **The Challenge:** Peaceful exploration previously relied on a rudimentary 1-tile frontier movement heuristic (`visit_counts`). Characters could get wedged in complex corners or water edges, failed to systematically open chests or retrieve floor loot across 80x25 zones, and had no native awareness of when a zone was fully explored.
+- **Decompilation Findings:** Decompiled `Assembly-CSharp.dll` with `Trivial.Mono.Cecil` and analyzed Qud's native Autoexplore architecture:
+  - `XRL.World.Capabilities.FasterDMapAutoexplore.FindAutoexploreStep(out string step, out bool blackout)`
+  - `XRL.World.Capabilities.AutoAct.FindAutoexploreStep(bool Force, out string step, out bool blackout)`
+  - `step` returns optimal direction strings (`"N"`, `"S"`, `"E"`, `"W"`, etc.) towards unrevealed tiles, loot, and containers, or returns `"."` / `null` when the zone is completely traversed.
+- **Implementation:**
+  - Added `ExecuteAutoexplore` in `AIBrainPart.cs`: queries `FasterDMapAutoexplore` / `AutoAct`, executes movement, handles door opening, and auto-loots ground items.
+  - Exported `zone_fully_explored` boolean in `state.json` (resets upon zone transition).
+  - In `brain.py` Phase A, dispatched `AUTOEXPLORE` as the foundational macro-exploration action when safe. When `zone_fully_explored` is reported, seamlessly transitions to stairs down (`USE_STAIRS_DOWN`) or adjacent zone exits.
+  - Instant Combat Suspension: Any incoming damage, nearby hostiles, or active targets immediately halt autoexplore and switch control to LM Studio / class fallback matrix in Phase B/C.
+
 ---
 
 ## 4. Current Codebase Specification (v1.0.0)

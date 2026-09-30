@@ -215,6 +215,27 @@ print("\n--- Test 9: Live LM Studio Decision with Class Prompting ---")
 print(f"Action: {dec_combat['action']} | Reason: {dec_combat['reason']}")
 assert dec_combat['action'], "Expected valid action from LM Studio or deterministic fallback!"
 
+# 10. Test Native Autoexplore Dispatch (Healthy, Safe, Unexplored)
+explore_state = dict(safe_state)
+explore_state["hp"] = 24
+explore_state["zone_fully_explored"] = False
+dec_explore = brain.query_decision(explore_state, took_damage=False, enemies=[])
+print("\n--- Test 10: Safe Area Exploration via Native Qud Autoexplore ---")
+print(f"Action: {dec_explore['action']} | Reason: {dec_explore['reason']}")
+assert dec_explore['action'] == "AUTOEXPLORE", f"Expected AUTOEXPLORE, got {dec_explore['action']}"
+
+# 11. Test Zone Fully Explored -> Stairs Down / Zone Transition
+fully_explored_state = dict(safe_state)
+fully_explored_state["hp"] = 24
+fully_explored_state["zone_fully_explored"] = True
+fully_explored_state["visible_entities"] = [
+    {"name": "stairs leading down", "tx": 10, "ty": 9, "dist": 1, "dir": "N", "is_enemy": False}
+]
+dec_zone_done = brain.query_decision(fully_explored_state, took_damage=False, enemies=[])
+print("\n--- Test 11: Zone Fully Explored -> Navigate to Stairs Down ---")
+print(f"Action: {dec_zone_done['action']} | Reason: {dec_zone_done['reason']}")
+assert dec_zone_done['action'] == "MOVE_N", f"Expected MOVE_N towards stairs down, got {dec_zone_done['action']}"
+
 print("\n==================================================")
-print(">>> ALL 9 MULTI-CLASS TACTICAL TESTS PASSED! <<<")
+print(">>> ALL 11 MULTI-CLASS TACTICAL TESTS PASSED! <<<")
 print("==================================================")

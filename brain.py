@@ -830,12 +830,32 @@ def query_decision(game_state, took_damage, enemies):
         if has_missile and max_ammo > 0 and ammo < max_ammo and inv_ammo > 0:
             return {"action": "RELOAD", "reason": f"Safe top-off: reloading rifle ({ammo}/{max_ammo}, Inv: {inv_ammo})"}
 
-        # 4. Autonomous area exploration (least visited tiles)
+        # 4. Autonomous area exploration via Caves of Qud native Autoexplore
+        if not game_state.get("zone_fully_explored", False):
+            return {"action": "AUTOEXPLORE", "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder"}
+
+        # 5. Zone is fully explored -> Search for stairs down, zone transitions, or frontier moves
+        center_tile = surroundings.get("CENTER", "").lower()
+        if "stair" in center_tile and "down" in center_tile:
+            return {"action": "USE_STAIRS_DOWN", "reason": "Zone fully explored: descending stairs down to next stratum"}
+
+        for ent in game_state.get("visible_entities", []):
+            ename = ent.get("name", "").lower()
+            ebp = ent.get("blueprint", "").lower()
+            if ("stair" in ename or "stair" in ebp) and "down" in ename:
+                s_dir = ent.get("dir", "")
+                if s_dir and f"MOVE_{s_dir}" in valid_moves:
+                    return {"action": f"MOVE_{s_dir}", "reason": f"Zone fully explored: navigating towards stairs down ({s_dir})"}
+
+        exit_moves = [m for m in valid_moves if "[zone_exit" in surroundings.get(m[5:], "").lower() or "exit" in surroundings.get(m[5:], "").lower()]
+        if exit_moves:
+            return {"action": exit_moves[0], "reason": f"Zone fully explored: transitioning to adjacent zone via {exit_moves[0]}"}
+
         if valid_moves:
             ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
-            return {"action": ranked[0], "reason": f"Exploration: frontier move {ranked[0]}"}
+            return {"action": ranked[0], "reason": f"Zone fully explored: scouting zone frontier {ranked[0]}"}
 
-        return {"action": "WAIT", "reason": "Exploration: no valid moves open"}
+        return {"action": "WAIT", "reason": "Zone fully explored: no open moves"}
 
     # ==========================================================
     # PHASE B: TACTICAL COMBAT (The Conversation Model)
