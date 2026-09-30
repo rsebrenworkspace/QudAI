@@ -171,7 +171,7 @@ namespace QudAIBrain
                 if (brain != null)
                 {
                     if (brain.PartyLeader == player) return true;
-                    if (brain.PartyLeader != null && (brain.PartyLeader.IsPlayer() || brain.PartyLeader.id == player.id)) return true;
+                    if (brain.PartyLeader != null && (brain.PartyLeader.IsPlayer() || brain.PartyLeader.ID == player.ID)) return true;
                 }
 
                 // 4. Engine leader and alliance methods
@@ -207,6 +207,7 @@ namespace QudAIBrain
                 if (obj.IsHostileTowards(player)) return true;
 
                 // 3. Brain hostility checks
+                var brain = obj.Brain ?? obj.GetPart<Brain>();
                 if (brain != null)
                 {
                     if (brain.Target == player) return true;
