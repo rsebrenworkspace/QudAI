@@ -423,6 +423,50 @@ assert dec_post_charm['action'] == "AUTOEXPLORE", f"Expected AUTOEXPLORE in peac
 assert "lase" not in dec_post_charm['action'].lower()
 assert "bubble" not in dec_post_charm['action'].lower()
 
+print("\n--- Test 17: Esper Standoff Doctrine & Emergency Banishment ---")
+# 1. Verify build classification
+esper_tmpl = build_templates.BUILD_TEMPLATES["esper_ited_away"]
+assert brain.is_pure_caster_or_ranged(esper_tmpl), "Expected esper_ited_away to be pure caster!"
+
+# 2. Adjacent hostile threat with Teleport Other ready: Must banish threat across map
+adj_threat_state = {
+    "hp": 8, "max_hp": 27, "x": 10, "y": 10, "effects": ["bleeding"],
+    "genotype": "Mutated Human", "calling": "Apostle",
+    "has_companion": True, "companions": [{"name": "charmed goat", "tx": 10, "ty": 9, "dist": 1}],
+    "surroundings": {"NW": "[ENEMY: glowfish]", "N": "Clear", "E": "Clear", "S": "Clear", "W": "Clear"},
+    "visible_entities": [{"name": "glowfish", "dist": 1, "dir": "NW", "tx": 9, "ty": 9, "is_enemy": True}],
+    "abilities": [
+        {"name": "Teleport Other", "command": "CommandTeleportOther", "cooldown": 0, "usable": True},
+        {"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 30, "usable": False},
+        {"name": "Lase (0 charges)", "command": "CommandLase", "cooldown": 0, "usable": False}
+    ]
+}
+dec_banish = brain.query_decision(adj_threat_state, took_damage=True, enemies=adj_threat_state["visible_entities"])
+print(f"Adjacent threat decision: {dec_banish['action']} | Reason: {dec_banish['reason']}")
+assert "teleportother" in dec_banish['action'].lower(), f"Expected Teleport Other banish, got {dec_banish['action']}"
+assert not dec_banish['action'].startswith("MOVE_"), f"Esper must not bump-attack in melee, got {dec_banish['action']}"
+
+# 3. Distant hostile with all powers on cooldown: Must WAIT to recharge, NOT advance with staff!
+standoff_state = {
+    "hp": 20, "max_hp": 27, "x": 10, "y": 10, "effects": [],
+    "genotype": "Mutated Human", "calling": "Apostle",
+    "has_companion": True, "companions": [{"name": "charmed goat", "tx": 10, "ty": 9, "dist": 1}],
+    "surroundings": {"N": "Clear", "E": "Clear", "S": "Clear", "W": "Clear"},
+    "visible_entities": [{"name": "glowpad", "dist": 4, "dir": "E", "tx": 14, "ty": 10, "is_enemy": True, "is_stationary": True}],
+    "abilities": [
+        {"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 30, "usable": False},
+        {"name": "Lase (0 charges)", "command": "CommandLase", "cooldown": 0, "usable": False}
+    ]
+}
+dec_standoff = brain.fallback_esper(
+    standoff_state, standoff_state["visible_entities"], {},
+    ["MOVE_N", "MOVE_S", "MOVE_W"], ["MOVE_N", "MOVE_S", "MOVE_W"],
+    standoff_state["abilities"], esper_tmpl, (10, 10), 10, 10, 20, 27, False, False, 0, 0, 0
+)
+print(f"Standoff recharge decision: {dec_standoff['action']} | Reason: {dec_standoff['reason']}")
+assert dec_standoff['action'] == "WAIT", f"Expected WAIT to recharge, got {dec_standoff['action']}"
+assert "staff" not in dec_standoff['reason'].lower(), f"Esper must not advance with staff, got {dec_standoff['reason']}"
+
 print("\n==================================================")
-print(">>> ALL 16 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 17 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")

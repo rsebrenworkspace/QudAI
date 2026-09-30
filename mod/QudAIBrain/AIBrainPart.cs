@@ -1124,6 +1124,7 @@ namespace QudAIBrain
                 }
 
                 bool isProselytize = cmd.IndexOf("proselytize", StringComparison.OrdinalIgnoreCase) >= 0 || cmd.IndexOf("beguile", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool isTouchOrDirect = isProselytize || cmd.IndexOf("teleportother", StringComparison.OrdinalIgnoreCase) >= 0;
 
                 GameObject targetObj = player.Target ?? Sidebar.CurrentTarget;
                 if (!isProselytize && targetObj != null && IsCompanion(targetObj, player))
@@ -1132,14 +1133,28 @@ namespace QudAIBrain
                 }
                 Cell targetCell = targetObj?.CurrentCell;
 
-                if (isProselytize)
+                if (!string.IsNullOrEmpty(PreferredDirection) && player.CurrentCell != null && targetCell != null)
+                {
+                    string existingDir = player.CurrentCell.GetDirectionFromCell(targetCell);
+                    if (!string.Equals(existingDir, PreferredDirection, StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetObj = null;
+                        targetCell = null;
+                    }
+                }
+
+                if (isTouchOrDirect)
                 {
                     if (!string.IsNullOrEmpty(PreferredDirection) && player.CurrentCell != null)
                     {
                         Cell adjCell = player.CurrentCell.GetCellFromDirection(PreferredDirection, false);
                         if (adjCell != null && adjCell.Objects != null)
                         {
-                            var cand = adjCell.Objects.FirstOrDefault(o => CanBeProselytized(o, player));
+                            var cand = adjCell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && (isProselytize ? CanBeProselytized(o, player) : (!IsCompanion(o, player) && CheckIsEnemy(o, player))));
+                            if (cand == null && !isProselytize)
+                            {
+                                cand = adjCell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && !IsCompanion(o, player));
+                            }
                             if (cand != null)
                             {
                                 targetObj = cand;
@@ -1156,7 +1171,7 @@ namespace QudAIBrain
                     if (!string.IsNullOrEmpty(PreferredDirection))
                     {
                         targetObj = safeZoneObjs
-                            .Where(o => o != null && !o.IsPlayer() && CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .Where(o => o != null && !o.IsPlayer() && (isProselytize ? CanBeProselytized(o, player) : (!IsCompanion(o, player) && CheckIsEnemy(o, player))) && o.CurrentCell != null)
                             .Where(o => pCell.GetDirectionFromCell(o.CurrentCell).Equals(PreferredDirection, StringComparison.OrdinalIgnoreCase))
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
@@ -1165,7 +1180,7 @@ namespace QudAIBrain
                     if (targetObj == null)
                     {
                         targetObj = safeZoneObjs
-                            .Where(o => o != null && !o.IsPlayer() && CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .Where(o => o != null && !o.IsPlayer() && (isProselytize ? CanBeProselytized(o, player) : (!IsCompanion(o, player) && CheckIsEnemy(o, player))) && o.CurrentCell != null)
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
                     }
@@ -1189,6 +1204,12 @@ namespace QudAIBrain
                         targetCell = null;
                         targetObj = null;
                     }
+                }
+
+                if (targetObj != null)
+                {
+                    player.Target = targetObj;
+                    try { Sidebar.CurrentTarget = targetObj; } catch { }
                 }
 
                 PreferredTargetCell = targetCell;

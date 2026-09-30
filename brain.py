@@ -144,6 +144,21 @@ def is_proselytizable(entity, companions=None):
             return False
     return True
 
+
+def is_pure_caster_or_ranged(template):
+    """Returns True if the build template is a pure caster or dedicated ranged specialist."""
+    if not template:
+        return False
+    cid = template.get("id", "")
+    arch = template.get("archetype", "").lower()
+    pref_range = template.get("preferred_range", 4)
+    if cid in ("esper_ited_away", "esper_mindflayer", "uncle_iroh", "gas_giant", "bullet_specter", "gunkin"):
+        return True
+    if any(k in arch for k in ["sorcerer", "caster", "pistoleer", "leadstorm", "gunslinger"]):
+        return True
+    return pref_range >= 5
+
+
 current_zone_id = None
 zone_step_count = 0
 last_action = None
@@ -493,6 +508,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     is_sprinting = game_state.get("is_sprinting", False) or any(e in ef.lower() for ef in effects for e in ["running", "sprint"])
     sprint_ab = next((ab for ab in abilities if "sprint" in ab.get("name", "").lower() or "sprint" in ab.get("command", "").lower()), None)
     can_sprint = (not is_sprinting) and (sprint_ab is not None) and sprint_ab.get("usable", True) and sprint_ab.get("cooldown", 0) <= 0
+    is_caster_or_ranged = is_pure_caster_or_ranged(template)
+    is_bleeding = any("bleed" in str(ef).lower() for ef in effects)
 
     adj_threats = get_adjacent_threats(surroundings, companions=companions)
     grid_ascii = render_5x5_grid(surroundings)
@@ -558,7 +575,10 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 vdir = vm[5:]
                 action_choices.append(f"{vm} (Sprint Maneuver {vdir})")
             for d, ename in adj_threats.items():
-                action_choices.append(f"MOVE_{d} (Melee Attack {ename})")
+                if not is_caster_or_ranged:
+                    action_choices.append(f"MOVE_{d} (Melee Attack {ename})")
+                else:
+                    action_choices.append(f"MOVE_{d} (Sprint Disengage past {ename})")
     else:
         closest = enemies[0] if enemies else None
         c_dist = closest.get("dist", 999) if closest else 999
@@ -627,8 +647,18 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
 
         # 2. MELEE ATTACKS & MELEE-TARGETED ABILITIES
         # A. Bump Melee strikes on adjacent enemies
-        for d, ename in adj_threats.items():
-            action_choices.append(f"MOVE_{d} (Melee Attack {ename})")
+        if not is_caster_or_ranged:
+            for d, ename in adj_threats.items():
+                action_choices.append(f"MOVE_{d} (Melee Attack {ename})")
+        else:
+            # Pure casters and ranged specialists must NEVER voluntarily melee bump-attack enemies with frail weapons
+            has_defensive_ability = any(
+                is_ability_ready(ab) and any(db in (f"{ab.get('name')} {ab.get('command')}").lower() for db in ["force bubble", "force wall", "teleport other", "intimidate", "phasing", "teleportation"])
+                for ab in abilities
+            )
+            if not open_moves and not can_sprint and not has_defensive_ability:
+                for d, ename in adj_threats.items():
+                    action_choices.append(f"MOVE_{d} (DESPERATE LAST RESORT: Cornered melee strike on {ename} with wooden staff)")
 
         # B. Melee targeted abilities (Dismember, Cleave, Shield Slam, Swipe) & Gap-closers
         for ab in abilities:
@@ -647,9 +677,11 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                     if closest and 2 <= c_dist <= 4 and not adj_threats and s_dir:
                         action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Charge at {c_name} {s_dir} - GAP-CLOSER OPENER: Close gap & daze)")
                 elif any(touch in combined for touch in ["teleportother", "teleport other"]):
-                    if adj_threats or (closest and c_dist <= 2):
-                        t_dir = list(adj_threats.keys())[0] if adj_threats else s_dir
-                        action_choices.append(f"USE_ABILITY:{cmd}:{t_dir} (EMERGENCY BANISH: Cast Teleport Other on adjacent threat {t_dir} across map)")
+                    if adj_threats:
+                        for td, tename in adj_threats.items():
+                            action_choices.append(f"USE_ABILITY:{cmd}:{td} (EMERGENCY BANISH: Cast Teleport Other to banish adjacent {tename} {td} across map)")
+                    elif closest and c_dist <= 1 and s_dir:
+                        action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (EMERGENCY BANISH: Cast Teleport Other on adjacent threat {s_dir} across map)")
                 elif "disarm" in combined:
                     if adj_threats:
                         for d, ename in adj_threats.items():
@@ -702,6 +734,18 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
             else:
                 action_choices.append(f"{vm} (Reposition {vdir})")
 
+        # 7. STANDOFF & COOLDOWN RECHARGE (Casters / Ranged)
+        if is_caster_or_ranged and enemies and not adj_threats:
+            action_choices.append("WAIT (Hold safe standoff distance & recharge Light Manipulation laser charges / mental cooldowns)")
+
+        if is_caster_or_ranged and closest and c_dist <= 3 and open_moves:
+            for vm in open_moves:
+                vdir = vm[5:]
+                dx, dy = CARDINAL_OFFSETS.get(vdir, (0, 0))
+                new_dist = max(abs((px + dx) - c_tx), abs((py + dy) - c_ty))
+                if new_dist > c_dist:
+                    action_choices.append(f"{vm} (Kite backpedal {vdir} away from {c_name} to maintain safe standoff)")
+
     ancestral_lore = chronicler.format_ancestral_memory_for_prompt()
     class_name = template.get("name", "Nomad Wanderer")
     archetype = template.get("archetype", "General Combatant")
@@ -715,12 +759,26 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     rot_list = doctrine.get("ability_rotation", [])
     rot_str = "\n".join(f"   {r}" for r in rot_list) if rot_list else "   - Use class abilities when in range."
 
+    if is_caster_or_ranged:
+        rule2 = (
+            "2. CASTER / RANGED ATTACK & KITING PRIORITY: Fire ranged powers (Lase, Sunder Mind, Stunning Force, Elemental Rays, Guns) "
+            "whenever available. When abilities or laser charges are cooling down, MAINTAIN SAFE DISTANCE (kiting backpedal or WAIT) "
+            "to let charges recharge and mental cooldowns reset. NEVER voluntarily charge into melee to strike with a frail staff! "
+            "If an enemy breaches adjacent melee range, prioritize EMERGENCY DEFENSE (Teleport Other banish, Force Bubble barrier, Intimidate fear) "
+            "or Sprinting/Retreating into open ground!"
+        )
+    else:
+        rule2 = (
+            "2. ATTACK PRIORITY: If an offensive action (Missile Snipe, Charge, Dismember, Cleave, or Melee Attack) is listed in VALID ACTIONS, "
+            "YOU MUST ATTACK. Never waste a turn walking away when you can already strike or charge the enemy!"
+        )
+
     system_prompt = (
         f"You are an expert tactical AI controlling a {class_name} ({archetype}) in Caves of Qud.\n"
         f"{ancestral_lore}\n\n"
         f"CLASS TACTICAL DOCTRINE ({doctrine_name.upper()} - Preferred Range: {pref_range} tiles):\n"
         f"1. PRIMARY COMBAT GOAL: {open_action}.\n"
-        f"2. ATTACK PRIORITY: If an offensive action (Missile Snipe, Lase, Sunder Mind, Ray, Charge, or Melee Attack) is listed in VALID ACTIONS, YOU MUST ATTACK. Never waste a turn walking toward an enemy when you can already fire, lase, or blast them from your current tile!\n"
+        f"{rule2}\n"
         f"3. ABILITY ROTATION & COMBO DOCTRINE:\n{rot_str}\n"
         f"4. CLOSE CONTACT POLICY: {close_policy}.\n"
         f"5. CLASS STRENGTHS TO EXPLOIT:\n{strengths_str}\n"
@@ -734,7 +792,11 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
         "}"
     )
 
-    damage_alert = "- COMBAT ALERT: [!HIT!] YOU TOOK DAMAGE LAST TURN! You are actively taking damage in combat!\n" if took_damage else ""
+    damage_alert = ""
+    if took_damage:
+        damage_alert += "- COMBAT ALERT: [!HIT!] YOU TOOK DAMAGE LAST TURN! You are actively taking damage in combat!\n"
+    if is_bleeding:
+        damage_alert += "- CRITICAL BLEEDING ALERT: [!BLEEDING!] You are bleeding heavily! Every step or bump-attack inflicts bleed damage. Prioritize emergency defense (Teleport Other to banish adjacent enemies, Force Bubble barrier) or retreat to safe ground!\n"
     if has_mw:
         if ammo > 0:
             ammo_display = f"Loaded {ammo}/{max_ammo} (Spare inventory slugs: {inv_ammo})"
@@ -947,8 +1009,13 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             return {"action": f"USE_ABILITY:{ab_bubble['command']}", "reason": f"[{template['name']} Fallback] Popping Force Bubble impenetrable barrier against close hostiles"}
 
         ab_banish = find_ready_ability(abilities, ["teleport other", "teleportother"])
-        if ab_banish and ab_banish.get("command") and s_dir:
-            return {"action": f"USE_ABILITY:{ab_banish['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Banishing close hostile {c_name} with Teleport Other ({s_dir})"}
+        if ab_banish and ab_banish.get("command"):
+            if adj_threats:
+                t_dir = list(adj_threats.keys())[0]
+                t_name = adj_threats[t_dir]
+                return {"action": f"USE_ABILITY:{ab_banish['command']}:{t_dir}", "reason": f"[{template['name']} Fallback] Banishing adjacent hostile {t_name} with Teleport Other ({t_dir})"}
+            elif closest_dist == 1 and s_dir:
+                return {"action": f"USE_ABILITY:{ab_banish['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Banishing close hostile {c_name} with Teleport Other ({s_dir})"}
 
         ab_intimidate = find_ready_ability(abilities, ["intimidate"])
         if ab_intimidate and ab_intimidate.get("command"):
@@ -963,6 +1030,12 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             if can_sp:
                 return {"action": f"SPRINT_{r_dir}", "reason": f"[{template['name']} Fallback] Sprint kiting away from fragile melee engagement"}
             return {"action": open_moves[0], "reason": f"[{template['name']} Fallback] Backpedaling away from melee threat"}
+
+        # If enemy is at dist 2 (not adjacent yet) and we have open moves, kite away!
+        if closest_dist <= 2 and open_moves:
+            kites = [m for m in open_moves if max(abs(px + CARDINAL_OFFSETS[m[5:]][0] - c_tx), abs(py + CARDINAL_OFFSETS[m[5:]][1] - c_ty)) > closest_dist]
+            if kites:
+                return {"action": kites[0], "reason": f"[{template['name']} Fallback] Backpedaling to maintain safe distance ({closest_dist} -> {kites[0][5:]})"}
 
     # 2. Long-Range Psychic Assault (Distance >= 1)
     if closest_enemy and closest_dist >= 1:
@@ -1019,21 +1092,18 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             if open_moves:
                 return {"action": open_moves[0], "reason": f"[{template['name']} Fallback] Repositioning {open_moves[0][5:]} to clear line of fire past companion"}
 
-        # I. Mobile hostile kiting: if enemy is moving toward us (dist < 5) and NOT stationary, step back
-        if closest_dist < 5 and open_moves and not is_stationary:
+        # I. Standoff Kiting: if enemy is closer than preferred distance (dist < 4) and open_moves exist, step back
+        if closest_dist < 4 and open_moves:
             kites = [m for m in open_moves if max(abs(px + CARDINAL_OFFSETS[m[5:]][0] - c_tx), abs(py + CARDINAL_OFFSETS[m[5:]][1] - c_ty)) > closest_dist]
             if kites:
-                return {"action": kites[0], "reason": f"[{template['name']} Fallback] Preserving safe distance (dist {closest_dist} -> {kites[0][5:]})"}
+                return {"action": kites[0], "reason": f"[{template['name']} Fallback] Preserving safe standoff distance (dist {closest_dist} -> {kites[0][5:]})"}
 
-        # J. If enemy is stationary (glowpad, turret, fungus) and all ranged powers are cooling down:
-        if is_stationary:
-            if closest_dist <= 3 and hp >= int(max_hp * 0.7):
-                step_move = f"MOVE_{s_dir}"
-                if step_move in valid_moves:
-                    return {"action": step_move, "reason": f"[{template['name']} Fallback] Advancing to strike stationary {c_name} with staff ({s_dir})"}
-            return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Holding position & recharging laser charges/cooldowns to finish {c_name} (dist: {closest_dist})"}
+        # J. Standoff & Recharge: When all ranged powers / laser charges are cooling down and distance is 2-8 tiles:
+        # HOLD GROUND and WAIT! Let ambient light recharge Lase charges and mental cooldowns tick down!
+        if closest_dist <= 8:
+            return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Holding safe standoff distance ({closest_dist} tiles) & recharging laser charges/mental cooldowns to finish {c_name}"}
 
-        # K. If mobile enemy is distant (dist > 8), close the gap to bring into psychic range
+        # K. If enemy is distant (dist > 8), close the gap to bring into psychic range
         if closest_dist > 8:
             step_move = f"MOVE_{s_dir}"
             if step_move in valid_moves:
@@ -1042,10 +1112,10 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
         # Otherwise, hold ground and recharge mental energy/cooldowns
         return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Recharging mental focus for next psychic strike on {c_name} (dist: {closest_dist})"}
 
-    # 3. Last Resort Melee (Adjacent Threat)
+    # 3. Last Resort Melee (Only when completely cornered with 0 open moves, 0 sprint, and 0 defensive abilities)
     if adj_threats:
         d, ename = list(adj_threats.items())[0]
-        return {"action": f"MOVE_{d}", "reason": f"[{template['name']} Fallback] Emergency defense: striking {ename} ({d})"}
+        return {"action": f"MOVE_{d}", "reason": f"[{template['name']} Fallback] Cornered last resort: emergency defense on {ename} ({d})"}
 
     if valid_moves:
         ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])

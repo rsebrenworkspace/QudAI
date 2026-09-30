@@ -231,6 +231,22 @@
   - **Flora & Brainless Object Filtering:** Fixed issue where the agent attempted to proselytize a `brimestalk` (plant stalk). In `AIBrainPart.cs`, candidate acquisition and `AIPickGameObjectPatch` now strictly require `obj.Brain != null && !obj.HasPart("Plant") && !obj.HasPart("Fungus") && !obj.HasPart("Robot")`, and export an engine-verified `can_proselytize: true/false`. In `brain.py`, `PROSELYTIZE_EXCLUSIONS` was expanded to cover all stalks (`brimestalk`, `brinestalk`), starapples, ferns, roots, lichen, and fungi, and `is_proselytizable()` strictly rejects any entity with `can_proselytize: false`.
   - Verified with LM Studio: When presented with an adjacent `snapjaw brute`, LM Studio reasoned *"Recruit snapjaw brute as frontline tank to absorb damage and enable safe ranged combat"* and executed `USE_ABILITY:CommandProselytize:E`. All 11 verification tests pass.
 
+#### Caster Melee Suicide & Cooldown Recharge Standoff Resolution
+- **Incident Analysis:**
+  The character (Apostle / Esper Mindflayer) was facing an adjacent glowpad and glowfish with 5/27 HP, wearing a cloth robe (0 AV), holding a wooden staff (1d2 damage), and suffering from active bleeding. `Teleport Other` and `Sprint` were ready, while `Stunning Force` and `Lase` charges were depleted. Instead of banishing the adjacent hostile or retreating, the character executed a melee bump-attack (`MOVE_NW`), taking counterattack and bleed damage, and died.
+- **Root Causes Discovered:**
+  1. **Generic Melee Bump Actions in Prompt:** In `query_llm_decision`, `MOVE_{d} (Melee Attack {ename})` was uniformly generated for all classes when enemies were adjacent. In the system prompt, Rule 2 instructed: *"If an offensive action (Missile Snipe, Lase, Sunder Mind, Ray, Charge, or Melee Attack) is listed in VALID ACTIONS, YOU MUST ATTACK."* The model interpreted `Melee Attack` as a mandatory attack obligation rather than retreating or casting `Teleport Other`.
+  2. **Staff Advance in Fallback:** In `fallback_esper`, lines 1029-1033 intentionally commanded `MOVE_{s_dir}` (*"Advancing to strike stationary with staff"*) if an enemy was within 3 tiles and ranged powers were cooling down.
+  3. **Absence of `WAIT` Recharge Choice:** In Caves of Qud, `Light Manipulation` passively regenerates laser charges from ambient light every few turns, and mental mutations cool down turn-by-turn. However, `WAIT` was never included in `action_choices` for LM Studio, forcing the model to move.
+  4. **Target Direction Misalignment in C# Mod:** In `AIBrainPart.cs`, `USE_ABILITY` retained stale `player.Target` or `Sidebar.CurrentTarget` even when `PreferredDirection` pointed elsewhere, preventing touch-range abilities like `CommandTeleportOther` from acquiring the adjacent enemy in the intended direction.
+- **Implementation & Resolution:**
+  - **Archetype Distinction (`is_pure_caster_or_ranged`):** Pure casters and ranged specialists are strictly forbidden from voluntary melee bump-attacks. Melee attack is only generated as a desperate last resort if cornered with 0 open moves, 0 sprint, and 0 defensive cooldowns.
+  - **Emergency Banishment Prioritization:** When adjacent to hostiles, `USE_ABILITY:CommandTeleportOther:<DIR>` and `USE_ABILITY:CommandForceBubble` take absolute precedence over bump-attacks.
+  - **Standoff & Recharge Policy:** Added `WAIT (Hold safe standoff distance & recharge Light Manipulation laser charges / mental cooldowns)` to valid choices when distance is $\ge 2$, and backpedal kiting when distance $< 4$.
+  - **Critical Bleeding Alert:** Added immediate high-priority warning alerting the AI when bleeding to prioritize emergency banishment and safe retreat.
+  - **C# Mod Targeting Alignment:** In `AIBrainPart.cs`, when `PreferredDirection` is specified, `targetObj` and `targetCell` are synchronized to that directional vector, and touch-range abilities (`Teleport Other`, `Proselytize`) automatically acquire the object in the adjacent cell.
+  - Verified on live death state: LM Studio immediately chose `USE_ABILITY:CommandTeleportOther:NW` (*"Banish immediate melee threat with Teleport Other for emergency defense"*). All 17 verification tests passed.
+
 ---
 
 ## 4. Current Codebase Specification (v1.0.0)
