@@ -59,7 +59,7 @@ visit_counts = defaultdict(int)
 NON_COMBAT_KEYWORDS = {
     "camp", "harvest", "butcher", "cook", "tinker", "disassemble",
     "look", "chat", "talk", "sleep", "wait", "ritual", "worship", "pray",
-    "clairvoyance", "ambientlight", "ambient light"
+    "clairvoyance", "ambientlight", "ambient light", "proselytize", "beguile", "berate"
 }
 
 DIRECTIONAL_ABILITIES = {
@@ -392,9 +392,27 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
 
                 # Beam / Ray / Projectile / Ranged Mental Attacks
                 if any(ray in combined for ray in ["freezingray", "flamingray", "spitpoison", "cryokinesis", "pyrokinesis", "lase", "stunningforce", "stunning force", "syphonvim", "syphon vim", "sundermind", "sunder mind"]):
-                    if closest and 2 <= c_dist <= 12:
+                    if closest and 2 <= c_dist <= 18:
                         s_dir = get_step_direction((px, py), (c_tx, c_ty))
-                        action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast {name} at {c_name} {s_dir})")
+                        if "lase" in combined:
+                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Focus Light Manipulation laser beam at {c_name} {s_dir} - PRIMARY OFFENSIVE ATTACK)")
+                        elif "stunning" in combined:
+                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast Stunning Force concussive blast at {c_name} {s_dir})")
+                        else:
+                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast {name} at {c_name} {s_dir})")
+                    continue
+
+                # Touch / adjacent-only abilities (Teleport Other)
+                if any(touch in combined for touch in ["teleportother", "teleport other"]):
+                    if adj_threats or (closest and c_dist <= 1):
+                        t_dir = list(adj_threats.keys())[0] if adj_threats else s_dir
+                        action_choices.append(f"USE_ABILITY:{cmd}:{t_dir} (Banish adjacent threat with Teleport Other {t_dir})")
+                    continue
+
+                # Short-range Intimidate (dist <= 2)
+                if "intimidate" in combined:
+                    if adj_threats or (closest and c_dist <= 2):
+                        action_choices.append(f"USE_ABILITY:{cmd} (Intimidate close threats)")
                     continue
 
                 # Disarm
@@ -404,7 +422,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                             action_choices.append(f"USE_ABILITY:{cmd}:{d} (Disarm {ename} {d})")
                     continue
 
-                # Mental / Self buff / Area
+                # Mental / Self buff / Area (Force Bubble, Phasing, etc.)
                 action_choices.append(f"USE_ABILITY:{cmd} (Activate {name})")
 
     ancestral_lore = chronicler.format_ancestral_memory_for_prompt()
@@ -492,6 +510,18 @@ VALID ACTIONS:
 
             # Sanitize action (e.g. "MOVE_N (Melee Attack snapjaw)" -> "MOVE_N")
             action = raw_action.split()[0] if raw_action else ""
+
+            # If the LLM returned a directional ability without a direction (e.g. "USE_ABILITY:CommandLase"),
+            # auto-append the closest enemy's direction so the game engine gets the exact vector!
+            if action.startswith("USE_ABILITY:") and enemies:
+                ab_cmd = action.split(":")[1].strip()
+                if ":" not in action[12:]:
+                    closest = enemies[0]
+                    closest_dir = closest.get("dir")
+                    if not closest_dir:
+                        closest_dir = get_step_direction((px, py), (closest.get("tx", px), closest.get("ty", py)))
+                    if any(d in ab_cmd.lower() for d in DIRECTIONAL_ABILITIES) or ab_cmd.lower() in DIRECTIONAL_ABILITIES:
+                        action = f"USE_ABILITY:{ab_cmd}:{closest_dir}"
 
             if action:
                 dt = time.time() - t0
@@ -608,9 +638,9 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
         if ab_elemental and ab_elemental.get("command"):
             return {"action": f"USE_ABILITY:{ab_elemental['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Manifesting {ab_elemental.get('name')} at {c_name} ({s_dir})"}
 
-        # D. Stunning Force (Concussive mental blast)
+        # D. Stunning Force (Concussive mental blast - effective at dist <= 8)
         ab_stun = find_ready_ability(abilities, ["stunning force", "stunningforce"])
-        if ab_stun and ab_stun.get("command"):
+        if ab_stun and ab_stun.get("command") and closest_dist <= 8:
             return {"action": f"USE_ABILITY:{ab_stun['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Blasting {c_name} with Stunning Force ({s_dir})"}
 
         # E. Syphon Vim (Life drain if within 4 tiles)
@@ -628,17 +658,19 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             if kites:
                 return {"action": kites[0], "reason": f"[{template['name']} Fallback] Preserving safe distance (dist {closest_dist} -> {kites[0][5:]})"}
 
-        # H. Check if character has ANY offensive ranged power at all
-        has_any_ranged_offense = has_missile or any(
-            any(k in f"{ab.get('name','')} {ab.get('command','')}".lower() for k in ["sunder", "lase", "cryo", "pyro", "stun", "syphon", "flaming", "freezing"])
-            for ab in abilities
-        )
+        # H. If enemy is stationary (glowpad, turret, fungus) and all ranged powers are cooling down:
+        if is_stationary:
+            if closest_dist <= 3 and hp >= int(max_hp * 0.7):
+                step_move = f"MOVE_{s_dir}"
+                if step_move in valid_moves:
+                    return {"action": step_move, "reason": f"[{template['name']} Fallback] Advancing to strike stationary {c_name} with staff ({s_dir})"}
+            return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Holding position & recharging laser charges/cooldowns to finish {c_name} (dist: {closest_dist})"}
 
-        # If no ranged offensive power exists, or stationary enemy while full HP, advance to melee
-        if (not has_any_ranged_offense) or (is_stationary and hp >= int(max_hp * 0.8)):
+        # I. If mobile enemy is distant (dist > 8), close the gap to bring into psychic range
+        if closest_dist > 8:
             step_move = f"MOVE_{s_dir}"
             if step_move in valid_moves:
-                return {"action": step_move, "reason": f"[{template['name']} Fallback] Advancing to engage stationary {c_name} with staff/torch ({s_dir})"}
+                return {"action": step_move, "reason": f"[{template['name']} Fallback] Advancing to psychic engagement range on {c_name} ({s_dir})"}
 
         # Otherwise, hold ground and recharge mental energy/cooldowns
         return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Recharging mental focus for next psychic strike on {c_name} (dist: {closest_dist})"}
@@ -804,7 +836,7 @@ def query_decision(game_state, took_damage, enemies):
     abilities = game_state.get("abilities", [])
 
     adj_threats = get_adjacent_threats(surroundings)
-    close_threats = [e for e in enemies if e.get("dist", 999) <= 10]
+    close_threats = [e for e in enemies if e.get("dist", 999) <= 18]
     engine_hostiles = game_state.get("hostiles_nearby", False) or game_state.get("hostiles_adjacent", False)
     is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
 
@@ -1026,7 +1058,7 @@ def main():
                 surroundings = game_state.get("surroundings", {})
                 grid_display = render_5x5_grid(surroundings)
                 adj_threats = get_adjacent_threats(surroundings)
-                close_threats = [e for e in enemies if e.get("dist", 999) <= 10]
+                close_threats = [e for e in enemies if e.get("dist", 999) <= 18]
                 engine_hostiles = game_state.get("hostiles_nearby", False) or game_state.get("hostiles_adjacent", False)
                 is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
                 mode_str = "[COMBAT]" if is_in_combat else "[EXPLORE]"

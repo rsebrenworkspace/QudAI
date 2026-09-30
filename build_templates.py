@@ -151,9 +151,9 @@ BUILD_TEMPLATES = {
         "archetype": "Pure Mental Sorcerer",
         "callings": ["Apostle", "Greybeard", "Pilgrim"],
         "strengths": [
-            "Mental abilities ignore physical AV armor entirely",
-            "Sunder Mind kills high-level enemies from outside line of sight",
-            "Beguiling & Proselytize recruit powerful legendary champions and beasts as meat-shields",
+            "Light Manipulation emits laser beams (Lase) penetrating armor at infinite range",
+            "Mental abilities (Sunder Mind, Cryokinesis, Stunning Force) annihilate foes from safety",
+            "Force Bubble provides an impenetrable barrier against all physical harm",
             "Massive versatility: teleportation, clairvoyance, temporal fugue clones"
         ],
         "weaknesses": [
@@ -177,12 +177,12 @@ BUILD_TEMPLATES = {
             "Discipline_IronMind",
             "Endurance"
         ],
-        "mutation_priorities": ["SunderMind", "Cryokinesis", "Pyrokinesis", "Beguiling", "Teleportation", "ForceBubble"],
+        "mutation_priorities": ["LightManipulation", "SunderMind", "Cryokinesis", "Pyrokinesis", "StunningForce", "Teleportation", "ForceBubble"],
         "combat_doctrine": {
             "doctrine_name": "Psychic Dominion",
-            "open_combat_action": "Cast Sunder Mind / Cryokinesis from maximum range",
-            "close_contact_policy": "Pop Force Bubble or Teleport behind terrain to break enemy sight",
-            "melee_engagement": "Strictly avoid; let beguiled companion tank in melee",
+            "open_combat_action": "Fire Lase laser beams (Light Manipulation) / Sunder Mind / Cryokinesis from range until targets are annihilated",
+            "close_contact_policy": "Pop Force Bubble or cast Stunning Force to blast enemies away, then resume ranged fire",
+            "melee_engagement": "Strictly avoid; blast enemies at range with psychic mutations",
             "preferred_weapons": ["Light mental focus weapons", "Shield", "Torch"]
         }
     },

@@ -972,6 +972,8 @@ namespace QudAIBrain
                 PreferredTargetCell = targetCell;
                 PreferredTargetObj = targetObj;
 
+                UnityEngine.Debug.Log($"[QudAI USE_ABILITY] Executing {cmd} towards '{PreferredDirection}' at cell {(targetCell != null ? $"{targetCell.X},{targetCell.Y}" : "null")} on target {(targetObj?.DisplayNameOnly ?? "none")}");
+
                 int energyBefore = player.Energy?.Value ?? 0;
                 try
                 {
