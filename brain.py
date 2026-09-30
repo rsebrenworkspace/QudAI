@@ -59,19 +59,38 @@ visit_counts = defaultdict(int)
 NON_COMBAT_KEYWORDS = {
     "camp", "harvest", "butcher", "cook", "tinker", "disassemble",
     "look", "chat", "talk", "sleep", "wait", "ritual", "worship", "pray",
-    "clairvoyance", "ambientlight", "ambient light", "proselytize", "beguile", "berate"
+    "clairvoyance", "ambientlight", "ambient light", "berate"
 }
 
 DIRECTIONAL_ABILITIES = {
     "freezingray", "flamingray", "spitpoison", "teleportother", "teleport other",
     "teleport", "charge", "meleecharge", "lunge", "slam", "juke", "jump",
     "lase", "stunningforce", "stunning force", "cryokinesis", "pyrokinesis",
-    "syphonvim", "syphon vim", "forcewall", "force wall"
+    "syphonvim", "syphon vim", "forcewall", "force wall", "proselytize", "beguile"
 }
 
 MELEE_TARGETED_ABILITIES = {
     "dismember", "swipe", "cleave", "decapitate", "hookanddrag"
 }
+
+PROSELYTIZE_EXCLUSIONS = {
+    "plant", "watervine", "glowpad", "tree", "bush", "vine", "fungus",
+    "turret", "robot", "chest", "door", "wall", "corpse", "slime", "ooze", "dreadroot"
+}
+
+
+def is_proselytizable(entity):
+    """Checks if an entity is a biological living creature with a mind capable of being proselytized."""
+    if not entity or not isinstance(entity, dict):
+        return False
+    if entity.get("is_companion", False):
+        return False
+    name = entity.get("name", "").lower()
+    bp = entity.get("blueprint", "").lower()
+    combined = f"{name} {bp}"
+    if any(ex in combined for ex in PROSELYTIZE_EXCLUSIONS):
+        return False
+    return True
 
 current_zone_id = None
 zone_step_count = 0
@@ -343,6 +362,23 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
         c_ty = closest.get("ty", py) if closest else py
         s_dir = get_step_direction((px, py), (c_tx, c_ty)) if closest else ""
 
+        # 0. PET RECRUITMENT: Proselytize / Beguile adjacent beasts or humanoids (HIGHEST PRIORITY IF NO PET!)
+        companions = game_state.get("companions", [])
+        has_companion = game_state.get("has_companion", False) or bool(companions)
+        if not has_companion:
+            for ab in abilities:
+                if is_ability_ready(ab) and ab.get("command"):
+                    name = ab.get("name", "")
+                    cmd = ab.get("command", "")
+                    combined = f"{name} {cmd}".lower()
+                    if "proselytize" in combined or "beguile" in combined:
+                        for ent in game_state.get("visible_entities", []):
+                            if ent.get("dist") == 1 and is_proselytizable(ent):
+                                edir = ent.get("dir", "")
+                                ename = ent.get("name", "Creature")
+                                if edir:
+                                    action_choices.append(f"USE_ABILITY:{cmd}:{edir} (RECRUIT PET: Proselytize adjacent {ename} {edir} to become your permanent combat companion & frontline tank!)")
+
         # 1. RANGED ATTACKS: Missile Fire & Ranged Mental/Beam Abilities (HIGHEST PRIORITY)
         # A. Missile Fire
         if has_mw and ammo > 0 and enemies:
@@ -422,7 +458,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                     "chainfire", "disarmingshot",
                     "dismember", "cleave", "shieldslam", "slam", "swipe", "decapitate",
                     "charge", "meleecharge", "chargingstrike", "lunge",
-                    "teleportother", "teleport other", "disarm"
+                    "teleportother", "teleport other", "disarm",
+                    "proselytize", "beguile"
                 ]):
                     continue
                 if "intimidate" in combined:
@@ -496,10 +533,17 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     else:
         ammo_display = "None"
 
+    if has_companion:
+        comp_summary = ", ".join(f"{c.get('name')} (HP {c.get('hp')}/{c.get('max_hp')}, dist {c.get('dist')} {c.get('dir')})" for c in companions)
+        pet_display = f"ACTIVE: {comp_summary} [Frontline Tank - DO NOT SHOOT YOUR PET!]"
+    else:
+        pet_display = "None [Use Proselytize on adjacent beasts/humanoids to recruit a combat tank!]"
+
     user_prompt = f"""STATUS:
 - Location: {game_state.get('zone_name', 'Unknown')}
 - HP: {hp}/{max_hp}
-{damage_alert}- Water: {game_state.get('water_drams', 0)} drams
+{damage_alert}- Active Combat Pet: {pet_display}
+- Water: {game_state.get('water_drams', 0)} drams
 - Active Effects: {', '.join(effects) if effects else 'None'}
 - Missile Weapon: {ammo_display}
 - Sprint Status: {'ACTIVE' if is_sprinting else 'Off'}
@@ -632,6 +676,18 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     c_ty = closest_enemy.get("ty", py) if closest_enemy else py
     s_dir = get_step_direction(cur_pos, (c_tx, c_ty)) if closest_enemy else ""
     is_stationary = any(st in c_name.lower() for st in ["glowpad", "plant", "turret", "fungus", "vine", "tree"])
+
+    has_companion = game_state.get("has_companion", False) or bool(game_state.get("companions", []))
+
+    # 0. Pet Recruitment: If without an active companion, proselytize adjacent beasts or humanoids into combat thralls
+    if not has_companion:
+        ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
+        if ab_proselytize and ab_proselytize.get("command"):
+            for ent in game_state.get("visible_entities", []):
+                if ent.get("dist") == 1 and is_proselytizable(ent) and ent.get("dir"):
+                    p_dir = ent["dir"]
+                    p_name = ent.get("name", "Creature")
+                    return {"action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}", "reason": f"[{template['name']} Fallback] Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"}
 
     # 1. Close-Contact Emergency: Defensive Mental Shielding, Banishment & Evasion
     if adj_threats or closest_dist <= 2:
@@ -1086,8 +1142,13 @@ def main():
                 visit_counts[cur_pos] += 1
 
                 raw_entities = game_state.get("visible_entities", [])
-                enemies = [e for e in raw_entities if e.get("is_enemy", False)]
+                enemies = [e for e in raw_entities if e.get("is_enemy", False) and not e.get("is_companion", False)]
                 enemies.sort(key=lambda x: x.get("dist", 999))
+
+                companions = game_state.get("companions", [])
+                if companions:
+                    comp_str = ", ".join(f"{c.get('name')} (HP {c.get('hp')}/{c.get('max_hp')})" for c in companions)
+                    print(f"[PET TANK]: {comp_str}")
 
                 has_mw = game_state.get("has_missile_weapon", False)
                 cur_ammo = game_state.get("missile_ammo", 0)

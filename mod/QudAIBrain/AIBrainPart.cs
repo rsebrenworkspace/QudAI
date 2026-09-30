@@ -505,6 +505,37 @@ namespace QudAIBrain
                 sb.Append($"\"last_failed_dir\": \"{lastFailedDir}\",");
                 sb.Append($"\"equipped_summary\": \"{EscapeJson(GetEquippedSummary(player))}\",");
 
+                List<string> companionStrs = new List<string>();
+                if (currentCell?.ParentZone != null)
+                {
+                    try
+                    {
+                        foreach (var obj in currentCell.ParentZone.GetObjects())
+                        {
+                            if (obj != null && !obj.IsPlayer() && obj.IsAlive)
+                            {
+                                var br = obj.Brain ?? obj.GetPart<Brain>();
+                                if (br != null && br.PartyLeader == player)
+                                {
+                                    string cName = StripQudFormatting(!string.IsNullOrEmpty(obj.DisplayName) ? obj.DisplayName : obj.Blueprint);
+                                    int cHp = obj.hitpoints;
+                                    int cMaxHp = obj.baseHitpoints;
+                                    Cell cCell = obj.CurrentCell;
+                                    int cx = cCell?.X ?? -1;
+                                    int cy = cCell?.Y ?? -1;
+                                    int cDist = (cx >= 0 && cy >= 0) ? Math.Max(Math.Abs(cx - px), Math.Abs(cy - py)) : 999;
+                                    string cDir = (cx >= 0 && cy >= 0) ? GetApproximateDirection(px, py, cx, cy) : "";
+                                    companionStrs.Add($"{{\"name\": \"{EscapeJson(cName)}\", \"hp\": {cHp}, \"max_hp\": {cMaxHp}, \"dist\": {cDist}, \"dir\": \"{cDir}\", \"tx\": {cx}, \"ty\": {cy}}}");
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                sb.Append($"\"has_companion\": {(companionStrs.Count > 0 ? "true" : "false")},");
+                sb.Append($"\"companions\": [{string.Join(",", companionStrs)}],");
+
                 // Expanded spatial scan & active target capture
                 sb.Append("\"visible_entities\": [");
                 List<string> entityEntries = new List<string>();
@@ -535,8 +566,10 @@ namespace QudAIBrain
                                     string dir = GetApproximateDirection(px, py, x, y);
                                     string bp = obj.Blueprint ?? "";
                                     bool isEnemy = CheckIsEnemy(obj, player);
+                                    var objBrain = obj.Brain ?? obj.GetPart<Brain>();
+                                    bool isCompanion = (objBrain != null && objBrain.PartyLeader == player);
 
-                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}}}");
+                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}}}");
                                 }
                             }
                         }
@@ -942,6 +975,24 @@ namespace QudAIBrain
 
                 GameObject targetObj = player.Target ?? Sidebar.CurrentTarget;
                 Cell targetCell = targetObj?.CurrentCell;
+
+                if (cmd.IndexOf("proselytize", StringComparison.OrdinalIgnoreCase) >= 0 || cmd.IndexOf("beguile", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    if (!string.IsNullOrEmpty(PreferredDirection) && player.CurrentCell != null)
+                    {
+                        Cell adjCell = player.CurrentCell.GetCellFromDirection(PreferredDirection, false);
+                        if (adjCell != null && adjCell.Objects != null)
+                        {
+                            var cand = adjCell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && o.IsAlive && !o.HasPart("Corpse") && (o.Brain == null || o.Brain.PartyLeader != player));
+                            if (cand != null)
+                            {
+                                targetObj = cand;
+                                targetCell = adjCell;
+                            }
+                        }
+                    }
+                }
+
                 if (targetObj == null && player.CurrentCell?.ParentZone != null)
                 {
                     Cell pCell = player.CurrentCell;
@@ -1764,10 +1815,14 @@ namespace QudAIBrain
                             GameObject nonPlayer = null;
                             foreach (var obj in Objects)
                             {
-                                if (obj != null && !obj.IsPlayer())
+                                if (obj != null && !obj.IsPlayer() && obj.IsAlive)
                                 {
-                                    nonPlayer = obj;
-                                    break;
+                                    var br = obj.Brain ?? obj.GetPart<Brain>();
+                                    if (br == null || br.PartyLeader != The.Player)
+                                    {
+                                        nonPlayer = obj;
+                                        break;
+                                    }
                                 }
                             }
                             __result = nonPlayer ?? Objects[0];

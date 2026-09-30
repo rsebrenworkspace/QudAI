@@ -164,9 +164,10 @@ BUILD_TEMPLATES = {
 
     "esper_mindflayer": {
         "name": "Esper Mindflayer (The Ascendant Will)",
-        "archetype": "Pure Mental Sorcerer",
+        "archetype": "Pure Mental Sorcerer & Thrall Master",
         "callings": ["Apostle", "Greybeard", "Pilgrim"],
         "strengths": [
+            "Commands loyal combat thralls / pets via Proselytize as frontline meat shields",
             "Light Manipulation emits laser beams (Lase) penetrating armor at infinite range",
             "Mental abilities (Sunder Mind, Cryokinesis, Stunning Force) annihilate foes from safety",
             "Force Bubble provides an impenetrable barrier against all physical harm",
@@ -178,10 +179,10 @@ BUILD_TEMPLATES = {
         ],
         "preferred_range": 15,
         "stat_priorities": [
-            {"stat": "Ego", "target": 24, "reason": "Mental mutation power and penetration scale with Ego"},
+            {"stat": "Ego", "target": 24, "reason": "Mental mutation power, persuasion checks, and penetration scale with Ego"},
             {"stat": "Willpower", "target": 24, "reason": "Drastic cooldown reductions for mental abilities"},
             {"stat": "Toughness", "target": 18, "reason": "Health baseline to survive psychic backlash"},
-            {"stat": "Ego", "target": 32, "reason": "Uncapped mutation level scaling"}
+            {"stat": "Ego", "target": 32, "reason": "Uncapped mutation level and thrall domination scaling"}
         ],
         "skill_progression": [
             "Persuasion",
@@ -195,15 +196,16 @@ BUILD_TEMPLATES = {
         ],
         "mutation_priorities": ["LightManipulation", "SunderMind", "Cryokinesis", "Pyrokinesis", "StunningForce", "Teleportation", "ForceBubble"],
         "combat_doctrine": {
-            "doctrine_name": "Psychic Dominion",
-            "open_combat_action": "Cycle through psychic abilities in rotation: Stunning Force to daze/stop advancing enemies, Sunder Mind against heavy threats, and Lase laser beams for sustained DPS. Pop Force Bubble or Teleport Other if pressed into melee.",
-            "close_contact_policy": "Pop Force Bubble or cast Stunning Force to blast enemies away, then resume ranged fire",
-            "melee_engagement": "Strictly avoid; blast enemies at range with psychic mutations",
+            "doctrine_name": "Psychic Dominion & Thrall Vanguard",
+            "open_combat_action": "Recruit tough beasts and humanoids with Proselytize to serve as frontline combat tanks. Stay behind your pet, using Stunning Force to CC approaching threats and Lase laser beams for sustained DPS. Pop Force Bubble or Teleport Other if pressed.",
+            "close_contact_policy": "Let your pet absorb melee trades while you pop Force Bubble, cast Stunning Force, or backpedal into open ground",
+            "melee_engagement": "Strictly avoid physical melee; support your combat pet from safe range",
             "preferred_weapons": ["Light mental focus weapons", "Shield", "Torch"],
             "ability_rotation": [
+                "0. Pet Recruitment: If without an active companion, cast Proselytize on an adjacent beast or humanoid (dist 1) to recruit a combat thrall & meat shield.",
                 "1. Opener & Crowd Control: Cast Stunning Force (dist 3-8) to stun, daze, and blast advancing enemies backward.",
                 "2. Heavy Lethal Channel: Sunder Mind (dist 2-25) against tough, elite, or armored enemies.",
-                "3. Sustained Beam Assault: Fire Lase laser beams (dist 1-25, charges permitting) to eliminate targets at range.",
+                "3. Sustained Beam Assault: Fire Lase laser beams (dist 1-25, charges permitting) over your pet's shoulder to eliminate targets at range.",
                 "4. Elemental Damage: Cast Cryokinesis / Pyrokinesis / Rays to burn or freeze hostile zones.",
                 "5. Emergency Close Defense: When enemies breach within dist <= 2, pop Force Bubble, cast Teleport Other to banish them, or use Intimidate to make them flee."
             ]

@@ -112,6 +112,30 @@ print("\n--- Test 5: Esper Close Contact (Pop Force Bubble) ---")
 print(f"Action: {dec_bubble['action']} | Reason: {dec_bubble['reason']}")
 assert dec_bubble['action'] == "USE_ABILITY:CommandForceBubble", f"Expected Force Bubble, got {dec_bubble['action']}"
 
+# 5b. Test Esper Mindflayer - Recruit Pet with Proselytize
+esper_proselytize_state = {
+    "hp": 18,
+    "max_hp": 18,
+    "x": 10,
+    "y": 10,
+    "has_companion": False,
+    "abilities": [
+        {"name": "Proselytize", "command": "CommandProselytize", "cooldown": 0, "usable": True},
+        {"name": "Lase", "command": "CommandLase", "cooldown": 0, "usable": True}
+    ],
+    "visible_entities": [
+        {"name": "snapjaw scavenger", "blueprint": "SnapjawScavenger", "dist": 1, "dir": "E", "tx": 11, "ty": 10, "is_enemy": True}
+    ]
+}
+dec_pro = brain.fallback_esper(
+    esper_proselytize_state, esper_proselytize_state["visible_entities"], {"E": "snapjaw scavenger"}, ["MOVE_W"], ["MOVE_W"],
+    esper_proselytize_state["abilities"], build_templates.BUILD_TEMPLATES["esper_mindflayer"],
+    (10, 10), 10, 10, 18, 18, False, False, 0, 0, 0
+)
+print("\n--- Test 5b: Esper Pet Recruitment (Proselytize adjacent snapjaw) ---")
+print(f"Action: {dec_pro['action']} | Reason: {dec_pro['reason']}")
+assert dec_pro['action'] == "USE_ABILITY:CommandProselytize:E", f"Expected CommandProselytize:E, got {dec_pro['action']}"
+
 # 6. Test Esper Mindflayer - Cast Sunder Mind at Range
 dec_sunder = brain.fallback_esper(
     esper_state, [{"name": "snapjaw warlord", "tx": 18, "ty": 10, "dist": 8, "dir": "E", "is_enemy": True}],
