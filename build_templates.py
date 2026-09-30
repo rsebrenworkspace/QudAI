@@ -1,87 +1,34 @@
 """
 Caves of Qud AI Build Templates & Archetype Knowledge Base
-Defines popular Qud character builds, what each class is strong at,
-their stat allocation doctrines, skill progression trees, and combat doctrines.
+Implements the 9 core archetypes, stat allocation doctrines, skill progression trees,
+and tactical sequencing defined in Caves-of-Qud-AI-Agent-Build-Guide.md.
 """
 
 BUILD_TEMPLATES = {
-    "rifle_nomad": {
-        "name": "Issachar Rifle Nomad (The Ghost of the Salt)",
-        "archetype": "Ranged Sniper & Kite Specialist",
-        "callings": ["Nomad", "Gunslinger"],
-        "strengths": [
-            "Extreme range safety: eliminates threats from 15-20 tiles away before they can close in",
-            "High penetration with high-velocity lead slugs (1d8+ rifle damage)",
-            "Immense mobility and kiting efficiency with Sprint and distance preservation",
-            "Strong crowd control via Freezing Ray (freezes pursuers in solid ice)"
-        ],
-        "weaknesses": [
-            "Ammo dependent (requires maintaining spare lead slugs / energy cells)",
-            "Vulnerable if cornered in narrow 1-tile dead ends against multiple melee brutes"
-        ],
-        "preferred_range": 6,  # Maintain distance >= 4, fire at max range
-        "stat_priorities": [
-            {"stat": "Toughness", "target": 20, "reason": "Survival floor, max HP, and poison/bleed saves"},
-            {"stat": "Agility", "target": 24, "reason": "Rifle accuracy, DV dodge value, and Flattening Fire prereqs"},
-            {"stat": "Toughness", "target": 26, "reason": "Mid-game HP scaling against rocket/turret bursts"},
-            {"stat": "Agility", "target": 30, "reason": "End-game Ultra Fire requirements and untouchable DV"},
-            {"stat": "Intelligence", "target": 18, "reason": "Tinkering ammo mods and skill points"}
-        ],
-        "skill_progression": [
-            "Rifles",
-            "Rifle_SteadyHands",
-            "Rifle_DrawABead",
-            "Rifle_FlatteningFire",
-            "Rifle_SuppressiveFire",
-            "Rifle_SureFire",
-            "Acrobatics",
-            "Acrobatics_Dodge",          # Spry: +2 DV
-            "Acrobatics_SwiftReflexes",  # +5 DV vs missiles
-            "Acrobatics_Jump",           # 2-tile gap escape
-            "Endurance",
-            "Endurance_Swimming",        # Turns deep impassable water into safe path
-            "Endurance_Longstrider",     # +10 move speed for effortless kiting
-            "Endurance_Weathered",       # Elemental resistance
-            "Endurance_ShakeItOff",      # Saves against stun, daze, freeze
-            "CookingAndGathering_Harvestry",
-            "CookingAndGathering_Butchery"
-        ],
-        "mutation_priorities": ["FreezingRay", "HeightenedSpeed", "Phasing", "Teleportation"],
-        "combat_doctrine": {
-            "doctrine_name": "Kite and Snipe",
-            "open_combat_action": "Draw a bead and fire rifle at maximum range",
-            "close_contact_policy": "Activate Sprint and disengage to safe distance (dist >= 3)",
-            "melee_engagement": "Only as emergency fallback when out of ammo or cornered",
-            "preferred_weapons": ["Issachar rifle", "Sniper rifle", "Laser rifle", "Carbine"],
-            "ability_rotation": [
-                "1. Opener & Freeze CC: Cast Freezing Ray (dist 2-8) to freeze pursuers in solid ice.",
-                "2. Primary Sniping: Fire high-velocity rifle slugs (FIRE_MISSILE) at maximum range.",
-                "3. Emergency Disengage: Activate Sprint and kite into open ground if enemies close to dist <= 2."
-            ]
-        }
-    },
-
-    "axe_berserker": {
-        "name": "Marauder Meat-Grinder (The Dismemberer)",
-        "archetype": "Melee Bruiser & Bleed Finisher",
+    # 1. Auspicious Beginnings — freeze/axe escape mutant
+    "auspicious_beginnings": {
+        "id": "auspicious_beginnings",
+        "name": "Auspicious Beginnings (Freeze & Dismember Marauder)",
+        "archetype": "Freeze Control & Axe Finisher",
         "callings": ["Marauder", "Warden"],
+        "genotype": "Mutated Human",
         "strengths": [
-            "Brutal close-quarters armor penetration and burst damage",
-            "Dismembers enemy limbs, weapons, faces, and heads (instant decapitation)",
-            "Massive bleeding damage that stacks and melts high-HP bosses",
-            "Melee Charge ability closes gaps instantly and dazes opponents"
+            "Freezing Ray locks dangerous enemies in solid ice from distance 2-8",
+            "Multiple Legs provides passive move speed advantage for effortless kiting and disengage",
+            "Dismember severs enemy weapon limbs, faces, and heads in melee",
+            "Teleportation serves as an absolute emergency escape button"
         ],
         "weaknesses": [
-            "Subject to heavy attrition taking bump-attacks and elemental damage in melee",
-            "Needs high AV armor to avoid getting chunked by heavy hitters"
+            "Amphibious defect increases water consumption rate",
+            "Melee trading before targets are frozen is risky"
         ],
-        "preferred_range": 1,
+        "preferred_range": 4,
         "stat_priorities": [
-            {"stat": "Strength", "target": 22, "reason": "Weapon penetration (PV) and Dismember chance"},
-            {"stat": "Toughness", "target": 22, "reason": "High base HP to win melee trades"},
-            {"stat": "Strength", "target": 26, "reason": "Decapitate prereq (Str 25) and Cleave stacking"},
-            {"stat": "Agility", "target": 18, "reason": "Hit chance and Spry access"},
-            {"stat": "Strength", "target": 30, "reason": "Berserk! prereq (Str 29) for 100% dismember uptime"}
+            {"stat": "Strength", "target": 22, "reason": "Melee penetration and Dismember chance"},
+            {"stat": "Toughness", "target": 20, "reason": "Survivability floor against heavy hitters"},
+            {"stat": "Agility", "target": 20, "reason": "Dodge value (DV) and accuracy"},
+            {"stat": "Strength", "target": 26, "reason": "Decapitate and Cleave scaling"},
+            {"stat": "Toughness", "target": 24, "reason": "Late game HP buffer"}
         ],
         "skill_progression": [
             "Axe",
@@ -89,49 +36,351 @@ BUILD_TEMPLATES = {
             "Tactics_Charge",
             "Axe_Dismember",
             "Axe_Cleave",
-            "Cudgel_ChargingStrike",
             "Axe_Decapitate",
-            "Axe_Berserk",
-            "Endurance",
             "Endurance_Calloused",
             "Endurance_ShakeItOff",
             "CookingAndGathering_Butchery"
         ],
-        "mutation_priorities": ["HeightenedStrength", "Horns", "MultipleArms", "Regeneration"],
+        "mutation_priorities": ["FreezingRay", "MultipleLegs", "Teleportation"],
         "combat_doctrine": {
-            "doctrine_name": "Charge and Dismember",
-            "open_combat_action": "Use Charge to close distance into melee range and daze target",
-            "close_contact_policy": "Full melee attack, prioritize high-value enemy limbs with Dismember",
-            "melee_engagement": "Relentless aggressive bump-attacks",
+            "doctrine_name": "Freeze, Close, and Dismember",
+            "open_combat_action": "Freeze dangerous targets at range (dist 2-8), then close or disengage",
+            "close_contact_policy": "Dismember adjacent targets; escape with Multiple Legs if HP < 60%",
+            "melee_engagement": "Execute Dismember and Cleave against frozen/dazed opponents",
             "preferred_weapons": ["Folded carbide battle axe", "Crysteel battle axe", "Vibro-axe"],
             "ability_rotation": [
-                "1. Gap-Closer Opener: Melee Charge (dist 2-4) to close distance instantly and daze target.",
-                "2. Limb Severing: Dismember adjacent enemies to sever limbs and inflict severe bleed.",
-                "3. Armor Shred: Cleave adjacent enemies to permanently reduce their AV.",
-                "4. Lethal Finisher: Decapitate or Berserk on wounded targets."
+                "1. Opener & CC: Freezing Ray (dist 2-8) to freeze approaching threats in ice.",
+                "2. Gap-Closer: Melee Charge (dist 2-4) on controlled targets to daze them.",
+                "3. Limb Severing: Dismember adjacent enemies to eliminate weapon limbs.",
+                "4. Armor Shred: Cleave to permanently shred enemy AV.",
+                "5. Emergency Escape: Teleportation if surrounded and HP < 50%."
             ]
         }
     },
 
-    "akimbo_gunslinger": {
-        "name": "Akimbo Gunslinger (Lead Storm)",
-        "archetype": "Rapid-Fire Close-to-Mid Range Gunner",
-        "callings": ["Gunslinger", "Arconaut"],
+    # 2. Praetorian Generalist — rifle, sword, and shield True Kin
+    "praetorian_generalist": {
+        "id": "praetorian_generalist",
+        "name": "Praetorian Generalist (Rifle & Tower Shield)",
+        "archetype": "Hybrid Ranged Sniper & Shield Frontliner",
+        "callings": ["Praetorian", "Child of the Deep", "Nomad"],
+        "genotype": "True Kin",
         "strengths": [
-            "Fires both pistols simultaneously every turn (Akimbo)",
-            "Disarms dangerous armed enemies from distance (Disarming Shot)",
-            "Chain Fire dumps 8-12 rounds into a single enemy in 1 turn",
-            "Extremely high DV dodge value from high Agility"
+            "Optical bioscanner extracts exact enemy HP, AV, DV, and difficulty",
+            "Desert rifle / high-velocity lead slugs eliminate threats from 15-20 tiles away",
+            "Shield Slam stuns, knocks back, and dazes adjacent melee attackers",
+            "High Armor Value (AV 15-25+) renders standard physical attacks harmless"
         ],
         "weaknesses": [
-            "Extremely high ammo consumption rate",
-            "Pistols have shorter effective range than rifles (falls off beyond 8 tiles)"
+            "Ammo dependent (requires maintaining spare lead slugs / cells)",
+            "Vulnerable to armor-penetrating vibro weapons and extreme heat/cold"
         ],
-        "preferred_range": 4,
+        "preferred_range": 6,
+        "stat_priorities": [
+            {"stat": "Toughness", "target": 22, "reason": "Massive HP pool to synergize with heavy armor"},
+            {"stat": "Strength", "target": 22, "reason": "Melee penetration and shield bash power"},
+            {"stat": "Agility", "target": 20, "reason": "Rifle accuracy and Spry dodge value"},
+            {"stat": "Strength", "target": 26, "reason": "End-game heavy weapons and shields"},
+            {"stat": "Toughness", "target": 26, "reason": "Hazard and explosive resistance"}
+        ],
+        "skill_progression": [
+            "Rifles",
+            "Rifle_SteadyHands",
+            "Rifle_DrawABead",
+            "Shield",
+            "Shield_Block",
+            "Shield_ShieldSlam",
+            "LongBlades",
+            "LongBlades_Proficiency",
+            "LongBlades_DuelistStance",
+            "Endurance_Calloused"
+        ],
+        "mutation_priorities": [],  # True Kin uses Cybernetics
+        "combat_doctrine": {
+            "doctrine_name": "Rifle Opening, Shield Finish",
+            "open_combat_action": "Draw a bead and fire high-velocity rifle slugs at maximum range (dist >= 4)",
+            "close_contact_policy": "Shield Slam adjacent threats to knock down/stun; swap to blade defense",
+            "melee_engagement": "Face-tank with high AV while trading Long Blade strikes",
+            "preferred_weapons": ["Desert rifle", "Steel long sword", "Tower shield", "Carbine"],
+            "ability_rotation": [
+                "1. Sniping Volley: FIRE_MISSILE (dist 4-20) with clear raytraced line-of-fire.",
+                "2. Melee Stun Bash: Shield Slam adjacent enemies to stun and knock them back.",
+                "3. Blade Strike: Long Blade Duelist Stance bump-attacks to parry and slash.",
+                "4. Safe Top-off: Reload rifle whenever enemies are outside melee range."
+            ]
+        }
+    },
+
+    # 3. Limb-Off — durable multiple-arms axe mutant
+    "limb_off": {
+        "id": "limb_off",
+        "name": "Limb-Off (Multi-Arm Meat Grinder)",
+        "archetype": "Multi-Weapon Axe Berserker",
+        "callings": ["Marauder"],
+        "genotype": "Mutated Human",
+        "strengths": [
+            "Multiple Arms delivers 4-8 simultaneous axe strikes per turn",
+            "Dismember removes enemy limbs, heads, and weapons with frightening frequency",
+            "Carapace provides massive innate AV and resistance",
+            "Regeneration passively regrows severed limbs and speeds HP recovery"
+        ],
+        "weaknesses": [
+            "Requires Multiweapon Fighting skills before multi-axe kit fully matures",
+            "Melee-centric: needs gap closers or ranged backup against flying/turret targets"
+        ],
+        "preferred_range": 1,
+        "stat_priorities": [
+            {"stat": "Strength", "target": 22, "reason": "PV penetration and Dismember chance"},
+            {"stat": "Toughness", "target": 22, "reason": "Base HP to absorb melee counterattacks"},
+            {"stat": "Agility", "target": 20, "reason": "Multiweapon Fighting hit chance"},
+            {"stat": "Strength", "target": 28, "reason": "Cleave and Decapitate requirements"}
+        ],
+        "skill_progression": [
+            "Axe",
+            "Axe_Proficiency",
+            "Tactics_Charge",
+            "Axe_Dismember",
+            "MultiweaponFighting",
+            "Multiweapon_Flurry",
+            "Axe_Cleave",
+            "Axe_Decapitate",
+            "Endurance_Calloused"
+        ],
+        "mutation_priorities": ["MultipleArms", "Carapace", "Regeneration", "NightVision"],
+        "combat_doctrine": {
+            "doctrine_name": "Multi-Arm Dismemberment",
+            "open_combat_action": "Charge into melee contact; use ranged fallback against flying/explosive threats",
+            "close_contact_policy": "Unleash Flurry and Dismember; retreat to 1-tile chokes if surrounded",
+            "melee_engagement": "Relentless multi-axe strikes focused on enemy weapon limbs",
+            "preferred_weapons": ["Battle axe", "Folded carbide axe", "Crysteel battle axe"],
+            "ability_rotation": [
+                "1. Gap Closer: Melee Charge (dist 2-4) to close distance and daze target.",
+                "2. Multi-Strike Burst: Flurry to attack with all equipped axes in 1 turn.",
+                "3. Severe Dismember: Dismember adjacent foes to sever limbs and cause heavy bleed.",
+                "4. Armor Shred: Cleave to permanently reduce target AV."
+            ]
+        }
+    },
+
+    # 4. Esper-ited Away — high-Willpower clairvoyant Esper & Thrall Vanguard
+    "esper_ited_away": {
+        "id": "esper_ited_away",
+        "name": "Esper-ited Away (The Clairvoyant Thrallmaster)",
+        "archetype": "Pure Mental Sorcerer & Pet Vanguard",
+        "callings": ["Apostle", "Greybeard", "Pilgrim"],
+        "genotype": "Mutated Human",
+        "strengths": [
+            "Commands loyal combat thralls via Proselytize as frontline meat shields",
+            "Light Manipulation emits laser beams (Lase) penetrating armor at infinite range",
+            "Clairvoyance reveals enemy layouts and hidden rooms through solid walls",
+            "Sunder Mind annihilates priority targets at range with direct psychic damage",
+            "Force Wall / Force Bubble creates an impenetrable barrier against all physical harm"
+        ],
+        "weaknesses": [
+            "Psychic Glimmer attracts interdimensional psychic hunters and assassin clones",
+            "Physically frail with low Strength and carry weight"
+        ],
+        "preferred_range": 15,
+        "stat_priorities": [
+            {"stat": "Ego", "target": 24, "reason": "Mental mutation power, thrall persuasion, and penetration"},
+            {"stat": "Willpower", "target": 24, "reason": "Massive cooldown reductions for mental abilities"},
+            {"stat": "Toughness", "target": 18, "reason": "Health baseline to survive psychic backlash"},
+            {"stat": "Ego", "target": 32, "reason": "Uncapped mutation level scaling"}
+        ],
+        "skill_progression": [
+            "Persuasion",
+            "Persuasion_Proselytize",
+            "Customs_Tactful",
+            "Discipline_MindOverBody",
+            "Discipline_IronMind",
+            "Endurance"
+        ],
+        "mutation_priorities": ["LightManipulation", "SunderMind", "Clairvoyance", "ForceWall", "ForceBubble", "Teleportation"],
+        "combat_doctrine": {
+            "doctrine_name": "Psychic Dominion & Thrall Vanguard",
+            "open_combat_action": "Recruit tough beasts/humanoids with Proselytize. Fire Lase / Sunder Mind past pet with clear raytraced line-of-fire. Pop Force Wall if pressed.",
+            "close_contact_policy": "Let combat pet absorb melee trades while you pop Force Bubble, cast Stunning Force, or backpedal",
+            "melee_engagement": "Strictly avoid physical melee; support your combat pet from safe range",
+            "preferred_weapons": ["Floating glowsphere", "Light mental focus weapons", "Shield", "Torch"],
+            "ability_rotation": [
+                "0. Pet Recruitment: Cast Proselytize on adjacent beast/humanoid (dist 1) if without companion.",
+                "1. Opener & CC: Stunning Force (dist 3-8) to blast advancing enemies backward.",
+                "2. Lethal Psychic Channel: Sunder Mind (dist 2-25) against tough, elite, or armored enemies.",
+                "3. Sustained Beam: Lase laser beams (dist 1-25) ONLY when line-of-fire is clear of pets.",
+                "4. Close Defense: Pop Force Bubble / Force Wall when enemies breach dist <= 2."
+            ]
+        }
+    },
+
+    # 5. Uncle Iroh — electrical/fire control caster
+    "uncle_iroh": {
+        "id": "uncle_iroh",
+        "name": "Uncle Iroh (Lightning & Flame Elementalist)",
+        "archetype": "Burst Elemental Caster & Wall Tactician",
+        "callings": ["Greybeard", "Apostle"],
+        "genotype": "Mutated Human",
+        "strengths": [
+            "Heightened Hearing detects unseen threats behind walls before opening doors",
+            "Electrical Generation delivers devastating electrical burst damage",
+            "Flaming Ray burns targets at range on a very short cooldown",
+            "Force Wall seals corridors and breaks line of effect for safe cooldown recovery"
+        ],
+        "weaknesses": [
+            "Tonic Allergy defect: must NEVER auto-use medical tonics",
+            "Cooldown dependent: requires maintaining distance while energy charges recharge"
+        ],
+        "preferred_range": 6,
+        "stat_priorities": [
+            {"stat": "Willpower", "target": 22, "reason": "Rapid cooldown cycling for Ray and Electrical Generation"},
+            {"stat": "Toughness", "target": 20, "reason": "Survivability buffer against ranged snipers"},
+            {"stat": "Agility", "target": 18, "reason": "Dodge value and positioning"},
+            {"stat": "Willpower", "target": 26, "reason": "Continuous elemental generation"}
+        ],
+        "skill_progression": [
+            "Cudgel_Proficiency",
+            "Discipline_MindOverBody",
+            "Endurance_Calloused",
+            "Endurance_Weathered",
+            "Acrobatics_Dodge"
+        ],
+        "mutation_priorities": ["ElectricalGeneration", "FlamingRay", "HeightenedHearing", "ForceWall"],
+        "combat_doctrine": {
+            "doctrine_name": "Detect, Wall, and Incinerate",
+            "open_combat_action": "Detect targets with Heightened Hearing; burn with Flaming Ray; burst with Electrical Generation",
+            "close_contact_policy": "Erect Force Wall to trap enemies or buy cooldown reset turns; reposition safely",
+            "melee_engagement": "Avoid melee; use physical backup weapon only against heat/electric immune targets",
+            "preferred_weapons": ["Staff", "Shield", "Torch", "Ranged backup rifle"],
+            "ability_rotation": [
+                "1. Opener Ranged Burn: Flaming Ray (dist 2-8) along clear line-of-fire.",
+                "2. Electrical Discharge: Electrical Generation burst on clustered hostiles.",
+                "3. Tactical Barrier: Force Wall to seal chokepoints or protect retreat path.",
+                "4. Emergency Defense: Intimidate or Cudgel knockback if pressured."
+            ]
+        }
+    },
+
+    # 6. Bullet Specter — phased mutant gunslinger
+    "bullet_specter": {
+        "id": "bullet_specter",
+        "name": "Bullet Specter (Phased Pistol Ghost)",
+        "archetype": "Phasing Kiter & Rapid Pistol Duelist",
+        "callings": ["Gunslinger"],
+        "genotype": "Mutated Human",
+        "strengths": [
+            "Phasing allows stepping out of phase to pass through walls and evade all physical attacks",
+            "Time Dilation slows surrounding enemies, creating huge action-economy advantages",
+            "High Agility (23+) delivers unmatched pistol accuracy and extreme Dodge Value (DV)",
+            "Triple-jointed enables extreme mobility and defensive agility"
+        ],
+        "weaknesses": [
+            "Tonic Allergy defect: strictly prohibits automated tonic consumption",
+            "High ammunition consumption rate requires disciplined supply management"
+        ],
+        "preferred_range": 5,
         "stat_priorities": [
             {"stat": "Agility", "target": 24, "reason": "Pistol hit rate, Akimbo efficiency, and DV"},
             {"stat": "Toughness", "target": 20, "reason": "Survivability buffer"},
             {"stat": "Agility", "target": 30, "reason": "Chain Fire and Faster Than My Shadow"},
+            {"stat": "Willpower", "target": 20, "reason": "Phasing and Time Dilation cooldown speed"}
+        ],
+        "skill_progression": [
+            "Pistol",
+            "Pistol_Akimbo",
+            "Pistol_FastReload",
+            "Pistol_DisarmingShot",
+            "Pistol_DeadShot",
+            "Pistol_ChainFire",
+            "Acrobatics_Dodge",
+            "Acrobatics_SwiftReflexes"
+        ],
+        "mutation_priorities": ["Phasing", "TripleJointed", "TimeDilation", "SunderMind", "NightVision"],
+        "combat_doctrine": {
+            "doctrine_name": "Phased Pistol Kiting",
+            "open_combat_action": "Fire pistols from optimal range (dist 4-6); preserve ammo against trivial targets",
+            "close_contact_policy": "Activate Time Dilation or Phasing to reposition through terrain",
+            "melee_engagement": "Disarming Shot to strip enemy weapons, then backpedal into open ground",
+            "preferred_weapons": ["Border revolver", "Semi-automatic pistol", "Chain pistol"],
+            "ability_rotation": [
+                "1. Weapon Denial: Disarming Shot (dist 2-8) to disarm dangerous armed enemies.",
+                "2. Rapid Volley: Chain Fire (dist 2-6) to unleash rapid lead storm into priority target.",
+                "3. Time Control: Time Dilation when enemies close within dist <= 3.",
+                "4. Phase Evasion: Phasing to pass through obstacles or evade lethal encirclement."
+            ]
+        }
+    },
+
+    # 7. Classic Punchkin — cybernetic unarmed True Kin
+    "classic_punchkin": {
+        "id": "classic_punchkin",
+        "name": "Classic Punchkin (Carbide Fist Juggernaut)",
+        "archetype": "Unarmed Cudgel Stunner & Armor Bruiser",
+        "callings": ["Child of the Hearth", "Warden"],
+        "genotype": "True Kin",
+        "strengths": [
+            "Carbide hand bones scale unarmed melee damage and penetration directly with Strength",
+            "Slam displaces enemies, crashes them into walls, and inflicts heavy daze/stun",
+            "Cudgel skill tree locks enemies into permanent stun-lock cycles",
+            "Extremely high base attributes across the board (all 18+ starting)"
+        ],
+        "weaknesses": [
+            "Strictly melee-reliant: requires ranged fallback against flying, explosive, or kiting foes",
+            "Subject to attrition without shield block or high AV armor"
+        ],
+        "preferred_range": 1,
+        "stat_priorities": [
+            {"stat": "Strength", "target": 24, "reason": "Unarmed penetration and Slam damage"},
+            {"stat": "Toughness", "target": 22, "reason": "Melee HP pool to out-trade brutes"},
+            {"stat": "Strength", "target": 30, "reason": "Uncapped fist scaling and Cudgel masteries"},
+            {"stat": "Agility", "target": 20, "reason": "Hit accuracy and dodge"}
+        ],
+        "skill_progression": [
+            "Cudgel",
+            "Cudgel_Proficiency",
+            "Cudgel_Slam",
+            "Cudgel_Bludgeon",
+            "Cudgel_ChargingStrike",
+            "Cudgel_Backhand",
+            "Shield_Block",
+            "Endurance_Calloused"
+        ],
+        "mutation_priorities": [],  # True Kin uses Cybernetics (Hand bones, giant hands)
+        "combat_doctrine": {
+            "doctrine_name": "Unarmed Stun and Slam",
+            "open_combat_action": "Close distance using cover/chokes; use ranged fallback against flying/explosive targets",
+            "close_contact_policy": "Slam targets into walls/obstacles; maintain cudgel stun pressure",
+            "melee_engagement": "Relentless carbide fist strikes to keep targets continuously dazed or stunned",
+            "preferred_weapons": ["Carbide hand bones", "Shield", "Tower shield", "Ranged backup rifle"],
+            "ability_rotation": [
+                "1. Gap Closer / Collision: Cudgel Slam (dist 1-2) to smash target into obstacle and stun.",
+                "2. Charging Strike: Cudgel Charging Strike to close distance and stagger.",
+                "3. Stun Maintenance: Bludgeon and Backhand to renew daze/stun states.",
+                "4. Shield Block: Maintain raised shield for incoming physical mitigation."
+            ]
+        }
+    },
+
+    # 8. Gunkin — gun-rack Akimbo True Kin
+    "gunkin": {
+        "id": "gunkin",
+        "name": "Gunkin (Quad-Gun Akimbo Leadstorm)",
+        "archetype": "Multi-Gun Akimbo Gunner",
+        "callings": ["Gunslinger", "Artifex", "Praetorian"],
+        "genotype": "True Kin",
+        "strengths": [
+            "Gun rack cybernetic allows equipping 4+ pistols or heavy missile weapons simultaneously",
+            "Akimbo fires all equipped missile weapons in a single turn",
+            "Rapid Release Finger Flexors drastically cuts firing energy cost",
+            "Deadliest burst DPS in Caves of Qud against single targets and boss encounters"
+        ],
+        "weaknesses": [
+            "Extremely ammo and power hungry: requires constant logistics management",
+            "Needs high-tier cybernetics and license credits before fully online"
+        ],
+        "preferred_range": 5,
+        "stat_priorities": [
+            {"stat": "Agility", "target": 24, "reason": "Pistol hit rate, Akimbo efficiency, and DV"},
+            {"stat": "Toughness", "target": 20, "reason": "Survivability buffer"},
+            {"stat": "Agility", "target": 32, "reason": "Ultra-fast action economy and Chain Fire"},
             {"stat": "Intelligence", "target": 19, "reason": "Tinkering II to craft custom ammo mods"}
         ],
         "skill_progression": [
@@ -141,141 +390,89 @@ BUILD_TEMPLATES = {
             "Pistol_DisarmingShot",
             "Pistol_DeadShot",
             "Pistol_ChainFire",
-            "Acrobatics",
-            "Acrobatics_Dodge",
-            "Acrobatics_SwiftReflexes",
-            "Tinkering",
             "Tinkering_Scavenger"
         ],
-        "mutation_priorities": ["MultipleArms", "HeightenedSpeed", "TripleJointed"],
+        "mutation_priorities": [],  # True Kin uses Cybernetics (Gun rack, Flexors)
         "combat_doctrine": {
-            "doctrine_name": "Mid-Range Suppressive Sweep",
-            "open_combat_action": "Open fire with Akimbo dual pistols at range 4-6",
-            "close_contact_policy": "Disarm opponent if armed, cycle Chain Fire",
-            "melee_engagement": "Point blank pistol bursts",
-            "preferred_weapons": ["Border revolver", "Semi-automatic pistol", "Chain pistol"],
+            "doctrine_name": "Multi-Gun Akimbo Burst",
+            "open_combat_action": "Verify all gun chambers loaded and LOF clear, then unleash Akimbo lead volley",
+            "close_contact_policy": "Disarm armed opponents; step back to maintain optimal 4-6 tile firing lane",
+            "melee_engagement": "Point blank multi-gun bursts; disengage if out of ammunition",
+            "preferred_weapons": ["Border revolver", "Semi-automatic pistol", "Chain pistol", "Laser pistol"],
             "ability_rotation": [
-                "1. Weapon Denial: Disarming Shot (dist 2-8) to knock ranged/melee weapons out of enemy hands.",
-                "2. High Burst Volley: Chain Fire (dist 2-6) to unleash rapid-fire lead storm into target.",
-                "3. Sustained Fire: FIRE_MISSILE at optimal distance (dist 2-6)."
+                "1. Weapon Denial: Disarming Shot (dist 2-8) to disarm priority threat.",
+                "2. Multi-Gun Burst: Akimbo / Chain Fire (dist 2-6) to dump all barrels into target.",
+                "3. Sustained Fire: FIRE_MISSILE at optimal distance.",
+                "4. Fast Tactical Reload: Reload all weapons as soon as ammunition drops below 50%."
             ]
         }
     },
 
-    "esper_mindflayer": {
-        "name": "Esper Mindflayer (The Ascendant Will)",
-        "archetype": "Pure Mental Sorcerer & Thrall Master",
-        "callings": ["Apostle", "Greybeard", "Pilgrim"],
+    # 9. Gas Giant — continuous corrosive/sleep gas mutant
+    "gas_giant": {
+        "id": "gas_giant",
+        "name": "Gas Giant (Corrosive & Sleep Cloud Master)",
+        "archetype": "Continuous AoE Gas Controller",
+        "callings": ["Greybeard"],
+        "genotype": "Mutated Human",
         "strengths": [
-            "Commands loyal combat thralls / pets via Proselytize as frontline meat shields",
-            "Light Manipulation emits laser beams (Lase) penetrating armor at infinite range",
-            "Mental abilities (Sunder Mind, Cryokinesis, Stunning Force) annihilate foes from safety",
-            "Force Bubble provides an impenetrable barrier against all physical harm",
-            "Massive versatility: teleportation, clairvoyance, temporal fugue clones"
+            "Corrosive Gas Generation melts armor and flesh indiscriminately across wide areas",
+            "Sleep Gas Generation puts entire rooms of enemies into helpless sleep",
+            "Carapace and Heightened Quickness provide passive durability and repositioning speed",
+            "At high Willpower, gas generation cooldowns become low enough for continuous uptime"
         ],
         "weaknesses": [
-            "Psychic Glimmer attracts interdimensional psychic hunters and assassin clones",
-            "Physically frail with low Strength and carry weight"
+            "Friendly fire hazard: gas clouds harm allies and pets if unmanaged",
+            "Ineffective against gas-immune or acid-resistant enemies (requires physical fallback)"
         ],
-        "preferred_range": 15,
+        "preferred_range": 4,
         "stat_priorities": [
-            {"stat": "Ego", "target": 24, "reason": "Mental mutation power, persuasion checks, and penetration scale with Ego"},
-            {"stat": "Willpower", "target": 24, "reason": "Drastic cooldown reductions for mental abilities"},
-            {"stat": "Toughness", "target": 18, "reason": "Health baseline to survive psychic backlash"},
-            {"stat": "Ego", "target": 32, "reason": "Uncapped mutation level and thrall domination scaling"}
+            {"stat": "Willpower", "target": 24, "reason": "Gas generation cooldown reduction"},
+            {"stat": "Toughness", "target": 20, "reason": "Health baseline"},
+            {"stat": "Willpower", "target": 28, "reason": "Continuous gas generation cycle threshold"},
+            {"stat": "Agility", "target": 18, "reason": "Quickness and kite positioning"}
         ],
         "skill_progression": [
-            "Persuasion",
-            "Persuasion_Proselytize",
-            "Customs",
-            "Customs_Tactful",
-            "Discipline",
-            "Discipline_MindOverBody",
-            "Discipline_IronMind",
-            "Endurance"
+            "Cudgel_Proficiency",
+            "Endurance_Calloused",
+            "Endurance_Weathered",
+            "Acrobatics_Dodge"
         ],
-        "mutation_priorities": ["LightManipulation", "SunderMind", "Cryokinesis", "Pyrokinesis", "StunningForce", "Teleportation", "ForceBubble"],
+        "mutation_priorities": ["CorrosiveGasGeneration", "SleepGasGeneration", "Carapace", "HeightenedQuickness", "AdrenalControl"],
         "combat_doctrine": {
-            "doctrine_name": "Psychic Dominion & Thrall Vanguard",
-            "open_combat_action": "Recruit tough beasts and humanoids with Proselytize to serve as frontline combat tanks. Stay behind your pet, using Stunning Force to CC approaching threats and Lase laser beams for sustained DPS. Pop Force Bubble or Teleport Other if pressed.",
-            "close_contact_policy": "Let your pet absorb melee trades while you pop Force Bubble, cast Stunning Force, or backpedal into open ground",
-            "melee_engagement": "Strictly avoid physical melee; support your combat pet from safe range",
-            "preferred_weapons": ["Light mental focus weapons", "Shield", "Torch"],
+            "doctrine_name": "Sleep, Blanket, and Dissolve",
+            "open_combat_action": "Map pet positions and airflow; release Sleep Gas to incapacitate cluster; blanket with Corrosive Gas",
+            "close_contact_policy": "Kite in circles around the edge of the gas cloud while trapped enemies dissolve",
+            "melee_engagement": "Avoid entering own corrosive gas; use ranged fallback against acid-immune targets",
+            "preferred_weapons": ["Gas tumbler", "Respirator", "Shield", "Ranged backup rifle"],
             "ability_rotation": [
-                "0. Pet Recruitment: If without an active companion, cast Proselytize on an adjacent beast or humanoid (dist 1) to recruit a combat thrall & meat shield.",
-                "1. Opener & Crowd Control: Cast Stunning Force (dist 3-8) to stun, daze, and blast advancing enemies backward.",
-                "2. Heavy Lethal Channel: Sunder Mind (dist 2-25) against tough, elite, or armored enemies.",
-                "3. Sustained Beam Assault: Fire Lase laser beams (dist 1-25, charges permitting) over your pet's shoulder to eliminate targets at range.",
-                "4. Elemental Damage: Cast Cryokinesis / Pyrokinesis / Rays to burn or freeze hostile zones.",
-                "5. Emergency Close Defense: When enemies breach within dist <= 2, pop Force Bubble, cast Teleport Other to banish them, or use Intimidate to make them flee."
-            ]
-        }
-    },
-
-    "praetorian_tank": {
-        "name": "Praetorian Juggernaut (The Iron Wall)",
-        "archetype": "True Kin Heavy Armor Tank",
-        "callings": ["Praetorian", "Child of the Deep"],
-        "strengths": [
-            "Unmatched Armor Value (AV 15-25+), rendering normal physical attacks harmless",
-            "Shield Block completely negates incoming heavy melee strikes",
-            "Heavy weapon suppressive fire rips through hordes",
-            "Full access to True Kin high-tier Cybernetics implants"
-        ],
-        "weaknesses": [
-            "Low DV (dodge value) means almost all attacks connect (relies 100% on AV to negate damage)",
-            "Vulnerable to armor-penetrating vibro weapons and elemental heat/cold extremes"
-        ],
-        "preferred_range": 1,
-        "stat_priorities": [
-            {"stat": "Toughness", "target": 22, "reason": "Massive HP pool to synergize with high AV"},
-            {"stat": "Strength", "target": 22, "reason": "Heavy weapon handling and shield bash power"},
-            {"stat": "Toughness", "target": 28, "reason": "Total resistance to physical hazards"},
-            {"stat": "Strength", "target": 26, "reason": "Carrying ultra-heavy plate armor and cannons"}
-        ],
-        "skill_progression": [
-            "Shield",
-            "Shield_Block",
-            "Shield_ShieldSlam",
-            "HeavyWeapons",
-            "HeavyWeapons_Tank",
-            "HeavyWeapons_Strafe",
-            "LongBlades",
-            "LongBlades_Proficiency",
-            "LongBlades_DuelistStance",
-            "Endurance_Calloused"
-        ],
-        "mutation_priorities": [],  # True Kin uses Cybernetics
-        "combat_doctrine": {
-            "doctrine_name": "Anchor and Crush",
-            "open_combat_action": "Fire heavy ordnance or advance behind raised tower shield",
-            "close_contact_policy": "Shield Slam to knock down enemies, hold frontline",
-            "melee_engagement": "Face-tank and trade blows while completely mitigating damage",
-            "preferred_weapons": ["Tower shield", "Folded carbide long sword", "Chain gun"],
-            "ability_rotation": [
-                "1. Suppressive Barrage: Heavy Weapons fire (dist 3-10) to stagger enemy approaches.",
-                "2. Melee Stun Bash: Shield Slam adjacent enemies to stun and daze them.",
-                "3. Weapon Denial: Swipe / Disarm adjacent enemies to disarm their primary weapon.",
-                "4. Defensive Stance: Maintain Duelist Stance for maximum parry and AV."
+                "1. Incapacitating Fog: Sleep Gas Generation on advancing hostiles (verify no pets in cloud).",
+                "2. Acid Blanket: Corrosive Gas Generation inside sleep cloud to dissolve enemies.",
+                "3. Adrenal Surge: Adrenal Control when engaging elite or dangerous mobs.",
+                "4. Cloud Perimeter Kite: Backpedal and maneuver around gas borders while cloud ticks."
             ]
         }
     }
 }
 
-for _k, _v in BUILD_TEMPLATES.items():
-    _v["id"] = _k
-
+# Aliases for backward compatibility
+BUILD_TEMPLATES["rifle_nomad"] = BUILD_TEMPLATES["praetorian_generalist"]
+BUILD_TEMPLATES["axe_berserker"] = BUILD_TEMPLATES["auspicious_beginnings"]
+BUILD_TEMPLATES["esper_mindflayer"] = BUILD_TEMPLATES["esper_ited_away"]
+BUILD_TEMPLATES["praetorian_tank"] = BUILD_TEMPLATES["praetorian_generalist"]
+BUILD_TEMPLATES["akimbo_gunslinger"] = BUILD_TEMPLATES["gunkin"]
 
 
 def detect_build(game_state):
     """
-    Analyzes character calling/subtype, equipment, mutations, and stats to match
-    the most accurate build template.
+    Analyzes character calling/subtype, equipment, mutations, cybernetics, and stats
+    to match the most accurate build template from the 9 archetypes in the guide.
     """
     if not game_state:
-        return BUILD_TEMPLATES["rifle_nomad"]
+        return BUILD_TEMPLATES["praetorian_generalist"]
 
     calling = (game_state.get("calling", "") or game_state.get("subtype", "")).lower()
+    genotype = (game_state.get("genotype", "")).lower()
     equipped = game_state.get("equipped_summary", "").lower()
     has_missile = game_state.get("has_missile_weapon", False)
     mutations = [m.get("class", "").lower() for m in game_state.get("mutations", [])]
@@ -284,45 +481,59 @@ def detect_build(game_state):
     ego = attrs.get("Ego", 10)
     str_val = attrs.get("Strength", 10)
     agi = attrs.get("Agility", 10)
+    wil = attrs.get("Willpower", 10)
 
-    # 1. Direct Calling Match
-    if calling:
-        if any(c in calling for c in ["apostle", "greybeard", "pilgrim"]):
-            return BUILD_TEMPLATES["esper_mindflayer"]
-        if any(c in calling for c in ["marauder", "warden"]):
-            return BUILD_TEMPLATES["axe_berserker"]
-        if any(c in calling for c in ["praetorian", "child of the deep"]):
-            return BUILD_TEMPLATES["praetorian_tank"]
-        if "gunslinger" in calling and ("pistol" in equipped or "revolver" in equipped):
-            return BUILD_TEMPLATES["akimbo_gunslinger"]
-        if any(c in calling for c in ["nomad", "watervine farmer"]):
-            return BUILD_TEMPLATES["rifle_nomad"]
+    # 1. Gas Giant detection
+    if any(m in mutations for m in ["corrosivegasgeneration", "sleepgasgeneration"]) or any("corrosive gas" in a or "sleep gas" in a for a in abilities):
+        return BUILD_TEMPLATES["gas_giant"]
 
-    # 2. Esper detection
-    mental_muts = ["sundermind", "cryokinesis", "pyrokinesis", "beguiling", "lightmanipulation", "forcebubble"]
-    if any(m in mental_muts for m in mutations) or ego >= 22:
-        return BUILD_TEMPLATES["esper_mindflayer"]
+    # 2. Uncle Iroh detection (Electrical Gen + Flaming Ray)
+    if ("electricalgeneration" in mutations or any("electrical" in a for a in abilities)) and ("flamingray" in mutations or any("flaming" in a for a in abilities)):
+        return BUILD_TEMPLATES["uncle_iroh"]
 
-    # 3. Akimbo Pistols
+    # 3. Bullet Specter detection (Phasing + Gunslinger)
+    if "phasing" in mutations and ("gunslinger" in calling or "pistol" in equipped):
+        return BUILD_TEMPLATES["bullet_specter"]
+
+    # 4. Classic Punchkin (Carbide Hand Bones / Unarmed True Kin)
+    if "carbide hand" in equipped or "hand bones" in equipped or ("child of the hearth" in calling and str_val >= 20):
+        return BUILD_TEMPLATES["classic_punchkin"]
+
+    # 5. Limb-Off (Multi-Arms Axe Marauder)
+    if "multiplearms" in mutations and ("axe" in equipped or "marauder" in calling or any("dismember" in a for a in abilities)):
+        return BUILD_TEMPLATES["limb_off"]
+
+    # 6. Auspicious Beginnings (Freezing Ray + Axe Marauder)
+    if "freezingray" in mutations and ("axe" in equipped or "marauder" in calling):
+        return BUILD_TEMPLATES["auspicious_beginnings"]
+
+    # 7. Esper-ited Away (Psychic powers / Apostle / Greybeard)
+    mental_muts = ["sundermind", "lightmanipulation", "clairvoyance", "forcewall", "forcebubble", "teleportation", "cryokinesis", "pyrokinesis"]
+    if any(m in mental_muts for m in mutations) or any(c in calling for c in ["apostle", "greybeard", "pilgrim"]) or ego >= 20:
+        return BUILD_TEMPLATES["esper_ited_away"]
+
+    # 8. Gunkin (Gun rack / Akimbo True Kin)
+    if "gun rack" in equipped or (("true kin" in genotype or "true_kin" in genotype) and ("pistol" in equipped or "revolver" in equipped)):
+        return BUILD_TEMPLATES["gunkin"]
+
+    # 9. Praetorian Generalist (Rifle + Shield True Kin / General Sniper)
+    if any(c in calling for c in ["praetorian", "child of the deep", "nomad", "watervine farmer"]):
+        return BUILD_TEMPLATES["praetorian_generalist"]
+
+    # Equipment fallbacks
     if "pistol" in equipped or "revolver" in equipped or any("akimbo" in a for a in abilities):
-        return BUILD_TEMPLATES["akimbo_gunslinger"]
+        return BUILD_TEMPLATES["gunkin"]
+    if "axe" in equipped or any("dismember" in a for a in abilities):
+        return BUILD_TEMPLATES["auspicious_beginnings"]
+    if "shield" in equipped:
+        return BUILD_TEMPLATES["praetorian_generalist"]
 
-    # 4. Axe Marauder
-    if "axe" in equipped or any("dismember" in a for a in abilities) or (str_val >= 20 and str_val > agi + 3):
-        return BUILD_TEMPLATES["axe_berserker"]
-
-    # 5. Praetorian Tank
-    if "shield" in equipped and ("plate" in equipped or "chain" in equipped or "armor" in equipped):
-        return BUILD_TEMPLATES["praetorian_tank"]
-
-    # Default: Rifle Nomad (our primary rifle sniper build)
-    return BUILD_TEMPLATES["rifle_nomad"]
+    # Default: Praetorian Generalist
+    return BUILD_TEMPLATES["praetorian_generalist"]
 
 
 def get_stat_allocation_recommendation(template, current_stats):
-    """
-    Returns the recommended stat to increase according to the template doctrine.
-    """
+    """Returns the recommended stat to increase according to the template doctrine."""
     for rule in template.get("stat_priorities", []):
         st = rule["stat"]
         target = rule["target"]
@@ -330,7 +541,6 @@ def get_stat_allocation_recommendation(template, current_stats):
         if cur < target:
             return st, rule["reason"]
 
-    # If all targets reached, boost primary archetype stat
     primary = template["stat_priorities"][0]["stat"]
     return primary, "All benchmark thresholds met; continuing primary scaling."
 

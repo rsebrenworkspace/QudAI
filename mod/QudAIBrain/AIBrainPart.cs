@@ -493,6 +493,9 @@ namespace QudAIBrain
                 sb.Append($"\"zone_id\": \"{EscapeJson(zoneId)}\",");
                 sb.Append($"\"zone_name\": \"{EscapeJson(zoneName)}\",");
                 sb.Append($"\"zone_fully_explored\": {(isZoneFullyExplored ? "true" : "false")},");
+                int zoneTier = 1;
+                try { zoneTier = currentCell?.ParentZone?.Tier ?? 1; } catch { }
+                sb.Append($"\"zone_tier\": {zoneTier},");
                 string genotype = "";
                 string subtype = "";
                 try { genotype = player.GetGenotype() ?? ""; } catch { }
@@ -570,7 +573,13 @@ namespace QudAIBrain
                                     bool isCompanion = (objBrain != null && objBrain.PartyLeader == player);
                                     bool canProselytize = (objBrain != null && obj.IsAlive && !obj.HasPart("Plant") && !obj.HasPart("Fungus") && !obj.HasPart("Corpse") && !obj.HasPart("Robot") && objBrain.PartyLeader != player);
 
-                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}, \"can_proselytize\": {(canProselytize ? "true" : "false")}}}");
+                                    int objLevel = 1;
+                                    try { objLevel = obj.Stat("Level", 1); } catch { }
+                                    int levelDiff = objLevel - playerLevel;
+                                    string diffStr = levelDiff <= -5 ? "Trivial" : levelDiff <= -2 ? "Easy" : levelDiff <= 2 ? "Average" : levelDiff <= 5 ? "Tough" : levelDiff <= 9 ? "Very Tough" : "Impossible";
+                                    bool isStationary = obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasTag("Immobile") || obj.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}, \"can_proselytize\": {(canProselytize ? "true" : "false")}, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}}}");
                                 }
                             }
                         }
@@ -591,7 +600,12 @@ namespace QudAIBrain
                                 int dist = Math.Max(Math.Abs(tx - px), Math.Abs(ty - py));
                                 string dir = GetApproximateDirection(px, py, tx, ty);
                                 string bp = currentTarget.Blueprint ?? "";
-                                entityEntries.Insert(0, $"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {tx}, \"ty\": {ty}, \"is_enemy\": true}}");
+                                int objLevel = 1;
+                                try { objLevel = currentTarget.Stat("Level", 1); } catch { }
+                                int levelDiff = objLevel - playerLevel;
+                                string diffStr = levelDiff <= -5 ? "Trivial" : levelDiff <= -2 ? "Easy" : levelDiff <= 2 ? "Average" : levelDiff <= 5 ? "Tough" : levelDiff <= 9 ? "Very Tough" : "Impossible";
+                                bool isStationary = currentTarget.HasPart("Plant") || currentTarget.HasPart("Fungus") || currentTarget.HasTag("Immobile") || currentTarget.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
+                                entityEntries.Insert(0, $"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {tx}, \"ty\": {ty}, \"is_enemy\": true, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}}}");
                             }
                         }
                     }
