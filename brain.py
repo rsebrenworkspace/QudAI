@@ -117,6 +117,36 @@ def register_companion(name=None, coord=None):
         CHARMED_COMPANION_COORDS.add((coord[0], coord[1]))
 
 
+def is_peaceful_npc(name, blueprint=None):
+    """
+    Identifies conversational NPCs, quest givers, wardens, merchants, and peaceful citizens
+    who must never be treated as combat enemies, attacked, or harassed with offensive abilities.
+    """
+    if not name:
+        return False
+    nl = name.lower()
+    bp = (blueprint or "").lower()
+    combined = f"{nl} {bp}"
+
+    # Explicit hostile factions/monsters that might contain words like priest, guard, or convert
+    hostile_overrides = [
+        "snapjaw", "raider", "cannibal", "goatfolk", "cultist", "putus", "templar",
+        "issachari", "chaun", "glowpad", "glowfish"
+    ]
+    if any(h in combined for h in hostile_overrides):
+        return False
+
+    peaceful_keywords = [
+        "farmer", "warden", "elder", "convert", "zealot", "merchant", "trader",
+        "dromad", "pariah", "villager", "citizen", "settler", "irudad", "yrame", "mehmet",
+        "argyve", "tam", "obsessionist", "priest", "preacher", "hindren", "kesehind",
+        "barathrumite", "barathrum", "q-girl", "jacob", "esther", "sheba", "tinkerer",
+        "apothecary", "water merchant", "mayor", "councillor", "cantor", "scribe",
+        "archivist", "librarian", "domestic pig"
+    ]
+    return any(pk in combined for pk in peaceful_keywords)
+
+
 def is_proselytizable(entity, companions=None):
     """Checks if an entity is a biological living creature with a mind capable of being proselytized."""
     if not entity or not isinstance(entity, dict):
@@ -127,6 +157,8 @@ def is_proselytizable(entity, companions=None):
         return False
     ename = entity.get("name", "").lower()
     bp = entity.get("blueprint", "").lower()
+    if is_peaceful_npc(ename, bp):
+        return False
     combined = f"{ename} {bp}"
     if any(ex in combined for ex in PROSELYTIZE_EXCLUSIONS):
         return False
@@ -317,10 +349,14 @@ def get_adjacent_threats(surroundings, companions=None):
         text = surroundings.get(d, "")
         if "[COMPANION:" in text or "[companion" in text.lower():
             continue
+        if "[NPC:" in text or "[npc:" in text.lower():
+            continue
         if "[ENEMY:" in text:
             m = re.search(r"\[ENEMY:\s*([^\]]+)\]", text)
             ename = m.group(1).strip() if m else "Enemy"
             if is_companion_name(ename, comp_names):
+                continue
+            if is_peaceful_npc(ename):
                 continue
             adj[d] = ename
     return adj
@@ -329,7 +365,7 @@ def get_adjacent_threats(surroundings, companions=None):
 def filter_hostile_enemies(entities, companions=None):
     """
     Strictly filters a list of entities to only include true hostiles.
-    Companions, pets, and followers are permanently excluded by flag, coordinate, and name.
+    Companions, pets, followers, and peaceful NPCs/citizens are permanently excluded.
     """
     if not entities:
         return []
@@ -353,7 +389,10 @@ def filter_hostile_enemies(entities, companions=None):
         if (e.get("tx"), e.get("ty")) in comp_coords:
             continue
         ename = e.get("name", "")
+        bp = e.get("blueprint", "")
         if is_companion_name(ename, comp_names):
+            continue
+        if is_peaceful_npc(ename, bp):
             continue
         result.append(e)
     return result
@@ -476,6 +515,11 @@ def is_ignorable_stationary_enemy(e):
 
     # If stationary and trivial/easy/average, ignore for combat lock at distance > 3
     if is_stat and dist > 3 and diff in ("Trivial", "Easy", "Average", ""):
+        return True
+
+    # Aquatic creatures swimming in isolated pools (glowfish, etc.) cannot traverse dry land.
+    # At distance > 3, ignore them so the AI doesn't break exploration to charge across town into ponds!
+    if "swimming" in name and dist > 3 and diff in ("Trivial", "Easy", "Average", ""):
         return True
 
     return False
@@ -1321,7 +1365,7 @@ def query_decision(game_state, took_damage, enemies):
     enemies = filter_hostile_enemies(enemies, companions)
     adj_threats = get_adjacent_threats(surroundings, companions=companions)
     close_threats = [e for e in enemies if not is_ignorable_stationary_enemy(e) and e.get("dist", 999) <= 20]
-    engine_hostiles = game_state.get("hostiles_adjacent", False) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
+    engine_hostiles = (game_state.get("hostiles_adjacent", False) and bool(adj_threats)) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
     is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
 
     last_failed = None
@@ -1576,7 +1620,7 @@ def main():
                 grid_display = render_5x5_grid(surroundings)
                 adj_threats = get_adjacent_threats(surroundings, companions=companions)
                 close_threats = [e for e in enemies if not is_ignorable_stationary_enemy(e) and e.get("dist", 999) <= 20]
-                engine_hostiles = game_state.get("hostiles_adjacent", False) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
+                engine_hostiles = (game_state.get("hostiles_adjacent", False) and bool(adj_threats)) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
                 is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
                 mode_str = "[COMBAT]" if is_in_combat else "[EXPLORE]"
                 active_template = build_templates.detect_build(game_state)

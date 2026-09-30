@@ -467,6 +467,52 @@ print(f"Standoff recharge decision: {dec_standoff['action']} | Reason: {dec_stan
 assert dec_standoff['action'] == "WAIT", f"Expected WAIT to recharge, got {dec_standoff['action']}"
 assert "staff" not in dec_standoff['reason'].lower(), f"Esper must not advance with staff, got {dec_standoff['reason']}"
 
+# 18. Test Peaceful Townsfolk & Conversational NPC Immunity (Joppa Start)
+print("\n--- Test 18: Peaceful Townsfolk & Conversational NPC Immunity (Joppa Start) ---")
+joppa_state = {
+    "hp": 18, "max_hp": 18, "x": 37, "y": 21, "z": 10,
+    "genotype": "Mutated Human", "calling": "Apostle",
+    "zone_name": "Joppa", "zone_fully_explored": False,
+    "hostiles_nearby": True, "hostiles_adjacent": True,
+    "surroundings": {
+        "N": "[ENEMY: watervine farmer and Mechanimist convert], dirt path",
+        "E": "dirt path", "S": "dirt path", "W": "dirt path"
+    },
+    "visible_entities": [
+        {"name": "watervine farmer and Mechanimist convert", "blueprint": "JoppaFarmerConvert", "dist": 1, "dir": "N", "tx": 37, "ty": 20, "is_enemy": True},
+        {"name": "Warden Yrame", "blueprint": "Warden Yrame", "dist": 13, "dir": "NE", "tx": 50, "ty": 12, "is_enemy": True},
+        {"name": "Elder Irudad", "blueprint": "Elder Irudad", "dist": 8, "dir": "NW", "tx": 30, "ty": 15, "is_enemy": False},
+        {"name": "wet glowfish [swimming]", "blueprint": "Glowfish", "dist": 20, "dir": "SW", "tx": 17, "ty": 22, "is_enemy": True, "difficulty": "Average"}
+    ],
+    "abilities": [
+        {"name": "Teleport Other", "command": "CommandTeleportOther", "cooldown": 0, "usable": True},
+        {"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 0, "usable": True},
+        {"name": "Lase (4 charges)", "command": "CommandLase", "cooldown": 0, "usable": True},
+        {"name": "Proselytize", "command": "CommandProselytize", "cooldown": 0, "usable": True}
+    ]
+}
+
+# Verify filters
+joppa_enemies = brain.filter_hostile_enemies(joppa_state["visible_entities"])
+print(f"Filtered Joppa enemies count: {len(joppa_enemies)} (expected 1 glowfish, 0 town NPCs)")
+assert len(joppa_enemies) == 1 and joppa_enemies[0]["name"] == "wet glowfish [swimming]", f"Expected only glowfish, got {joppa_enemies}"
+
+joppa_adj_threats = brain.get_adjacent_threats(joppa_state["surroundings"])
+print(f"Joppa adjacent threats: {joppa_adj_threats} (expected empty dict)")
+assert joppa_adj_threats == {}, f"Watervine farmer must not be considered adjacent threat! Got: {joppa_adj_threats}"
+
+farmer_ent = joppa_state["visible_entities"][0]
+assert not brain.is_proselytizable(farmer_ent), "Watervine farmer must not be proselytized!"
+
+glowfish_ent = joppa_state["visible_entities"][3]
+assert brain.is_ignorable_stationary_enemy(glowfish_ent), "Distant glowfish swimming in pond must be ignored during exploration!"
+
+dec_joppa = brain.query_decision(joppa_state, took_damage=False, enemies=joppa_enemies)
+print(f"Joppa peaceful decision: {dec_joppa['action']} | Reason: {dec_joppa['reason']}")
+assert dec_joppa['action'] == "AUTOEXPLORE", f"Expected AUTOEXPLORE in Joppa, got {dec_joppa['action']}"
+assert "teleport" not in dec_joppa['action'].lower(), f"Must not banish town NPC! Action: {dec_joppa['action']}"
+assert not dec_joppa['action'].startswith("MOVE_N"), f"Must not bump-attack town NPC! Action: {dec_joppa['action']}"
+
 print("\n==================================================")
-print(">>> ALL 17 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 18 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")

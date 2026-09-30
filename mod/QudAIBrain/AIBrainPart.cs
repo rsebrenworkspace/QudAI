@@ -223,36 +223,38 @@ namespace QudAIBrain
                 // 0. ABSOLUTE COMPANION CHECK: If this entity is a companion or led by the player, it is NEVER an enemy!
                 if (IsCompanion(obj, player)) return false;
 
-                // 1. Direct combat targets (only if not led by player)
-                if (player.Target == obj || Sidebar.CurrentTarget == obj) return true;
-                if (obj.Target == player) return true;
+                // 1. Explicit exclude tags
+                if (obj.HasTag("ExcludeFromHostiles")) return false;
 
-                // 2. Engine native hostility: does obj consider player hostile?
-                if (obj.IsHostileTowards(player)) return true;
-
-                // 3. Brain hostility checks
                 var brain = obj.Brain ?? obj.GetPart<Brain>();
+
+                // 2. Conversational NPCs / Merchants / Townsfolk: Never treat peaceful citizens as enemies!
+                bool hasConversation = obj.HasPart("ConversationScript") || obj.HasPart("Converser");
+                if (hasConversation && !obj.IsHostileTowards(player) && !(brain != null && brain.IsHostileTowards(player)))
+                {
+                    return false;
+                }
+
+                // 3. Engine native hostility: does obj consider player hostile, or player consider obj hostile?
+                if (obj.IsHostileTowards(player) || player.IsHostileTowards(obj)) return true;
+
+                // 4. Brain feeling checks
                 if (brain != null)
                 {
-                    if (brain.Target == player) return true;
                     if (brain.IsHostileTowards(player)) return true;
                     if (brain.GetFeelingLevel(player) == 0) return true; // FeelingLevel.Hostile
                     if (brain.GetFeeling(player) < 0) return true;
                 }
 
-                // 4. Targetable aggressive creatures excluding peaceful townsfolk
-                if (!obj.IsNonAggressive())
+                // 5. Active combat target ONLY if confirmed hostile
+                if ((obj.Target == player || (brain != null && brain.Target == player)) && (obj.IsHostileTowards(player) || (brain != null && brain.IsHostileTowards(player))))
                 {
-                    if (obj.HasTag("ExcludeFromHostiles")) return false;
-                    string faction = obj.GetPrimaryFaction();
-                    if (!string.IsNullOrEmpty(faction))
-                    {
-                        string f = faction.ToLower();
-                        if (f.Contains("villager") || f.Contains("fellow") || f.Contains("friend") || f.Contains("joppa"))
-                        {
-                            return false;
-                        }
-                    }
+                    return true;
+                }
+
+                // 6. Explicit user preference: Character hunts wild Glowpads (lilypads) in marshes
+                if (obj.Blueprint != null && obj.Blueprint.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
                     return true;
                 }
             }
