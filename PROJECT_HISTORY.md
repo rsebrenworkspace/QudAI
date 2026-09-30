@@ -19,6 +19,9 @@
    - [Iteration 5: Decompiling Leveling & Headless Point Allocation](#iteration-5-decompiling-leveling--headless-point-allocation)
    - [Iteration 6: Interactive Twitch Chat Voting Integration](#iteration-6-interactive-twitch-chat-voting-integration)
    - [Iteration 7: Multi-Class Archetypes & Tactical Fallback Matrix](#iteration-7-multi-class-archetypes--tactical-fallback-matrix)
+   - [Iteration 8: Pet Recruitment & Companion Absolute Immunity](#iteration-8-pet-recruitment--companion-absolute-immunity-esper-mindflayer)
+   - [Iteration 9: Conversational NPC & Settlement Townsfolk Immunity](#iteration-9-conversational-npc--settlement-townsfolk-immunity-the-joppa-incident)
+   - [Iteration 10: Multi-Tile Oscillation Loop Breaker & Door Navigation](#iteration-10-multi-tile-oscillation-loop-breaker--door-navigation)
 4. [Current Codebase Specification (v1.0.0)](#4-current-codebase-specification-v100)
    - [Directory Structure](#directory-structure)
    - [Telemetry & IPC Protocol](#telemetry--ipc-protocol)
@@ -231,21 +234,56 @@
   - **Flora & Brainless Object Filtering:** Fixed issue where the agent attempted to proselytize a `brimestalk` (plant stalk). In `AIBrainPart.cs`, candidate acquisition and `AIPickGameObjectPatch` now strictly require `obj.Brain != null && !obj.HasPart("Plant") && !obj.HasPart("Fungus") && !obj.HasPart("Robot")`, and export an engine-verified `can_proselytize: true/false`. In `brain.py`, `PROSELYTIZE_EXCLUSIONS` was expanded to cover all stalks (`brimestalk`, `brinestalk`), starapples, ferns, roots, lichen, and fungi, and `is_proselytizable()` strictly rejects any entity with `can_proselytize: false`.
   - Verified with LM Studio: When presented with an adjacent `snapjaw brute`, LM Studio reasoned *"Recruit snapjaw brute as frontline tank to absorb damage and enable safe ranged combat"* and executed `USE_ABILITY:CommandProselytize:E`. All 11 verification tests pass.
 
-#### Caster Melee Suicide & Cooldown Recharge Standoff Resolution
-- **Incident Analysis:**
-  The character (Apostle / Esper Mindflayer) was facing an adjacent glowpad and glowfish with 5/27 HP, wearing a cloth robe (0 AV), holding a wooden staff (1d2 damage), and suffering from active bleeding. `Teleport Other` and `Sprint` were ready, while `Stunning Force` and `Lase` charges were depleted. Instead of banishing the adjacent hostile or retreating, the character executed a melee bump-attack (`MOVE_NW`), taking counterattack and bleed damage, and died.
-- **Root Causes Discovered:**
-  1. **Generic Melee Bump Actions in Prompt:** In `query_llm_decision`, `MOVE_{d} (Melee Attack {ename})` was uniformly generated for all classes when enemies were adjacent. In the system prompt, Rule 2 instructed: *"If an offensive action (Missile Snipe, Lase, Sunder Mind, Ray, Charge, or Melee Attack) is listed in VALID ACTIONS, YOU MUST ATTACK."* The model interpreted `Melee Attack` as a mandatory attack obligation rather than retreating or casting `Teleport Other`.
-  2. **Staff Advance in Fallback:** In `fallback_esper`, lines 1029-1033 intentionally commanded `MOVE_{s_dir}` (*"Advancing to strike stationary with staff"*) if an enemy was within 3 tiles and ranged powers were cooling down.
-  3. **Absence of `WAIT` Recharge Choice:** In Caves of Qud, `Light Manipulation` passively regenerates laser charges from ambient light every few turns, and mental mutations cool down turn-by-turn. However, `WAIT` was never included in `action_choices` for LM Studio, forcing the model to move.
-  4. **Target Direction Misalignment in C# Mod:** In `AIBrainPart.cs`, `USE_ABILITY` retained stale `player.Target` or `Sidebar.CurrentTarget` even when `PreferredDirection` pointed elsewhere, preventing touch-range abilities like `CommandTeleportOther` from acquiring the adjacent enemy in the intended direction.
-- **Implementation & Resolution:**
-  - **Archetype Distinction (`is_pure_caster_or_ranged`):** Pure casters and ranged specialists are strictly forbidden from voluntary melee bump-attacks. Melee attack is only generated as a desperate last resort if cornered with 0 open moves, 0 sprint, and 0 defensive cooldowns.
-  - **Emergency Banishment Prioritization:** When adjacent to hostiles, `USE_ABILITY:CommandTeleportOther:<DIR>` and `USE_ABILITY:CommandForceBubble` take absolute precedence over bump-attacks.
-  - **Standoff & Recharge Policy:** Added `WAIT (Hold safe standoff distance & recharge Light Manipulation laser charges / mental cooldowns)` to valid choices when distance is $\ge 2$, and backpedal kiting when distance $< 4$.
-  - **Critical Bleeding Alert:** Added immediate high-priority warning alerting the AI when bleeding to prioritize emergency banishment and safe retreat.
-  - **C# Mod Targeting Alignment:** In `AIBrainPart.cs`, when `PreferredDirection` is specified, `targetObj` and `targetCell` are synchronized to that directional vector, and touch-range abilities (`Teleport Other`, `Proselytize`) automatically acquire the object in the adjacent cell.
-  - Verified on live death state: LM Studio immediately chose `USE_ABILITY:CommandTeleportOther:NW` (*"Banish immediate melee threat with Teleport Other for emergency defense"*). All 17 verification tests passed.
+### Iteration 9: Conversational NPC & Settlement Townsfolk Immunity (The Joppa Incident)
+- **Problem Statement:** Upon starting a new Apostle character in the town of Joppa, the agent took one step, immediately treated the adjacent `watervine farmer and Mechanimist convert` and nearby `Warden Yrame` as hostile enemies, and cast `Teleport Other` to banish the farmer. Banishment of a peaceful citizen provoked the entire town of Joppa into open warfare, resulting in the character taking lethal damage and dying in town. In a parallel incident, the character charged across Joppa into an isolated pond to melee an aquatic glowfish with a staff, which retaliated with bleed and killed the adventurer.
+- **Root Cause Analysis:**
+  1. *UI Pointer Pollution in `AIBrainPart.cs`:* The mod had `if (player.Target == obj || Sidebar.CurrentTarget == obj) return true;`. In Caves of Qud, `Sidebar.CurrentTarget` automatically points to whatever entity the player is standing next to in town for inspection! This marked peaceful townsfolk as enemies.
+  2. *Inverted `IsNonAggressive()` Fallback:* The mod had checked `if (!obj.IsNonAggressive()) ... return true;`. In Qud's engine, `IsNonAggressive()` is only true for inert plants or training dummies; all living humanoid NPCs return `false`. Because Joppa citizens belong to diverse factions (`Mechanimists`, `Wardens`, `Dromad`, `Hindren`) that did not contain `"villager"` or `"joppa"`, all townsfolk were flagged as lethal enemies.
+  3. *Unfiltered Combat Mode:* When `watervine farmer` was marked as an enemy, `is_in_combat` evaluated to `True`, skipping Phase A (`AUTOEXPLORE`) and forcing the LLM into combat panic.
+  4. *Unchecked Aquatic Proximity:* Aquatic creatures swimming in ponds (`wet glowfish [swimming]`) at dist 20 were evaluated as active threats (`dist <= 20`), triggering combat lock and causing the agent to cross the screen into the pond to attack.
+- **Two-Layer Solution Architecture:**
+  1. *Layer 1 (C# Harmony Mod Engine Hostility):*
+     - Replaced custom faction string checks with native Qud engine hostility: `obj.IsHostileTowards(player) || player.IsHostileTowards(obj)`.
+     - Explicitly checked conversational parts: `bool hasConversation = obj.HasPart("ConversationScript") || obj.HasPart("Converser");`. If an NPC has a conversation and is not actively hostile towards the player, they are strictly rejected as an enemy and tagged as `[NPC: Name]` instead of `[ENEMY: Name]`.
+     - Removed unconditioned `Sidebar.CurrentTarget` and `obj.Target` checks from enemy classification.
+     - Preserved explicit character preference for hunting wild marsh `Glowpad` plants.
+  2. *Layer 2 (Python Driver NPC Keyword & Settlement Filtering):*
+     - Added `is_peaceful_npc(name, blueprint)` with comprehensive coverage of townsfolk, wardens, elders, merchants, pariahs, priests, and unique questgivers (`farmer`, `warden`, `elder`, `convert`, `zealot`, `merchant`, `trader`, `dromad`, `irudad`, `yrame`, `mehmet`, `argyve`, `tam`).
+     - Hardened `get_adjacent_threats` and `filter_hostile_enemies` to permanently exclude peaceful NPCs.
+     - Hardened `is_proselytizable` to reject peaceful questgivers/townsfolk, preventing disruptive recruitment attempts.
+     - Enhanced `is_ignorable_stationary_enemy` to treat distant swimming aquatic creatures (`dist > 3`) in isolated pools as ignorable, preventing suicide rushes into ponds.
+     - Constrained `engine_hostiles`: `hostiles_adjacent` now requires confirmed adjacent threats (`bool(adj_threats)`), and `hostiles_nearby` requires confirmed close threats (`bool(close_threats)`).
+  3. *Loot Goblin Resolution (Beds & Owned Items in Settlements):*
+     - *Issue:* During `AUTOEXPLORE`, `ExecuteAutoexplore` attempted to grab any non-solid physical object on the player's tile. When stepping into homes in Joppa, the agent picked up wooden beds (carrying 50 lb furniture) and prompted to steal owned canteens sitting on tables, stopping exploration and risking town hostility.
+     - *Fix (`CanSafelyLoot`):* Added engine-level loot verification in `AIBrainPart.cs`:
+       - `item.IsOwned()` & `!string.IsNullOrEmpty(item.Owner)`: Strictly rejects owned items.
+       - Settlement Exclusion: Completely disables ad-hoc looting while inside peaceful settlements (`Joppa`, `Stilt`, `Grit Gate`, `Kyakukya`, etc.).
+       - Furniture & Fixture Rejection: Excludes beds, bedrolls, chairs, tables, cushions, benches, sconces, chests, dressers, fans, and baskets.
+       - Weight & Encumbrance: Caps loose item pickup at 15 lbs to prevent encumbrance.
+       - Integrated into `ExecuteAutoexplore`, `GET_ITEM`, and `AIPickItemPatch`.
+  4. *Verification:* Tested against actual Joppa save state. Fresh Apostle state evaluates cleanly to `AUTOEXPLORE`. Added Test 18 to `dry_run.py` verifying full Joppa peaceful immunity; all 18 test suite scenarios pass.
+
+### Iteration 10: Multi-Tile Oscillation Loop Breaker & Door Navigation
+- **Problem Statement:** After resolving peaceful NPC attacks and preventing town theft, the agent entered a building in Joppa and became trapped in an infinite 2-tile oscillation loop between an unreadable solid sign and a solid table. The player moved East <-> West repeatedly without progressing or leaving the house.
+- **Root Cause Analysis:**
+  1. *Unfulfilled POI Goals in FasterDMapAutoexplore:* Caves of Qud's Dijkstra autoexplore engine includes signs, book tables, and display cases as destination targets. Because these objects are solid and cannot be stepped onto, and because our headless mod did not open UI inspection dialogs to read signs or search empty tables, neither object was ever satisfied or removed from the destination map. FindAutoexploreStep alternated between targeting the sign and table turn after turn.
+  2. *Single-Turn Repeat Check Limitation:* In brain.py, the loop breaker only checked cur_pos == last_executed_pos (stationary obstacles/walls). In a multi-tile cycle (A <-> B <-> A), cur_pos changes every single step, completely bypassing stationary loop detection.
+  3. *Closed Door Blindness in get_valid_moves:* get_valid_moves had explicitly filtered out 'closed door' alongside walls and chasms. While closed doors are obstacles, in Caves of Qud walking into an unlocked closed door opens it. By treating closed doors as impassable walls, the agent was physically unable to pathfind out of enclosed rooms.
+- **Two-Layer Solution Architecture:**
+  1. *Layer 1 (C# Mod Engine POI Suppression & Cycle Break):*
+     - In ExecuteAutoexplore (AIBrainPart.cs), maintain autoexplorePosHistory (sliding window of 10 positions).
+     - When repeatVisits >= 2: Inspect all adjacent cells. Any non-combat, non-safe-loot object (signs, tables, bookshelves, chests) is immediately suppressed with obj.SetIntProperty('AutoexploreSuppressed', 1), removing it from FasterDMapAutoexplore's goal map.
+     - When repeatVisits >= 3: Mark isZoneFullyExplored = true and yield to Python brain frontier navigation.
+     - Target Cell Suppression on Move Failure: If player.Move(step) fails, automatically suppress any solid blocking object in that direction.
+  2. *Layer 2 (Python Driver Coordinate Oscillation & Frontier Escape):*
+     - Maintained recent_positions = deque(maxlen=10) in brain.py.
+     - Dual Loop Breaker: Detects both stationary repeats (is_stationary_repeat) and coordinate cycling (is_oscillating = pos_frequency >= 3 and not is_attacking).
+     - Escape Pathfinding: Filters valid moves to open_escapes (tiles NOT in recent_positions), picking the lowest-visited coordinate (visit_counts).
+     - Autoexplore Exhaustion: If caught in a cycle during AUTOEXPLORE, flags stuck_autoexplore_zones.add(current_zone_id), immediately transitioning subsequent decisions to Step 5 (frontier and exit navigation).
+     - Unlocked Door Navigation: Removed 'closed door' from impassable obstacles in get_valid_moves, allowing the agent to open and walk through closed doorways to exit buildings.
+  3. *Verification:*
+     - Added Test 19 to dry_run.py simulating 2-tile oscillation inside a house with walls, table, sign, and an open doorway. Verified detection of 3x frequency, rejection of cyclic moves, execution of MOVE_S breakout, and automatic switch to frontier exploration.
+     - All 19 regression and tactical test scenarios pass with 100% success rate.
 
 ---
 
@@ -351,6 +389,25 @@ All communication occurs via files in `%USERPROFILE%\AppData\LocalLow\Freehold G
   - A Canticle for Barathrum (Rustwells wire retrieval)
   - Golgotha descent (sewer diving and repair)
 - **Stair & Chasm Navigation**: Smart traversal of up/down stairs, detecting shafts and safe exits.
+
+### Iteration 8: Pet Recruitment & Companion Absolute Immunity (Esper Mindflayer)
+- **Problem**: When the Apostle / Esper Mindflayer charmed wild creatures (e.g. giant dragonflies, goats, seahorses) using `CommandProselytize`:
+  1. The C# mod only checked `brain.PartyLeader == player`, which failed because charmed creatures in Caves of Qud receive effects (`XRL.World.Effects.Proselytized`, `Beguiled`, `Rebuked`) and AI parts (`AllyProselytize`). Furthermore, `zone.GetObjects()` was throwing `InvalidOperationException: Collection was modified` during turn processing, silently wiping `companions` to `[]`.
+  2. Because `companions: []`, the charmed creature was exported as `is_enemy: true` and appeared in `surroundings` as `[ENEMY: giant dragonfly]`.
+  3. The Python Esper fallback policy saw an adjacent threat and backpedaled to escape melee range. The charmed pet followed its master, repeating turn after turn ("walked around him a bit").
+  4. Once distance reached 2-3 tiles or cooldowns reset, the AI fired `CommandStunningForce` or `CommandLase` directly at its own pet, killing it ("hit him with a concussive blast").
+- **Solution**:
+  1. **Comprehensive C# `IsCompanion` Hook**: Added `IsCompanion(GameObject obj, GameObject player)` checking:
+     - Active effects: `Proselytized`, `Beguiled`, `Rebuked`, `Lovesick`, `LoveTonic`.
+     - AI parts: `AllyProselytize`, `AllyBeguile`, `AllyRebuke`, `AllyPet`, `AllyClone`.
+     - Leader relationships: `obj.IsLedBy(player)`, `PartyLeader == player`, `PartyLeader.IsPlayer()`, `PartyLeader.id == player.id`.
+     - Native Qud companion list: `player.GetCompanions()?.Contains(obj)`.
+  2. **Safe Zone Traversal (`GetSafeZoneObjects`)**: Replaced all throwing `ParentZone.GetObjects()` enumerations with safe cell-by-cell `zone.GetCell(x, y)?.Objects` traversal, completely eliminating `Collection was modified` exceptions.
+  3. **Zero-Latency In-Memory Companion Whitelist (`brain.py`)**: Added global sets `CHARMED_COMPANION_NAMES` and `CHARMED_COMPANION_COORDS`. As soon as `USE_ABILITY:CommandProselytize:<DIR>` or `CommandBeguile:<DIR>` is dispatched, the target tile's entity is registered with 0 latency, instantly immunizing it across `filter_hostile_enemies`, `get_adjacent_threats`, `is_line_of_fire_clear`, and tactical fallbacks even before engine serialization occurs.
+  4. **Offensive Target Interception Guardrails**: Updated `AIPickGameObjectPatch`, `AIPickTargetPatch`, and `AIPickFieldTargetPatch` to never auto-select or target friendly companions for offensive abilities or missiles.
+  5. **Substring Contagion Elimination & Creature Whitelisting**: Fixed an issue where `register_companion` split names into 4-letter words (e.g. "salt" from "salt-encrusted glowpad") which then caused every liquid and entity in the salt marsh ("pool of salty water", "puddle of salty asphalt") to be registered as an allied pet. Replaced with `is_companion_name` (strict full-name and boundary-matching) and `CanBeProselytized` in C#, strictly rejecting liquids, puddles, watervine, brinestalks, and glowpads.
+
+---
 
 ### Milestone 10: Companion & Temporal Fugue Clone Coordination
 - **Companion Orders**: For Espers with Beguile/Proselytize, command followers to tank or hold ground.
