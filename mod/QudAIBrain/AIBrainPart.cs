@@ -212,6 +212,88 @@ namespace QudAIBrain
             return true;
         }
 
+        public static bool CanSafelyLoot(GameObject item, GameObject player)
+        {
+            if (item == null || player == null || item == player || item.IsPlayer()) return false;
+            if (!item.IsAlive && item.HasPart("Combat")) return false;
+            if (item.HasPart("Brain")) return false;
+            if (item.HasPart("Door") || item.HasPart("StairsUp") || item.HasPart("StairsDown")) return false;
+
+            // 1. NEVER steal owned objects!
+            if (item.IsOwned()) return false;
+            if (!string.IsNullOrEmpty(item.Owner)) return false;
+            if (item.HasProperty("Owned") || item.HasProperty("OwnedBy")) return false;
+
+            // 2. NEVER loot in peaceful settlements (Joppa, Six Day Stilt, Grit Gate, Kyakukya, etc.)!
+            var zone = player.CurrentCell != null ? player.CurrentCell.ParentZone : null;
+            if (zone != null)
+            {
+                string zName = (zone.DisplayName ?? "").ToLower();
+                string zId = (zone.ZoneID ?? "").ToLower();
+                if (zName.Contains("joppa") || zName.Contains("stilt") || zName.Contains("grit gate") ||
+                    zName.Contains("kyakukya") || zName.Contains("yd freehold") || zName.Contains("bey lah") ||
+                    zName.Contains("omonporch") || zId.Contains("joppaworld"))
+                {
+                    return false;
+                }
+            }
+
+            // 3. NEVER pick up furniture, structural items, fixtures, or containers!
+            string bp = (item.Blueprint ?? "").ToLower();
+            string name = (item.DisplayName ?? "").ToLower();
+            string combined = bp + " " + name;
+
+            string[] furnitureKeywords = new string[] {
+                "bed", "bedroll", "chair", "table", "cushion", "bench", "desk", "sconce", "fan",
+                "contraption", "chest", "dresser", "basket", "crate", "barrel", "vase", "urn",
+                "shelf", "bookshelf", "statue", "idol", "altar", "fountain", "tombstone", "sign",
+                "post", "fence", "tree", "bush", "plant", "fungus", "wall", "door", "torchpost",
+                "canteen", "waterskin"
+            };
+            for (int i = 0; i < furnitureKeywords.Length; i++)
+            {
+                if (combined.Contains(furnitureKeywords[i])) return false;
+            }
+
+            if (item.HasPart("Furniture") || item.HasPart("Bed") || item.HasPart("Chair") ||
+                item.HasPart("Table") || item.HasPart("Chest") || item.HasPart("Container") ||
+                item.HasTag("Furniture") || item.HasTag("Structure") || item.HasTag("Fixture") ||
+                item.HasTag("Immobile") || item.HasProperty("Immobile"))
+            {
+                return false;
+            }
+
+            // 4. Must have Physics, be non-solid and takeable
+            var phys = item.GetPart<Physics>();
+            if (phys == null || phys.Solid) return false;
+            if (!phys.Takeable) return false;
+
+            // 5. Weight limit: don't loot heavy bulk (> 15 lbs) or if encumbered
+            try
+            {
+                int weight = phys.Weight;
+                if (weight > 15) return false;
+                int curWeight = player.GetCarriedWeight();
+                int maxWeight = player.GetMaxCarriedWeight();
+                if (curWeight + weight > maxWeight - 10) return false;
+            }
+            catch { }
+
+            // 6. Must be actual desired item type
+            bool isLootableType = item.HasPart("Armor") ||
+                                  item.HasPart("MeleeWeapon") ||
+                                  item.HasPart("MissileWeapon") ||
+                                  item.HasPart("Shield") ||
+                                  item.HasPart("Commerce") ||
+                                  item.HasPart("Key") ||
+                                  item.HasPart("TinkerItem") ||
+                                  item.HasPart("ModArtifact") ||
+                                  item.HasTag("Artifact") ||
+                                  item.HasPart("Corpse");
+
+            return isLootableType;
+        }
+
         public static bool CheckIsEnemy(GameObject obj, GameObject player)
         {
             if (obj == null || player == null || obj == player || obj.IsPlayer()) return false;
@@ -1070,7 +1152,7 @@ namespace QudAIBrain
                 Cell cell = player.CurrentCell;
                 if (cell?.Objects != null)
                 {
-                    var item = cell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && (o.HasPart("Physics") || o.HasPart("Corpse")));
+                    var item = cell.Objects.FirstOrDefault(o => o != null && CanSafelyLoot(o, player));
                     if (item != null)
                     {
                         player.TakeObject(item);
@@ -1396,25 +1478,21 @@ namespace QudAIBrain
                 return;
             }
 
-            // 1. Pick up takeable item on current tile if any
+            // 1. Pick up takeable item on current tile ONLY if safe to loot (never steal in settlements or take furniture)
             try
             {
                 Cell curCell = player.CurrentCell;
                 if (curCell != null && curCell.Objects != null)
                 {
-                    var groundItem = curCell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && !o.HasPart("Combat") && !o.HasPart("Door") && (o.HasPart("Physics") || o.HasPart("Corpse")));
+                    var groundItem = curCell.Objects.FirstOrDefault(o => o != null && CanSafelyLoot(o, player));
                     if (groundItem != null)
                     {
-                        var phys = groundItem.GetPart<Physics>();
-                        if (phys == null || !phys.Solid)
-                        {
-                            player.TakeObject(groundItem);
-                            try { player.FireEvent(Event.New("CommandAutoEquip")); } catch { }
-                            if (player.Energy != null) player.UseEnergy(1000, "Pickup");
-                            lastMoveFailed = false;
-                            lastFailedDir = "";
-                            return;
-                        }
+                        player.TakeObject(groundItem);
+                        try { player.FireEvent(Event.New("CommandAutoEquip")); } catch { }
+                        if (player.Energy != null) player.UseEnergy(1000, "Pickup");
+                        lastMoveFailed = false;
+                        lastFailedDir = "";
+                        return;
                     }
                 }
             }
@@ -1968,8 +2046,21 @@ namespace QudAIBrain
         {
             if (File.Exists(AIPlayerTurnPatch.FlagFile))
             {
-                __result = (Items != null && Items.Count > 0) ? Items[0] : null;
-                UnityEngine.Debug.Log($"[QudAI AIPickItemPatch] Auto-selected item: '{__result?.DisplayNameOnly}'");
+                GameObject player = The.Player;
+                GameObject safeItem = null;
+                if (Items != null)
+                {
+                    for (int i = 0; i < Items.Count; i++)
+                    {
+                        if (Items[i] != null && AIPlayerTurnPatch.CanSafelyLoot(Items[i], player))
+                        {
+                            safeItem = Items[i];
+                            break;
+                        }
+                    }
+                }
+                __result = safeItem;
+                UnityEngine.Debug.Log($"[QudAI AIPickItemPatch] Auto-selected item: '{__result?.DisplayNameOnly ?? "None (Unsafe/Owned)"}'");
                 return false;
             }
             return true;
