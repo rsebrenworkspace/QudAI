@@ -251,6 +251,10 @@
     - In C# `AIBrainPart.cs`, when `isCycling` trips, it sets `isZoneFullyExplored = true` and yields, avoiding local lockup.
   - **Centroid Steer Breakout Fallback:**
     - When all local moves lie within recently visited tiles along a curved shoreline, calculates the geometric centroid of recent positions $(\bar{x}, \bar{y})$ and maximizes Euclidean distance away from it, steering outward onto open dry land.
+  - **Headless Cooking & Camping (Zero-UI Prompts):**
+    - Identified that `Campfire.Cook()` explicitly invokes `ShowInventoryActionMenu`, displaying the interactive modal `[m] Whip up a meal / [i] Choose ingredients / [r] Recipe / [f] Preserve`.
+    - Identified that `Survival_Camp.AttemptCamp()` calls `PickDirectionS("Make Camp")` and `ShowYesNoCancel()`.
+    - Refactored both actions in `AIBrainPart.cs` to execute programmatically: `Cell.AddObject("Campfire")` places the fire directly without directional prompts; `COOK_MEAL` consumes 1 ingredient from inventory, clears stomach hunger via `stomach.ClearHunger()`, resets cooking counter, and calls `campPart.AfterCooked()` silently without ever opening UI modals.
   - **Expanded Verification Suite (Test 25):** Added Test 25 to `dry_run.py`, verifying 5-tile entropy check, open frontier escape, centroid steer fallback, and zone exploration exhaustion. All 25 tests pass.
 
 ---

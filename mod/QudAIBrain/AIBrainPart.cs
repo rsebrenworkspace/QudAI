@@ -1415,13 +1415,40 @@ namespace QudAIBrain
                 lastFailedDir = "";
                 try
                 {
-                    UnityEngine.Debug.Log("[QudAI MAKE_CAMP] Deploying campfire via CommandSurvivalCamp");
-                    try { CommandEvent.Send(player, "CommandSurvivalCamp"); } catch { }
-                    try { player.FireEvent(Event.New("CommandSurvivalCamp", "User", player)); } catch { }
-                    var campSkill = player.GetPart<Survival_Camp>();
-                    if (campSkill != null)
+                    UnityEngine.Debug.Log("[QudAI MAKE_CAMP] Deploying campfire programmatically");
+                    bool hasCampfireNearby = false;
+                    if (player.CurrentCell != null)
                     {
-                        try { campSkill.AttemptCamp(player); } catch { }
+                        var cells = player.CurrentCell.GetLocalAdjacentCells();
+                        if (cells == null) cells = new List<Cell>();
+                        cells.Add(player.CurrentCell);
+                        foreach (Cell c in cells)
+                        {
+                            if (c?.Objects != null && c.Objects.Any(o => o != null && (o.HasPart("Campfire") || (o.Blueprint ?? "").IndexOf("Campfire", StringComparison.OrdinalIgnoreCase) >= 0)))
+                            {
+                                hasCampfireNearby = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!hasCampfireNearby && player.CurrentCell != null)
+                    {
+                        Cell targetCell = player.CurrentCell;
+                        var adj = player.CurrentCell.GetLocalAdjacentCells();
+                        if (adj != null)
+                        {
+                            var emptyCell = adj.FirstOrDefault(c => c != null && c.IsEmpty());
+                            if (emptyCell != null) targetCell = emptyCell;
+                        }
+
+                        var campfire = targetCell.AddObject("Campfire");
+                        if (campfire != null)
+                        {
+                            try { campfire.SetIntProperty("PlayerCampfire", 1); } catch { }
+                            try { campfire.SetStringProperty("PointOfInterestKey", "PlayerCampfire"); } catch { }
+                            MessageQueue.AddPlayerMessage("{{G|You deploy a campfire.}}");
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -1456,15 +1483,48 @@ namespace QudAIBrain
 
                     if (campfireObj != null)
                     {
-                        UnityEngine.Debug.Log($"[QudAI COOK_MEAL] Cooking at campfire '{campfireObj.DisplayNameOnly}'");
-                        try { campfireObj.FireEvent(Event.New("CookWhipUp", "Actor", player)); } catch { }
-                        try { campfireObj.FireEvent(Event.New("CookWhipUp", "User", player)); } catch { }
+                        UnityEngine.Debug.Log($"[QudAI COOK_MEAL] Cooking at campfire '{campfireObj.DisplayNameOnly}' programmatically");
+
+                        // 1. Consume 1 ingredient or food item from player inventory if available
+                        var invObjects = player.GetInventory();
+                        if (invObjects == null)
+                        {
+                            var inv = player.GetPart<Inventory>();
+                            if (inv != null) invObjects = inv.GetObjects();
+                        }
+                        if (invObjects != null)
+                        {
+                            var ingredient = invObjects.FirstOrDefault(o => o != null && (o.HasPart("PreparedCookingIngredient") || o.HasPart("Food")));
+                            if (ingredient != null)
+                            {
+                                try
+                                {
+                                    ingredient.SplitFromStack(1, player)?.Destroy();
+                                }
+                                catch { }
+                            }
+                        }
+
+                        // 2. Clear hunger and reset stomach cooking counter
+                        var stomach = player.GetPart<Stomach>();
+                        if (stomach != null)
+                        {
+                            try { stomach.ClearHunger(); } catch { }
+                            try { stomach.ResetCookingCounter(); } catch { }
+                        }
+
+                        // 3. Fire silent engine events without calling campPart.Cook() (which opens interactive UI modal)
                         var campPart = campfireObj.GetPart<Campfire>();
                         if (campPart != null)
                         {
-                            try { campPart.Cook(); } catch { }
+                            try { campPart.AfterCooked(); } catch { }
                         }
-                        try { player.GetPart<Stomach>()?.ClearHunger(); } catch { }
+                        else
+                        {
+                            try { campfireObj.FireEvent(Event.New("CookedAt", "Actor", player, "Object", campfireObj)); } catch { }
+                        }
+
+                        MessageQueue.AddPlayerMessage("{{G|You whip up a simple meal at the campfire and satisfy your hunger.}}");
                     }
                 }
                 catch (Exception ex)

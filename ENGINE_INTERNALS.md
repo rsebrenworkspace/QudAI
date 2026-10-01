@@ -311,15 +311,37 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
 ### 12.2 Engine Survival Mechanics
 - **Butchering:** Animal corpses possess `Butcherable`. Calling `AttemptButcher(player)` yields raw meat and cooking ingredients.
 - **Harvesting:** Wild plants possess `Harvestable`. Calling `AttemptHarvest(player)` harvests ingredients.
-- **Camping & Cooking:**
-  - With `CookingAndGathering` / `Survival_Camp`, dispatching `CommandSurvivalCamp` creates a campfire.
-  - Telemetry detection: Check both `player.HasSkill("CookingAndGathering")` and activated abilities via `player.GetPart<ActivatedAbilities>()?.HasAbility("CommandSurvivalCamp")`.
-  - At an adjacent campfire, `Campfire.Cook()` whips up a meal, satisfying hunger and conferring cooking metabolic buffs.
-  - Stomach API: Call `player.GetPart<Stomach>()?.ClearHunger()`.
-    > [!IMPORTANT]
-    > In modern Caves of Qud, `player.pStomach` does **not** exist on `GameObject` (causes `CS1061`). Always use `player.GetPart<Stomach>()`.
-  - Direct eating: `Event.New("Eat", "Eater", player)` consumes packaged food from inventory.
-  - Food Telemetry: Packaged rations may have either the `Food` part or the `PreparedCookingIngredient` part (e.g. jerky, dried fruit, starapple wafers). AIBrainPart checks `item.HasPart<Food>() || item.HasPart<PreparedCookingIngredient>()`.
+### 12.2 Engine Survival Mechanics
+- **Butchering:** Animal corpses possess `Butcherable`. Calling `AttemptButcher(player)` yields raw meat and cooking ingredients without UI prompts.
+- **Harvesting:** Wild plants possess `Harvestable`. Calling `AttemptHarvest(player)` harvests ingredients without UI prompts.
+- **Camping & Cooking — The Interactive UI Trap:**
+  - **The Campfire Menu Modal Trap:** In vanilla Qud, `Campfire.Cook()` is explicitly an interactive UI function. It calls `The.Core.ShowInventoryActionMenu()`, rendering a modal window with options:
+    `[m] Whip up a meal.`
+    `[i] Choose ingredients to cook with.`
+    `[r] Cook from a recipe.`
+    `[f] Preserve your fresh foods.`
+    Calling `Campfire.Cook()` halts automated gameplay and blocks waiting for human keyboard input!
+  - **The Make Camp Direction Prompt Trap:** Similarly, calling `Survival_Camp.AttemptCamp(player)` invokes `PickDirectionS("Make Camp")` and `ShowYesNoCancel()`, asking the player for directional input.
+  - **The Programmatic / Headless Solution:**
+    1. **Programmatic Camping:** Check if a campfire is already present nearby. If not, pick an empty adjacent cell (or player cell) and create the campfire directly:
+       ```csharp
+       Cell targetCell = player.CurrentCell.GetLocalAdjacentCells()?.FirstOrDefault(c => c != null && c.IsEmpty()) ?? player.CurrentCell;
+       var campfire = targetCell.AddObject("Campfire");
+       campfire?.SetIntProperty("PlayerCampfire", 1);
+       campfire?.SetStringProperty("PointOfInterestKey", "PlayerCampfire");
+       MessageQueue.AddPlayerMessage("{{G|You deploy a campfire.}}");
+       ```
+    2. **Programmatic Cooking:**
+       - Consume 1 ingredient from inventory: `ingredient.SplitFromStack(1, player)?.Destroy()`.
+       - Clear hunger & reset stomach counters: `stomach.ClearHunger(); stomach.ResetCookingCounter();`.
+       - Silently notify campfire without opening menus: `campPart.AfterCooked();`.
+       - Log message: `MessageQueue.AddPlayerMessage("{{G|You whip up a simple meal at the campfire and satisfy your hunger.}}");`.
+       - **Strict Rule:** NEVER call `Campfire.Cook()` or `Survival_Camp.AttemptCamp()`.
+- **Stomach API:** Call `player.GetPart<Stomach>()?.ClearHunger()`.
+  > [!IMPORTANT]
+  > In modern Caves of Qud, `player.pStomach` does **not** exist on `GameObject` (causes `CS1061`). Always use `player.GetPart<Stomach>()`.
+- **Direct Eating:** `Event.New("Eat", "Eater", player)` consumes packaged food from inventory.
+- **Food Telemetry:** Packaged rations may have either the `Food` part or the `PreparedCookingIngredient` part (e.g. jerky, dried fruit, starapple wafers). AIBrainPart checks `item.HasPart<Food>() || item.HasPart<PreparedCookingIngredient>()`.
 - **Mutation API Deprecation:**
   - In `BaseMutation`, the property `m.DisplayName` is obsolete (`CS0618`). Modern Qud requires calling `m.GetDisplayName()`.
 
