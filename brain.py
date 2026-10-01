@@ -205,10 +205,20 @@ def find_zone_unexplored_frontier(game_state, cur_pos, visit_counts):
     """
     Finds a macro-level unexplored frontier in the current zone when local autoexplore stalls
     (e.g. when a zone is split by a river or lake).
-    Uses radar of visible_entities to find clusters of unvisited objects across water.
+    Prioritizes in-engine fog-of-war grid telemetry (unexplored_centroid) when available.
+    Falls back to radar of visible_entities to find clusters of unvisited objects across water.
     Returns (target_pos, reason) or (None, None).
     """
     px, py = cur_pos
+
+    # 1. In-engine fog-of-war grid telemetry (centroid of remaining unrevealed tiles)
+    unexp_cells = game_state.get("unexplored_cells", None)
+    if unexp_cells is not None and unexp_cells >= 35:
+        cx = game_state.get("unexplored_centroid_x", -1)
+        cy = game_state.get("unexplored_centroid_y", -1)
+        if 0 <= cx < 80 and 0 <= cy < 25:
+            return (cx, cy), f"Water Traversal: Navigating across water toward unexplored sector at ({cx}, {cy}) ({unexp_cells} unrevealed cells)"
+
     entities = game_state.get("visible_entities", [])
     if not entities:
         return None, None
@@ -1665,7 +1675,11 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         ap = game_state.get("ap", 0)
         sp = game_state.get("sp", 0)
         mp = game_state.get("mp", 0)
-        has_points_to_spend = (ap > 0) or (sp >= 50) or (mp > 0)
+
+        muts = game_state.get("mutations", [])
+        can_level_any_mut = any(m.get("can_level", False) and m.get("level", 0) < m.get("cap", 99) for m in muts)
+        can_spend_mp = (mp >= 4) or (mp > 0 and can_level_any_mut)
+        has_points_to_spend = (ap > 0) or (sp >= 50) or can_spend_mp
 
         # Check for eligible skills or free (0-cost) powers
         best_skill, skill_reason, is_saving_sp = build_templates.get_best_skill_to_learn(game_state, template)
@@ -1696,14 +1710,13 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 # Character is purposefully saving SP for the next priority milestone in the tree
                 pass
 
-            if mp > 0:
-                muts = game_state.get("mutations", [])
+            if mp > 0 and can_level_any_mut:
                 for p_mut in template.get("mutation_priorities", []):
-                    m_obj = next((m for m in muts if m.get("class", "").lower() == p_mut.lower() and m.get("can_level", False)), None)
+                    m_obj = next((m for m in muts if m.get("class", "").lower() == p_mut.lower() and m.get("can_level", False) and m.get("level", 0) < m.get("cap", 99)), None)
                     if m_obj:
                         return {"action": f"AUTOLEVEL_MUTATION:{m_obj.get('class')}", "reason": f"Class Progression ({template['name']}): Leveling {m_obj.get('name')}"}
 
-            if ap > 0 or mp > 0:
+            if ap > 0 or (mp >= 4):
                 return {"action": "AUTOLEVEL", "reason": f"Safe autoleveling: allocating unspent points (AP:{ap}, SP:{sp}, MP:{mp})"}
 
         # 2. Survival & Sustenance Routine: Butchering, Cooking, Camping & Relieving Hunger
@@ -2155,9 +2168,17 @@ def main():
                         if best_f_m:
                             frontier_escape = best_f_m
 
-                    if frontier_escape and (frontier_escape in open_escapes or not open_escapes):
+                    exit_target_pos, exit_tag = get_zone_exit_target(cur_pos)
+                    exit_escape = None
+                    if exit_target_pos and valid_m:
+                        exit_escape = get_best_move_towards(cur_pos, exit_target_pos, valid_m, surroundings)
+
+                    if frontier_escape:
                         action = frontier_escape
-                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards unvisited frontier at {frontier_target} via {action}."
+                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards unexplored frontier at {frontier_target} via {action}."
+                    elif (is_stuck_explore or game_state.get("zone_fully_explored", False)) and exit_escape:
+                        action = exit_escape
+                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards forward exit {exit_tag} at {exit_target_pos} via {action}."
                     elif open_escapes:
                         open_escapes.sort(key=lambda m: (
                             visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],

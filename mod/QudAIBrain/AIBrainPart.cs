@@ -777,7 +777,7 @@ namespace QudAIBrain
                                 string mName = m.GetDisplayName(false);
                                 int mLevel = m.Level;
                                 int mCap = m.GetMutationCap();
-                                bool canLvl = m.CanLevel();
+                                bool canLvl = m.CanLevel() && (mLevel < mCap);
                                 mutationEntries.Add($"{{\"name\": \"{EscapeJson(mName)}\", \"class\": \"{EscapeJson(m.Name)}\", \"level\": {mLevel}, \"cap\": {mCap}, \"can_level\": {(canLvl ? "true" : "false")}}}");
                             }
                         }

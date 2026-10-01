@@ -1250,7 +1250,51 @@ assert dec_in_water["action"] == "EAT", f"Expected direct inventory EAT while sw
 assert dec_in_water["action"] not in ["MAKE_CAMP", "COOK_MEAL", "REST"], "Cannot camp, cook, or rest while actively swimming in deep water!"
 
 print("\n==================================================")
-print(">>> ALL 26 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 27: Mutation Cap Safeguards & Fog-of-War Grid Frontier Breakout")
+print("==================================================")
+
+# Scenario 27.1: Mutation Cap Invariant: Do not attempt AUTOLEVEL if all mutations capped
+capped_mutation_state = {
+    "hp": 23, "max_hp": 23, "x": 42, "y": 17, "z": 10,
+    "calling": "Apostle",
+    "level": 2, "ap": 0, "sp": 0, "mp": 1,
+    "zone_id": frontier_zone,
+    "zone_name": "salt marsh",
+    "zone_fully_explored": False,
+    "is_swimming": False,
+    "hunger_level": "Satisfied",
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "mutations": [
+        {"name": "Clairvoyance", "class": "Clairvoyance", "level": 2, "cap": 2, "can_level": False},
+        {"name": "Light Manipulation", "class": "LightManipulation", "level": 2, "cap": 2, "can_level": False},
+        {"name": "Sense Psychic", "class": "SensePsychic", "level": 1, "cap": 2, "can_level": False},
+        {"name": "Stunning Force", "class": "StunningForce", "level": 2, "cap": 2, "can_level": False},
+        {"name": "Teleport Other", "class": "TeleportOther", "level": 2, "cap": 2, "can_level": False}
+    ],
+    "surroundings": {"N": "pool of rules|463 drams of salty water", "NE": "pool of rules|386 drams of salty water", "W": "watervine", "E": "pool of rules|375 drams of salty water"},
+    "visible_entities": [],
+    "unexplored_cells": 217,
+    "unexplored_centroid_x": 44,
+    "unexplored_centroid_y": 16
+}
+
+dec_capped = brain.query_decision(capped_mutation_state, took_damage=False, enemies=[])
+print(f"Capped mutation decision: {dec_capped['action']} | Reason: {dec_capped['reason']}")
+assert not dec_capped["action"].startswith("AUTOLEVEL"), f"Must not issue AUTOLEVEL when all mutations are capped and MP < 4! Got: {dec_capped['action']}"
+
+# Scenario 27.2: In-engine fog-of-war grid frontier detection across water
+frontier_target, frontier_reason = brain.find_zone_unexplored_frontier(capped_mutation_state, (42, 17), {})
+print(f"Grid frontier target: {frontier_target} | Reason: {frontier_reason}")
+assert frontier_target == (44, 16), f"Expected unexplored centroid (44, 16), got: {frontier_target}"
+
+# Scenario 27.3: Loop Breaker breakout towards unexplored sector across water
+valid_m_shore = brain.get_valid_moves(capped_mutation_state["surroundings"], (42, 17), None)
+best_breakout_m = brain.get_best_move_towards((42, 17), frontier_target, valid_m_shore, capped_mutation_state["surroundings"])
+print(f"Breakout move towards grid frontier: {best_breakout_m}")
+assert best_breakout_m == "MOVE_NE", f"Expected MOVE_NE into water towards unexplored centroid (44, 16), got: {best_breakout_m}"
+
+print("\n==================================================")
+print(">>> ALL 27 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

@@ -298,6 +298,26 @@ The correct engine API:
 ### 11.3 Autolevel Circuit Breaker
 If unspent points cannot be allocated (e.g. missing stat prerequisites), the agent increments `autolevel_failed_attempts`. If 2 consecutive attempts fail, `suppress_autolevel=True` engages, preventing infinite turn freezes and falling back to exploration.
 
+### 11.4 Mutation Cap Mechanics & Spendability Invariants
+- **Engine Mutation Cap Scaling:** In *Caves of Qud*, mutation ranks are hard-capped by character level or tier (`m.GetMutationCap()`). For instance, a Level 2 character has a mutation cap of 2.
+- **The `m.CanLevel()` Engine Pitfall:** In vanilla Qud, `BaseMutation.CanLevel()` returns `true` for all standard levelable mutations (as opposed to non-levelable defects or static mutations like Sense Psychic), even when the mutation has already reached its cap!
+- **The Infinite Turn-Passing Freeze:** If the driver issues `AUTOLEVEL_MUTATION:<Class>` or `AUTOLEVEL` while all mutations are at their cap:
+  1. `AllocateMutation` checks `m.Level < m.GetMutationCap()`, rejects the upgrade, and spends no MP.
+  2. The C# turn handler passes 1,000 energy units (`Pass`), ending the player's turn.
+  3. The next turn, `mp` remains unspent, and the driver repeats the same failed command indefinitely.
+- **The Headless Solution:**
+  1. **Engine Export Invariant:** In `AIBrainPart.cs`, line 780:
+     ```csharp
+     bool canLvl = m.CanLevel() && (mLevel < mCap);
+     ```
+  2. **Driver MP Spendability Guard:** In `brain.py`:
+     ```python
+     can_level_any_mut = any(m.get("can_level", False) and m.get("level", 0) < m.get("cap", 99) for m in muts)
+     can_spend_mp = (mp >= 4) or (mp > 0 and can_level_any_mut)
+     has_points_to_spend = (ap > 0) or (sp >= 50) or can_spend_mp
+     ```
+     When MP is present but unspendable ($< 4$ MP and all mutations capped), the driver safely saves the MP for future level-ups without stalling the exploration pipeline.
+
 ---
 
 ## 12. Sustenance & Survival: Hunger Physics, Butchery, Camping & Cooking

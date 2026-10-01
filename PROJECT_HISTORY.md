@@ -340,9 +340,26 @@
   - **Removed Micro-Targeting of Visible Entities:** In real game telemetry, the driver never uses `visible_entities` to force the player to step on harmless objects.
   - **Verification:** Verified with live `last_state.json`: with `unexplored_cells = 0`, the driver immediately chooses `MOVE_E` towards the zone exit border; with `unexplored_cells = 400`, it swims across the water towards the unexplored centroid. All 26 tests in `dry_run.py` pass.
 
+### Iteration 20: Mutation Cap Safeguards, Fog-of-War Grid Frontier Breakout & Shoreline Water Crossing
+- **The Problem:**
+  - The character traversed multiple maps successfully, but in zone `JoppaWorld.9.20.0.1.10` at position `(42, 17)`, the character hit another oscillation loop.
+  - Two interconnected bugs caused this loop:
+    1. **Mutation Cap Freeze:** The character leveled up to Level 2 and gained 1 MP. In Caves of Qud, mutation level cannot exceed character level (mutation cap = 2). All current mutations (Clairvoyance, Light Manipulation, Stunning Force, Teleport Other) were already at level 2. However, `AIBrainPart.cs` exported `can_level: true` using Qud's `m.CanLevel()`, which only tests if the mutation is a levelable class (ignoring the cap). In `brain.py`, the driver saw `mp > 0` and issued `AUTOLEVEL_MUTATION:LightManipulation`. In C#, `AllocateMutation` checked `Level < GetMutationCap()` and rejected it, spending no MP and passing the turn. This created an infinite loop of passing turns and re-issuing autolevel commands.
+    2. **Loop Breaker Disconnect from Fog-of-War Telemetry:** When native autoexplore hit the shoreline at `(42, 17)` (facing a large salt pool to the East towards 217 unexplored cells at centroid `(44, 16)`), native autoexplore ping-ponged between `(41, 17)` and `(42, 17)`. When the loop breaker tripped in `brain.py`, it called legacy `find_zone_unexplored_frontier`, which ignored `unexplored_centroid` and targeted a visible puddle at `(42, 15)`. Then `open_escapes` chose dry-land moves away from the water, continually bouncing the agent back onto the shoreline.
+- **Solution:**
+  - **In-Engine Mutation Cap Check:** In `AIBrainPart.cs`, updated line 780:
+    `bool canLvl = m.CanLevel() && (mLevel < mCap);`
+    Ensures `can_level` is only exported as `true` when a mutation is strictly below its cap.
+  - **Driver MP Spendability Guard:** In `brain.py`, updated autoleveling:
+    `can_spend_mp = (mp >= 4) or (mp > 0 and any(m.get("can_level") and m.get("level") < m.get("cap") for m in muts))`
+    Only enters autolevel if mutations can actually be leveled or if 4+ MP is available to buy a new mutation. If all mutations are capped, MP is safely preserved until future level-ups.
+  - **Grid-Centroid Loop Breakout:** Upgraded `find_zone_unexplored_frontier` and the oscillation loop breaker in `brain.py` to prioritize `(unexplored_centroid_x, unexplored_centroid_y)` when `unexplored_cells >= 35`.
+  - **Escape Towards Sector Target:** In `is_oscillating`, `frontier_escape` towards the unexplored sector is always prioritized over dry-land `open_escapes`.
+  - **Verification (Test 27):** Added Test 27 to `dry_run.py`, verifying mutation cap suppression, grid-centroid frontier detection, and direct breakout move `MOVE_NE` into water towards `(44, 16)`. All 27 verification tests pass.
+
 ---
 
-## 4. Current Codebase Specification (v1.2.3)
+## 4. Current Codebase Specification (v1.2.4)
 
 ### Directory Structure
 ```
