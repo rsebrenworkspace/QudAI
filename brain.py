@@ -2121,7 +2121,7 @@ def main():
 
                 print(f"SURROUNDINGS (5x5):\n{grid_display}\n")
 
-                cur_points = (game_state.get("ap", 0), game_state.get("sp", 0), game_state.get("mp", 0))
+                cur_points = (game_state.get("ap", 0), game_state.get("sp", 0), game_state.get("mp", 0), len(game_state.get("skills", [])))
                 suppress_auto = (autolevel_failed_attempts >= 2 and cur_points == last_autolevel_points)
 
                 decision = query_decision(game_state, took_damage, enemies, suppress_autolevel=suppress_auto)

@@ -901,8 +901,6 @@ def is_skill_learnable(skill_class, learned_skills, current_stats, sp, learnable
         if match:
             return True, "Eligible via engine verification", match.get("cost", cost)
         # If not in telemetry, determine why
-        if sp < cost:
-            return False, f"Insufficient SP (Have {sp}, need {cost})", cost
         parent = info.get("parent")
         if parent and parent.lower() not in learned_lower:
             return False, f"Missing parent skill {parent}", cost
@@ -915,6 +913,8 @@ def is_skill_learnable(skill_class, learned_skills, current_stats, sp, learnable
             attrs_to_check = [a.strip() for a in attr.replace("|", ",").split(",") if a.strip()]
             if not any(current_stats.get(a, 10) >= min_stat for a in attrs_to_check):
                 return False, f"Insufficient {attr} (Need {min_stat})", cost
+        if sp < cost:
+            return False, f"Insufficient SP (Have {sp}, need {cost})", cost
         return False, f"Skill {skill_class} not learnable via engine requirements", cost
 
     # 2. Offline / Mock evaluation using SKILL_DATABASE

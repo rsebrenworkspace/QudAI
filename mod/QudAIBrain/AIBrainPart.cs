@@ -715,20 +715,7 @@ namespace QudAIBrain
                 int statWil = player.Stat("Willpower", 10);
                 int statEgo = player.Stat("Ego", 10);
 
-                List<string> learnedSkills = new List<string>();
-                try
-                {
-                    var sPart = player.GetPart<Skills>();
-                    if (sPart != null && sPart.SkillList != null)
-                    {
-                        foreach (var sk in sPart.SkillList)
-                        {
-                            if (sk != null) learnedSkills.Add($"\"{EscapeJson(sk.Name)}\"");
-                        }
-                    }
-                }
-                catch { }
-
+                HashSet<string> learnedSkills = new HashSet<string>();
                 List<string> learnableSkillEntries = new List<string>();
                 try
                 {
@@ -738,19 +725,30 @@ namespace QudAIBrain
                         foreach (var s in allSkills)
                         {
                             if (s == null) continue;
-                            if (!player.HasSkill(s.Class))
+                            if (player.HasSkill(s.Class))
+                            {
+                                learnedSkills.Add($"\"{EscapeJson(s.Class)}\"");
+                                if (!string.IsNullOrEmpty(s.Name)) learnedSkills.Add($"\"{EscapeJson(s.Name)}\"");
+                            }
+                            else
                             {
                                 if (!s.Initiatory && s.Cost <= spPoints && s.MeetsRequirements(player, false))
                                 {
                                     learnableSkillEntries.Add($"{{\"class\": \"{EscapeJson(s.Class)}\", \"name\": \"{EscapeJson(s.Name)}\", \"cost\": {s.Cost}, \"is_parent\": true, \"parent\": \"\"}}");
                                 }
                             }
+
                             if (s.PowerList != null)
                             {
                                 foreach (var p in s.PowerList)
                                 {
                                     if (p == null) continue;
-                                    if (!player.HasSkill(p.Class))
+                                    if (player.HasSkill(p.Class))
+                                    {
+                                        learnedSkills.Add($"\"{EscapeJson(p.Class)}\"");
+                                        if (!string.IsNullOrEmpty(p.Name)) learnedSkills.Add($"\"{EscapeJson(p.Name)}\"");
+                                    }
+                                    else
                                     {
                                         if (player.HasSkill(s.Class) && p.Cost <= spPoints && p.MeetsRequirements(player, false))
                                         {
