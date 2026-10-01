@@ -1453,8 +1453,48 @@ points_after = (0, 6, 0, len(apostle_meal_state["skills"]))
 assert points_before != points_after, "cur_points must register change when acquiring 0-SP power to avoid tripping breaker!"
 print("Autolevel 0-SP power state tracking: Verified distinct point signatures")
 
+# ==================================================
+# TEST 30: Native Engine Zone Exit Pathfinding (The Three Strikes Graveyard Fix)
+# ==================================================
 print("\n==================================================")
-print(">>> ALL 29 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 30: Native Engine Zone Exit Pathfinding & Obstacle Routing")
+print("==================================================")
+
+# Scenario 30.1: Outskirts Graveyard Enclosure (unexplored_cells == 0, fence blocking East)
+# Character at (47, 11) in Joppa outskirts must dispatch NAVIGATE_ZONE_EXIT:E to delegate pathfinding to AutoAct.TryFindEdgeStep
+graveyard_state = {
+    "hp": 18, "max_hp": 18, "x": 47, "y": 11, "z": 10,
+    "calling": "Apostle",
+    "level": 1, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.11.22.1.0.10",
+    "zone_name": "outskirts, Joppa",
+    "zone_fully_explored": False,  # Engine flag false, but unexplored_cells == 0
+    "unexplored_cells": 0,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {
+        "C": "dirt",
+        "N": "dirt",
+        "S": "dirt",
+        "E": "[BLOCKED: brinestalk fence]",
+        "NE": "[BLOCKED: brinestalk fence]",
+        "SE": "[BLOCKED: brinestalk fence]",
+        "W": "dirt", "NW": "dirt", "SW": "dirt"
+    },
+    "visible_entities": []
+}
+dec_gy = brain.query_decision(graveyard_state, took_damage=False, enemies=[])
+print(f"Graveyard decision: {dec_gy['action']} | Reason: {dec_gy['reason']}")
+assert dec_gy["action"] == "NAVIGATE_ZONE_EXIT:E", f"Expected NAVIGATE_ZONE_EXIT:E to delegate pathfinding to native engine, got: {dec_gy['action']}"
+assert "navigating via engine pathfinder" in dec_gy["reason"]
+
+# Scenario 30.2: get_zone_exit_target returns 3-tuple (pos, tag, exit_dir)
+pos, tag, exit_dir = brain.get_zone_exit_target((47, 11))
+print(f"get_zone_exit_target: Pos: {pos}, Tag: {tag}, Dir: {exit_dir}")
+assert exit_dir in ("N", "S", "E", "W"), f"Exit dir must be cardinal, got: {exit_dir}"
+assert pos == (78, 11), f"Expected pos (78, 11), got: {pos}"
+
+print("\n==================================================")
+print(">>> ALL 30 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

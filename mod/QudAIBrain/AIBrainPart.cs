@@ -1948,6 +1948,70 @@ namespace QudAIBrain
                 return;
             }
 
+            if (act.StartsWith("NAVIGATE_ZONE_EXIT:"))
+            {
+                string dirStr = act.Substring(19).Trim().ToUpper();
+                char edgeChar = !string.IsNullOrEmpty(dirStr) ? dirStr[0] : 'E';
+                string step = null;
+
+                try
+                {
+                    AutoAct.TryFindEdgeStep(edgeChar, out step);
+                }
+                catch { }
+
+                // Fallback to other edges if requested edge is completely unreachable
+                if (string.IsNullOrEmpty(step) || step == ".")
+                {
+                    char[] fallbacks = new char[] { 'E', 'N', 'S', 'W' };
+                    foreach (char fb in fallbacks)
+                    {
+                        if (fb == edgeChar) continue;
+                        try
+                        {
+                            if (AutoAct.TryFindEdgeStep(fb, out step) && !string.IsNullOrEmpty(step) && step != ".")
+                            {
+                                break;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(step) && step != ".")
+                {
+                    int energyBefore = player.Energy?.Value ?? 0;
+                    int pxBefore = player.CurrentCell?.X ?? -1;
+                    int pyBefore = player.CurrentCell?.Y ?? -1;
+
+                    bool moved = player.Move(step);
+                    bool cellChanged = (player.CurrentCell != null && (player.CurrentCell.X != pxBefore || player.CurrentCell.Y != pyBefore));
+
+                    if (!moved || !cellChanged)
+                    {
+                        lastMoveFailed = true;
+                        lastFailedDir = step.ToUpper();
+                        TryOpenDoorInDirection(player, step);
+                    }
+                    else
+                    {
+                        lastMoveFailed = false;
+                        lastFailedDir = "";
+                        autoexplorePosHistory.Clear();
+                    }
+                    if (player.Energy != null && player.Energy.Value >= energyBefore)
+                    {
+                        player.UseEnergy(1000, "Movement");
+                    }
+                    return;
+                }
+                else
+                {
+                    // Fall back to MOVE in that direction
+                    act = "MOVE_" + edgeChar;
+                }
+            }
+
             string direction = null;
             if (act.StartsWith("MOVE_")) direction = act.Substring(5);
 

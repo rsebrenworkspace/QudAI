@@ -330,7 +330,7 @@ _OPPOSITE_DIR = {"N": "S", "S": "N", "E": "W", "W": "E"}
 
 def get_zone_exit_target(cur_pos):
     """
-    Returns the target coordinate of the forward zone border exit to transition to the next zone.
+    Returns (target_coord, exit_tag, exit_dir) of the forward zone border exit to transition to the next zone.
     When zone hopping is detected, avoids exits that lead back into the cycle or already-explored zones.
     """
     px, py = cur_pos
@@ -340,9 +340,10 @@ def get_zone_exit_target(cur_pos):
     # Normal case: no cycle detected, use simple forward exit
     if not ZONE_HOPPING_DETECTED:
         if forward_dir and forward_dir in _EXIT_TARGETS:
-            return _EXIT_TARGETS[forward_dir](px, py)
+            pos, tag = _EXIT_TARGETS[forward_dir](px, py)
+            return pos, tag, forward_dir
         # Default: East
-        return (78, py), "East zone exit"
+        return (78, py), "East zone exit", "E"
 
     # Zone hopping detected — pick a NOVEL exit that avoids the cycle
     cur_zone = current_zone_id or ""
@@ -368,12 +369,13 @@ def get_zone_exit_target(cur_pos):
         is_novel = candidate_dirs[0][0] == 0
         label = f"{tag} (novel)" if is_novel else tag
         print(f"[ZONE HOPPING BREAKER] Choosing {best_dir} exit ({label}) to escape {ZONE_CYCLE_LENGTH}-zone cycle. Avoiding: {avoid_zones}")
-        return pos, label
+        return pos, label, best_dir
 
     # All exits lead to cycle zones — pick forward anyway and hope inward navigation helps
     if forward_dir and forward_dir in _EXIT_TARGETS:
-        return _EXIT_TARGETS[forward_dir](px, py)
-    return (78, py), "East zone exit"
+        pos, tag = _EXIT_TARGETS[forward_dir](px, py)
+        return pos, tag, forward_dir
+    return (78, py), "East zone exit", "E"
 
 
 def update_stair_records(game_state):
@@ -1931,7 +1933,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         # If we know stairs down and are ready to delve, check if we should navigate to them
         is_stuck_explore = (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones)
-        is_zone_cleared = game_state.get("zone_fully_explored", False) or is_stuck_explore
+        is_zone_cleared = game_state.get("zone_fully_explored", False) or is_stuck_explore or (game_state.get("unexplored_cells", 999) == 0)
 
         if can_delve and is_zone_cleared and (zone_id in KNOWN_STAIRS_DOWN):
             sd_info = KNOWN_STAIRS_DOWN[zone_id]
@@ -2046,11 +2048,9 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         # 11. Navigate directly to forward zone exit border if zone is fully explored
         if zone_fully_explored or is_stuck_explore:
-            exit_target_pos, exit_tag = get_zone_exit_target(cur_pos)
-            if exit_target_pos and valid_moves:
-                best_exit_m = get_best_move_towards(cur_pos, exit_target_pos, valid_moves, surroundings)
-                if best_exit_m:
-                    return {"action": best_exit_m, "reason": f"Zone fully explored: navigating toward {exit_tag} at {exit_target_pos}"}
+            exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos)
+            if valid_moves:
+                return {"action": f"NAVIGATE_ZONE_EXIT:{exit_dir}", "reason": f"Zone fully explored: navigating via engine pathfinder toward {exit_tag}"}
 
         # 12. Least-visited fallback
         if valid_moves:
@@ -2364,17 +2364,14 @@ def main():
                         if best_f_m:
                             frontier_escape = best_f_m
 
-                    exit_target_pos, exit_tag = get_zone_exit_target(cur_pos)
-                    exit_escape = None
-                    if exit_target_pos and valid_m:
-                        exit_escape = get_best_move_towards(cur_pos, exit_target_pos, valid_m, surroundings)
+                    exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos)
 
-                    if frontier_escape:
+                    if frontier_escape and (game_state.get("unexplored_cells", 1) or 0) > 0:
                         action = frontier_escape
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards unexplored frontier at {frontier_target} via {action}."
-                    elif (is_stuck_explore or game_state.get("zone_fully_explored", False)) and exit_escape:
-                        action = exit_escape
-                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards forward exit {exit_tag} at {exit_target_pos} via {action}."
+                    elif is_stuck_explore or game_state.get("zone_fully_explored", False) or (game_state.get("unexplored_cells", 1) == 0):
+                        action = f"NAVIGATE_ZONE_EXIT:{exit_dir}"
+                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards forward exit {exit_tag} via native engine pathfinder."
                     elif open_escapes:
                         open_escapes.sort(key=lambda m: (
                             visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],
