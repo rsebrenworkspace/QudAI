@@ -1955,7 +1955,7 @@ namespace QudAIBrain
                 if (parts.Length == 2 && int.TryParse(parts[0], out int tx) && int.TryParse(parts[1], out int ty))
                 {
                     Cell targetCell = null;
-                    try { targetCell = currentCell?.ParentZone?.GetCell(tx, ty); } catch { }
+                    try { targetCell = player.CurrentCell?.ParentZone?.GetCell(tx, ty); } catch { }
                     if (targetCell != null)
                     {
                         string step = null;
