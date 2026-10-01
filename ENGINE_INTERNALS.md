@@ -524,6 +524,16 @@ Vanilla Caves of Qud's native pathfinder (`FasterDMapAutoexplore.FindAutoexplore
    5. Global zone exit navigation (`get_zone_exit_target`) once the entire zone is verified fully explored.
    6. Least-visited fallback.
 
+### 16.7 Native Autoexplore Exit Decoupling & Active Water Interception
+1. **Suppression of Premature Zone Exits:** In vanilla Caves of Qud, `AutoAct.FindAutoexploreStep(bool bCanExploreZoneExits, ...)` takes a boolean flag. When set to `true`, native autoexplore automatically paths to an adjacent zone exit when all reachable local tiles are cleared, abandoning the zone without exploring water-isolated islands or opposite banks. In `AIBrainPart.cs`, this flag is strictly set to `false`. When reachable land tiles are exhausted, native autoexplore returns `null`, setting `isZoneFullyExplored = true` so the driver can execute water traversal rather than wandering into another zone.
+2. **Coastline Pacing Entropy Detector:** Extended `autoexplorePosHistory` oscillation detection in `AIBrainPart.cs` to trip on long coastlines:
+   $$\text{isCycling} = (\text{repeatVisits} \ge 3) \lor (\text{count} \ge 10 \land \text{unique} \le 5) \lor (\text{count} \ge 16 \land \text{unique} \le \text{count} / 2)$$
+   Walking back and forth along an 8-tile shoreline trips in 16 steps, yielding immediately to the driver.
+3. **Active Water Interception in Driver:** In `brain.py`, `can_use_native_autoexplore` is dynamically computed:
+   - If the step toward the unexplored frontier requires swimming (`is_swim_move(best_frontier_m)`) and there are no unvisited dry-land tiles adjacent to the player, native autoexplore is bypassed immediately.
+   - The driver commands the water crossing move directly (`MOVE_W`, `MOVE_NE`, etc.), plunging the player into the liquid and navigating directly across the body of water.
+4. **Oscillation Frontier Breakout:** When an oscillation cycle is detected along a shoreline, the loop breaker checks `find_zone_unexplored_frontier` first, escaping the shoreline cycle toward the unvisited frontier across the water.
+
 ---
 *End of Engine Internals Manual.*
 

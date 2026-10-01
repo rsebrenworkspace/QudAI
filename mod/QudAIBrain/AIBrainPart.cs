@@ -2003,7 +2003,7 @@ namespace QudAIBrain
 
             int repeatVisits = autoexplorePosHistory.Count(p => p.Item1 == curX && p.Item2 == curY);
             int uniquePositions = autoexplorePosHistory.Select(p => p.Item1 * 1000 + p.Item2).Distinct().Count();
-            bool isCycling = (repeatVisits >= 3) || (autoexplorePosHistory.Count >= 10 && uniquePositions <= 5);
+            bool isCycling = (repeatVisits >= 3) || (autoexplorePosHistory.Count >= 10 && uniquePositions <= 5) || (autoexplorePosHistory.Count >= 16 && uniquePositions <= autoexplorePosHistory.Count / 2);
 
             if (repeatVisits >= 2)
             {
@@ -2059,7 +2059,7 @@ namespace QudAIBrain
             {
                 try
                 {
-                    AutoAct.FindAutoexploreStep(true, out step, out blackout);
+                    AutoAct.FindAutoexploreStep(false, out step, out blackout);
                 }
                 catch { }
             }

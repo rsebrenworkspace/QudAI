@@ -223,8 +223,8 @@ def find_zone_unexplored_frontier(game_state, cur_pos, visit_counts):
                 unvisited_entities.append((tx, ty))
 
     if unvisited_entities:
-        # Require target to be at least 4 tiles away (macro-frontier)
-        distant_unvisited = [p for p in unvisited_entities if max(abs(p[0] - px), abs(p[1] - py)) >= 4]
+        # Require target to be at least 2 tiles away (macro-frontier or across water)
+        distant_unvisited = [p for p in unvisited_entities if max(abs(p[0] - px), abs(p[1] - py)) >= 2]
         if distant_unvisited:
             # Sort by Chebyshev distance first, then Euclidean distance
             distant_unvisited.sort(key=lambda p: (max(abs(p[0] - px), abs(p[1] - py)), (p[0] - px)**2 + (p[1] - py)**2))
@@ -1795,16 +1795,30 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         # 7. Autonomous area exploration via Caves of Qud native Autoexplore
         frontier_target, frontier_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
-        has_local_frontier = (frontier_target is not None and max(abs(frontier_target[0] - px), abs(frontier_target[1] - py)) <= 4)
+        best_frontier_m = None
+        if frontier_target and valid_moves:
+            best_frontier_m = get_best_move_towards(cur_pos, frontier_target, valid_moves, surroundings)
 
-        if (not game_state.get("zone_fully_explored", False) or has_local_frontier) and not is_stuck_explore:
+        is_swimming_now = game_state.get("is_swimming", False) or any("swim" in ef.lower() for ef in game_state.get("effects", []))
+        frontier_requires_swim = (best_frontier_m is not None and is_swim_move(best_frontier_m, surroundings))
+
+        # Check if there are local unvisited dry-land tiles right next to us
+        unvisited_dry_local = [
+            m for m in valid_moves
+            if not is_swim_move(m, surroundings) and
+            visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) == 0
+        ]
+
+        # Native autoexplore CANNOT path through deep water. If the path to the frontier requires swimming
+        # or the player is actively swimming, and there are no unvisited dry tiles nearby,
+        # bypass native autoexplore and execute the water crossing move directly!
+        can_use_native_autoexplore = (not is_swimming_now) and (not frontier_requires_swim or bool(unvisited_dry_local)) and (not is_stuck_explore)
+        if can_use_native_autoexplore and not game_state.get("zone_fully_explored", False):
             return {"action": "AUTOEXPLORE", "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder"}
 
         # 8. Unexplored frontier across water / obstacles (Macro-frontier navigation)
-        if frontier_target and valid_moves:
-            best_frontier_m = get_best_move_towards(cur_pos, frontier_target, valid_moves, surroundings)
-            if best_frontier_m:
-                return {"action": best_frontier_m, "reason": frontier_reason}
+        if best_frontier_m:
+            return {"action": best_frontier_m, "reason": frontier_reason}
 
         # 9. Local unexplored frontier: If any adjacent move leads to a completely unvisited tile (0 visits), explore it!
         unvisited_local = [
@@ -2118,9 +2132,21 @@ def main():
                             stuck_autoexplore_zones.add(current_zone_id)
                         print(f"[Loop Breaker] Autoexplore oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}/{len(recent_positions)}). Marking zone autoexplore exhausted; forcing frontier breakout.")
 
-                    open_escapes = [m for m in get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
+                    valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
+                    open_escapes = [m for m in valid_m
                                     if (cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]) not in recent_positions]
-                    if open_escapes:
+
+                    frontier_target, frontier_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
+                    frontier_escape = None
+                    if frontier_target and valid_m:
+                        best_f_m = get_best_move_towards(cur_pos, frontier_target, valid_m, surroundings)
+                        if best_f_m:
+                            frontier_escape = best_f_m
+
+                    if frontier_escape and (frontier_escape in open_escapes or not open_escapes):
+                        action = frontier_escape
+                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards unvisited frontier at {frontier_target} via {action}."
+                    elif open_escapes:
                         open_escapes.sort(key=lambda m: (
                             visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],
                             1 if is_swim_move(m, surroundings) else 0
@@ -2128,7 +2154,6 @@ def main():
                         action = open_escapes[0]
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}). Escaping cycle towards unvisited frontier {action}."
                     else:
-                        valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
                         if valid_m:
                             # Maximize distance from the cycle centroid to escape shoreline/subgraph loops
                             recent_set = set(recent_positions)

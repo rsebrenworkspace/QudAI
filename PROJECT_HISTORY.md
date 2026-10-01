@@ -307,9 +307,25 @@
     6. Least-visited fallback.
   - **Verification:** Verified with live `last_state.json` producing immediate `MOVE_NE` water crossing; verified all 26 tests in `dry_run.py` pass without regression.
 
+### Iteration 18: Native Autoexplore Exit Decoupling & Active Water Interception
+- **The Problem:**
+  - In a live game session, after clearing the southern landmass, the character walked along the coastline and exited the map to the West rather than swimming across the river. In the next zone (`JoppaWorld.9.21.1.1.10`), the player killed a crocodile, waded shallow puddles, but again paced the shoreline of a giant 360-tile salt lake instead of swimming across to 60 unvisited brinestalks/entities on the western shore.
+  - Root Cause Analysis:
+    1. **Native Autoexplore Zone Exiting:** `AIBrainPart.cs` called `AutoAct.FindAutoexploreStep(true, ...)`. The boolean argument `bCanExploreZoneExits = true` instructed native autoexplore to path to adjacent zone exits when reachable dry land ran out, completely bypassing `brain.py`'s water traversal logic!
+    2. **Coastline Pacing Window:** Pacing a 6-12 tile coastline created $> 5$ unique positions, preventing the 5-tile entropy loop detector from tripping quickly.
+    3. **Unchecked Native Delegation:** In `brain.py`, Step 7 unconditionally called `AUTOEXPLORE` as long as `zone_fully_explored` was false, even when the only remaining unvisited territory lay across deep water. Native autoexplore refused to enter deep water, causing it to endlessly walk back and forth along the dry shore.
+- **Solution:**
+  - **Decoupled Zone Exits:** Changed `AutoAct.FindAutoexploreStep(false, out step, out blackout)` in `AIBrainPart.cs`. Native autoexplore now returns null when dry land is exhausted, properly setting `isZoneFullyExplored = true` rather than fleeing the zone.
+  - **Extended Coastline Pacing Detector:** Updated `isCycling` in `AIBrainPart.cs` to detect back-and-forth oscillation along extended shorelines:
+    `(autoexplorePosHistory.Count >= 16 && uniquePositions <= autoexplorePosHistory.Count / 2)`.
+  - **Active Water Interception in Driver:** In `brain.py`, `can_use_native_autoexplore` is dynamically computed:
+    If the step toward the frontier requires swimming (`is_swim_move(best_frontier_m)`) and no unvisited dry-land tiles are adjacent, native autoexplore is bypassed and the driver commands the water crossing step directly (`MOVE_NW`, `MOVE_W`, etc.).
+  - **Loop Breaker Frontier Escape:** When an oscillation loop trips along a shoreline, the loop breaker checks `find_zone_unexplored_frontier` first, escaping the cycle directly across the water toward the frontier.
+  - **Verification:** Verified with live `last_state.json` producing immediate `MOVE_NW` water crossing into the lake; all 26 tests in `dry_run.py` pass.
+
 ---
 
-## 4. Current Codebase Specification (v1.2.1)
+## 4. Current Codebase Specification (v1.2.2)
 
 ### Directory Structure
 ```
