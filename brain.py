@@ -1965,7 +1965,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         # 7. Autonomous area exploration via Caves of Qud native Autoexplore
         unexp_cells = game_state.get("unexplored_cells", None)
-        zone_fully_explored = game_state.get("zone_fully_explored", False)
+        zone_fully_explored = game_state.get("zone_fully_explored", False) or (unexp_cells == 0)
         if zone_fully_explored and zone_id:
             EXPLORED_ZONE_SET.add(zone_id)
 
@@ -1992,7 +1992,8 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         # Check if native autoexplore can run:
         # Native autoexplore runs whenever the zone is not marked fully explored and not stuck cycling.
         # But if the player is actively swimming, native autoexplore cannot path in water, so we manually navigate.
-        can_use_native_autoexplore = (not is_swimming_now) and (not is_stuck_explore) and (not zone_fully_explored)
+        # If unexp_cells is 0, the zone is already completely explored (e.g. Joppa village start), so we don't spin in autoexplore!
+        can_use_native_autoexplore = (not is_swimming_now) and (not is_stuck_explore) and (not zone_fully_explored) and (unexp_cells is None or unexp_cells > 0)
         if can_use_native_autoexplore:
             return {"action": "AUTOEXPLORE", "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder"}
 

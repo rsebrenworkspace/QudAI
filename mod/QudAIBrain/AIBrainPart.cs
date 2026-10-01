@@ -1962,6 +1962,24 @@ namespace QudAIBrain
 
                 if (!moved || !cellChanged)
                 {
+                    // If simple move bumped a wall or obstacle, ask Qud's native pathfinder for an edge step!
+                    char edgeChar = direction.ToUpper()[0];
+                    string pathStep = null;
+                    try
+                    {
+                        AutoAct.TryFindEdgeStep(edgeChar, out pathStep);
+                    }
+                    catch { }
+
+                    if (!string.IsNullOrEmpty(pathStep) && pathStep != "." && pathStep != direction)
+                    {
+                        moved = player.Move(pathStep);
+                        cellChanged = (player.CurrentCell != null && (player.CurrentCell.X != pxBefore || player.CurrentCell.Y != pyBefore));
+                    }
+                }
+
+                if (!moved || !cellChanged)
+                {
                     lastMoveFailed = true;
                     lastFailedDir = direction.ToUpper();
                     TryOpenDoorInDirection(player, direction);
