@@ -242,7 +242,7 @@ def find_zone_unexplored_frontier(game_state, cur_pos, visit_counts):
     if unexp_cells is not None and unexp_cells >= 35:
         cx = game_state.get("unexplored_centroid_x", -1)
         cy = game_state.get("unexplored_centroid_y", -1)
-        if 0 <= cx < 80 and 0 <= cy < 25:
+        if 0 <= cx < 80 and 0 <= cy < 25 and max(abs(cx - px), abs(cy - py)) > 1:
             return (cx, cy), f"Water Traversal: Navigating across water toward unexplored sector at ({cx}, {cy}) ({unexp_cells} unrevealed cells)"
 
     entities = game_state.get("visible_entities", [])
@@ -613,7 +613,7 @@ def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=Fals
         if target_pos in blocked_coords or move_name == last_failed_action:
             continue
         has_bridge = "bridge" in text
-        if any(w in text for w in ["wall", "rock", "chasm", "[blocked", "[hazard", "acid", "lava", "magma"]):
+        if any(w in text for w in ["wall", "rock", "chasm", "[blocked", "[hazard", "acid", "lava", "magma", "cushion", "chair", "table", "bed", "bedroll", "statue", "tombstone"]):
             continue
         # During active combat, avoid blindly fleeing off the map into unknown zones
         if is_in_combat and ("[zone_exit" in text or "exit" in text):
@@ -638,7 +638,7 @@ def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=Fals
             target_pos = (px + dx, py + dy)
             if target_pos in blocked_coords or move_name == last_failed_action:
                 continue
-            if any(w in text for w in ["wall", "rock", "chasm", "[blocked", "[hazard", "acid", "lava", "magma"]):
+            if any(w in text for w in ["wall", "rock", "chasm", "[blocked", "[hazard", "acid", "lava", "magma", "cushion", "chair", "table", "bed", "bedroll", "statue", "tombstone"]):
                 continue
             valid.append(move_name)
 
@@ -1976,7 +1976,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         if has_unexplored_sector:
             cx = game_state.get("unexplored_centroid_x", -1)
             cy = game_state.get("unexplored_centroid_y", -1)
-            if 0 <= cx < 80 and 0 <= cy < 25:
+            if 0 <= cx < 80 and 0 <= cy < 25 and max(abs(cx - px), abs(cy - py)) > 1:
                 sector_target = (cx, cy)
                 sector_reason = f"Water Traversal: Navigating across water toward unexplored sector at {sector_target} ({unexp_cells} unrevealed cells)"
         elif unexp_cells is None:
@@ -2314,8 +2314,17 @@ def main():
 
                 if is_stationary_repeat:
                     action_repeat_count += 1
+                    # Mark the failed coordinate as blocked so the AI avoids it
+                    if action.startswith("MOVE_") and len(action) > 5:
+                        mv_dir = action[5:]
+                        if mv_dir in CARDINAL_OFFSETS:
+                            mdx, mdy = CARDINAL_OFFSETS[mv_dir]
+                            blocked_coords.add((px + mdx, py + mdy))
+                            print(f"[Loop Breaker] Move {action} failed to advance at {cur_pos}. Marked ({px + mdx}, {py + mdy}) as blocked.")
+
                     if action_repeat_count >= 2:
-                        open_m = [vm for vm in get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat) if vm[5:] not in adj_threats]
+                        open_m = [vm for vm in get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
+                                  if vm[5:] not in adj_threats and vm != action]
                         if len(adj_threats) >= 2 and open_m:
                             action = open_m[0]
                             reason = f"[Loop Breaker] Surrounded by {len(adj_threats)} threats! Breaking encirclement via {open_m[0]}."
@@ -2328,7 +2337,7 @@ def main():
                             action = f"FIRE_MISSILE@{closest.get('tx')},{closest.get('ty')}"
                             reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Forcing missile shot."
                         else:
-                            valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
+                            valid_m = [vm for vm in get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat) if vm != action]
                             if valid_m:
                                 action = valid_m[0]
                                 reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Forcing reposition {action}."

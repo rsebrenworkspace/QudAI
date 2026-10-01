@@ -1183,7 +1183,7 @@ namespace QudAIBrain
                 }
 
                 var phys = obj.GetPart<Physics>();
-                if (phys != null && phys.Solid)
+                if ((phys != null && phys.Solid) || obj.HasPart("Chair") || obj.HasPart("Bed") || obj.HasPart("Table") || lower.Contains("cushion") || lower.Contains("chair") || lower.Contains("bedroll") || lower.Contains("table"))
                 {
                     names.Insert(0, $"[BLOCKED: {cleanName}]");
                     continue;
@@ -1954,8 +1954,13 @@ namespace QudAIBrain
             if (!string.IsNullOrEmpty(direction))
             {
                 int energyBefore = player.Energy?.Value ?? 0;
+                int pxBefore = player.CurrentCell?.X ?? -1;
+                int pyBefore = player.CurrentCell?.Y ?? -1;
+
                 bool moved = player.Move(direction);
-                if (!moved)
+                bool cellChanged = (player.CurrentCell != null && (player.CurrentCell.X != pxBefore || player.CurrentCell.Y != pyBefore));
+
+                if (!moved || !cellChanged)
                 {
                     lastMoveFailed = true;
                     lastFailedDir = direction.ToUpper();
