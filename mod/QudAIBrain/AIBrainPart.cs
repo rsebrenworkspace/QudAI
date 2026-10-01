@@ -837,14 +837,14 @@ namespace QudAIBrain
                 int sumUnexpY = 0;
                 try
                 {
-                    var pz = currentCell?.ParentZone;
-                    if (pz != null && !pz.IsWorldMap())
+                    var parentZone = currentCell?.ParentZone;
+                    if (parentZone != null && !parentZone.IsWorldMap())
                     {
-                        for (int x = 0; x < pz.Width; x++)
+                        for (int x = 0; x < parentZone.Width; x++)
                         {
-                            for (int y = 0; y < pz.Height; y++)
+                            for (int y = 0; y < parentZone.Height; y++)
                             {
-                                Cell c = pz.GetCell(x, y);
+                                Cell c = parentZone.GetCell(x, y);
                                 if (c != null && !c.Explored)
                                 {
                                     unexploredCellCount++;
