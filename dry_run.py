@@ -1294,7 +1294,84 @@ print(f"Breakout move towards grid frontier: {best_breakout_m}")
 assert best_breakout_m == "MOVE_NE", f"Expected MOVE_NE into water towards unexplored centroid (44, 16), got: {best_breakout_m}"
 
 print("\n==================================================")
-print(">>> ALL 27 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 28: Distant Hostile Disengagement & Post-Levelup Combat Gating")
+print("==================================================")
+
+# Scenario 28.1: Player at Level 3 with AP: 1, SP: 106, MP: 2 and distant enemy at dist 18 across open dunes.
+# Engine reports hostiles_nearby: False. AI must NOT enter combat mode; it must autolevel AP!
+distant_scorpiock_state = {
+    "hp": 27, "max_hp": 27, "x": 44, "y": 11, "z": 10,
+    "calling": "Apostle",
+    "level": 3, "ap": 1, "sp": 106, "mp": 2,
+    "attributes": {"Strength": 10, "Agility": 14, "Toughness": 16, "Intelligence": 16, "Willpower": 18, "Ego": 21},
+    "zone_id": "JoppaWorld.8.20.1.0.10",
+    "zone_name": "salt marsh",
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "last_move_failed": False,
+    "mutations": [
+        {"name": "Clairvoyance", "class": "Clairvoyance", "level": 2, "cap": 2, "can_level": False},
+        {"name": "Light Manipulation", "class": "LightManipulation", "level": 2, "cap": 2, "can_level": False},
+        {"name": "Sense Psychic", "class": "SensePsychic", "level": 1, "cap": 2, "can_level": False},
+        {"name": "Stunning Force", "class": "StunningForce", "level": 2, "cap": 2, "can_level": False},
+        {"name": "Teleport Other", "class": "TeleportOther", "level": 2, "cap": 2, "can_level": False}
+    ],
+    "abilities": [
+        {"name": "Light Manipulation", "command": "CommandLase", "cooldown": 0, "usable": True},
+        {"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 0, "usable": True}
+    ],
+    "surroundings": {"N": "Clear", "S": "Clear", "E": "Clear", "W": "Clear", "NE": "Clear", "NW": "Clear", "SE": "Clear", "SW": "Clear"},
+    "visible_entities": [
+        {"name": "scorpiock", "blueprint": "Scorpiock", "dist": 18, "dir": "SE", "tx": 62, "ty": 19, "is_enemy": True, "difficulty": "Average"}
+    ]
+}
+distant_enemies = [e for e in distant_scorpiock_state["visible_entities"] if e["is_enemy"]]
+dec_dist_lvl = brain.query_decision(distant_scorpiock_state, took_damage=False, enemies=distant_enemies)
+print(f"Distant hostile levelup decision: {dec_dist_lvl['action']} | Reason: {dec_dist_lvl['reason']}")
+assert dec_dist_lvl["action"] == "AUTOLEVEL_STAT:Ego", f"Expected AUTOLEVEL_STAT:Ego, got: {dec_dist_lvl['action']}"
+
+# Scenario 28.2: After AP is spent (ap: 0), player unlocks priority skill Tactics (sp: 106 >= 50)
+spent_ap_state = dict(distant_scorpiock_state)
+spent_ap_state["ap"] = 0
+dec_dist_skill = brain.query_decision(spent_ap_state, took_damage=False, enemies=distant_enemies)
+print(f"Post-AP skill unlock decision: {dec_dist_skill['action']} | Reason: {dec_dist_skill['reason']}")
+assert dec_dist_skill["action"] == "AUTOLEVEL_SKILL:Tactics", f"Expected AUTOLEVEL_SKILL:Tactics, got: {dec_dist_skill['action']}"
+
+# Scenario 28.2b: With Tactics unlocked, player claims free 0-cost subpower Tactics_Hurdle
+tactics_unlocked_state = dict(spent_ap_state)
+tactics_unlocked_state["sp"] = 56
+tactics_unlocked_state["skills"] = ["Tactics"]
+dec_dist_power = brain.query_decision(tactics_unlocked_state, took_damage=False, enemies=distant_enemies)
+print(f"Free subpower claim decision: {dec_dist_power['action']} | Reason: {dec_dist_power['reason']}")
+assert dec_dist_power["action"] == "AUTOLEVEL_SKILL:Tactics_Hurdle", f"Expected AUTOLEVEL_SKILL:Tactics_Hurdle, got: {dec_dist_power['action']}"
+
+# Scenario 28.2c: With free powers claimed and saving SP for Tactics_Juke (56 SP < 200), player resumes AUTOEXPLORE!
+saving_sp_state = dict(tactics_unlocked_state)
+saving_sp_state["skills"] = ["Tactics", "Tactics_Hurdle"]
+dec_dist_explore = brain.query_decision(saving_sp_state, took_damage=False, enemies=distant_enemies)
+print(f"Post-levelup exploration decision: {dec_dist_explore['action']} | Reason: {dec_dist_explore['reason']}")
+assert dec_dist_explore["action"] == "AUTOEXPLORE", f"Expected AUTOEXPLORE, got: {dec_dist_explore['action']}"
+
+# Scenario 28.3: Priority AP spending even when enemy is in combat distance (dist 7, hostiles_nearby: True)
+nearby_combat_state = dict(distant_scorpiock_state)
+nearby_combat_state["ap"] = 1
+nearby_combat_state["hostiles_nearby"] = True
+nearby_enemies = [{"name": "scorpiock", "blueprint": "Scorpiock", "dist": 7, "dir": "SE", "tx": 51, "ty": 18, "is_enemy": True, "difficulty": "Average"}]
+dec_priority_ap = brain.query_decision(nearby_combat_state, took_damage=False, enemies=nearby_enemies)
+print(f"Priority combat AP allocation: {dec_priority_ap['action']} | Reason: {dec_priority_ap['reason']}")
+assert dec_priority_ap["action"] == "AUTOLEVEL_STAT:Ego", f"Expected priority AUTOLEVEL_STAT:Ego before battle, got: {dec_priority_ap['action']}"
+
+# Scenario 28.4: Fallback Esper with distant enemy at dist 18 advances rather than firing out-of-range Lase
+dec_fallback_adv = brain.fallback_esper(
+    distant_scorpiock_state, distant_enemies, {},
+    ["MOVE_SE", "MOVE_E", "MOVE_S"], ["MOVE_SE", "MOVE_E", "MOVE_S"],
+    distant_scorpiock_state["abilities"], brain.build_templates.BUILD_TEMPLATES["esper_ited_away"],
+    (44, 11), 44, 11, 27, 27, False, False, 0, 0, 0
+)
+print(f"Fallback Esper distant target advance: {dec_fallback_adv['action']} | Reason: {dec_fallback_adv['reason']}")
+assert dec_fallback_adv["action"] == "MOVE_SE", f"Expected MOVE_SE advancing towards distant scorpiock, got: {dec_fallback_adv['action']}"
+
+print("\n==================================================")
+print(">>> ALL 28 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

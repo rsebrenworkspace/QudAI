@@ -913,7 +913,19 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                     continue
 
                 if any(ray in combined for ray in ["freezingray", "flamingray", "spitpoison", "cryokinesis", "pyrokinesis", "lase", "stunningforce", "stunning force", "syphonvim", "syphon vim", "sundermind", "sunder mind", "chainfire", "disarmingshot"]):
-                    if closest and c_dist <= 25 and s_dir:
+                    max_ab_range = 10
+                    if "syphon" in combined:
+                        max_ab_range = 4
+                    elif "stunning" in combined:
+                        max_ab_range = 8
+                    elif "sunder" in combined:
+                        max_ab_range = 12
+                    elif "lase" in combined:
+                        max_ab_range = 10
+                    elif "chainfire" in combined or "disarmingshot" in combined:
+                        max_ab_range = 8
+
+                    if closest and c_dist <= max_ab_range and s_dir:
                         is_beam = any(b in combined for b in ["lase", "ray", "spit", "stunning"])
                         if is_beam and not c_lof_clear:
                             # Do not offer beam attack if friendly companion is in the ray path!
@@ -1017,6 +1029,15 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
             vdir = vm[5:]
             if adj_threats:
                 action_choices.append(f"{vm} (Retreat/Step {vdir} into open ground)")
+            elif closest:
+                dx, dy = CARDINAL_OFFSETS.get(vdir, (0, 0))
+                new_dist = max(abs((px + dx) - c_tx), abs((py + dy) - c_ty))
+                if new_dist < c_dist:
+                    action_choices.append(f"{vm} (Advance {vdir} towards {c_name} [dist {c_dist} -> {new_dist}])")
+                elif new_dist > c_dist:
+                    action_choices.append(f"{vm} (Backpedal/Reposition {vdir} away from {c_name} [dist {c_dist} -> {new_dist}])")
+                else:
+                    action_choices.append(f"{vm} (Flank {vdir} around {c_name})")
             elif not (has_mw and ammo > 0 and enemies):
                 action_choices.append(f"{vm} (Maneuver {vdir})")
             else:
@@ -1242,7 +1263,7 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             return {"action": step_move, "reason": f"[{template['name']} Fallback] Advancing into melee contact on {c_name} ({s_dir})"}
 
     # 4. Long-range approach or suppressive missile fire
-    if closest_enemy and closest_dist <= 10:
+    if closest_enemy:
         if closest_dist >= 6 and has_missile and ammo > 0:
             companions = game_state.get("companions", [])
             is_clear, _ = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords)
@@ -1252,6 +1273,10 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
         step_move = f"MOVE_{s_dir}"
         if step_move in valid_moves:
             return {"action": step_move, "reason": f"[{template['name']} Fallback] Pursuing {c_name} ({s_dir})"}
+        elif valid_moves:
+            best_adv = get_best_move_towards(cur_pos, (c_tx, c_ty), valid_moves, surroundings)
+            if best_adv:
+                return {"action": best_adv, "reason": f"[{template['name']} Fallback] Pursuing {c_name} ({best_adv[5:]})"}
 
     if valid_moves:
         ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
@@ -1330,9 +1355,9 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
         # Check line-of-fire from player to primary target
         c_lof_clear, c_lof_reason = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords)
 
-        # A. Sunder Mind (Uncapped psychic annihilation - DIRECT MENTAL, 100% SAFE OVER PETS & WALLS!)
+        # A. Sunder Mind (Uncapped psychic annihilation - max range 12, DIRECT MENTAL, 100% SAFE OVER PETS & WALLS!)
         ab_sunder = find_ready_ability(abilities, ["sunder mind", "sundermind", "sunder"])
-        if ab_sunder and ab_sunder.get("command") and s_dir:
+        if ab_sunder and ab_sunder.get("command") and closest_dist <= 12 and s_dir:
             return {"action": f"USE_ABILITY:{ab_sunder['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Channeling Sunder Mind against {c_name} (dist: {closest_dist})"}
 
         # B. Opener CC: Stunning Force on approaching mobile enemies (dist 3-8, requires clear LOF)
@@ -1340,14 +1365,14 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
         if ab_stun and ab_stun.get("command") and 3 <= closest_dist <= 8 and not is_stationary and s_dir and c_lof_clear:
             return {"action": f"USE_ABILITY:{ab_stun['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Blasting approaching {c_name} with Stunning Force CC opener ({s_dir})"}
 
-        # C. Lase (Light Manipulation focused laser beam - requires clear LOF past companions)
+        # C. Lase (Light Manipulation focused laser beam - max range 10, requires clear LOF past companions)
         ab_lase = find_ready_ability(abilities, ["lase", "light manipulation"])
-        if ab_lase and ab_lase.get("command") and s_dir and c_lof_clear:
+        if ab_lase and ab_lase.get("command") and closest_dist <= 10 and s_dir and c_lof_clear:
             return {"action": f"USE_ABILITY:{ab_lase['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Firing Lase light beam at {c_name} ({s_dir}, dist: {closest_dist})"}
 
-        # D. Cryokinesis / Pyrokinesis / Ray / Elemental / Gas attacks (requires clear LOF)
+        # D. Cryokinesis / Pyrokinesis / Ray / Elemental / Gas attacks (max range 10, requires clear LOF)
         ab_elemental = find_ready_ability(abilities, ["cryokinesis", "pyrokinesis", "flaming ray", "freezing ray", "spit poison", "electrical generation", "corrosive gas", "sleep gas"])
-        if ab_elemental and ab_elemental.get("command") and s_dir and c_lof_clear:
+        if ab_elemental and ab_elemental.get("command") and closest_dist <= 10 and s_dir and c_lof_clear:
             return {"action": f"USE_ABILITY:{ab_elemental['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Manifesting {ab_elemental.get('name')} at {c_name} ({s_dir})"}
 
         # E. Stunning Force (Secondary / Stationary / Close Finisher - dist <= 8, requires clear LOF)
@@ -1396,6 +1421,10 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             step_move = f"MOVE_{s_dir}"
             if step_move in valid_moves:
                 return {"action": step_move, "reason": f"[{template['name']} Fallback] Advancing to psychic engagement range on {c_name} ({s_dir})"}
+            elif valid_moves:
+                best_adv = get_best_move_towards(cur_pos, (c_tx, c_ty), valid_moves, surroundings)
+                if best_adv:
+                    return {"action": best_adv, "reason": f"[{template['name']} Fallback] Navigating {best_adv[5:]} towards {c_name} (dist: {closest_dist})"}
 
         # Otherwise, hold ground and recharge mental energy/cooldowns
         return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Recharging mental focus for next psychic strike on {c_name} (dist: {closest_dist})"}
@@ -1483,6 +1512,10 @@ def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_move
         step_move = f"MOVE_{s_dir}"
         if step_move in valid_moves:
             return {"action": step_move, "reason": f"[{template['name']} Fallback] Closing to pistol range on {c_name} ({s_dir})"}
+        elif valid_moves:
+            best_adv = get_best_move_towards(cur_pos, (c_tx, c_ty), valid_moves, surroundings)
+            if best_adv:
+                return {"action": best_adv, "reason": f"[{template['name']} Fallback] Navigating {best_adv[5:]} towards {c_name} (dist: {closest_dist})"}
 
     if valid_moves:
         ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
@@ -1574,12 +1607,16 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
         d, ename = list(adj_threats.items())[0]
         return {"action": f"MOVE_{d}", "reason": f"[{template['name']} Fallback] Striking adjacent threat {ename} ({d})"}
 
-    # 8. Advance to melee if no ammo available
-    if closest_enemy and closest_dist <= 10:
+    # 8. Advance to melee / target if no ammo available
+    if closest_enemy:
         s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
         step_move = f"MOVE_{s_dir}"
         if step_move in valid_moves:
             return {"action": step_move, "reason": f"[{template['name']} Fallback] Closing in on {c_name} ({s_dir})"}
+        elif valid_moves:
+            best_adv = get_best_move_towards(cur_pos, (c_tx, c_ty), valid_moves, surroundings)
+            if best_adv:
+                return {"action": best_adv, "reason": f"[{template['name']} Fallback] Closing in on {c_name} ({best_adv[5:]})"}
 
     if valid_moves:
         ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
@@ -1615,7 +1652,14 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
     enemies = filter_hostile_enemies(enemies, companions)
     adj_threats = get_adjacent_threats(surroundings, companions=companions)
-    close_threats = [e for e in enemies if not is_ignorable_stationary_enemy(e) and e.get("dist", 999) <= 20]
+    close_threats = [
+        e for e in enemies
+        if not is_ignorable_stationary_enemy(e) and (
+            e.get("dist", 999) <= 6 or (
+                e.get("dist", 999) <= 10 and game_state.get("hostiles_nearby", False)
+            )
+        )
+    ]
     engine_hostiles = (game_state.get("hostiles_adjacent", False) and bool(adj_threats)) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
     is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
 
@@ -1660,6 +1704,13 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             if best_m:
                 return {"action": best_m, "reason": f"Tactical Retreat: Fleeing towards stairs up at {su_pos} (HP {hp}/{max_hp}, Stratum {cur_z})"}
 
+    # Priority Attribute Allocation: If character leveled up and has unspent AP, spend immediately before battle
+    g_ap = game_state.get("ap", 0)
+    if g_ap > 0 and not adj_threats and not took_damage and not suppress_autolevel:
+        attrs = game_state.get("attributes", {})
+        rec_stat, reason = build_templates.get_stat_allocation_recommendation(template, attrs)
+        return {"action": f"AUTOLEVEL_STAT:{rec_stat}", "reason": f"Class Progression ({template['name']}): {reason}"}
+
     # ==========================================================
     # PHASE A: DETERMINISTIC SAFE MODE (Zero Latency / 0ms tokens)
     # ==========================================================
@@ -1678,7 +1729,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         muts = game_state.get("mutations", [])
         can_level_any_mut = any(m.get("can_level", False) and m.get("level", 0) < m.get("cap", 99) for m in muts)
-        can_spend_mp = (mp >= 4) or (mp > 0 and can_level_any_mut)
+        can_spend_mp = mp > 0 and can_level_any_mut
         has_points_to_spend = (ap > 0) or (sp >= 50) or can_spend_mp
 
         # Check for eligible skills or free (0-cost) powers
@@ -1716,7 +1767,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     if m_obj:
                         return {"action": f"AUTOLEVEL_MUTATION:{m_obj.get('class')}", "reason": f"Class Progression ({template['name']}): Leveling {m_obj.get('name')}"}
 
-            if ap > 0 or (mp >= 4):
+            if ap > 0 or (mp > 0 and can_level_any_mut):
                 return {"action": "AUTOLEVEL", "reason": f"Safe autoleveling: allocating unspent points (AP:{ap}, SP:{sp}, MP:{mp})"}
 
         # 2. Survival & Sustenance Routine: Butchering, Cooking, Camping & Relieving Hunger
@@ -2047,7 +2098,14 @@ def main():
                 surroundings = game_state.get("surroundings", {})
                 grid_display = render_5x5_grid(surroundings)
                 adj_threats = get_adjacent_threats(surroundings, companions=companions)
-                close_threats = [e for e in enemies if not is_ignorable_stationary_enemy(e) and e.get("dist", 999) <= 20]
+                close_threats = [
+                    e for e in enemies
+                    if not is_ignorable_stationary_enemy(e) and (
+                        e.get("dist", 999) <= 6 or (
+                            e.get("dist", 999) <= 10 and game_state.get("hostiles_nearby", False)
+                        )
+                    )
+                ]
                 engine_hostiles = (game_state.get("hostiles_adjacent", False) and bool(adj_threats)) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
                 is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
                 mode_str = "[COMBAT]" if is_in_combat else "[EXPLORE]"
