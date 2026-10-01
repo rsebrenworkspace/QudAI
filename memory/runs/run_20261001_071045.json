@@ -1,0 +1,28 @@
+{
+  "telemetry": {
+    "player_name": "Apostle of the Salt",
+    "level": 2,
+    "turns": 420,
+    "zone": "salt desert, surface",
+    "death_reason": "stung and crushed by a scorpiock in a narrow dune cove",
+    "death_category": "Combat"
+  },
+  "recent_actions": [
+    {
+      "action": "MOVE_W"
+    },
+    {
+      "action": "MOVE_W"
+    },
+    {
+      "action": "MOVE_E"
+    },
+    {
+      "action": "USE_ABILITY:CommandStunningForce:E"
+    },
+    {
+      "action": "MOVE_E"
+    }
+  ],
+  "archived_at": "2026-10-01T07:10:45.946179"
+}

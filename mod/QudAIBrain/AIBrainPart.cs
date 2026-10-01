@@ -2635,7 +2635,7 @@ namespace QudAIBrain
             catch { }
         }
 
-        public static void ExportDeath(GameObject player)
+        public static void ExportDeath(GameObject player, string customReason = null, string customCategory = null)
         {
             try
             {
@@ -2648,11 +2648,12 @@ namespace QudAIBrain
                 try { if (player != null && player.HasStat("Level")) level = player.Stat("Level"); } catch { }
                 long turns = The.Game != null ? The.Game.Turns : 0;
                 string zone = StripQudFormatting(player?.CurrentCell?.ParentZone?.DisplayName ?? "Unknown Sands");
-                string reason = StripQudFormatting(The.Game?.DeathReason ?? "Slain in the salt wastes");
-                string category = StripQudFormatting(The.Game?.DeathCategory ?? "Combat");
+                string reason = !string.IsNullOrEmpty(customReason) ? StripQudFormatting(customReason) : StripQudFormatting(The.Game?.DeathReason ?? "Slain in the salt wastes");
+                string category = !string.IsNullOrEmpty(customCategory) ? StripQudFormatting(customCategory) : StripQudFormatting(The.Game?.DeathCategory ?? "Combat");
 
                 string json = $"{{\"player_name\": \"{EscapeJson(name)}\", \"level\": {level}, \"turns\": {turns}, \"zone\": \"{EscapeJson(zone)}\", \"death_reason\": \"{EscapeJson(reason)}\", \"death_category\": \"{EscapeJson(category)}\", \"timestamp\": \"{DateTime.UtcNow:O}\"}}";
                 File.WriteAllText(deathFile, json, Encoding.UTF8);
+                UnityEngine.Debug.Log($"[QudAI ExportDeath] Player death exported: {name} fell in {zone} ({reason})");
             }
             catch (Exception ex)
             {
@@ -2673,6 +2674,29 @@ namespace QudAIBrain
                 else if (c >= 32) sb.Append(c);
             }
             return sb.ToString();
+        }
+    }
+
+    [HarmonyPatch(typeof(XRL.World.GameObject), "Die")]
+    public static class AIDiePatch
+    {
+        public static void Prefix(GameObject __instance, GameObject Killer, string KillerText, string Reason, string ThirdPersonReason, string DeathCategory)
+        {
+            try
+            {
+                if (__instance != null && __instance.IsPlayer())
+                {
+                    string killerName = Killer != null ? AIPlayerTurnPatch.StripQudFormatting(Killer.DisplayName) : (!string.IsNullOrEmpty(KillerText) ? KillerText : "the dangers of Qud");
+                    string deathReason = !string.IsNullOrEmpty(ThirdPersonReason) ? ThirdPersonReason : (!string.IsNullOrEmpty(Reason) ? Reason : $"killed by {killerName}");
+                    string category = !string.IsNullOrEmpty(DeathCategory) ? DeathCategory : "Combat";
+
+                    AIPlayerTurnPatch.ExportDeath(__instance, deathReason, category);
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI AIDiePatch Error] " + ex.ToString());
+            }
         }
     }
 

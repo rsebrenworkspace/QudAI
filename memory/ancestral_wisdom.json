@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "generation": 1,
+    "name": "Apostle of the Salt",
+    "level": 2,
+    "turns": 420,
+    "zone": "salt desert, surface",
+    "death_reason": "stung and crushed by a scorpiock in a narrow dune cove",
+    "lesson": "Avoid narrow dune coves\u2014scorpiocks ambush in confined spaces; retreat or flank instead of advancing blindly.",
+    "timestamp": "2026-10-01T07:10:48.650214"
+  }
+]
