@@ -143,16 +143,19 @@ def get_best_move_towards(cur_pos, target_pos, valid_moves, surroundings=None):
 RECENT_ZONES = deque(maxlen=10)
 LAST_ZONE_ENTRY = None  # {"from_zone": str, "to_zone": str, "entry_pos": (x,y), "reverse_dir": str}
 ZONE_HOPPING_DETECTED = False
+ZONE_CYCLE_LENGTH = 0  # Length of detected cycle (2, 3, 4...)
 CURRENT_TRACKED_ZONE = None
 ZONE_STEP_COUNT = 0
+EXPLORED_ZONE_SET = set()  # Zones fully explored or stuck — persistent across transitions
 
 
 def update_zone_records(game_state):
     """
     Tracks zone transition history and detects rapid border ping-pong oscillations.
     Determines entry border and reverse transition direction to prevent immediate bounce-back.
+    Detects 2-cycle (A->B->A), 3-cycle (A->B->C->A), and 4-cycle oscillations.
     """
-    global CURRENT_TRACKED_ZONE, current_zone_id, ZONE_STEP_COUNT, ZONE_HOPPING_DETECTED, LAST_ZONE_ENTRY
+    global CURRENT_TRACKED_ZONE, current_zone_id, ZONE_STEP_COUNT, ZONE_HOPPING_DETECTED, LAST_ZONE_ENTRY, ZONE_CYCLE_LENGTH
     zone_id = game_state.get("zone_id", "")
     px = game_state.get("x", 0)
     py = game_state.get("y", 0)
@@ -162,6 +165,11 @@ def update_zone_records(game_state):
         return
 
     if CURRENT_TRACKED_ZONE is not None and zone_id != CURRENT_TRACKED_ZONE:
+        # Mark the zone we are LEAVING as explored if it was fully explored or stuck
+        leaving_zone = CURRENT_TRACKED_ZONE
+        if leaving_zone in stuck_autoexplore_zones or game_state.get("zone_fully_explored", False):
+            EXPLORED_ZONE_SET.add(leaving_zone)
+
         RECENT_ZONES.append(zone_id)
         # Determine entry border and reverse direction
         rev_dir = None
@@ -181,12 +189,30 @@ def update_zone_records(game_state):
             "reverse_dir": rev_dir
         }
 
-        # Check for 2-cycle ping-pong oscillation (e.g. A -> B -> A)
-        if len(RECENT_ZONES) >= 3 and RECENT_ZONES[-1] == RECENT_ZONES[-3]:
+        # Check for N-cycle oscillation (2, 3, 4-zone cycles)
+        # A 2-cycle is A->B->A: zones[-1]==zones[-3]
+        # A 3-cycle is A->B->C->A: zones[-1]==zones[-4]
+        # A 4-cycle is A->B->C->D->A: zones[-1]==zones[-5]
+        detected_cycle = 0
+        zones_list = list(RECENT_ZONES)
+        for cycle_len in [2, 3, 4]:
+            check_idx = -(cycle_len + 1)
+            if len(zones_list) >= cycle_len + 1 and zones_list[-1] == zones_list[check_idx]:
+                # Verify the full cycle pattern repeats
+                pattern = zones_list[-(cycle_len):]
+                prior_pattern = zones_list[-(cycle_len * 2):-cycle_len] if len(zones_list) >= cycle_len * 2 else None
+                if prior_pattern is None or pattern == prior_pattern:
+                    detected_cycle = cycle_len
+                    break
+
+        if detected_cycle > 0:
             ZONE_HOPPING_DETECTED = True
-            print(f"[ZONE HOPPING BREAKER] Border oscillation between {RECENT_ZONES[-2]} and {RECENT_ZONES[-1]} detected! Enforcing inward zone navigation.")
+            ZONE_CYCLE_LENGTH = detected_cycle
+            cycle_zones = list(RECENT_ZONES)[-detected_cycle:]
+            print(f"[ZONE HOPPING BREAKER] {detected_cycle}-zone cycle detected: {' -> '.join(cycle_zones)}! Enforcing inward zone navigation.")
         else:
             ZONE_HOPPING_DETECTED = False
+            ZONE_CYCLE_LENGTH = 0
 
         visit_counts.clear()
         blocked_coords.clear()
@@ -244,30 +270,110 @@ def find_zone_unexplored_frontier(game_state, cur_pos, visit_counts):
     return None, None
 
 
+def _compute_adjacent_zone_id(zone_id, direction):
+    """
+    Compute the zone ID of the adjacent zone in the given cardinal direction.
+    Zone IDs are formatted as: JoppaWorld.WX.WY.SX.SY.Z
+    where WX/WY are world coordinates, SX/SY are sub-grid (0-2), Z is depth.
+    Returns the adjacent zone ID string, or None if at world edge.
+    """
+    parts = zone_id.split(".")
+    if len(parts) < 6:
+        return None
+    try:
+        prefix = parts[0]
+        wx, wy = int(parts[1]), int(parts[2])
+        sx, sy = int(parts[3]), int(parts[4])
+        z = parts[5]
+    except (ValueError, IndexError):
+        return None
+
+    if direction == "N":
+        sy -= 1
+        if sy < 0:
+            sy = 2
+            wy -= 1
+    elif direction == "S":
+        sy += 1
+        if sy > 2:
+            sy = 0
+            wy += 1
+    elif direction == "E":
+        sx += 1
+        if sx > 2:
+            sx = 0
+            wx += 1
+    elif direction == "W":
+        sx -= 1
+        if sx < 0:
+            sx = 2
+            wx -= 1
+    else:
+        return None
+
+    if wx < 0 or wy < 0:
+        return None
+    return f"{prefix}.{wx}.{wy}.{sx}.{sy}.{z}"
+
+
+# Direction -> (border_x, border_y_formula) for exit targets
+_EXIT_TARGETS = {
+    "N": lambda px, py: ((px, 1), "North zone exit"),
+    "S": lambda px, py: ((px, 23), "South zone exit"),
+    "E": lambda px, py: ((78, py), "East zone exit"),
+    "W": lambda px, py: ((1, py), "West zone exit"),
+}
+
+# Reverse direction map
+_OPPOSITE_DIR = {"N": "S", "S": "N", "E": "W", "W": "E"}
+
+
 def get_zone_exit_target(cur_pos):
     """
     Returns the target coordinate of the forward zone border exit to transition to the next zone.
+    When zone hopping is detected, avoids exits that lead back into the cycle or already-explored zones.
     """
     px, py = cur_pos
     rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
+    forward_dir = _OPPOSITE_DIR.get(rev_dir) if rev_dir else None
 
-    # Forward exit priority: opposite of entry border
-    # If entered from West (rev_dir='W'), forward is East border (78, py)
-    # If entered from East (rev_dir='E'), forward is West border (1, py)
-    # If entered from South (rev_dir='S'), forward is North border (px, 1)
-    # If entered from North (rev_dir='N'), forward is South border (px, 23)
-    # Default: forward is East or North
-    if rev_dir == "W":
+    # Normal case: no cycle detected, use simple forward exit
+    if not ZONE_HOPPING_DETECTED:
+        if forward_dir and forward_dir in _EXIT_TARGETS:
+            return _EXIT_TARGETS[forward_dir](px, py)
+        # Default: East
         return (78, py), "East zone exit"
-    elif rev_dir == "E":
-        return (1, py), "West zone exit"
-    elif rev_dir == "S":
-        return (px, 1), "North zone exit"
-    elif rev_dir == "N":
-        return (px, 23), "South zone exit"
-    else:
-        # Default forward progression: East
-        return (78, py), "East zone exit"
+
+    # Zone hopping detected — pick a NOVEL exit that avoids the cycle
+    cur_zone = current_zone_id or ""
+    cycle_zones = set(list(RECENT_ZONES)[-max(ZONE_CYCLE_LENGTH, 2):])
+    avoid_zones = cycle_zones | EXPLORED_ZONE_SET
+
+    # Rank all 4 directions by preference: novel > forward > any non-reverse
+    candidate_dirs = []
+    for d in ["N", "S", "E", "W"]:
+        if d == rev_dir:
+            continue  # Never go back the way we came
+        adj_zone = _compute_adjacent_zone_id(cur_zone, d)
+        is_novel = adj_zone is not None and adj_zone not in avoid_zones
+        is_forward = (d == forward_dir)
+        # Priority: novel zones first, then forward, then anything
+        candidate_dirs.append((0 if is_novel else 1, 0 if is_forward else 1, d))
+
+    candidate_dirs.sort()
+
+    if candidate_dirs:
+        best_dir = candidate_dirs[0][2]
+        pos, tag = _EXIT_TARGETS[best_dir](px, py)
+        is_novel = candidate_dirs[0][0] == 0
+        label = f"{tag} (novel)" if is_novel else tag
+        print(f"[ZONE HOPPING BREAKER] Choosing {best_dir} exit ({label}) to escape {ZONE_CYCLE_LENGTH}-zone cycle. Avoiding: {avoid_zones}")
+        return pos, label
+
+    # All exits lead to cycle zones — pick forward anyway and hope inward navigation helps
+    if forward_dir and forward_dir in _EXIT_TARGETS:
+        return _EXIT_TARGETS[forward_dir](px, py)
+    return (78, py), "East zone exit"
 
 
 def update_stair_records(game_state):
@@ -1860,6 +1966,8 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         # 7. Autonomous area exploration via Caves of Qud native Autoexplore
         unexp_cells = game_state.get("unexplored_cells", None)
         zone_fully_explored = game_state.get("zone_fully_explored", False)
+        if zone_fully_explored and zone_id:
+            EXPLORED_ZONE_SET.add(zone_id)
 
         # Determine if there is a major unexplored sector (across water/obstacles)
         has_unexplored_sector = (unexp_cells is not None and unexp_cells >= 35)
@@ -1909,7 +2017,26 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         exit_moves = [m for m in valid_moves if "[zone_exit" in surroundings.get(m[5:], "").lower() or "exit" in surroundings.get(m[5:], "").lower()]
         if exit_moves:
             forward_exits = [m for m in exit_moves if m != rev_exit]
-            if forward_exits:
+
+            # When zone hopping is detected, filter exits that lead back into cycle/explored zones
+            if ZONE_HOPPING_DETECTED and zone_id and forward_exits:
+                cycle_zones = set(list(RECENT_ZONES)[-max(ZONE_CYCLE_LENGTH, 2):])
+                avoid_zones = cycle_zones | EXPLORED_ZONE_SET
+                novel_exits = []
+                for m in forward_exits:
+                    m_dir = m[5:]  # e.g. "N", "SE" etc.
+                    # Only check cardinal directions for zone transitions
+                    if m_dir in ("N", "S", "E", "W"):
+                        adj_zone = _compute_adjacent_zone_id(zone_id, m_dir)
+                        if adj_zone and adj_zone not in avoid_zones:
+                            novel_exits.append(m)
+                    else:
+                        novel_exits.append(m)  # Diagonal exits are rare; allow them
+                if novel_exits:
+                    return {"action": novel_exits[0], "reason": f"Zone fully explored: transitioning to novel zone via {novel_exits[0]} (avoiding {len(avoid_zones)} cycle/explored zones)"}
+                # All exits lead to cycle zones — fall through to step 11 which uses smart exit target
+
+            elif forward_exits:
                 return {"action": forward_exits[0], "reason": f"Zone fully explored: transitioning to adjacent zone via {forward_exits[0]}"}
             elif not ZONE_HOPPING_DETECTED and (ZONE_STEP_COUNT > 6):
                 return {"action": exit_moves[0], "reason": f"Zone fully explored: backtracking to prior zone via {exit_moves[0]}"}
@@ -2213,6 +2340,7 @@ def main():
                     if action == "AUTOEXPLORE":
                         if current_zone_id:
                             stuck_autoexplore_zones.add(current_zone_id)
+                            EXPLORED_ZONE_SET.add(current_zone_id)
                         print(f"[Loop Breaker] Autoexplore oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}/{len(recent_positions)}). Marking zone autoexplore exhausted; forcing frontier breakout.")
 
                     valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
