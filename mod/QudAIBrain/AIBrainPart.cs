@@ -1938,6 +1938,7 @@ namespace QudAIBrain
                 {
                     lastMoveFailed = false;
                     lastFailedDir = "";
+                    autoexplorePosHistory.Clear();
                 }
                 if (player.Energy != null && player.Energy.Value >= energyBefore)
                 {
@@ -2065,6 +2066,7 @@ namespace QudAIBrain
 
             if (!string.IsNullOrEmpty(step) && step != ".")
             {
+                isZoneFullyExplored = false;
                 int energyBefore = player.Energy != null ? player.Energy.Value : 0;
                 bool moved = player.Move(step);
                 if (!moved)

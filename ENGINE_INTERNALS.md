@@ -507,6 +507,23 @@ When in swimming depth liquid (`is_swimming: true` or `Effects.Swimming`):
 - `can_rest = false`: Resting is prevented while swimming to prevent drowning or turn traps.
 - `can_eat = true`: If the character is Hungry or Famished while swimming, they eat directly from inventory (`EAT`) without needing a campfire.
 
+### 16.6 Macro-Frontier Water Traversal & Native Autoexplore Decoupling
+Vanilla Caves of Qud's native pathfinder (`FasterDMapAutoexplore.FindAutoexploreStep`) does not generate paths through deep water tiles. Consequently, when a zone contains a body of water or wide river dividing landmasses (e.g. northern and southern shores in the Salt Marshes):
+1. `FindAutoexploreStep` returns `null` once the immediate dry-land segment is visited, which sets `isZoneFullyExplored = true` in `AIBrainPart.cs`.
+2. A purely local 1-tile frontier search penalizes swimming moves vs dry-land moves `(visit_count, 1)` vs `(visit_count, 0)`, causing the agent to cycle dry-land shoreline tiles endlessly.
+3. **Macro-Frontier Resolver (`find_zone_unexplored_frontier`):** The driver scans `visible_entities` in telemetry for unvisited entities and cluster centers across the water obstacle ($\ge 3$ tiles away).
+4. **Cross-River Step Execution:** When a macro-frontier target is found, `get_best_move_towards(cur_pos, frontier_target, valid_moves, surroundings)` prioritizes geometric convergence over swim penalties, commanding `MOVE_...` directly into the water.
+5. **State Reset on Water Entry:**
+   - In `AIBrainPart.cs`, executing a manual move resets `autoexplorePosHistory` so that water crossings do not trip the multi-tile oscillation detector.
+   - When the agent lands on the opposing shore, any valid step from `FindAutoexploreStep` clears `isZoneFullyExplored = false`, immediately restoring full native autoexploration of the newly discovered landmass.
+6. **Hierarchical Exploration Ordering:**
+   1. Native `AUTOEXPLORE` (when zone has unvisited dry land and is not stuck).
+   2. Macro-frontier navigation (`find_zone_unexplored_frontier`) across water/obstacles.
+   3. Local unvisited frontier tiles (`unvisited_local`, `visit_count == 0`).
+   4. Zone exit border transition (when standing on exit tile).
+   5. Global zone exit navigation (`get_zone_exit_target`) once the entire zone is verified fully explored.
+   6. Least-visited fallback.
+
 ---
 *End of Engine Internals Manual.*
 

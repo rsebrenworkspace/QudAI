@@ -281,9 +281,35 @@
   - **Expanded Verification Suite (Test 26):**
     - Added Test 26 to `dry_run.py`, verifying liquid hazard classification (blocking acid/lava, allowing deep water), 5x5 ASCII rendering (`~` vs `!`), river navigation across water towards stairs and unexplored frontiers, and in-water camping suppression. All 26 tests pass.
 
+### Iteration 17: Macro-Frontier Water Traversal & River Exploration Decoupling
+- **The Problem:**
+  - In a live game session in the Salt Marshes, the player was confronted with a wide river cutting across the center of the zone ($y = 9$).
+  - Even with swimming moves enabled in `get_valid_moves()`, the agent paced back and forth across the southern shore, never crossing the water to explore the northern bank.
+  - Decompilation of telemetry (`last_state.json`) revealed the root causes:
+    1. Vanilla Caves of Qud's native pathfinder (`FasterDMapAutoexplore.FindAutoexploreStep`) does not path through deep water. Once all reachable dry land on the southern shore was visited, it returned `null`, marking `isZoneFullyExplored = true` in `AIBrainPart.cs`.
+    2. In `brain.py`, the fallback was a purely local 1-tile frontier search that sorted valid moves by `(visit_count, 1 if is_swimming else 0)`. Because swimming moves were penalized $(N, 1)$ vs dry-land moves $(N, 0)$, the player chose visited dry land over unvisited water, pacing the 80-tile southern shore indefinitely.
+    3. The agent lacked a macro-level frontier targeting mechanism across water obstacles.
+- **Solution:**
+  - **Macro-Frontier Detector (`find_zone_unexplored_frontier`):**
+    - Scans `visible_entities` in telemetry for unvisited entities and cluster centers across the water obstacle ($\ge 3$ tiles away).
+    - When detected (e.g. 195 unvisited northern entities at $y \le 8$ while player was at $y = 18$), sets a macro-frontier target.
+  - **Cross-River Step Execution:**
+    - When a macro-frontier target is identified across water, `get_best_move_towards(cur_pos, frontier_target, valid_moves, surroundings)` prioritizes geometric convergence towards the unvisited territory over swim penalties, commanding direct entry into the water (`MOVE_NE` / `MOVE_N`).
+  - **State Reset on Water Entry:**
+    - In `AIBrainPart.cs`, cleared `autoexplorePosHistory` upon executing manual moves (`MOVE_...`), ensuring cross-river steps do not trip the multi-tile oscillation detector.
+    - Added automatic reset `isZoneFullyExplored = false` whenever `FindAutoexploreStep` finds a valid step, ensuring that once the character touches the far shore, native autoexploration immediately resumes to explore the new landmass.
+  - **Hierarchical Phase A Exploration Ordering:**
+    1. Native `AUTOEXPLORE` (when zone is unexplored and not stuck).
+    2. Macro-frontier navigation (`find_zone_unexplored_frontier`) across water/obstacles.
+    3. Local unvisited frontier tiles (`unvisited_local`, `visit_count == 0`).
+    4. Zone exit border transition (when standing directly on exit tile).
+    5. Global zone exit navigation (`get_zone_exit_target`) once the entire zone is verified fully explored.
+    6. Least-visited fallback.
+  - **Verification:** Verified with live `last_state.json` producing immediate `MOVE_NE` water crossing; verified all 26 tests in `dry_run.py` pass without regression.
+
 ---
 
-## 4. Current Codebase Specification (v1.2.0)
+## 4. Current Codebase Specification (v1.2.1)
 
 ### Directory Structure
 ```

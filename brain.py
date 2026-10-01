@@ -201,6 +201,65 @@ def update_zone_records(game_state):
     ZONE_STEP_COUNT += 1
 
 
+def find_zone_unexplored_frontier(game_state, cur_pos, visit_counts):
+    """
+    Finds a macro-level unexplored frontier in the current zone when local autoexplore stalls
+    (e.g. when a zone is split by a river or lake).
+    Uses radar of visible_entities to find clusters of unvisited objects across water.
+    Returns (target_pos, reason) or (None, None).
+    """
+    px, py = cur_pos
+    entities = game_state.get("visible_entities", [])
+    if not entities:
+        return None, None
+
+    # Check visible entities in unvisited sectors (e.g. across water/river)
+    unvisited_entities = []
+    for e in entities:
+        tx = e.get("tx")
+        ty = e.get("ty")
+        if tx is not None and ty is not None:
+            if visit_counts.get((tx, ty), 0) == 0:
+                unvisited_entities.append((tx, ty))
+
+    if unvisited_entities:
+        # Require target to be at least 4 tiles away (macro-frontier)
+        distant_unvisited = [p for p in unvisited_entities if max(abs(p[0] - px), abs(p[1] - py)) >= 4]
+        if distant_unvisited:
+            # Sort by Chebyshev distance first, then Euclidean distance
+            distant_unvisited.sort(key=lambda p: (max(abs(p[0] - px), abs(p[1] - py)), (p[0] - px)**2 + (p[1] - py)**2))
+            target = distant_unvisited[0]
+            return target, f"Water Traversal: Navigating across water toward unvisited frontier at {target}"
+
+    return None, None
+
+
+def get_zone_exit_target(cur_pos):
+    """
+    Returns the target coordinate of the forward zone border exit to transition to the next zone.
+    """
+    px, py = cur_pos
+    rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
+
+    # Forward exit priority: opposite of entry border
+    # If entered from West (rev_dir='W'), forward is East border (78, py)
+    # If entered from East (rev_dir='E'), forward is West border (1, py)
+    # If entered from South (rev_dir='S'), forward is North border (px, 1)
+    # If entered from North (rev_dir='N'), forward is South border (px, 23)
+    # Default: forward is East or North
+    if rev_dir == "W":
+        return (78, py), "East zone exit"
+    elif rev_dir == "E":
+        return (1, py), "West zone exit"
+    elif rev_dir == "S":
+        return (px, 1), "North zone exit"
+    elif rev_dir == "N":
+        return (px, 23), "South zone exit"
+    else:
+        # Default forward progression: East
+        return (78, py), "East zone exit"
+
+
 def update_stair_records(game_state):
     """
     Ingests stairs_down and stairs_up telemetry from state.json,
@@ -1735,10 +1794,28 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     return {"action": best_inward, "reason": f"{tag}: Stepping inward {best_inward} toward zone interior to establish stable foothold"}
 
         # 7. Autonomous area exploration via Caves of Qud native Autoexplore
-        if not game_state.get("zone_fully_explored", False) and not is_stuck_explore:
+        frontier_target, frontier_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
+        has_local_frontier = (frontier_target is not None and max(abs(frontier_target[0] - px), abs(frontier_target[1] - py)) <= 4)
+
+        if (not game_state.get("zone_fully_explored", False) or has_local_frontier) and not is_stuck_explore:
             return {"action": "AUTOEXPLORE", "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder"}
 
-        # 8. Zone is fully explored -> Search for zone transitions, or frontier moves
+        # 8. Unexplored frontier across water / obstacles (Macro-frontier navigation)
+        if frontier_target and valid_moves:
+            best_frontier_m = get_best_move_towards(cur_pos, frontier_target, valid_moves, surroundings)
+            if best_frontier_m:
+                return {"action": best_frontier_m, "reason": frontier_reason}
+
+        # 9. Local unexplored frontier: If any adjacent move leads to a completely unvisited tile (0 visits), explore it!
+        unvisited_local = [
+            m for m in valid_moves
+            if visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) == 0
+        ]
+        if unvisited_local:
+            unvisited_local.sort(key=lambda m: (1 if is_swim_move(m, surroundings) else 0))
+            return {"action": unvisited_local[0], "reason": f"Scouting zone frontier {unvisited_local[0]}"}
+
+        # 10. Transition to adjacent zone via exit border (if standing directly on exit)
         exit_moves = [m for m in valid_moves if "[zone_exit" in surroundings.get(m[5:], "").lower() or "exit" in surroundings.get(m[5:], "").lower()]
         if exit_moves:
             forward_exits = [m for m in exit_moves if m != rev_exit]
@@ -1749,6 +1826,15 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             else:
                 print(f"[Zone Hopping Breaker] Suppressed immediate backtrack {exit_moves[0]} to avoid border ping-pong loop.")
 
+        # 11. Navigate directly to forward zone exit border if zone is fully explored
+        if game_state.get("zone_fully_explored", False):
+            exit_target_pos, exit_tag = get_zone_exit_target(cur_pos)
+            if exit_target_pos and valid_moves:
+                best_exit_m = get_best_move_towards(cur_pos, exit_target_pos, valid_moves, surroundings)
+                if best_exit_m:
+                    return {"action": best_exit_m, "reason": f"Zone fully explored: navigating toward {exit_tag} at {exit_target_pos}"}
+
+        # 12. Least-visited fallback
         if valid_moves:
             ranked = sorted(valid_moves, key=lambda m: (
                 visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],

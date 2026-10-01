@@ -1216,7 +1216,7 @@ swim_frontier_state["zone_id"] = frontier_zone
 dec_swim_frontier = brain.query_decision(swim_frontier_state, took_damage=False, enemies=[])
 print(f"River frontier crossing decision: {dec_swim_frontier['action']} | Reason: {dec_swim_frontier['reason']}")
 assert dec_swim_frontier["action"] == "MOVE_N", f"Expected character to swim across water MOVE_N to reach unvisited territory! Got: {dec_swim_frontier['action']}"
-assert "scouting zone frontier MOVE_N" in dec_swim_frontier["reason"]
+assert "scouting zone frontier move_n" in dec_swim_frontier["reason"].lower()
 
 # Scenario 26.5: In-Water Survival Invariant: Reject Camping & Cooking while Swimming, Allow Eating
 in_water_state = {
