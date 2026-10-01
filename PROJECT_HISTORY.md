@@ -257,6 +257,30 @@
     - Refactored both actions in `AIBrainPart.cs` to execute programmatically: `Cell.AddObject("Campfire")` places the fire directly without directional prompts; `COOK_MEAL` consumes 1 ingredient from inventory (via `ingredient.Count` manipulation, resolving CS1501 with `SplitFromStack`), clears stomach hunger via `stomach.ClearHunger()`, resets cooking counter, and calls `campPart.AfterCooked()` silently without ever opening UI modals.
   - **Expanded Verification Suite (Test 25):** Added Test 25 to `dry_run.py`, verifying 5-tile entropy check, open frontier escape, centroid steer fallback, and zone exploration exhaustion. All 25 tests pass.
 
+### Iteration 16: Safe Swimming Dynamics, Liquid Hazard Classification & Water Traversal
+- **The Problem:**
+  - The AI treated deep water as an impassable barrier (`[BLOCKED: deep water]`), completely preventing it from entering swimming depth liquid.
+  - When rivers, subterranean lakes, or marsh ponds divided a zone or isolated objectives (stairs, quests, exits), the agent was constrained exclusively to the shoreline rim, entering oscillation loops or starving instead of swimming across.
+- **Solution:**
+  - **In-Engine Liquid Hazard Discrimination:**
+    - Decompiled `XRL.World.Cell` in `Assembly-CSharp.dll` and verified `cell.GetDangerousOpenLiquidVolume()`, `cell.GetSwimmingDepthLiquid()`, and `cell.HasSwimmingDepthLiquid()`.
+    - Refactored `AIBrainPart.cs` to classify liquid danger:
+      - Lethal liquids (acid, lava, magma) are tagged as `[HAZARD: <name>]`.
+      - Solid obstructions / walls are tagged as `[BLOCKED: impassable terrain]`.
+      - Safe deep swimming liquids (fresh water, salty water, slime, honey) are tagged as `[SWIM: <name>]` rather than `[BLOCKED: deep water]`.
+  - **Driver Traversal & Pathfinding Weights:**
+    - In `brain.py`, updated `get_valid_moves()` to allow `[SWIM: ...]` moves while strictly blocking `[hazard`, `acid`, `lava`, and `magma`.
+    - Updated `render_5x5_grid()` so swimming water tiles render as `'~'` rather than `'#'` (walls), accurately visualizing lakes and rivers in ASCII.
+    - Updated move ranking with a dry-land preference tiebreaker: `(visit_count, 1 if is_swimming else 0)`. The agent prefers walking on dry land when available to avoid the swimming movement penalty, but freely steps into water and swims across rivers/lakes when dry land is explored or blocked.
+    - Updated `get_best_move_towards()` so the agent swims across bodies of water directly toward stairs, zone transitions, or target objectives.
+  - **In-Water Invariants (Zero Campfire Drowning):**
+    - Exported `"is_swimming"` in state telemetry.
+    - Disabled `can_make_camp`, `can_cook`, `can_butcher`, `can_harvest`, and `can_rest` while actively in deep water (`is_swimming: true`).
+    - Added guards in `PerformMakeCamp` and `PerformCookMeal` in `AIBrainPart.cs` to reject camping/cooking while swimming.
+    - Preserved direct inventory eating (`EAT`) so hungry characters can eat rations while swimming.
+  - **Expanded Verification Suite (Test 26):**
+    - Added Test 26 to `dry_run.py`, verifying liquid hazard classification (blocking acid/lava, allowing deep water), 5x5 ASCII rendering (`~` vs `!`), river navigation across water towards stairs and unexplored frontiers, and in-water camping suppression. All 26 tests pass.
+
 ---
 
 ## 4. Current Codebase Specification (v1.2.0)
@@ -268,7 +292,7 @@ D:\QudAI\
 ├── build_templates.py          # 9 build archetypes, combat doctrines, stat/skill priority trees
 ├── item_evaluator.py           # Item scoring rubric & hard overrides (light, ranged, recoilers)
 ├── chronicler.py               # Post-mortem death analyzer & ancestral memory generator
-├── dry_run.py                  # 25-scenario multi-class verification test suite
+├── dry_run.py                  # 26-scenario multi-class verification test suite
 ├── twitch_bot.py               # IRC Twitch chat listener for live viewer voting
 ├── twitch_config.example.json  # Twitch bot configuration template
 ├── sync_mod.py                 # Sync utility between repo and Qud's LocalLow mod folder

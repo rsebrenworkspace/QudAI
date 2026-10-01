@@ -442,4 +442,71 @@ When an oscillation is detected, escaping cannot simply backtrack into recently 
    Shorelines wrap convexly around water or cliffs; the centroid points toward the center of the lake or obstacle. Moving to maximize Euclidean distance $(n_x - \bar{x})^2 + (n_y - \bar{y})^2$ steers the character away from the obstacle basin and outward onto open dry land.
 
 ---
+
+## 16. Safe Swimming Dynamics, Liquid Classification & Hazard Avoidance
+
+### 16.1 The Root Cause of Shoreline Oscillation Traps
+In previous iterations, the C# telemetry layer (`AIBrainPart.cs`) contained a coarse check:
+```csharp
+if (!hasBridge && cell.HasSwimmingDepthLiquid())
+{
+    names.Insert(0, "[BLOCKED: deep water]");
+}
+```
+This marked every tile of deep water as impassable stone. In `brain.py`, `get_valid_moves` completely dropped any direction mentioning `deep water`.
+When rivers, salt marsh lakes, or subterranean pools divided a zone:
+1. The AI treated the water as an impenetrable barrier.
+2. The agent was constrained exclusively to the shoreline rim.
+3. Native autoexplore ping-ponged along the 5-tile shore loop.
+4. When hunger hit, the agent could not swim across the water to reach stairs, exits, or food sources, starving in place.
+
+### 16.2 In-Engine Liquid Architecture & Classification
+Caves of Qud distinguishes liquid danger at the `Cell` level:
+- `cell.GetDangerousOpenLiquidVolume()`: Returns a `GameObject` representing lethal or burning liquids (acid, lava, magma). If null, the liquid is non-lethal.
+- `cell.HasSwimmingDepthLiquid()`: Returns `true` if the cell contains liquid deep enough to trigger swimming mechanics.
+- `cell.GetSwimmingDepthLiquid()`: Returns the specific deep liquid object (`GameObject`), providing liquid display names (e.g. "pool of fresh water", "salty water", "slime").
+- `cell.IsPassable(player, false)`: Returns `true` for deep liquid cells unless a solid wall or boulder is also present inside that tile.
+- `XRL.World.Effects.Swimming`: Automatically applied by the engine when a non-flying creature moves into deep liquid. Imposes a movement speed penalty (mitigated by the `Endurance_Swimming` skill).
+
+### 16.3 Telemetry Protocol & Hazard Discrimination
+In `AIBrainPart.cs`, cells are classified with strict hierarchy:
+```csharp
+bool hasBridge = cell.Objects != null && cell.Objects.Any(o => o != null && (o.DisplayName ?? "").ToLower().Contains("bridge"));
+if (!hasBridge && cell.GetDangerousOpenLiquidVolume() != null)
+{
+    var dangerousLiq = cell.GetDangerousOpenLiquidVolume();
+    string liqName = dangerousLiq != null ? StripQudFormatting(dangerousLiq.DisplayName ?? "dangerous liquid") : "dangerous liquid";
+    names.Insert(0, $"[HAZARD: {liqName}]");
+}
+else if (!cell.IsPassable(player, false))
+{
+    names.Insert(0, "[BLOCKED: impassable terrain]");
+}
+else if (!hasBridge && cell.HasSwimmingDepthLiquid())
+{
+    var swimLiq = cell.GetSwimmingDepthLiquid();
+    string liqName = swimLiq != null ? StripQudFormatting(swimLiq.DisplayName ?? "deep water") : "deep water";
+    names.Insert(0, $"[SWIM: {liqName}]");
+}
+```
+
+### 16.4 Driver Pathfinding & Traversal Weights
+In `brain.py`:
+1. **Passability Filter:** `get_valid_moves` excludes `[blocked`, `[hazard`, `acid`, `lava`, and `magma`. All safe deep liquids (`[SWIM: ...]` and `deep water`) are valid.
+2. **ASCII Grid Rendering:** Deep water tiles render as `'~'` (swimming liquid) rather than `'#'` (wall), preserving `'!'` for lethal acid/lava.
+3. **Dry Land vs. Swimming Weighting:**
+   $$\text{cost} = (\text{visit\_count}, 1 \text{ if is\_swimming else } 0)$$
+   When unvisited dry land is available, the agent walks on land to avoid the swim speed penalty. When dry land is explored or blocked, the agent steps into the water and swims across.
+4. **Target Navigation:** `get_best_move_towards(cur_pos, target_pos, valid_moves, surroundings)` considers Chebyshev distance and Euclidean distance first. If an objective (stairs down, exit, enemy) lies across a river, the agent swims directly toward it.
+
+### 16.5 In-Water Invariants: Camping, Cooking & Sustenance
+When in swimming depth liquid (`is_swimming: true` or `Effects.Swimming`):
+- `can_make_camp = false`: The player cannot spawn a campfire underwater in deep liquid.
+- `can_cook = false`: Campfire cooking cannot occur while swimming.
+- `can_butcher = false` & `can_harvest = false`: Field processing is disabled while swimming.
+- `can_rest = false`: Resting is prevented while swimming to prevent drowning or turn traps.
+- `can_eat = true`: If the character is Hungry or Famished while swimming, they eat directly from inventory (`EAT`) without needing a campfire.
+
+---
 *End of Engine Internals Manual.*
+

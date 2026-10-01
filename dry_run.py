@@ -1138,8 +1138,120 @@ assert dec_shore["action"] != "AUTOEXPLORE", "Must NOT call AUTOEXPLORE in stuck
 assert dec_shore["action"] in valid_shore_m, f"Expected valid move, got {dec_shore['action']}"
 assert "frontier" in dec_shore["reason"], f"Expected frontier exploration, got {dec_shore['reason']}"
 
+# ==================================================
+# TEST 26: Safe Swimming Navigation, Liquid Hazard Classification & Water Traversal
+# ==================================================
 print("\n==================================================")
-print(">>> ALL 25 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 26: Safe Swimming Navigation & Liquid Hazard Classification")
 print("==================================================")
+
+# Scenario 26.1: Liquid Hazard Classification & Passability
+river_crossing_surroundings = {
+    "NW": "[HAZARD: pool of acid]",          # Lethal liquid -> MUST BE BLOCKED
+    "N": "[SWIM: deep fresh water]",         # Safe deep liquid -> PASSABLE FOR SWIMMING
+    "NE": "[HAZARD: pool of lava]",          # Lethal liquid -> MUST BE BLOCKED
+    "W": "[BLOCKED: sandstone wall]",        # Solid wall -> MUST BE BLOCKED
+    "CENTER": "riverbank mud",
+    "E": "riverbank mud",                    # Dry land visited
+    "SW": "[BLOCKED: shale wall]",
+    "S": "riverbank gravel",                 # Dry land visited
+    "SE": "riverbank mud"                    # Dry land visited
+}
+
+river_moves = brain.get_valid_moves(river_crossing_surroundings, (15, 30), None, is_in_combat=False)
+print(f"River crossing valid moves: {river_moves}")
+assert "MOVE_N" in river_moves, f"MOVE_N (swimming deep water) must be VALID! Got: {river_moves}"
+assert "MOVE_NW" not in river_moves, f"MOVE_NW (acid hazard) must be BLOCKED! Got: {river_moves}"
+assert "MOVE_NE" not in river_moves, f"MOVE_NE (lava hazard) must be BLOCKED! Got: {river_moves}"
+assert "MOVE_W" not in river_moves, f"MOVE_W (wall) must be BLOCKED! Got: {river_moves}"
+assert "MOVE_SW" not in river_moves, f"MOVE_SW (wall) must be BLOCKED! Got: {river_moves}"
+
+# Scenario 26.2: 5x5 ASCII Visualizer Rendering
+grid_rendered = brain.render_5x5_grid(river_crossing_surroundings)
+print("5x5 Grid with swimming and hazard tiles:\n" + grid_rendered)
+assert "~" in grid_rendered, "Swimming water tiles must render as '~' in 5x5 ASCII grid"
+assert "!" in grid_rendered, "Hazardous liquids must render as '!' in 5x5 ASCII grid"
+
+# Scenario 26.3: Water Traversal across River to Unvisited Shoreline
+brain.visit_counts.clear()
+# Shoreline tiles have been visited 2 times
+brain.visit_counts[(16, 30)] = 2  # E
+brain.visit_counts[(15, 31)] = 2  # S
+brain.visit_counts[(16, 31)] = 2  # SE
+# River tile to North has visit count 0 (unexplored river/far shore)
+brain.visit_counts[(15, 29)] = 0  # N
+
+swim_zone = "JoppaWorld.10.19.1.0.10"
+brain.current_zone_id = swim_zone
+brain.CURRENT_TRACKED_ZONE = swim_zone
+brain.stuck_autoexplore_zones.add(swim_zone)
+
+swim_explore_state = {
+    "hp": 25, "max_hp": 25, "x": 15, "y": 30, "z": 10,
+    "calling": "Marauder",
+    "level": 3, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": swim_zone,
+    "zone_name": "salt marsh",
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": river_crossing_surroundings,
+    "visible_entities": []
+}
+
+# Scenario 26.3: Water Traversal across River toward Known Stairs Down
+dec_swim_stairs = brain.query_decision(swim_explore_state, took_damage=False, enemies=[])
+print(f"River stairs crossing decision: {dec_swim_stairs['action']} | Reason: {dec_swim_stairs['reason']}")
+assert dec_swim_stairs["action"] == "MOVE_N", f"Expected character to swim across water MOVE_N towards stairs at (15, 12)! Got: {dec_swim_stairs['action']}"
+assert "Navigating to stairs down" in dec_swim_stairs["reason"]
+
+# Scenario 26.4: Water Traversal across River to Unvisited Frontier
+frontier_zone = "SaltMarshRiver.10.19.1.0.10"
+brain.current_zone_id = frontier_zone
+brain.CURRENT_TRACKED_ZONE = frontier_zone
+brain.stuck_autoexplore_zones.add(frontier_zone)
+
+swim_frontier_state = dict(swim_explore_state)
+swim_frontier_state["zone_id"] = frontier_zone
+
+dec_swim_frontier = brain.query_decision(swim_frontier_state, took_damage=False, enemies=[])
+print(f"River frontier crossing decision: {dec_swim_frontier['action']} | Reason: {dec_swim_frontier['reason']}")
+assert dec_swim_frontier["action"] == "MOVE_N", f"Expected character to swim across water MOVE_N to reach unvisited territory! Got: {dec_swim_frontier['action']}"
+assert "scouting zone frontier MOVE_N" in dec_swim_frontier["reason"]
+
+# Scenario 26.5: In-Water Survival Invariant: Reject Camping & Cooking while Swimming, Allow Eating
+in_water_state = {
+    "hp": 12, "max_hp": 25, "x": 15, "y": 29, "z": 10,
+    "calling": "Marauder",
+    "level": 3, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": frontier_zone,
+    "zone_name": "salt marsh",
+    "zone_fully_explored": False,
+    "is_swimming": True,
+    "effects": ["Swimming"],
+    "hunger_level": "Famished",
+    "is_famished": True,
+    "has_food": True,
+    "food_count": 2,
+    "can_make_camp": False,
+    "can_cook": False,
+    "skills": ["Survival_Camp", "CookingAndGathering"],
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {
+        "CENTER": "deep fresh water [swimming]",
+        "N": "[SWIM: deep water]",
+        "S": "riverbank mud"
+    },
+    "visible_entities": []
+}
+
+dec_in_water = brain.query_decision(in_water_state, took_damage=False, enemies=[])
+print(f"In-water famished decision: {dec_in_water['action']} | Reason: {dec_in_water['reason']}")
+assert dec_in_water["action"] == "EAT", f"Expected direct inventory EAT while swimming, got: {dec_in_water['action']}"
+assert dec_in_water["action"] not in ["MAKE_CAMP", "COOK_MEAL", "REST"], "Cannot camp, cook, or rest while actively swimming in deep water!"
+
+print("\n==================================================")
+print(">>> ALL 26 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("==================================================")
+
 
 

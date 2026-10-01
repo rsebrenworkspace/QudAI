@@ -632,6 +632,13 @@ namespace QudAIBrain
                 }
                 catch { }
 
+                bool isSwimming = false;
+                try
+                {
+                    isSwimming = player.HasEffect<XRL.World.Effects.Swimming>() || player.HasEffect("Swimming") || (currentCell != null && currentCell.HasSwimmingDepthLiquid());
+                }
+                catch { }
+
                 bool canMakeCamp = false;
                 try
                 {
@@ -641,13 +648,13 @@ namespace QudAIBrain
                     {
                         hasCampAbility = abilities.AbilityByGuid.Values.Any(a => a != null && a.Command == "CommandSurvivalCamp");
                     }
-                    canMakeCamp = (hasCampAbility || player.HasSkill("Survival_Camp") || player.HasSkill("CookingAndGathering")) && !hostilesNearby && !(currentCell?.ParentZone?.IsWorldMap() ?? false);
+                    canMakeCamp = !isSwimming && (hasCampAbility || player.HasSkill("Survival_Camp") || player.HasSkill("CookingAndGathering")) && !hostilesNearby && !(currentCell?.ParentZone?.IsWorldMap() ?? false);
                 }
                 catch { }
 
-                bool canCook = campfireNearby && (player.HasSkill("CookingAndGathering") || foodCount > 0);
-                bool canButcher = player.HasSkill("CookingAndGathering_Butchery") && corpsesNearby > 0;
-                bool canHarvest = player.HasSkill("CookingAndGathering_Harvestry") && harvestableNearby > 0;
+                bool canCook = !isSwimming && campfireNearby && (player.HasSkill("CookingAndGathering") || foodCount > 0);
+                bool canButcher = !isSwimming && player.HasSkill("CookingAndGathering_Butchery") && corpsesNearby > 0;
+                bool canHarvest = !isSwimming && player.HasSkill("CookingAndGathering_Harvestry") && harvestableNearby > 0;
 
                 List<string> effectStrs = new List<string>();
                 try
@@ -811,6 +818,7 @@ namespace QudAIBrain
                 sb.Append($"\"can_cook\": {(canCook ? "true" : "false")},");
                 sb.Append($"\"can_butcher\": {(canButcher ? "true" : "false")},");
                 sb.Append($"\"can_harvest\": {(canHarvest ? "true" : "false")},");
+                sb.Append($"\"is_swimming\": {(isSwimming ? "true" : "false")},");
                 sb.Append($"\"effects\": [{string.Join(",", effectStrs)}],");
                 sb.Append($"\"abilities\": [{string.Join(",", abilityStrs)}],");
                 sb.Append($"\"has_missile_weapon\": {(hasMissileWeapon ? "true" : "false")},");
@@ -1160,13 +1168,21 @@ namespace QudAIBrain
             try
             {
                 bool hasBridge = cell.Objects != null && cell.Objects.Any(o => o != null && (o.DisplayName ?? "").ToLower().Contains("bridge"));
-                if (!hasBridge && cell.HasSwimmingDepthLiquid())
+                if (!hasBridge && cell.GetDangerousOpenLiquidVolume() != null)
                 {
-                    names.Insert(0, "[BLOCKED: deep water]");
+                    var dangerousLiq = cell.GetDangerousOpenLiquidVolume();
+                    string liqName = dangerousLiq != null ? StripQudFormatting(dangerousLiq.DisplayName ?? "dangerous liquid") : "dangerous liquid";
+                    names.Insert(0, $"[HAZARD: {liqName}]");
                 }
                 else if (!cell.IsPassable(player, false))
                 {
                     names.Insert(0, "[BLOCKED: impassable terrain]");
+                }
+                else if (!hasBridge && cell.HasSwimmingDepthLiquid())
+                {
+                    var swimLiq = cell.GetSwimmingDepthLiquid();
+                    string liqName = swimLiq != null ? StripQudFormatting(swimLiq.DisplayName ?? "deep water") : "deep water";
+                    names.Insert(0, $"[SWIM: {liqName}]");
                 }
             }
             catch { }
@@ -1415,6 +1431,11 @@ namespace QudAIBrain
                 lastFailedDir = "";
                 try
                 {
+                    if (player.CurrentCell != null && (player.CurrentCell.HasSwimmingDepthLiquid() || player.HasEffect("Swimming") || player.HasEffect<XRL.World.Effects.Swimming>()))
+                    {
+                        MessageQueue.AddPlayerMessage("{{R|You cannot make camp while swimming in deep water.}}");
+                        return;
+                    }
                     UnityEngine.Debug.Log("[QudAI MAKE_CAMP] Deploying campfire programmatically");
                     bool hasCampfireNearby = false;
                     if (player.CurrentCell != null)
@@ -1465,6 +1486,11 @@ namespace QudAIBrain
                 lastFailedDir = "";
                 try
                 {
+                    if (player.CurrentCell != null && (player.CurrentCell.HasSwimmingDepthLiquid() || player.HasEffect("Swimming") || player.HasEffect<XRL.World.Effects.Swimming>()))
+                    {
+                        MessageQueue.AddPlayerMessage("{{R|You cannot cook while swimming in deep water.}}");
+                        return;
+                    }
                     GameObject campfireObj = null;
                     if (player.CurrentCell != null)
                     {

@@ -107,10 +107,20 @@ def min_level_for_depth(next_z):
     return 3 + (next_z - 11) * 2
 
 
-def get_best_move_towards(cur_pos, target_pos, valid_moves):
+def is_swim_move(move_name, surroundings):
+    """Returns True if the specified move steps into a swimming-depth liquid tile."""
+    if not move_name or not move_name.startswith("MOVE_") or not surroundings:
+        return False
+    d = move_name[5:]
+    t = surroundings.get(d, "").lower()
+    return "[swim" in t or "deep water" in t or "deep pool" in t or "deep liquid" in t
+
+
+def get_best_move_towards(cur_pos, target_pos, valid_moves, surroundings=None):
     """
     Selects the valid move that gets closest to target_pos (tx, ty).
-    Uses Chebyshev distance primary, Euclidean distance secondary, breaking ties with least-visited coordinates.
+    Uses Chebyshev distance primary, Euclidean distance secondary, breaking ties with least-visited coordinates
+    and preferring dry land over swimming liquid when distances and visits are equal.
     """
     if not valid_moves:
         return None
@@ -123,7 +133,8 @@ def get_best_move_towards(cur_pos, target_pos, valid_moves):
         cheb_dist = max(abs(nx - tx), abs(ny - ty))
         euc_dist_sq = (nx - tx) ** 2 + (ny - ty) ** 2
         visits = visit_counts.get((nx, ny), 0)
-        return (cheb_dist, euc_dist_sq, visits)
+        swim_penalty = 1 if is_swim_move(m, surroundings) else 0
+        return (cheb_dist, euc_dist_sq, visits, swim_penalty)
 
     sorted_moves = sorted(valid_moves, key=score_move)
     return sorted_moves[0]
@@ -427,9 +438,7 @@ def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=Fals
         if target_pos in blocked_coords or move_name == last_failed_action:
             continue
         has_bridge = "bridge" in text
-        if any(w in text for w in ["wall", "rock", "chasm", "[blocked"]):
-            continue
-        if not has_bridge and any(w in text for w in ["deep pool", "deep water", "deep liquid"]):
+        if any(w in text for w in ["wall", "rock", "chasm", "[blocked", "[hazard", "acid", "lava", "magma"]):
             continue
         # During active combat, avoid blindly fleeing off the map into unknown zones
         if is_in_combat and ("[zone_exit" in text or "exit" in text):
@@ -454,10 +463,7 @@ def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=Fals
             target_pos = (px + dx, py + dy)
             if target_pos in blocked_coords or move_name == last_failed_action:
                 continue
-            has_bridge = "bridge" in text
-            if any(w in text for w in ["wall", "rock", "chasm", "[blocked"]):
-                continue
-            if not has_bridge and any(w in text for w in ["deep pool", "deep water", "deep liquid"]):
+            if any(w in text for w in ["wall", "rock", "chasm", "[blocked", "[hazard", "acid", "lava", "magma"]):
                 continue
             valid.append(move_name)
 
@@ -486,7 +492,7 @@ def render_5x5_grid(surroundings):
             return 'N'
         if '[hazard' in t or any(h in t for h in ['acid', 'lava', 'magma', 'convalessence']):
             return '!'
-        if '[blocked' in t or 'wall' in t or 'rock' in t or 'fence' in t or 'boulder' in t or 'deep pool' in t or 'deep water' in t or 'deep liquid' in t:
+        if '[blocked' in t or 'wall' in t or 'rock' in t or 'fence' in t or 'boulder' in t:
             return '#'
         if 'door' in t:
             return '+'
@@ -494,7 +500,7 @@ def render_5x5_grid(surroundings):
             return '$'
         if 'exit' in t:
             return '|'
-        if 'water' in t or 'pool' in t or 'puddle' in t:
+        if '[swim' in t or 'water' in t or 'pool' in t or 'puddle' in t or 'deep liquid' in t:
             return '~'
         return '.'
 
@@ -1644,6 +1650,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         # 2. Survival & Sustenance Routine: Butchering, Cooking, Camping & Relieving Hunger
         hunger = game_state.get("hunger_level", "Satisfied")
         effects = game_state.get("effects", [])
+        is_swimming = game_state.get("is_swimming", False) or any("swimming" in ef.lower() for ef in effects)
         is_famished = game_state.get("is_famished", False) or hunger == "Famished" or any("famished" in ef.lower() or "starving" in ef.lower() for ef in effects)
         is_hungry = game_state.get("is_hungry", False) or is_famished or hunger == "Hungry" or any("hungry" in ef.lower() for ef in effects)
         has_food = game_state.get("has_food", False) or game_state.get("food_count", 0) > 0
@@ -1652,10 +1659,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         corpses_nearby = game_state.get("corpses_nearby", 0)
         harvestable_nearby = game_state.get("harvestable_nearby", 0)
         learned_skills = set(game_state.get("skills", []))
-        can_make_camp = game_state.get("can_make_camp", False) or ("Survival_Camp" in learned_skills)
-        can_cook = game_state.get("can_cook", False) or (campfire_nearby and (food_count > 0 or "CookingAndGathering" in learned_skills))
-        can_butcher = game_state.get("can_butcher", False) or ("CookingAndGathering_Butchery" in learned_skills and corpses_nearby > 0)
-        can_harvest = game_state.get("can_harvest", False) or ("CookingAndGathering_Harvestry" in learned_skills and harvestable_nearby > 0)
+        can_make_camp = not is_swimming and (game_state.get("can_make_camp", False) or ("Survival_Camp" in learned_skills))
+        can_cook = not is_swimming and (game_state.get("can_cook", False) or (campfire_nearby and (food_count > 0 or "CookingAndGathering" in learned_skills)))
+        can_butcher = not is_swimming and (game_state.get("can_butcher", False) or ("CookingAndGathering_Butchery" in learned_skills and corpses_nearby > 0))
+        can_harvest = not is_swimming and (game_state.get("can_harvest", False) or ("CookingAndGathering_Harvestry" in learned_skills and harvestable_nearby > 0))
 
         # 2A. Field harvesting & butchery: opportunistically butcher animal corpses and harvest plants when safe
         if can_butcher:
@@ -1665,17 +1672,17 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         # 2B. Relief of hunger (Famished or Hungry)
         if is_famished or is_hungry:
-            if campfire_nearby:
+            if campfire_nearby and not is_swimming:
                 return {"action": "COOK_MEAL", "reason": f"Survival ({hunger}): Cooking meal at adjacent campfire"}
             if can_make_camp and (food_count > 0 or "CookingAndGathering" in learned_skills or corpses_nearby > 0):
                 return {"action": "MAKE_CAMP", "reason": f"Survival ({hunger}): Starting campfire to cook and preserve food"}
             if has_food:
                 return {"action": "EAT", "reason": f"Survival ({hunger}): Eating food from inventory to relieve hunger"}
-            if corpses_nearby > 0:
+            if corpses_nearby > 0 and not is_swimming:
                 return {"action": "BUTCHER", "reason": f"Survival ({hunger}): Butchering nearby corpse to acquire food"}
 
         # 3. Rest until healed if safe and damaged below threshold (default 75%)
-        if hp_ratio < REST_HP_THRESHOLD and not took_damage:
+        if hp_ratio < REST_HP_THRESHOLD and not took_damage and not is_swimming:
             pct = int(hp_ratio * 100)
             return {"action": "REST", "reason": f"Safe resting: HP at {pct}% (< {int(REST_HP_THRESHOLD*100)}%)"}
 
@@ -1743,7 +1750,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 print(f"[Zone Hopping Breaker] Suppressed immediate backtrack {exit_moves[0]} to avoid border ping-pong loop.")
 
         if valid_moves:
-            ranked = sorted(valid_moves, key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+            ranked = sorted(valid_moves, key=lambda m: (
+                visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],
+                1 if is_swim_move(m, surroundings) else 0
+            ))
             return {"action": ranked[0], "reason": f"Zone fully explored: scouting zone frontier {ranked[0]}"}
 
         return {"action": "WAIT", "reason": "Zone fully explored: no open moves"}
@@ -2025,7 +2035,10 @@ def main():
                     open_escapes = [m for m in get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
                                     if (cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]) not in recent_positions]
                     if open_escapes:
-                        open_escapes.sort(key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+                        open_escapes.sort(key=lambda m: (
+                            visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],
+                            1 if is_swim_move(m, surroundings) else 0
+                        ))
                         action = open_escapes[0]
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}). Escaping cycle towards unvisited frontier {action}."
                     else:
@@ -2039,7 +2052,7 @@ def main():
                                 dx, dy = CARDINAL_OFFSETS[m[5:]]
                                 nx, ny = cur_pos[0] + dx, cur_pos[1] + dy
                                 euc_dist = (nx - avg_rx)**2 + (ny - avg_ry)**2
-                                return (-euc_dist, visit_counts[(nx, ny)]) # maximize distance from centroid, then minimize visits
+                                return (-euc_dist, visit_counts[(nx, ny)], 1 if is_swim_move(m, surroundings) else 0)
                             valid_m.sort(key=dist_away_from_cycle)
                             action = valid_m[0]
                             reason = f"[Loop Breaker] Oscillation trapped in cycle. Forcing move {action} away from cycle centroid."
