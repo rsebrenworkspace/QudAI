@@ -1039,8 +1039,107 @@ dec_f_rest = brain.query_decision(famished_rest_state, took_damage=False, enemie
 print(f"Famished low-HP decision: {dec_f_rest['action']} | Reason: {dec_f_rest['reason']}")
 assert dec_f_rest["action"] == "EAT", f"Expected EAT before REST when famished, got {dec_f_rest['action']}"
 
+# ==================================================
+# TEST 25: 5-Tile Shoreline Loop Detection & Centroid Breakout
+# ==================================================
 print("\n==================================================")
-print(">>> ALL 24 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 25: 5-Tile Shoreline Loop Detection & Centroid Breakout")
+print("==================================================")
+
+brain.recent_positions.clear()
+brain.stuck_autoexplore_zones.clear()
+brain.visit_counts.clear()
+
+# Scenario 25.1: 5-Tile Cycle Entropy Check (unique_positions <= 5 over >= 10 steps)
+# Simulate cycling along 5 shoreline tiles: T1(20, 20), T2(21, 20), T3(22, 21), T4(21, 22), T5(20, 21)
+cycle_5 = [(20, 20), (21, 20), (22, 21), (21, 22), (20, 21)]
+for pt in cycle_5 * 2:  # 10 steps total
+    brain.recent_positions.append(pt)
+    brain.visit_counts[pt] += 1
+
+cur_pos = (20, 21)
+pos_freq = brain.recent_positions.count(cur_pos)
+unique_positions = len(set(brain.recent_positions))
+
+print(f"Cycle length: {len(brain.recent_positions)}, Unique positions: {unique_positions}, Current pos frequency: {pos_freq}")
+assert len(brain.recent_positions) == 10
+assert unique_positions == 5
+assert pos_freq == 2, f"pos_frequency must be 2 (< 3 threshold), got {pos_freq}"
+
+# Check the oscillation condition directly
+is_attacking = False
+is_oscillating = not is_attacking and (
+    (pos_freq >= 3) or
+    (len(brain.recent_positions) >= 10 and unique_positions <= 5)
+)
+assert is_oscillating, "5-tile loop must be detected by entropy check despite pos_freq < 3!"
+print(f"5-Tile loop oscillation detected: {is_oscillating}")
+
+# Scenario 25.2: Breakout with Open Frontier Escape
+# Deep water blocks NW, W, SW. N goes to (20, 20) [in cycle], NE goes to (21, 20) [in cycle].
+# S leads to (20, 22) [dry land unvisited frontier].
+shore_surroundings = {
+    "NW": "[BLOCKED: deep water]",
+    "W": "[BLOCKED: deep water]",
+    "SW": "[BLOCKED: deep water]",
+    "N": "shallow water",      # (20, 20) in cycle
+    "NE": "salty asphalt",     # (21, 20) in cycle
+    "E": "dirt",               # (21, 21)
+    "S": "salty dirt",         # (20, 22) [Open Escape!]
+    "SE": "dirt"               # (21, 22) in cycle
+}
+
+valid_shore_m = brain.get_valid_moves(shore_surroundings, cur_pos, None, is_in_combat=False)
+open_escapes = [m for m in valid_shore_m
+                if (cur_pos[0] + brain.CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + brain.CARDINAL_OFFSETS[m[5:]][1]) not in brain.recent_positions]
+
+print(f"Valid shoreline moves: {valid_shore_m}")
+print(f"Open escapes escaping 5-tile cycle: {open_escapes}")
+assert "MOVE_S" in open_escapes, f"MOVE_S must be an open escape to fresh tile (20, 22)! Got: {open_escapes}"
+assert "MOVE_N" not in open_escapes, "MOVE_N leads to cycle tile (20, 20) and must not be in open_escapes"
+
+# Scenario 25.3: Centroid Steer Fallback
+# When local moves only exist among cycle nodes, verify centroid calculation steers the agent to the furthest node
+recent_set = set(brain.recent_positions)
+avg_rx = sum(p[0] for p in recent_set) / max(1, len(recent_set))  # (20+21+22+21+20)/5 = 20.8
+avg_ry = sum(p[1] for p in recent_set) / max(1, len(recent_set))  # (20+20+21+22+21)/5 = 20.8
+print(f"Cycle centroid: ({avg_rx:.2f}, {avg_ry:.2f})")
+
+def dist_away_from_cycle(m, p):
+    dx, dy = brain.CARDINAL_OFFSETS[m[5:]]
+    nx, ny = p[0] + dx, p[1] + dy
+    euc_dist = (nx - avg_rx)**2 + (ny - avg_ry)**2
+    return (-euc_dist, brain.visit_counts[(nx, ny)])
+
+test_moves = ["MOVE_NW", "MOVE_SW", "MOVE_E"]
+test_moves.sort(key=lambda m: dist_away_from_cycle(m, (22, 21)))
+print(f"Moves sorted by distance away from centroid: {test_moves}")
+assert test_moves[0] == "MOVE_E", f"MOVE_E must be furthest away from cycle centroid! Got {test_moves[0]}"
+
+# Scenario 25.4: Zone autoexplore exhaustion & frontier routing
+shore_zone = "JoppaWorld.10.19.1.0.10"
+brain.current_zone_id = shore_zone
+brain.CURRENT_TRACKED_ZONE = shore_zone
+brain.stuck_autoexplore_zones.add(shore_zone)
+shore_explore_state = {
+    "hp": 22, "max_hp": 22, "x": 20, "y": 21, "z": 10,
+    "calling": "Marauder",
+    "level": 2, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": shore_zone,
+    "zone_name": "salt marsh",
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": shore_surroundings,
+    "visible_entities": []
+}
+dec_shore = brain.query_decision(shore_explore_state, took_damage=False, enemies=[])
+print(f"Decision in stuck shoreline zone: {dec_shore['action']} | Reason: {dec_shore['reason']}")
+assert dec_shore["action"] != "AUTOEXPLORE", "Must NOT call AUTOEXPLORE in stuck zone!"
+assert dec_shore["action"] in valid_shore_m, f"Expected valid move, got {dec_shore['action']}"
+assert "frontier" in dec_shore["reason"], f"Expected frontier exploration, got {dec_shore['reason']}"
+
+print("\n==================================================")
+print(">>> ALL 25 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

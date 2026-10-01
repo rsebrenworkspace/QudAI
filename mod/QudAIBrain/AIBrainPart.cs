@@ -583,7 +583,7 @@ namespace QudAIBrain
                     {
                         foreach (var obj in invObjects)
                         {
-                            if (obj != null && obj.HasPart("Food"))
+                            if (obj != null && (obj.HasPart("Food") || obj.HasPart("PreparedCookingIngredient")))
                             {
                                 foodCount += obj.Count;
                                 string fName = StripQudFormatting(!string.IsNullOrEmpty(obj.DisplayName) ? obj.DisplayName : obj.Blueprint);
@@ -635,7 +635,13 @@ namespace QudAIBrain
                 bool canMakeCamp = false;
                 try
                 {
-                    canMakeCamp = player.HasSkill("Survival_Camp") && !hostilesNearby && !(currentCell?.ParentZone?.IsWorldMap() ?? false);
+                    bool hasCampAbility = false;
+                    var abilities = player.GetPart<ActivatedAbilities>();
+                    if (abilities?.AbilityByGuid != null)
+                    {
+                        hasCampAbility = abilities.AbilityByGuid.Values.Any(a => a != null && a.Command == "CommandSurvivalCamp");
+                    }
+                    canMakeCamp = (hasCampAbility || player.HasSkill("Survival_Camp") || player.HasSkill("CookingAndGathering")) && !hostilesNearby && !(currentCell?.ParentZone?.IsWorldMap() ?? false);
                 }
                 catch { }
 
@@ -1383,7 +1389,7 @@ namespace QudAIBrain
                     }
                     if (invObjects != null)
                     {
-                        var foodObj = invObjects.FirstOrDefault(o => o != null && o.HasPart("Food"));
+                        var foodObj = invObjects.FirstOrDefault(o => o != null && (o.HasPart("Food") || o.HasPart("PreparedCookingIngredient")));
                         if (foodObj != null)
                         {
                             UnityEngine.Debug.Log($"[QudAI EAT] Consuming food item '{foodObj.DisplayNameOnly}'");
@@ -1896,12 +1902,15 @@ namespace QudAIBrain
             int curX = player.CurrentCell.X;
             int curY = player.CurrentCell.Y;
             autoexplorePosHistory.Add(Tuple.Create(curX, curY));
-            if (autoexplorePosHistory.Count > 10)
+            if (autoexplorePosHistory.Count > 24)
             {
                 autoexplorePosHistory.RemoveAt(0);
             }
 
             int repeatVisits = autoexplorePosHistory.Count(p => p.Item1 == curX && p.Item2 == curY);
+            int uniquePositions = autoexplorePosHistory.Select(p => p.Item1 * 1000 + p.Item2).Distinct().Count();
+            bool isCycling = (repeatVisits >= 3) || (autoexplorePosHistory.Count >= 10 && uniquePositions <= 5);
+
             if (repeatVisits >= 2)
             {
                 // We are cycling between coordinates! Suppress adjacent non-combat POIs (signs, tables, bookshelves, chests)
@@ -1930,14 +1939,14 @@ namespace QudAIBrain
                 catch { }
             }
 
-            if (repeatVisits >= 3)
+            if (isCycling)
             {
                 // Persistent cycling: mark zone fully explored and yield to Python brain navigation
                 isZoneFullyExplored = true;
                 autoexplorePosHistory.Clear();
                 lastMoveFailed = false;
                 lastFailedDir = "";
-                UnityEngine.Debug.LogWarning($"[QudAI Autoexplore Oscillation] Zone marked fully explored due to cycling at ({curX}, {curY}). Yielding to brain navigation.");
+                UnityEngine.Debug.LogWarning($"[QudAI Autoexplore Oscillation] Zone marked fully explored due to cycling at ({curX}, {curY}) (visits: {repeatVisits}, unique: {uniquePositions}/{autoexplorePosHistory.Count}). Yielding to brain navigation.");
                 if (player.Energy != null) player.UseEnergy(1000, "Pass");
                 return;
             }

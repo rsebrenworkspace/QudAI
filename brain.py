@@ -53,7 +53,7 @@ ENVIRONMENTAL_TERRAIN = [
 ai_active = False
 move_history = deque(maxlen=8)
 recent_actions = deque(maxlen=40)
-recent_positions = deque(maxlen=10)
+recent_positions = deque(maxlen=24)
 stuck_autoexplore_zones = set()
 blocked_coords = set()
 visit_counts = defaultdict(int)
@@ -1864,6 +1864,7 @@ def main():
                 visit_counts[cur_pos] += 1
                 recent_positions.append(cur_pos)
                 pos_frequency = recent_positions.count(cur_pos)
+                unique_positions = len(set(recent_positions))
 
                 companions = game_state.get("companions", [])
                 current_comp_coords = set()
@@ -1986,7 +1987,10 @@ def main():
                 # (Ignore if player is actively bump-attacking an adjacent enemy in melee!)
                 is_attacking = action.startswith("MOVE_") and (action[5:] in adj_threats)
                 is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_attacking)
-                is_oscillating = (pos_frequency >= 3 and not is_attacking)
+                is_oscillating = not is_attacking and (
+                    (pos_frequency >= 3) or
+                    (len(recent_positions) >= 10 and unique_positions <= 5)
+                )
 
                 if is_stationary_repeat:
                     action_repeat_count += 1
@@ -2016,24 +2020,32 @@ def main():
                     if action == "AUTOEXPLORE":
                         if current_zone_id:
                             stuck_autoexplore_zones.add(current_zone_id)
-                        print(f"[Loop Breaker] Autoexplore oscillation detected at {cur_pos} ({pos_frequency}x in last 10). Marking zone autoexplore exhausted; forcing frontier breakout.")
+                        print(f"[Loop Breaker] Autoexplore oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}/{len(recent_positions)}). Marking zone autoexplore exhausted; forcing frontier breakout.")
 
                     open_escapes = [m for m in get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
                                     if (cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]) not in recent_positions]
                     if open_escapes:
                         open_escapes.sort(key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
                         action = open_escapes[0]
-                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos} ({pos_frequency}x in 10). Escaping cycle towards unvisited frontier {action}."
+                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}). Escaping cycle towards unvisited frontier {action}."
                     else:
                         valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
                         if valid_m:
-                            valid_m.sort(key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+                            # Maximize distance from the cycle centroid to escape shoreline/subgraph loops
+                            recent_set = set(recent_positions)
+                            avg_rx = sum(p[0] for p in recent_set) / max(1, len(recent_set))
+                            avg_ry = sum(p[1] for p in recent_set) / max(1, len(recent_set))
+                            def dist_away_from_cycle(m):
+                                dx, dy = CARDINAL_OFFSETS[m[5:]]
+                                nx, ny = cur_pos[0] + dx, cur_pos[1] + dy
+                                euc_dist = (nx - avg_rx)**2 + (ny - avg_ry)**2
+                                return (-euc_dist, visit_counts[(nx, ny)]) # maximize distance from centroid, then minimize visits
+                            valid_m.sort(key=dist_away_from_cycle)
                             action = valid_m[0]
-                            reason = f"[Loop Breaker] Oscillation detected at {cur_pos} ({pos_frequency}x in 10). Forcing least-visited move {action}."
+                            reason = f"[Loop Breaker] Oscillation trapped in cycle. Forcing move {action} away from cycle centroid."
                         else:
                             action = "PASS"
                             reason = f"[Loop Breaker] Oscillation trapped at {cur_pos}. Passing turn."
-                    recent_positions.clear()
                     action_repeat_count = 0
                 else:
                     action_repeat_count = 0

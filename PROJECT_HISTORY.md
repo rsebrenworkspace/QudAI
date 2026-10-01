@@ -235,8 +235,23 @@
     - Exported comprehensive engine telemetry: `hunger_level`, `is_hungry`, `is_famished`, `has_food`, `food_count`, `campfire_nearby`, `corpses_nearby`, `harvestable_nearby`, `can_make_camp`, `can_cook`, `can_butcher`, `can_harvest`.
     - Implemented C# action handlers: `EAT`, `MAKE_CAMP`, `COOK_MEAL`, `BUTCHER`, `HARVEST`.
     - Integrated Sustenance as Step 2 of Phase A in `brain.py` (strictly before resting at Step 3, because resting while famished causes starvation damage/death).
-    - Updated all 9 build templates to prioritize `CookingAndGathering`, `CookingAndGathering_MealPreparation`, and `CookingAndGathering_Butchery`.
-  - **Expanded Verification Suite:** Added Tests 23 & 24 to `dry_run.py`, verifying zone hopping prevention, inward border steering, campfire cooking, camping, eating, and opportunistic butchery/harvesting with 100% pass rate across 24 tests.
+### Iteration 15: 5-Tile Shoreline Loop Detection, Centroid Steering & Sustenance Refinement
+- **The Problem:**
+  - The character became Hungry, hit a large body of water, and entered an infinite cycle oscillating between 5 shoreline tiles on repeat.
+  - Decompiler and mathematical analysis revealed that in an $N=5$ tile cycle, any sliding window of length 10 contains at most $\lfloor 10 / 5 \rfloor = 2$ visits per tile. Therefore, a threshold of `count >= 3` was mathematically unreachable, blinding both C# and Python loop detection.
+  - In C#, `pStomach?.ClearHunger()` failed to compile (`CS1061`) because `GameObject` does not have `pStomach` in modern Qud, and `BaseMutation.DisplayName` was obsolete (`CS0618`).
+  - Packaged rations like jerky, dried fruit, and wafers have `PreparedCookingIngredient` rather than `Food`, causing food detection to miss preserved ingredients.
+- **Solution:**
+  - **Fixed C# Compilation:** Replaced `player.pStomach?.ClearHunger()` with `player.GetPart<Stomach>()?.ClearHunger()`. Replaced `m.DisplayName` with `m.GetDisplayName()`.
+  - **Expanded Sustenance Telemetry:** Added `item.HasPart<PreparedCookingIngredient>()` check to recognize preserved jerky, dried fruit, and rations as food. Added `ActivatedAbilities` check for `CommandSurvivalCamp`.
+  - **Early Cooking in All 9 Archetypes:** Positioned `CookingAndGathering` and `CookingAndGathering_Butchery` early (right after core starter weapon masteries or after `Discipline` for Apostle) so characters can butcher meat and camp early in their runs.
+  - **Dual-Layer Oscillation Detection:**
+    - Expanded sliding window from 10 to 24 steps in both C# and Python.
+    - Added spatial entropy check: `(window_len >= 10 and unique_positions <= 5)`. This trips in exactly 10 steps on any 5-tile cycle regardless of frequency or visit sequence.
+    - In C# `AIBrainPart.cs`, when `isCycling` trips, it sets `isZoneFullyExplored = true` and yields, avoiding local lockup.
+  - **Centroid Steer Breakout Fallback:**
+    - When all local moves lie within recently visited tiles along a curved shoreline, calculates the geometric centroid of recent positions $(\bar{x}, \bar{y})$ and maximizes Euclidean distance away from it, steering outward onto open dry land.
+  - **Expanded Verification Suite (Test 25):** Added Test 25 to `dry_run.py`, verifying 5-tile entropy check, open frontier escape, centroid steer fallback, and zone exploration exhaustion. All 25 tests pass.
 
 ---
 
@@ -249,7 +264,7 @@ D:\QudAI\
 ├── build_templates.py          # 9 build archetypes, combat doctrines, stat/skill priority trees
 ├── item_evaluator.py           # Item scoring rubric & hard overrides (light, ranged, recoilers)
 ├── chronicler.py               # Post-mortem death analyzer & ancestral memory generator
-├── dry_run.py                  # 24-scenario multi-class verification test suite
+├── dry_run.py                  # 25-scenario multi-class verification test suite
 ├── twitch_bot.py               # IRC Twitch chat listener for live viewer voting
 ├── twitch_config.example.json  # Twitch bot configuration template
 ├── sync_mod.py                 # Sync utility between repo and Qud's LocalLow mod folder

@@ -313,9 +313,15 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
 - **Harvesting:** Wild plants possess `Harvestable`. Calling `AttemptHarvest(player)` harvests ingredients.
 - **Camping & Cooking:**
   - With `CookingAndGathering` / `Survival_Camp`, dispatching `CommandSurvivalCamp` creates a campfire.
+  - Telemetry detection: Check both `player.HasSkill("CookingAndGathering")` and activated abilities via `player.GetPart<ActivatedAbilities>()?.HasAbility("CommandSurvivalCamp")`.
   - At an adjacent campfire, `Campfire.Cook()` whips up a meal, satisfying hunger and conferring cooking metabolic buffs.
-  - Stomach API: Call `player.GetPart<Stomach>()?.ClearHunger()` (Note: `player.pStomach` does NOT exist on `GameObject` in modern Qud).
+  - Stomach API: Call `player.GetPart<Stomach>()?.ClearHunger()`.
+    > [!IMPORTANT]
+    > In modern Caves of Qud, `player.pStomach` does **not** exist on `GameObject` (causes `CS1061`). Always use `player.GetPart<Stomach>()`.
   - Direct eating: `Event.New("Eat", "Eater", player)` consumes packaged food from inventory.
+  - Food Telemetry: Packaged rations may have either the `Food` part or the `PreparedCookingIngredient` part (e.g. jerky, dried fruit, starapple wafers). AIBrainPart checks `item.HasPart<Food>() || item.HasPart<PreparedCookingIngredient>()`.
+- **Mutation API Deprecation:**
+  - In `BaseMutation`, the property `m.DisplayName` is obsolete (`CS0618`). Modern Qud requires calling `m.GetDisplayName()`.
 
 ---
 
@@ -363,7 +369,7 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
   ```
 
 ### 14.3 Multi-Class Regression Suite (`dry_run.py`)
-- Contains 24 comprehensive scenarios testing:
+- Contains 25 comprehensive scenarios testing:
   - Low-HP resting and ammo top-offs.
   - Directional abilities (Melee Charge, Dismember, Freezing Ray, Stunning Force).
   - Raytraced LOF and companion friendly-fire immunity.
@@ -373,10 +379,43 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
   - Skill prerequisite hierarchy, 0-cost subskills, and SP savings.
   - Zone hopping prevention and inward border steering.
   - Survival routines (butchering, harvesting, camping, cooking, eating).
+  - 5-tile shoreline loop detection, spatial entropy thresholding, and centroid steering.
 - Run verification before committing:
   ```powershell
   python D:\QudAI\dry_run.py
   ```
+
+---
+
+## 15. Oscillation Dynamics: 5-Tile Shoreline Loops, Spatial Entropy & Centroid Steering
+
+### 15.1 The Mathematical Blind Spot of Fixed-Window Frequency
+In vanilla pathfinding around water bodies, shoreline tiles curve around deep water or obstacles. The character often enters an $N$-tile cycle ($T_1 \to T_2 \to T_3 \to T_4 \to T_5 \to T_1 \dots$):
+- **Window Limit Formula:** In any cyclic trajectory of period $N$, a sliding window of length $W$ contains at most $\lfloor W / N \rfloor$ visits to any single tile.
+- **The Blind Spot:** With $W = 10$ and $N = 5$, each tile appears exactly $10 / 5 = 2$ times. A frequency threshold of 3 (`pos_frequency >= 3`) can **never** be satisfied, allowing the agent to oscillate infinitely without triggering cycle detection.
+
+### 15.2 Dual-Layer Detection Engine
+To guarantee detection of arbitrary polygonal cycles:
+1. **Window Expansion:** Buffer length is expanded to $W = 24$ steps (capturing cycles up to length $N = 11$).
+2. **Spatial Entropy / Subgraph Density Check:**
+   $$\text{is\_oscillating} = (\text{pos\_frequency} \ge 3) \lor (\text{window\_len} \ge 10 \land \text{unique\_positions} \le 5)$$
+   This checks the topological diameter of the trajectory: if 10 consecutive steps visit only $\le 5$ distinct coordinates, an oscillation loop is proven regardless of tile visit order.
+3. **Engine-Side Autoexplore Interlock (`AIBrainPart.cs`):**
+   ```csharp
+   int uniquePositions = autoexplorePosHistory.Distinct().Count();
+   bool isCycling = (repeatVisits >= 3) || (autoexplorePosHistory.Count >= 10 && uniquePositions <= 5);
+   if (isCycling) {
+       isZoneFullyExplored = true;
+       return; // Yield control to Python driver for frontier escape
+   }
+   ```
+
+### 15.3 Cycle Centroid Steering Physics
+When an oscillation is detected, escaping cannot simply backtrack into recently traversed tiles:
+1. **Frontier Escapes:** First check valid candidate moves $m$ where destination $(x + dx, y + dy) \notin \text{recent\_positions}$. If found, select the least-visited frontier tile.
+2. **Centroid Steer Fallback:** If all immediate moves lie within recently visited territory (e.g. pinned along a curved shoreline), calculate the geometric centroid of recent positions:
+   $$\bar{x} = \frac{1}{K} \sum_{i=1}^K x_i, \quad \bar{y} = \frac{1}{K} \sum_{i=1}^K y_i$$
+   Shorelines wrap convexly around water or cliffs; the centroid points toward the center of the lake or obstacle. Moving to maximize Euclidean distance $(n_x - \bar{x})^2 + (n_y - \bar{y})^2$ steers the character away from the obstacle basin and outward onto open dry land.
 
 ---
 *End of Engine Internals Manual.*

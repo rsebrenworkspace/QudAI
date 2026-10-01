@@ -40,6 +40,8 @@ BUILD_TEMPLATES = {
         "skill_progression": [
             "Axe",
             "Axe_Expertise",
+            "CookingAndGathering",
+            "CookingAndGathering_Butchery",
             "Tactics",
             "Tactics_Hurdle",
             "Tactics_Charge",
@@ -49,9 +51,7 @@ BUILD_TEMPLATES = {
             "Endurance",
             "Endurance_ShakeItOff",
             "Endurance_Calloused",
-            "CookingAndGathering",
-            "CookingAndGathering_MealPreparation",
-            "CookingAndGathering_Butchery"
+            "CookingAndGathering_MealPreparation"
         ],
         "mutation_priorities": ["FreezingRay", "MultipleLegs", "Teleportation"],
         "combat_doctrine": {
@@ -102,14 +102,14 @@ BUILD_TEMPLATES = {
             "Shield",
             "Shield_Block",
             "Shield_Slam",
+            "CookingAndGathering",
+            "CookingAndGathering_Butchery",
             "Rifle_SuppressiveFire",
             "Shield_DeftBlocking",
             "Endurance",
             "Endurance_ShakeItOff",
             "Endurance_Calloused",
-            "CookingAndGathering",
-            "CookingAndGathering_MealPreparation",
-            "CookingAndGathering_Butchery"
+            "CookingAndGathering_MealPreparation"
         ],
         "mutation_priorities": [],  # True Kin uses Cybernetics
         "combat_doctrine": {
@@ -154,9 +154,11 @@ BUILD_TEMPLATES = {
         "skill_progression": [
             "Multiweapon_Fighting",
             "Multiweapon_Flurry",
-            "Multiweapon_Proficiency",
             "Axe",
             "Axe_Expertise",
+            "CookingAndGathering",
+            "CookingAndGathering_Butchery",
+            "Multiweapon_Proficiency",
             "Tactics",
             "Tactics_Hurdle",
             "Tactics_Charge",
@@ -167,9 +169,7 @@ BUILD_TEMPLATES = {
             "Endurance",
             "Endurance_ShakeItOff",
             "Endurance_Calloused",
-            "CookingAndGathering",
-            "CookingAndGathering_MealPreparation",
-            "CookingAndGathering_Butchery"
+            "CookingAndGathering_MealPreparation"
         ],
         "mutation_priorities": ["MultipleArms", "Carapace", "Regeneration", "NightVision"],
         "combat_doctrine": {
@@ -219,6 +219,8 @@ BUILD_TEMPLATES = {
             "Customs",
             "Customs_Tactful",
             "Discipline",
+            "CookingAndGathering",
+            "CookingAndGathering_Butchery",
             "Discipline_Meditate",
             "Discipline_FastingWay",
             "Discipline_IronMind",
@@ -226,6 +228,7 @@ BUILD_TEMPLATES = {
             "Endurance",
             "Endurance_ShakeItOff",
             "Endurance_Calloused",
+            "CookingAndGathering_MealPreparation",
             "Survival",
             "Survival_Camp",
             "Survival_Trailblazer"
@@ -274,6 +277,8 @@ BUILD_TEMPLATES = {
         "skill_progression": [
             "Tactics",
             "Tactics_Hurdle",
+            "CookingAndGathering",
+            "CookingAndGathering_Butchery",
             "Tactics_Juke",
             "Endurance",
             "Endurance_ShakeItOff",
@@ -283,9 +288,7 @@ BUILD_TEMPLATES = {
             "SingleWeaponFighting_OpportuneAttacks",
             "SingleWeaponFighting_WeaponExpertise",
             "SingleWeaponFighting_PenetratingStrikes",
-            "CookingAndGathering",
-            "CookingAndGathering_MealPreparation",
-            "CookingAndGathering_Butchery"
+            "CookingAndGathering_MealPreparation"
         ],
         "mutation_priorities": ["ElectricalGeneration", "FlamingRay", "HeightenedHearing", "ForceWall"],
         "combat_doctrine": {
@@ -331,6 +334,8 @@ BUILD_TEMPLATES = {
             "Pistol",
             "Pistol_SteadyHands",
             "Pistol_Akimbo",
+            "CookingAndGathering",
+            "CookingAndGathering_Butchery",
             "Pistol_WeakSpotter",
             "Tactics",
             "Tactics_Hurdle",
@@ -342,9 +347,7 @@ BUILD_TEMPLATES = {
             "Pistol_DeadShot",
             "Pistol_EmptyTheClips",
             "Pistol_FastestGun",
-            "CookingAndGathering",
-            "CookingAndGathering_MealPreparation",
-            "CookingAndGathering_Butchery"
+            "CookingAndGathering_MealPreparation"
         ],
         "mutation_priorities": ["Phasing", "TripleJointed", "TimeDilation", "SunderMind", "NightVision"],
         "combat_doctrine": {
@@ -389,6 +392,8 @@ BUILD_TEMPLATES = {
         "skill_progression": [
             "Cudgel",
             "Cudgel_Expertise",
+            "CookingAndGathering",
+            "CookingAndGathering_Butchery",
             "Tactics",
             "Tactics_Hurdle",
             "Tactics_Charge",
@@ -400,9 +405,7 @@ BUILD_TEMPLATES = {
             "Endurance",
             "Endurance_ShakeItOff",
             "Endurance_Calloused",
-            "CookingAndGathering",
-            "CookingAndGathering_MealPreparation",
-            "CookingAndGathering_Butchery"
+            "CookingAndGathering_MealPreparation"
         ],
         "mutation_priorities": [],  # True Kin uses Cybernetics (Hand bones, giant hands)
         "combat_doctrine": {
@@ -448,6 +451,8 @@ BUILD_TEMPLATES = {
             "Pistol",
             "Pistol_SteadyHands",
             "Pistol_Akimbo",
+            "CookingAndGathering",
+            "CookingAndGathering_Butchery",
             "Pistol_WeakSpotter",
             "Pistol_SlingAndRun",
             "Pistol_DisarmingShot",
@@ -460,9 +465,7 @@ BUILD_TEMPLATES = {
             "Acrobatics",
             "Acrobatics_SwiftReflexes",
             "Acrobatics_Dodge",
-            "CookingAndGathering",
-            "CookingAndGathering_MealPreparation",
-            "CookingAndGathering_Butchery"
+            "CookingAndGathering_MealPreparation"
         ],
         "mutation_priorities": [],  # True Kin uses Cybernetics (Gun rack, Flexors)
         "combat_doctrine": {
@@ -507,6 +510,8 @@ BUILD_TEMPLATES = {
         "skill_progression": [
             "Tactics",
             "Tactics_Hurdle",
+            "CookingAndGathering",
+            "CookingAndGathering_Butchery",
             "Tactics_Juke",
             "Endurance",
             "Endurance_ShakeItOff",
@@ -516,6 +521,7 @@ BUILD_TEMPLATES = {
             "Acrobatics",
             "Acrobatics_SwiftReflexes",
             "Acrobatics_Dodge",
+            "CookingAndGathering_MealPreparation",
             "Survival",
             "Survival_Camp"
         ],
