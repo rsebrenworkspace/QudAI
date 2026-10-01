@@ -831,6 +831,35 @@ namespace QudAIBrain
                 int zoneTier = 1;
                 try { zoneTier = currentCell?.ParentZone?.Tier ?? 1; } catch { }
                 sb.Append($"\"zone_tier\": {zoneTier},");
+
+                int unexploredCellCount = 0;
+                int sumUnexpX = 0;
+                int sumUnexpY = 0;
+                try
+                {
+                    var pz = currentCell?.ParentZone;
+                    if (pz != null && !pz.IsWorldMap())
+                    {
+                        for (int x = 0; x < pz.Width; x++)
+                        {
+                            for (int y = 0; y < pz.Height; y++)
+                            {
+                                Cell c = pz.GetCell(x, y);
+                                if (c != null && !c.Explored)
+                                {
+                                    unexploredCellCount++;
+                                    sumUnexpX += x;
+                                    sumUnexpY += y;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                sb.Append($"\"unexplored_cells\": {unexploredCellCount},");
+                sb.Append($"\"unexplored_centroid_x\": {(unexploredCellCount > 0 ? sumUnexpX / unexploredCellCount : -1)},");
+                sb.Append($"\"unexplored_centroid_y\": {(unexploredCellCount > 0 ? sumUnexpY / unexploredCellCount : -1)},");
                 string genotype = "";
                 string subtype = "";
                 try { genotype = player.GetGenotype() ?? ""; } catch { }

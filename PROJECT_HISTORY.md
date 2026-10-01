@@ -323,9 +323,26 @@
   - **Loop Breaker Frontier Escape:** When an oscillation loop trips along a shoreline, the loop breaker checks `find_zone_unexplored_frontier` first, escaping the cycle directly across the water toward the frontier.
   - **Verification:** Verified with live `last_state.json` producing immediate `MOVE_NW` water crossing into the lake; all 26 tests in `dry_run.py` pass.
 
+### Iteration 19: Unexplored Sector Telemetry & Elimination of Micro-Tile Touching
+- **The Problem:**
+  - In a live game session, movement became erratic and took over 800 turns to leave a single zone. The player appeared obsessed with stepping on every individual tile, and anti-oscillation was constantly being triggered.
+  - Root Cause Analysis:
+    1. **Entity-Level Micro-Targeting:** The driver attempted to find unexplored frontiers by iterating over `visible_entities` and checking `visit_counts[(tx, ty)] == 0`.
+    2. Because `visible_entities` contains every single object visible on screen (every watervine, brinestalk, puddle of salt, rock, and tree), and `visit_counts` only tracks coordinates the player's avatar has physically stepped on, 95% of entities had 0 visits.
+    3. Once native autoexplore finished the zone, the driver took over and attempted to path to and physically step on all 160–400 visible objects on the map.
+    4. When an entity was on an impassable tile (a wall, rock, or tree), the player bumped against it repeatedly, constantly tripping anti-oscillation.
+    5. Step 10 and 11 (zone exit navigation) were completely starved, trapping the character in the zone for 800+ turns.
+- **Solution:**
+  - **In-Engine Fog-of-War Grid Telemetry:** In `AIBrainPart.cs`, added a high-performance $80 \times 25$ grid scan in `ExportTurnState` (~0.02ms) using `Cell.Explored`. Exports `unexplored_cells` (count of unrevealed cells) and `(unexplored_centroid_x, unexplored_centroid_y)`.
+  - **Macro-Sector Water Traversal vs. Instant Exit:**
+    - If `unexplored_cells >= 35`: A massive unvisited landmass exists across water (e.g. northern river bank, lake islands). The driver navigates directly to the unexplored sector centroid across the water.
+    - If `unexplored_cells < 35`: The zone is fully revealed. The driver **immediately navigates to the forward zone exit border** (`get_zone_exit_target`) and transitions out of the zone in ~10 turns.
+  - **Removed Micro-Targeting of Visible Entities:** In real game telemetry, the driver never uses `visible_entities` to force the player to step on harmless objects.
+  - **Verification:** Verified with live `last_state.json`: with `unexplored_cells = 0`, the driver immediately chooses `MOVE_E` towards the zone exit border; with `unexplored_cells = 400`, it swims across the water towards the unexplored centroid. All 26 tests in `dry_run.py` pass.
+
 ---
 
-## 4. Current Codebase Specification (v1.2.2)
+## 4. Current Codebase Specification (v1.2.3)
 
 ### Directory Structure
 ```

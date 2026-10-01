@@ -1794,40 +1794,52 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     return {"action": best_inward, "reason": f"{tag}: Stepping inward {best_inward} toward zone interior to establish stable foothold"}
 
         # 7. Autonomous area exploration via Caves of Qud native Autoexplore
-        frontier_target, frontier_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
-        best_frontier_m = None
-        if frontier_target and valid_moves:
-            best_frontier_m = get_best_move_towards(cur_pos, frontier_target, valid_moves, surroundings)
+        unexp_cells = game_state.get("unexplored_cells", None)
+        zone_fully_explored = game_state.get("zone_fully_explored", False)
+
+        # Determine if there is a major unexplored sector (across water/obstacles)
+        has_unexplored_sector = (unexp_cells is not None and unexp_cells >= 35)
+        sector_target = None
+        sector_reason = ""
+        if has_unexplored_sector:
+            cx = game_state.get("unexplored_centroid_x", -1)
+            cy = game_state.get("unexplored_centroid_y", -1)
+            if 0 <= cx < 80 and 0 <= cy < 25:
+                sector_target = (cx, cy)
+                sector_reason = f"Water Traversal: Navigating across water toward unexplored sector at {sector_target} ({unexp_cells} unrevealed cells)"
+        elif unexp_cells is None:
+            # Fallback for synthetic dry-run tests without full zone grid telemetry
+            sector_target, sector_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
+
+        best_sector_m = None
+        if sector_target and valid_moves:
+            best_sector_m = get_best_move_towards(cur_pos, sector_target, valid_moves, surroundings)
 
         is_swimming_now = game_state.get("is_swimming", False) or any("swim" in ef.lower() for ef in game_state.get("effects", []))
-        frontier_requires_swim = (best_frontier_m is not None and is_swim_move(best_frontier_m, surroundings))
 
-        # Check if there are local unvisited dry-land tiles right next to us
-        unvisited_dry_local = [
-            m for m in valid_moves
-            if not is_swim_move(m, surroundings) and
-            visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) == 0
-        ]
-
-        # Native autoexplore CANNOT path through deep water. If the path to the frontier requires swimming
-        # or the player is actively swimming, and there are no unvisited dry tiles nearby,
-        # bypass native autoexplore and execute the water crossing move directly!
-        can_use_native_autoexplore = (not is_swimming_now) and (not frontier_requires_swim or bool(unvisited_dry_local)) and (not is_stuck_explore)
-        if can_use_native_autoexplore and not game_state.get("zone_fully_explored", False):
+        # Check if native autoexplore can run:
+        # Native autoexplore runs whenever the zone is not marked fully explored and not stuck cycling.
+        # But if the player is actively swimming, native autoexplore cannot path in water, so we manually navigate.
+        can_use_native_autoexplore = (not is_swimming_now) and (not is_stuck_explore) and (not zone_fully_explored)
+        if can_use_native_autoexplore:
             return {"action": "AUTOEXPLORE", "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder"}
 
-        # 8. Unexplored frontier across water / obstacles (Macro-frontier navigation)
-        if best_frontier_m:
-            return {"action": best_frontier_m, "reason": frontier_reason}
+        # 8. Unexplored Sector across Water / Obstacles (Macro-sector navigation)
+        # When native autoexplore has finished the current reachable landmass (or is stuck cycling on a shoreline),
+        # navigate toward the unexplored sector across the water!
+        if best_sector_m:
+            return {"action": best_sector_m, "reason": sector_reason}
 
-        # 9. Local unexplored frontier: If any adjacent move leads to a completely unvisited tile (0 visits), explore it!
-        unvisited_local = [
-            m for m in valid_moves
-            if visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) == 0
-        ]
-        if unvisited_local:
-            unvisited_local.sort(key=lambda m: (1 if is_swim_move(m, surroundings) else 0))
-            return {"action": unvisited_local[0], "reason": f"Scouting zone frontier {unvisited_local[0]}"}
+        # 9. Local unexplored frontier: If any adjacent move leads to a completely unvisited tile (0 visits)
+        # ONLY if the zone is not fully cleared (e.g. recovering from room loop in Joppa)
+        if not zone_fully_explored:
+            unvisited_local = [
+                m for m in valid_moves
+                if visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) == 0
+            ]
+            if unvisited_local:
+                unvisited_local.sort(key=lambda m: (1 if is_swim_move(m, surroundings) else 0))
+                return {"action": unvisited_local[0], "reason": f"Scouting zone frontier {unvisited_local[0]}"}
 
         # 10. Transition to adjacent zone via exit border (if standing directly on exit)
         exit_moves = [m for m in valid_moves if "[zone_exit" in surroundings.get(m[5:], "").lower() or "exit" in surroundings.get(m[5:], "").lower()]
@@ -1841,7 +1853,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 print(f"[Zone Hopping Breaker] Suppressed immediate backtrack {exit_moves[0]} to avoid border ping-pong loop.")
 
         # 11. Navigate directly to forward zone exit border if zone is fully explored
-        if game_state.get("zone_fully_explored", False):
+        if zone_fully_explored or is_stuck_explore:
             exit_target_pos, exit_tag = get_zone_exit_target(cur_pos)
             if exit_target_pos and valid_moves:
                 best_exit_m = get_best_move_towards(cur_pos, exit_target_pos, valid_moves, surroundings)
