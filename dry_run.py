@@ -1534,8 +1534,53 @@ print(f"Frontier target: {ft} | Reason: {fr}")
 assert ft is not None, "Expected frontier target in partially explored zone!"
 
 print("\n==================================================")
-print(">>> ALL 31 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 32: Centroid Proximity & Distance-1 Sector Navigation")
 print("==================================================")
+
+# Scenario 32.1: Centroid at Distance 1 (Water Traversal)
+# Character is swimming at (62, 11). Unexplored centroid is at (62, 12) (distance = 1).
+# Character MUST move towards (62, 12) (MOVE_S) and NOT bounce backwards (MOVE_NW)!
+prox_state = {
+    "hp": 18, "max_hp": 18, "x": 62, "y": 11, "z": 10,
+    "calling": "Apostle",
+    "level": 1, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.12.22.2.0.10",
+    "zone_name": "salt marsh, surface",
+    "unexplored_cells": 551,
+    "unexplored_centroid_x": 62,
+    "unexplored_centroid_y": 12,
+    "nearest_unexplored_x": 62,
+    "nearest_unexplored_y": 12,
+    "nearest_unexplored_dist": 1,
+    "is_swimming": True,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {
+        "NW": "[SWIM: salty water]", "N": "[SWIM: salty water]", "NE": "[SWIM: salty water]",
+        "W": "[SWIM: salty water]", "E": "[SWIM: salty water]",
+        "SW": "[SWIM: salty water]", "S": "[SWIM: salty water]", "SE": "[SWIM: salty water]"
+    },
+    "visible_entities": [{"tx": 60, "ty": 11, "blueprint": "Brinestalk"}]
+}
+
+dec_prox = brain.query_decision(prox_state, took_damage=False, enemies=[])
+print(f"Distance-1 centroid decision: {dec_prox['action']} | Reason: {dec_prox['reason']}")
+assert dec_prox["action"] == "MOVE_S", f"Expected MOVE_S towards (62, 12), got: {dec_prox['action']}"
+
+# Scenario 32.2: Standing on Centroid with Nearest Unexplored Target
+# Character is standing on (62, 12) (centroid). Nearest unexplored is (62, 13).
+# Character MUST navigate to nearest unexplored (MOVE_S)!
+standing_on_centroid_state = dict(prox_state)
+standing_on_centroid_state["y"] = 12
+standing_on_centroid_state["nearest_unexplored_y"] = 13
+
+dec_standing = brain.query_decision(standing_on_centroid_state, took_damage=False, enemies=[])
+print(f"Standing-on-centroid decision: {dec_standing['action']} | Reason: {dec_standing['reason']}")
+assert dec_standing["action"] == "MOVE_S", f"Expected MOVE_S towards nearest unexplored cell (62, 13), got: {dec_standing['action']}"
+
+print("\n==================================================")
+print(">>> ALL 32 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("==================================================")
+
 
 
 

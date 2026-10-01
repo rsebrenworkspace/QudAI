@@ -237,13 +237,18 @@ def find_zone_unexplored_frontier(game_state, cur_pos, visit_counts):
     """
     px, py = cur_pos
 
-    # 1. In-engine fog-of-war grid telemetry (centroid of remaining unrevealed tiles)
+    # 1. In-engine fog-of-war grid telemetry (centroid or nearest unrevealed tiles)
     unexp_cells = game_state.get("unexplored_cells", None)
-    if unexp_cells is not None and unexp_cells >= 35:
+    if unexp_cells is not None and unexp_cells > 0:
         cx = game_state.get("unexplored_centroid_x", -1)
         cy = game_state.get("unexplored_centroid_y", -1)
-        if 0 <= cx < 80 and 0 <= cy < 25 and max(abs(cx - px), abs(cy - py)) > 1:
+        nx = game_state.get("nearest_unexplored_x", -1)
+        ny = game_state.get("nearest_unexplored_y", -1)
+
+        if 0 <= cx < 80 and 0 <= cy < 25 and (cx != px or cy != py):
             return (cx, cy), f"Water Traversal: Navigating across water toward unexplored sector at ({cx}, {cy}) ({unexp_cells} unrevealed cells)"
+        if 0 <= nx < 80 and 0 <= ny < 25 and (nx != px or ny != py):
+            return (nx, ny), f"Water Traversal: Navigating toward nearest unexplored cell at ({nx}, {ny}) ({unexp_cells} unrevealed cells)"
 
     entities = game_state.get("visible_entities", [])
     if not entities:
@@ -259,8 +264,7 @@ def find_zone_unexplored_frontier(game_state, cur_pos, visit_counts):
                 unvisited_entities.append((tx, ty))
 
     if unvisited_entities:
-        # Require target to be at least 2 tiles away (macro-frontier or across water)
-        distant_unvisited = [p for p in unvisited_entities if max(abs(p[0] - px), abs(p[1] - py)) >= 2]
+        distant_unvisited = [p for p in unvisited_entities if (p[0] != px or p[1] != py)]
         if distant_unvisited:
             # Sort by Chebyshev distance first, then Euclidean distance
             distant_unvisited.sort(key=lambda p: (max(abs(p[0] - px), abs(p[1] - py)), (p[0] - px)**2 + (p[1] - py)**2))
@@ -1974,16 +1978,21 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         if zone_fully_explored and zone_id:
             EXPLORED_ZONE_SET.add(zone_id)
 
-        # Determine if there is a major unexplored sector (across water/obstacles)
-        has_unexplored_sector = (unexp_cells is not None and unexp_cells >= 35)
+        # Determine if there is an unexplored sector (across water/obstacles)
+        has_unexplored_sector = (unexp_cells is not None and unexp_cells > 0)
         sector_target = None
         sector_reason = ""
         if has_unexplored_sector:
             cx = game_state.get("unexplored_centroid_x", -1)
             cy = game_state.get("unexplored_centroid_y", -1)
-            if 0 <= cx < 80 and 0 <= cy < 25 and max(abs(cx - px), abs(cy - py)) > 1:
+            nx = game_state.get("nearest_unexplored_x", -1)
+            ny = game_state.get("nearest_unexplored_y", -1)
+            if 0 <= cx < 80 and 0 <= cy < 25 and (cx != px or cy != py):
                 sector_target = (cx, cy)
                 sector_reason = f"Water Traversal: Navigating across water toward unexplored sector at {sector_target} ({unexp_cells} unrevealed cells)"
+            elif 0 <= nx < 80 and 0 <= ny < 25 and (nx != px or ny != py):
+                sector_target = (nx, ny)
+                sector_reason = f"Water Traversal: Navigating toward nearest unexplored cell at {sector_target} ({unexp_cells} unrevealed cells)"
         elif unexp_cells is None:
             # Fallback for synthetic dry-run tests without full zone grid telemetry
             sector_target, sector_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
@@ -2005,8 +2014,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         # 8. Unexplored Sector across Water / Obstacles (Macro-sector navigation)
         # When native autoexplore has finished the current reachable landmass (or is stuck cycling on a shoreline),
         # navigate toward the unexplored sector across the water!
-        if best_sector_m:
-            return {"action": best_sector_m, "reason": sector_reason}
+        if sector_target:
+            if best_sector_m:
+                return {"action": best_sector_m, "reason": sector_reason}
+            return {"action": f"NAVIGATE_TO_CELL:{sector_target[0]},{sector_target[1]}", "reason": sector_reason}
 
         # 9. Local unexplored frontier: If any adjacent move leads to a completely unvisited tile (0 visits)
         # ONLY if the zone is not fully cleared (e.g. recovering from room loop in Joppa)

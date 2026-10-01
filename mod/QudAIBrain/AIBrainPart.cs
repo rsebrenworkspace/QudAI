@@ -833,11 +833,16 @@ namespace QudAIBrain
                 int unexploredCellCount = 0;
                 int sumUnexpX = 0;
                 int sumUnexpY = 0;
+                int nearestUnexpX = -1;
+                int nearestUnexpY = -1;
+                int minUnexpDist = int.MaxValue;
                 try
                 {
                     var parentZone = currentCell?.ParentZone;
                     if (parentZone != null && !parentZone.IsWorldMap())
                     {
+                        int curPx = player?.CurrentCell?.X ?? -1;
+                        int curPy = player?.CurrentCell?.Y ?? -1;
                         for (int x = 0; x < parentZone.Width; x++)
                         {
                             for (int y = 0; y < parentZone.Height; y++)
@@ -848,6 +853,16 @@ namespace QudAIBrain
                                     unexploredCellCount++;
                                     sumUnexpX += x;
                                     sumUnexpY += y;
+                                    if (curPx >= 0 && curPy >= 0)
+                                    {
+                                        int dist = Math.Max(Math.Abs(x - curPx), Math.Abs(y - curPy));
+                                        if (dist < minUnexpDist)
+                                        {
+                                            minUnexpDist = dist;
+                                            nearestUnexpX = x;
+                                            nearestUnexpY = y;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -858,6 +873,9 @@ namespace QudAIBrain
                 sb.Append($"\"unexplored_cells\": {unexploredCellCount},");
                 sb.Append($"\"unexplored_centroid_x\": {(unexploredCellCount > 0 ? sumUnexpX / unexploredCellCount : -1)},");
                 sb.Append($"\"unexplored_centroid_y\": {(unexploredCellCount > 0 ? sumUnexpY / unexploredCellCount : -1)},");
+                sb.Append($"\"nearest_unexplored_x\": {nearestUnexpX},");
+                sb.Append($"\"nearest_unexplored_y\": {nearestUnexpY},");
+                sb.Append($"\"nearest_unexplored_dist\": {(minUnexpDist != int.MaxValue ? minUnexpDist : -1)},");
                 string genotype = "";
                 string subtype = "";
                 try { genotype = player.GetGenotype() ?? ""; } catch { }
@@ -1964,6 +1982,15 @@ namespace QudAIBrain
                             AutoAct.TryFindPathStep(targetCell, out step);
                         }
                         catch { }
+
+                        if (string.IsNullOrEmpty(step) || step == ".")
+                        {
+                            try
+                            {
+                                step = player.CurrentCell?.GetDirectionFromCell(targetCell);
+                            }
+                            catch { }
+                        }
 
                         if (!string.IsNullOrEmpty(step) && step != ".")
                         {
