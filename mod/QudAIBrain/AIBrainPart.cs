@@ -1499,7 +1499,14 @@ namespace QudAIBrain
                             {
                                 try
                                 {
-                                    ingredient.SplitFromStack(1, player)?.Destroy();
+                                    if (ingredient.Count > 1)
+                                    {
+                                        ingredient.Count--;
+                                    }
+                                    else
+                                    {
+                                        ingredient.Destroy();
+                                    }
                                 }
                                 catch { }
                             }

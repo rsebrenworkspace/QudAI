@@ -332,7 +332,9 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
        MessageQueue.AddPlayerMessage("{{G|You deploy a campfire.}}");
        ```
     2. **Programmatic Cooking:**
-       - Consume 1 ingredient from inventory: `ingredient.SplitFromStack(1, player)?.Destroy()`.
+       - Consume 1 ingredient from inventory: `if (ingredient.Count > 1) ingredient.Count--; else ingredient.Destroy();`.
+         > [!NOTE]
+         > In Caves of Qud's `GameObject`, `SplitFromStack()` takes 0 arguments (calling `SplitFromStack(1, player)` causes `CS1501`). Decrementing `Count` directly or calling `Destroy()` when `Count <= 1` is the cleanest and most robust method.
        - Clear hunger & reset stomach counters: `stomach.ClearHunger(); stomach.ResetCookingCounter();`.
        - Silently notify campfire without opening menus: `campPart.AfterCooked();`.
        - Log message: `MessageQueue.AddPlayerMessage("{{G|You whip up a simple meal at the campfire and satisfy your hunger.}}");`.

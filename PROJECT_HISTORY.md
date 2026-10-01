@@ -254,7 +254,7 @@
   - **Headless Cooking & Camping (Zero-UI Prompts):**
     - Identified that `Campfire.Cook()` explicitly invokes `ShowInventoryActionMenu`, displaying the interactive modal `[m] Whip up a meal / [i] Choose ingredients / [r] Recipe / [f] Preserve`.
     - Identified that `Survival_Camp.AttemptCamp()` calls `PickDirectionS("Make Camp")` and `ShowYesNoCancel()`.
-    - Refactored both actions in `AIBrainPart.cs` to execute programmatically: `Cell.AddObject("Campfire")` places the fire directly without directional prompts; `COOK_MEAL` consumes 1 ingredient from inventory, clears stomach hunger via `stomach.ClearHunger()`, resets cooking counter, and calls `campPart.AfterCooked()` silently without ever opening UI modals.
+    - Refactored both actions in `AIBrainPart.cs` to execute programmatically: `Cell.AddObject("Campfire")` places the fire directly without directional prompts; `COOK_MEAL` consumes 1 ingredient from inventory (via `ingredient.Count` manipulation, resolving CS1501 with `SplitFromStack`), clears stomach hunger via `stomach.ClearHunger()`, resets cooking counter, and calls `campPart.AfterCooked()` silently without ever opening UI modals.
   - **Expanded Verification Suite (Test 25):** Added Test 25 to `dry_run.py`, verifying 5-tile entropy check, open frontier escape, centroid steer fallback, and zone exploration exhaustion. All 25 tests pass.
 
 ---
