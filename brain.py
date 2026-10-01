@@ -1967,7 +1967,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         # 7. Autonomous area exploration via Caves of Qud native Autoexplore
         unexp_cells = game_state.get("unexplored_cells", None)
-        zone_fully_explored = game_state.get("zone_fully_explored", False) or (unexp_cells == 0)
+        if unexp_cells is not None and unexp_cells > 0:
+            zone_fully_explored = False
+        else:
+            zone_fully_explored = game_state.get("zone_fully_explored", False) or (unexp_cells == 0)
         if zone_fully_explored and zone_id:
             EXPLORED_ZONE_SET.add(zone_id)
 
@@ -2047,7 +2050,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 print(f"[Zone Hopping Breaker] Suppressed immediate backtrack {exit_moves[0]} to avoid border ping-pong loop.")
 
         # 11. Navigate directly to forward zone exit border if zone is fully explored
-        if zone_fully_explored or is_stuck_explore:
+        if (zone_fully_explored and (unexp_cells is None or unexp_cells == 0)) or (is_stuck_explore and (unexp_cells is None or unexp_cells < 35)):
             exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos)
             if valid_moves:
                 return {"action": f"NAVIGATE_ZONE_EXIT:{exit_dir}", "reason": f"Zone fully explored: navigating via engine pathfinder toward {exit_tag}"}
@@ -2348,27 +2351,22 @@ def main():
                         action_repeat_count = 0
                 elif is_oscillating:
                     if action == "AUTOEXPLORE":
-                        if current_zone_id:
+                        if current_zone_id and (game_state.get("unexplored_cells", 0) or 0) < 35:
                             stuck_autoexplore_zones.add(current_zone_id)
                             EXPLORED_ZONE_SET.add(current_zone_id)
-                        print(f"[Loop Breaker] Autoexplore oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}/{len(recent_positions)}). Marking zone autoexplore exhausted; forcing frontier breakout.")
+                        print(f"[Loop Breaker] Autoexplore oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}/{len(recent_positions)}). Forcing frontier breakout.")
 
                     valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
                     open_escapes = [m for m in valid_m
                                     if (cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]) not in recent_positions]
 
                     frontier_target, frontier_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
-                    frontier_escape = None
-                    if frontier_target and valid_m:
-                        best_f_m = get_best_move_towards(cur_pos, frontier_target, valid_m, surroundings)
-                        if best_f_m:
-                            frontier_escape = best_f_m
 
                     exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos)
 
-                    if frontier_escape and (game_state.get("unexplored_cells", 1) or 0) > 0:
-                        action = frontier_escape
-                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards unexplored frontier at {frontier_target} via {action}."
+                    if frontier_target and (game_state.get("unexplored_cells", 1) or 0) > 0:
+                        action = f"NAVIGATE_TO_CELL:{frontier_target[0]},{frontier_target[1]}"
+                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Routing via native pathfinder to unexplored frontier at {frontier_target}."
                     elif is_stuck_explore or game_state.get("zone_fully_explored", False) or (game_state.get("unexplored_cells", 1) == 0):
                         action = f"NAVIGATE_ZONE_EXIT:{exit_dir}"
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards forward exit {exit_tag} via native engine pathfinder."

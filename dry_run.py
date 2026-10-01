@@ -1493,8 +1493,48 @@ print(f"get_zone_exit_target: Pos: {pos}, Tag: {tag}, Dir: {exit_dir}")
 assert exit_dir in ("N", "S", "E", "W"), f"Exit dir must be cardinal, got: {exit_dir}"
 assert pos == (78, 11), f"Expected pos (78, 11), got: {pos}"
 
+# ==================================================
+# TEST 31: Zone Bailing Prevention & Native Target Cell Pathfinding
+# ==================================================
 print("\n==================================================")
-print(">>> ALL 30 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 31: Zone Bailing Prevention & Native Target Cell Pathfinding")
+print("==================================================")
+
+# Scenario 31.1: Zone Bailing Guard
+# Character in a brand new salt marsh zone with 1439 unexplored cells.
+# Even if engine erroneously passes zone_fully_explored: True, Python MUST NOT navigate to exit!
+salt_marsh_state = {
+    "hp": 18, "max_hp": 18, "x": 43, "y": 14, "z": 10,
+    "calling": "Apostle",
+    "level": 1, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.12.22.2.0.10",
+    "zone_name": "salt marsh, surface",
+    "zone_fully_explored": True,  # Erroneous engine flag
+    "unexplored_cells": 1439,      # 1439 unexplored cells exist!
+    "unexplored_centroid_x": 44,
+    "unexplored_centroid_y": 12,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {
+        "C": "dirt",
+        "NW": "Empty ground", "N": "watervine", "NE": "watervine",
+        "W": "Empty ground", "E": "Empty ground",
+        "SW": "watervine", "S": "watervine", "SE": "Empty ground"
+    },
+    "visible_entities": []
+}
+dec_marsh = brain.query_decision(salt_marsh_state, took_damage=False, enemies=[])
+print(f"Salt marsh decision with 1439 unexp cells: {dec_marsh['action']} | Reason: {dec_marsh['reason']}")
+assert not dec_marsh["action"].startswith("NAVIGATE_ZONE_EXIT"), f"Must NOT bail on zone with 1439 unrevealed cells! Got: {dec_marsh['action']}"
+assert dec_marsh["action"] == "AUTOEXPLORE", f"Expected AUTOEXPLORE in unexplored zone, got: {dec_marsh['action']}"
+
+# Scenario 31.2: Loop Breaker Native Target Cell Routing
+# When oscillating in a zone with unexplored cells, loop breaker must route via NAVIGATE_TO_CELL
+ft, fr = brain.find_zone_unexplored_frontier(salt_marsh_state, (43, 14), brain.visit_counts)
+print(f"Frontier target: {ft} | Reason: {fr}")
+assert ft is not None, "Expected frontier target in partially explored zone!"
+
+print("\n==================================================")
+print(">>> ALL 31 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

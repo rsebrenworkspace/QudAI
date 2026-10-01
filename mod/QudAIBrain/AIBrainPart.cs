@@ -1948,6 +1948,54 @@ namespace QudAIBrain
                 return;
             }
 
+            if (act.StartsWith("NAVIGATE_TO_CELL:"))
+            {
+                string coordStr = act.Substring(17).Trim();
+                string[] parts = coordStr.Split(',');
+                if (parts.Length == 2 && int.TryParse(parts[0], out int tx) && int.TryParse(parts[1], out int ty))
+                {
+                    Cell targetCell = null;
+                    try { targetCell = currentCell?.ParentZone?.GetCell(tx, ty); } catch { }
+                    if (targetCell != null)
+                    {
+                        string step = null;
+                        try
+                        {
+                            AutoAct.TryFindPathStep(targetCell, out step);
+                        }
+                        catch { }
+
+                        if (!string.IsNullOrEmpty(step) && step != ".")
+                        {
+                            int energyBefore = player.Energy?.Value ?? 0;
+                            int pxBefore = player.CurrentCell?.X ?? -1;
+                            int pyBefore = player.CurrentCell?.Y ?? -1;
+
+                            bool moved = player.Move(step);
+                            bool cellChanged = (player.CurrentCell != null && (player.CurrentCell.X != pxBefore || player.CurrentCell.Y != pyBefore));
+
+                            if (!moved || !cellChanged)
+                            {
+                                lastMoveFailed = true;
+                                lastFailedDir = step.ToUpper();
+                                TryOpenDoorInDirection(player, step);
+                            }
+                            else
+                            {
+                                lastMoveFailed = false;
+                                lastFailedDir = "";
+                                autoexplorePosHistory.Clear();
+                            }
+                            if (player.Energy != null && player.Energy.Value >= energyBefore)
+                            {
+                                player.UseEnergy(1000, "Movement");
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+
             if (act.StartsWith("NAVIGATE_ZONE_EXIT:"))
             {
                 string dirStr = act.Substring(19).Trim().ToUpper();
@@ -2149,12 +2197,12 @@ namespace QudAIBrain
 
             if (isCycling)
             {
-                // Persistent cycling: mark zone fully explored and yield to Python brain navigation
-                isZoneFullyExplored = true;
+                // Persistent cycling: yield to Python brain navigation without falsely claiming the zone is explored
+                isZoneFullyExplored = false;
                 autoexplorePosHistory.Clear();
                 lastMoveFailed = false;
                 lastFailedDir = "";
-                UnityEngine.Debug.LogWarning($"[QudAI Autoexplore Oscillation] Zone marked fully explored due to cycling at ({curX}, {curY}) (visits: {repeatVisits}, unique: {uniquePositions}/{autoexplorePosHistory.Count}). Yielding to brain navigation.");
+                UnityEngine.Debug.LogWarning($"[QudAI Autoexplore Oscillation] Cycling detected at ({curX}, {curY}) (visits: {repeatVisits}, unique: {uniquePositions}/{autoexplorePosHistory.Count}). Yielding to brain navigation.");
                 if (player.Energy != null) player.UseEnergy(1000, "Pass");
                 return;
             }
@@ -2222,8 +2270,32 @@ namespace QudAIBrain
                 return;
             }
 
-            // 4. Mark zone fully explored when no autoexplore targets remain
-            isZoneFullyExplored = true;
+            // 4. Mark zone fully explored ONLY if all cells in the zone are actually explored!
+            int unexpCount = 0;
+            try
+            {
+                if (zone != null)
+                {
+                    for (int x = 0; x < zone.Width; x++)
+                    {
+                        for (int y = 0; y < zone.Height; y++)
+                        {
+                            Cell c = zone.GetCell(x, y);
+                            if (c != null && !c.Explored) unexpCount++;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            if (unexpCount <= 0)
+            {
+                isZoneFullyExplored = true;
+            }
+            else
+            {
+                isZoneFullyExplored = false;
+            }
             autoexplorePosHistory.Clear();
             lastMoveFailed = false;
             lastFailedDir = "";
