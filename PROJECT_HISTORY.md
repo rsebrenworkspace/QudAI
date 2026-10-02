@@ -801,6 +801,43 @@
       - 46.5: Nomad sniper shoots target at distance 2 rather than closing into melee.
     - All 46 verification tests pass cleanly. Mod deployed to game directory.
 
+### Iteration 37: Canyon & Subterranean Reachable Edges Enforcement & Blind Exit Lock Prevention
+- **Problem Statement:**
+  1. *Surface Canyon False Reachable Edges Suppression*:
+     - User reported: `"Still oscelating. Character has pet, its locked to exit out the south, but there is no southern exit in this dungeon."`
+     - State analysis in `JoppaWorld.10.18.1.2.10` (`desert canyon, surface`, `z: 10`) showed player at `(36, 6)` with giant amoeba pet at `(37, 6)`.
+     - In `AIBrainPart.cs`, `reachable_edges` evaluation was gated behind `if (isZoneFullyExplored || unexploredCellCount < 35 || (currentCell?.ParentZone?.Z ?? 10) > 10)`.
+     - Because surface canyons are at `z == 10` and have 932 unexplored cells, `reachable_edges` was NEVER computed and exported as `""` (empty string).
+  2. *Blind Exit Fallback & Sticky Lock*:
+     - Python treated `reachable_edges: ""` as telemetry absence and evaluated all cardinal directions `["N", "S", "E", "W"]`.
+     - `check_exit_direction_failure` had a boundary guard `elif chosen_exit == "S" and py >= 20:`. Since `py == 6 < 20`, South was not flagged as failed despite solid canyon rock walls.
+     - Python chose South and dispatched `NAVIGATE_ZONE_EXIT:S`.
+     - In `AIBrainPart.cs`, when `AutoAct.TryFindEdgeStep` and border cell search failed to find an edge step, a blind fallback `step = edgeChar.ToString()` checked if the adjacent tile `(36, 7)` was empty ground and stepped South into the dead end!
+     - Next turn, hitting the solid shale wall at `(36, 8)`, the agent failed or stepped back to `(36, 6)`, where South was repeatedly re-selected, creating an infinite oscillation.
+  3. *Loop Breaker Order Inversion*:
+     - In `main()` loop breaker, `elif is_stuck_explore or ...: action = NAVIGATE_ZONE_EXIT:{exit_dir}` was evaluated BEFORE checking for unexplored frontiers.
+     - With 932 unrevealed cells and a viable frontier target at `(34, 8)`, the loop breaker abandoned exploring the zone and forced navigation to the non-existent southern exit.
+- **Solution:**
+  - **In-Engine Local Zone Reachable Edges Telemetry (`AIBrainPart.cs`):**
+    - Removed the restrictive `isZoneFullyExplored || unexploredCellCount < 35 || z > 10` guard.
+    - Evaluates `AutoAct.TryFindEdgeStep` across all 4 cardinal directions in ALL local non-worldmap zones (`currentCell?.ParentZone != null && !currentCell.ParentZone.IsWorldMap()`).
+    - Eliminates blind 1-step edge move in `NAVIGATE_ZONE_EXIT`: direct step in `edgeChar` direction is strictly restricted to cells that actually reside on that zone border (`isBorderCell`). If no edge path exists, `NAVIGATE_ZONE_EXIT` cleanly fails (`lastMoveFailed = true`, `lastFailedDir = edgeChar.ToString()`) without walking deeper into dead ends.
+  - **Reachable Edges Enforcement & Exit Blacklisting (`brain.py`):**
+    - Updated `check_exit_direction_failure`: when `reachable_edges` telemetry is provided, any direction not in `reachable_edges` is immediately flagged as failed.
+    - Added 2-step surroundings checks (`SS`, `SSW`, `SSE` for South, etc.) so dead-end walls are detected regardless of `py`/`px` coordinate.
+    - Updated `get_zone_exit_target`: strictly restricts candidates to verified `reachable_edges`. Automatically invalidates and blacklists any previously-chosen exit that is absent from `reachable_edges`.
+    - Resetting `FAILED_ZONE_EXITS` is strictly scoped within `reachable_set`, permanently preventing the resurrection of impossible exits like South in solid canyon rock.
+  - **Loop Breaker Frontier Prioritization (`brain.py`):**
+    - Loop breaker now checks `elif frontier_target and unexp_c > 35 and cur_z <= 10:` to navigate via `NAVIGATE_TO_CELL` towards unexplored frontiers before attempting to abandon the zone via `NAVIGATE_ZONE_EXIT`.
+    - Clears and blacklists `CURRENT_ZONE_CHOSEN_EXIT` whenever oscillation occurs away from borders.
+  - **Verification (Test 47):**
+    - Added Test 47 in `dry_run.py` verifying:
+      - 47.1: Surface canyon `reachable_edges="N"` validates North and rejects S/E/W.
+      - 47.2: Invalidation of previously-locked South exit, immediate re-routing to North, and blacklisting in `FAILED_ZONE_EXITS`.
+      - 47.3: Fully enclosed pocket (`reachable_edges=""`) yields None exit dir without crashing.
+      - 47.4: Fallback surroundings check detects 2-step wall obstructions even at `py < 20`.
+    - All 47 verification tests pass cleanly. Mod deployed to game directory.
+
 ---
 
 ## 4. Current Codebase Specification (v1.3.2)
