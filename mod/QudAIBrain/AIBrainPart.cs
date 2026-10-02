@@ -1896,6 +1896,43 @@ namespace QudAIBrain
                     PreferredDirection = GetBestEnemyDirection(player);
                 }
 
+                // Resolve ability command alias/display name against player's ActivatedAbilities
+                try
+                {
+                    var playerAbilities = player.GetPart<ActivatedAbilities>();
+                    if (playerAbilities != null && playerAbilities.AbilityByGuid != null)
+                    {
+                        foreach (var kvp in playerAbilities.AbilityByGuid)
+                        {
+                            var ab = kvp.Value;
+                            if (ab == null) continue;
+                            string cleanName = StripQudFormatting(ab.DisplayName ?? "");
+                            string abCmd = ab.Command ?? "";
+                            if (string.Equals(abCmd, cmd, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(cleanName, cmd, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(cleanName.Replace(" ", ""), cmd.Replace(" ", ""), StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(abCmd, "Command" + cmd.Replace(" ", ""), StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals("Command" + cleanName.Replace(" ", ""), cmd, StringComparison.OrdinalIgnoreCase))
+                            {
+                                cmd = abCmd;
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                if (cmd.IndexOf("butcher", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    ExecuteCommand(player, "BUTCHER");
+                    return;
+                }
+                if (cmd.IndexOf("harvest", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    ExecuteCommand(player, "HARVEST");
+                    return;
+                }
+
                 bool isProselytize = cmd.IndexOf("proselytize", StringComparison.OrdinalIgnoreCase) >= 0 || cmd.IndexOf("beguile", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool isTouchOrDirect = isProselytize || cmd.IndexOf("teleportother", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool isDirectRay = cmd.IndexOf("lase", StringComparison.OrdinalIgnoreCase) >= 0 ||

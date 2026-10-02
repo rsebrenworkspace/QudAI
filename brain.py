@@ -69,7 +69,9 @@ DIRECTIONAL_ABILITIES = {
     "freezingray", "flamingray", "spitpoison", "teleportother", "teleport other",
     "teleport", "charge", "meleecharge", "lunge", "slam", "juke", "jump",
     "lase", "stunningforce", "stunning force", "cryokinesis", "pyrokinesis",
-    "syphonvim", "syphon vim", "forcewall", "force wall", "proselytize", "beguile"
+    "syphonvim", "syphon vim", "forcewall", "force wall", "proselytize", "beguile",
+    "flaming ray", "freezing ray", "flameray", "flame ray", "commandflamingray",
+    "commandfreezingray", "commandlase", "commandstunningforce"
 }
 
 MELEE_TARGETED_ABILITIES = {
@@ -1263,6 +1265,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                             action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Disarming Shot at {c_name} {s_dir} - WEAPON DENIAL)")
                         elif "freezingray" in combined or "freezing ray" in combined:
                             action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast Freezing Ray at {c_name} {s_dir} - FREEZE CC)")
+                        elif "flamingray" in combined or "flaming ray" in combined or "flame ray" in combined:
+                            action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast Flaming Ray thermal beam at {c_name} {s_dir} - HIGH THERMAL BURST)")
                         else:
                             action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Cast {name} at {c_name} {s_dir})")
 
@@ -1294,6 +1298,10 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                     if adj_threats:
                         for d, ename in adj_threats.items():
                             action_choices.append(f"USE_ABILITY:{cmd}:{d} (Execute {name} on {ename} {d} - MELEE BURST & BLEED)")
+                elif any(ray in combined for ray in ["flamingray", "flaming ray", "flame ray", "freezingray", "freezing ray"]):
+                    if adj_threats:
+                        for d, ename in adj_threats.items():
+                            action_choices.append(f"USE_ABILITY:{cmd}:{d} (Point-blank {name} burst on {ename} {d} - HEAVY BURST)")
                 elif any(cg in combined for cg in ["charge", "meleecharge", "chargingstrike", "lunge"]):
                     if closest and 2 <= c_dist <= 4 and not adj_threats and s_dir:
                         action_choices.append(f"USE_ABILITY:{cmd}:{s_dir} (Charge at {c_name} {s_dir} - GAP-CLOSER OPENER: Close gap & daze)")
@@ -1580,18 +1588,31 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             name = ab_strike.get("name", "Strike")
             return {"action": f"USE_ABILITY:{cmd}:{target_dir}", "reason": f"[{template['name']} Fallback] Executing {name} on adjacent {target_name} ({target_dir})"}
 
+        # Point-blank elemental burst (Flaming Ray / Freezing Ray)
+        ab_burst = find_ready_ability(abilities, ["flaming ray", "flamingray", "flameray", "flame ray", "freezing ray", "freezingray"])
+        if ab_burst and ab_burst.get("command"):
+            return {"action": f"USE_ABILITY:{ab_burst['command']}:{target_dir}", "reason": f"[{template['name']} Fallback] Point-blank {ab_burst.get('name', 'Ray')} burst on {target_name} ({target_dir})"}
+
         # Basic melee bump-attack
         return {"action": f"MOVE_{target_dir}", "reason": f"[{template['name']} Fallback] Relentless melee strike on {target_name} ({target_dir})"}
 
-    # 3. Gap Closer: If enemy at distance 2-4, use Charge!
-    if closest_enemy and 2 <= closest_dist <= 4:
+    # 3. Gap Closer & Ray Fire: If enemy at distance 2-6, use Charge or fire Ray!
+    if closest_enemy and 2 <= closest_dist <= 6:
         ab_charge = find_ready_ability(abilities, ["charge", "meleecharge", "chargingstrike", "lunge"])
         s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
-        if ab_charge and ab_charge.get("command"):
+        if closest_dist <= 4 and ab_charge and ab_charge.get("command"):
             cmd = ab_charge["command"]
             return {"action": f"USE_ABILITY:{cmd}:{s_dir}", "reason": f"[{template['name']} Fallback] Charging {c_name} ({s_dir}) to close gap and daze target"}
 
-        # Charge not ready -> Advance directly into melee
+        # Secondary action bar ray fire (Freezing Ray / Flaming Ray) while closing distance
+        ab_ray = find_ready_ability(abilities, ["freezing ray", "freezingray", "freeze", "flaming ray", "flamingray", "flameray", "flame ray"])
+        if ab_ray and ab_ray.get("command") and s_dir:
+            surroundings = game_state.get("surroundings", {})
+            is_clear, _ = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest_enemy, surroundings=surroundings)
+            if is_clear:
+                return {"action": f"USE_ABILITY:{ab_ray['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Blasting approaching {c_name} with {ab_ray.get('name', 'Ray')} ({s_dir})"}
+
+        # Advance directly into melee
         step_move = f"MOVE_{s_dir}"
         if step_move in valid_moves:
             return {"action": step_move, "reason": f"[{template['name']} Fallback] Advancing into melee contact on {c_name} ({s_dir})"}
@@ -1852,13 +1873,27 @@ def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_move
 
         if has_missile and ammo > 0:
             return {"action": f"FIRE_MISSILE@{px + CARDINAL_OFFSETS[target_dir][0]},{py + CARDINAL_OFFSETS[target_dir][1]}", "reason": f"[{template['name']} Fallback] Point-blank pistol blast at {target_name}"}
+
+        ab_burst = find_ready_ability(abilities, ["flaming ray", "flamingray", "flameray", "flame ray", "freezing ray", "freezingray"])
+        if ab_burst and ab_burst.get("command"):
+            return {"action": f"USE_ABILITY:{ab_burst['command']}:{target_dir}", "reason": f"[{template['name']} Fallback] Point-blank {ab_burst.get('name', 'Ray')} burst on {target_name} ({target_dir})"}
+
         return {"action": f"MOVE_{target_dir}", "reason": f"[{template['name']} Fallback] Striking {target_name} in melee"}
 
-    # 3. Chain Fire / Rapid Pistol Volley (Distance 2 to 8)
+    # 3. Chain Fire / Rapid Pistol Volley / Ray Beams (Distance 2 to 8)
     if closest_enemy and 2 <= closest_dist <= 8:
         ab_chain = find_ready_ability(abilities, ["chain fire", "chainfire"])
         if ab_chain and ab_chain.get("command") and ammo >= 3:
             return {"action": f"USE_ABILITY:{ab_chain['command']}", "reason": f"[{template['name']} Fallback] Unleashing Chain Fire pistol volley at {c_name} (dist: {closest_dist})"}
+
+        # Secondary action bar ray attack (Freezing Ray / Flaming Ray)
+        ab_ray = find_ready_ability(abilities, ["freezing ray", "freezingray", "freeze", "flaming ray", "flamingray", "flameray", "flame ray"])
+        if ab_ray and ab_ray.get("command") and (ammo <= 0 or closest_dist <= 5):
+            s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
+            surroundings = game_state.get("surroundings", {})
+            is_clear, _ = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest_enemy, surroundings=surroundings)
+            if is_clear and s_dir:
+                return {"action": f"USE_ABILITY:{ab_ray['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Blasting {c_name} with {ab_ray.get('name', 'Ray')} ({s_dir})"}
 
         if has_missile and ammo > 0:
             companions = game_state.get("companions", [])
@@ -1939,15 +1974,20 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     if is_sprinting and adj_threats and open_moves:
         return {"action": open_moves[0], "reason": f"[{template['name']} Fallback] Sprint kiting {open_moves[0][5:]}"}
 
-    # 3. Crowd Control: Freezing Ray on incoming pursuers (distance 2-5)
-    if closest_enemy and 2 <= closest_dist <= 5:
+    # 3. Crowd Control & Thermal Ray Sniping: Freezing Ray or Flaming Ray on incoming pursuers (distance 2-6)
+    if closest_enemy and 2 <= closest_dist <= 6:
         ab_freeze = find_ready_ability(abilities, ["freezing ray", "freezingray", "freeze"])
-        if ab_freeze and ab_freeze.get("command"):
+        ab_flame = find_ready_ability(abilities, ["flaming ray", "flamingray", "flameray", "flame ray"])
+        ray_ab = ab_freeze or ab_flame
+        if ray_ab and ray_ab.get("command"):
             s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
             companions = game_state.get("companions", [])
-            is_clear, _ = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords)
-            if is_clear:
-                return {"action": f"USE_ABILITY:{ab_freeze['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Freezing {c_name} in solid ice with Freezing Ray ({s_dir})"}
+            surroundings = game_state.get("surroundings", {})
+            is_clear, _ = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest_enemy, surroundings=surroundings)
+            if is_clear and s_dir:
+                ab_name = ray_ab.get("name", "Ray")
+                action_verb = "Freezing" if ray_ab == ab_freeze else "Incinerating"
+                return {"action": f"USE_ABILITY:{ray_ab['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] {action_verb} {c_name} with {ab_name} ({s_dir})"}
 
     # 4. RANGED SNIPE: Disengaged at safe distance (dist >= 2) with loaded rifle -> SHOOT! (Requires clear LOF)
     if closest_enemy and closest_dist >= 2 and has_missile and ammo > 0 and not adj_threats:
@@ -1991,6 +2031,10 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     # 7. Adjacent Melee Engagement (1 threat)
     if adj_threats:
         d, ename = list(adj_threats.items())[0]
+        # Point-blank burst (Flaming Ray / Freezing Ray)
+        ab_burst = find_ready_ability(abilities, ["flaming ray", "flamingray", "flameray", "flame ray", "freezing ray", "freezingray"])
+        if ab_burst and ab_burst.get("command"):
+            return {"action": f"USE_ABILITY:{ab_burst['command']}:{d}", "reason": f"[{template['name']} Fallback] Point-blank {ab_burst.get('name', 'Ray')} burst on {ename} ({d})"}
         return {"action": f"MOVE_{d}", "reason": f"[{template['name']} Fallback] Striking adjacent threat {ename} ({d})"}
 
     # 8. Advance to melee / target if no ammo available

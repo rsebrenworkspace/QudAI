@@ -2286,9 +2286,131 @@ dec_lvl3 = brain.query_decision(lvl3_capped_state, took_damage=False, enemies=[]
 print(f"Level 3 3-MP capped decision: {dec_lvl3['action']} | Reason: {dec_lvl3['reason']}")
 assert not dec_lvl3["action"].startswith("AUTOLEVEL"), f"Must not autolevel when MP < 4 and all mutations capped! Got: {dec_lvl3['action']}"
 
+# ==============================================================================
+# TEST 43: Secondary Action Bar & Alternating Ray Cooldown Execution
+# ==============================================================================
 print("\n==================================================")
-print(">>> ALL 42 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 43: Secondary Action Bar & Alternating Ray Cooldown Execution")
 print("==================================================")
+
+# Scenario 43.1: Level 5 Nomad with both Freezing Ray and Flaming Ray ready
+# Facing an approaching hostile snapjaw at distance 3 (E).
+# Must fire Freezing Ray as CC opener to freeze mobile pursuer!
+lvl5_nomad_state = {
+    "hp": 32, "max_hp": 32, "x": 10, "y": 10, "z": 10,
+    "calling": "Nomad",
+    "level": 5, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.10.23.0.1.10",
+    "zone_name": "Canyon",
+    "has_missile_weapon": True, "missile_ammo": 6, "missile_max_ammo": 6, "inventory_ammo": 50,
+    "has_companion": False, "companions": [],
+    "abilities": [
+        {"name": "Freezing Ray", "command": "CommandFreezingRay", "usable": True, "cooldown": 0},
+        {"name": "Flaming Ray", "command": "CommandFlamingRay", "usable": True, "cooldown": 0},
+        {"name": "Butcher", "command": "CmdButcher", "usable": True, "cooldown": 0}
+    ],
+    "surroundings": {
+        "NW": "Empty ground", "N": "Empty ground", "NE": "Empty ground",
+        "W": "Empty ground", "E": "Empty ground",
+        "SW": "Empty ground", "S": "Empty ground", "SE": "Empty ground"
+    },
+    "visible_entities": [
+        {"name": "snapjaw scavenger", "dist": 3, "dir": "E", "tx": 13, "ty": 10, "is_enemy": True}
+    ]
+}
+
+orig_query_llm = brain.query_llm_decision
+brain.query_llm_decision = lambda *args, **kwargs: None
+try:
+    dec_ray_opener = brain.query_decision(lvl5_nomad_state, took_damage=False, enemies=[lvl5_nomad_state["visible_entities"][0]])
+    print(f"Scenario 43.1 Dual-Ray Opener decision: {dec_ray_opener['action']} | Reason: {dec_ray_opener['reason']}")
+    assert dec_ray_opener["action"] == "USE_ABILITY:CommandFreezingRay:E", f"Expected Freezing Ray opener, got: {dec_ray_opener['action']}"
+
+    # Scenario 43.2: Freezing Ray on cooldown, Flaming Ray ready on secondary action bar
+    # Must alternate to Flaming Ray thermal beam!
+    lvl5_nomad_cooldown_state = dict(lvl5_nomad_state)
+    lvl5_nomad_cooldown_state["abilities"] = [
+        {"name": "Freezing Ray", "command": "CommandFreezingRay", "usable": False, "cooldown": 14},
+        {"name": "Flaming Ray", "command": "CommandFlamingRay", "usable": True, "cooldown": 0},
+        {"name": "Butcher", "command": "CmdButcher", "usable": True, "cooldown": 0}
+    ]
+    dec_flame_beam = brain.query_decision(lvl5_nomad_cooldown_state, took_damage=False, enemies=[lvl5_nomad_state["visible_entities"][0]])
+    print(f"Scenario 43.2 Alternate Flaming Ray decision: {dec_flame_beam['action']} | Reason: {dec_flame_beam['reason']}")
+    assert dec_flame_beam["action"] == "USE_ABILITY:CommandFlamingRay:E", f"Expected Flaming Ray burst, got: {dec_flame_beam['action']}"
+
+    # Scenario 43.3: In melee contact with adjacent enemy
+    # In adjacent melee (dist 1), point-blank Flaming Ray burst triggers before basic bump!
+    lvl5_melee_contact_state = dict(lvl5_nomad_cooldown_state)
+    lvl5_melee_contact_state["surroundings"] = dict(lvl5_nomad_state["surroundings"])
+    lvl5_melee_contact_state["surroundings"]["E"] = "[ENEMY: snapjaw scavenger]"
+    lvl5_melee_contact_state["visible_entities"] = [
+        {"name": "snapjaw scavenger", "dist": 1, "dir": "E", "tx": 11, "ty": 10, "is_enemy": True}
+    ]
+    dec_point_blank = brain.query_decision(lvl5_melee_contact_state, took_damage=False, enemies=[lvl5_melee_contact_state["visible_entities"][0]])
+    print(f"Scenario 43.3 Point-Blank Ray Burst decision: {dec_point_blank['action']} | Reason: {dec_point_blank['reason']}")
+    assert dec_point_blank["action"] == "USE_ABILITY:CommandFlamingRay:E", f"Expected point-blank Flaming Ray burst, got: {dec_point_blank['action']}"
+
+    # Scenario 43.4: Melee Marauder at distance 3 with Charge on cooldown
+    # Marauder has Charge on cooldown, but acquired Flaming Ray!
+    # Blasts approaching enemy at distance 3 with Flaming Ray!
+    lvl5_marauder_state = {
+        "hp": 40, "max_hp": 40, "x": 10, "y": 10, "z": 10,
+        "calling": "Marauder",
+        "level": 5, "ap": 0, "sp": 0, "mp": 0,
+        "zone_id": "JoppaWorld.10.23.0.1.10",
+        "zone_name": "Canyon",
+        "has_missile_weapon": False,
+        "has_companion": False, "companions": [],
+        "abilities": [
+            {"name": "Charge", "command": "CommandCharge", "usable": False, "cooldown": 10},
+            {"name": "Dismember", "command": "CommandDismember", "usable": True, "cooldown": 0},
+            {"name": "Flaming Ray", "command": "CommandFlamingRay", "usable": True, "cooldown": 0}
+        ],
+        "surroundings": {
+            "NW": "Empty ground", "N": "Empty ground", "NE": "Empty ground",
+            "W": "Empty ground", "E": "Empty ground",
+            "SW": "Empty ground", "S": "Empty ground", "SE": "Empty ground"
+        },
+        "visible_entities": [
+            {"name": "snapjaw brute", "dist": 3, "dir": "E", "tx": 13, "ty": 10, "is_enemy": True}
+        ]
+    }
+    dec_marauder_ray = brain.query_decision(lvl5_marauder_state, took_damage=False, enemies=[lvl5_marauder_state["visible_entities"][0]])
+    print(f"Scenario 43.4 Marauder Range Ray decision: {dec_marauder_ray['action']} | Reason: {dec_marauder_ray['reason']}")
+    assert dec_marauder_ray["action"] == "USE_ABILITY:CommandFlamingRay:E", f"Expected Marauder to blast with Flaming Ray, got: {dec_marauder_ray['action']}"
+
+    # Scenario 43.5: Melee Marauder in melee contact with strike ability on cooldown
+    # Marauder in melee with Dismember on cooldown -> executes point-blank Flaming Ray burst!
+    lvl5_marauder_strike_cd = dict(lvl5_marauder_state)
+    lvl5_marauder_strike_cd["abilities"] = [
+        {"name": "Charge", "command": "CommandCharge", "usable": False, "cooldown": 10},
+        {"name": "Dismember", "command": "CommandDismember", "usable": False, "cooldown": 15},
+        {"name": "Flaming Ray", "command": "CommandFlamingRay", "usable": True, "cooldown": 0}
+    ]
+    lvl5_marauder_strike_cd["surroundings"] = dict(lvl5_marauder_state["surroundings"])
+    lvl5_marauder_strike_cd["surroundings"]["E"] = "[ENEMY: snapjaw brute]"
+    lvl5_marauder_strike_cd["visible_entities"] = [
+        {"name": "snapjaw brute", "dist": 1, "dir": "E", "tx": 11, "ty": 10, "is_enemy": True}
+    ]
+    dec_marauder_burst = brain.query_decision(lvl5_marauder_strike_cd, took_damage=False, enemies=[lvl5_marauder_strike_cd["visible_entities"][0]])
+    print(f"Scenario 43.5 Marauder Point-Blank Burst decision: {dec_marauder_burst['action']} | Reason: {dec_marauder_burst['reason']}")
+    assert dec_marauder_burst["action"] == "USE_ABILITY:CommandFlamingRay:E", f"Expected Marauder point-blank Flaming Ray burst, got: {dec_marauder_burst['action']}"
+finally:
+    brain.query_llm_decision = orig_query_llm
+
+# Scenario 43.6: DIRECTIONAL_ABILITIES alias coverage
+# Ensure all forms of ray commands are registered in DIRECTIONAL_ABILITIES
+assert "flaming ray" in brain.DIRECTIONAL_ABILITIES
+assert "flamingray" in brain.DIRECTIONAL_ABILITIES
+assert "commandflamingray" in brain.DIRECTIONAL_ABILITIES
+assert "freezing ray" in brain.DIRECTIONAL_ABILITIES
+assert "freezingray" in brain.DIRECTIONAL_ABILITIES
+assert "commandfreezingray" in brain.DIRECTIONAL_ABILITIES
+
+print("\n==================================================")
+print(">>> ALL 43 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("==================================================")
+
 
 
 
