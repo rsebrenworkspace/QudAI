@@ -35,6 +35,7 @@ namespace QudAIBrain
         private static string lastFailedDir = "";
         private static bool isZoneFullyExplored = false;
         private static bool isAutoexploreStuck = false;
+        private static int lastUnexploredCellCount = 0;
         private static string lastZoneId = "";
         private static readonly List<Tuple<int, int>> autoexplorePosHistory = new List<Tuple<int, int>>();
         private static MethodInfo cachedFireMethod = null;
@@ -555,6 +556,7 @@ namespace QudAIBrain
                     lastZoneId = zoneId;
                     isZoneFullyExplored = false;
                     isAutoexploreStuck = false;
+                    lastUnexploredCellCount = 0;
                     autoexplorePosHistory.Clear();
                 }
 
@@ -955,6 +957,7 @@ namespace QudAIBrain
                 }
                 catch { }
 
+                lastUnexploredCellCount = unexploredCellCount;
                 sb.Append($"\"unexplored_cells\": {unexploredCellCount},");
                 sb.Append($"\"unexplored_centroid_x\": {(unexploredCellCount > 0 ? sumUnexpX / unexploredCellCount : -1)},");
                 sb.Append($"\"unexplored_centroid_y\": {(unexploredCellCount > 0 ? sumUnexpY / unexploredCellCount : -1)},");
@@ -2822,7 +2825,7 @@ namespace QudAIBrain
             // In subterranean strata (z > 10) or small clear zones (unexp <= 35), mark zone as explored so AI advances to stairs or exits!
             // On surface with large unexplored count, autoexplore is blocked by obstacles/companions, NOT fully explored!
             int zDepth = player.CurrentCell?.ParentZone?.Z ?? 10;
-            if (zDepth > 10 || unexploredCellCount <= 35)
+            if (zDepth > 10 || lastUnexploredCellCount <= 35)
             {
                 isZoneFullyExplored = true;
                 isAutoexploreStuck = false;
