@@ -57,6 +57,7 @@ recent_actions = deque(maxlen=40)
 recent_positions = deque(maxlen=24)
 stuck_autoexplore_zones = set()
 blocked_coords = set()
+UNREACHABLE_SECTORS = set()  # set of (zone_id, (tx, ty)) for unreachable frontiers/sectors
 visit_counts = defaultdict(int)
 
 NON_COMBAT_KEYWORDS = {
@@ -360,7 +361,9 @@ def check_exit_direction_failure(game_state, cur_pos, chosen_exit):
     # 1. Did the engine report a movement failure in that direction?
     if game_state.get("last_move_failed", False):
         last_failed = (game_state.get("last_failed_dir", "") or "").upper()
-        if last_failed == chosen_exit or (chosen_exit in last_failed):
+        if last_failed.startswith("MOVE_"):
+            last_failed = last_failed[5:]
+        if last_failed in ("N", "S", "E", "W", "NE", "NW", "SE", "SW") and last_failed == chosen_exit:
             return True
 
     px, py = cur_pos
@@ -2235,10 +2238,20 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     last_failed = None
     if game_state.get("last_move_failed"):
         f_dir = game_state.get("last_failed_dir", "")
-        if f_dir:
+        if f_dir == "PATH_BLOCKED":
+            if last_action and last_action.startswith("NAVIGATE_TO_CELL:"):
+                try:
+                    coords = last_action.split(":")[1].split(",")
+                    blocked_target = (int(coords[0]), int(coords[1]))
+                    UNREACHABLE_SECTORS.add((zone_id, blocked_target))
+                    print(f"[PATHFINDER BLOCKED]: Target {blocked_target} in zone {zone_id} is unreachable. Blacklisting.")
+                except Exception:
+                    pass
+        elif f_dir:
             last_failed = f"MOVE_{f_dir}"
             fdx, fdy = CARDINAL_OFFSETS.get(f_dir, (0, 0))
-            blocked_coords.add((px + fdx, py + fdy))
+            if (fdx, fdy) != (0, 0):
+                blocked_coords.add((px + fdx, py + fdy))
 
     valid_moves = get_valid_moves(surroundings, cur_pos, last_failed, is_in_combat=is_in_combat)
 
@@ -2494,7 +2507,9 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         if is_subterranean:
             zone_fully_explored = game_state.get("zone_fully_explored", False) or (unexp_cells == 0)
         else:
-            if unexp_cells is not None and unexp_cells > 35:
+            if zone_id and zone_id in EXPLORED_ZONE_SET:
+                zone_fully_explored = True
+            elif unexp_cells is not None and unexp_cells > 35:
                 zone_fully_explored = False
             else:
                 zone_fully_explored = game_state.get("zone_fully_explored", False) or (unexp_cells == 0)
@@ -2502,7 +2517,8 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             EXPLORED_ZONE_SET.add(zone_id)
 
         # Determine if there is an unexplored sector (across water/obstacles)
-        has_unexplored_sector = (not zone_fully_explored) and (unexp_cells is not None and unexp_cells > 0)
+        is_exiting_zone = bool(CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == zone_id)
+        has_unexplored_sector = (not zone_fully_explored) and (not is_exiting_zone) and (unexp_cells is not None and unexp_cells > 0)
         sector_target = None
         sector_reason = ""
         if has_unexplored_sector:
@@ -2510,15 +2526,17 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             cy = game_state.get("unexplored_centroid_y", -1)
             nx = game_state.get("nearest_unexplored_x", -1)
             ny = game_state.get("nearest_unexplored_y", -1)
-            if 0 <= cx < 80 and 0 <= cy < 25 and (cx != px or cy != py):
+            if 0 <= cx < 80 and 0 <= cy < 25 and (cx != px or cy != py) and (zone_id, (cx, cy)) not in UNREACHABLE_SECTORS:
                 sector_target = (cx, cy)
                 sector_reason = f"Water Traversal: Navigating across water toward unexplored sector at {sector_target} ({unexp_cells} unrevealed cells)"
-            elif 0 <= nx < 80 and 0 <= ny < 25 and (nx != px or ny != py):
+            elif 0 <= nx < 80 and 0 <= ny < 25 and (nx != px or ny != py) and (zone_id, (nx, ny)) not in UNREACHABLE_SECTORS:
                 sector_target = (nx, ny)
                 sector_reason = f"Water Traversal: Navigating toward nearest unexplored cell at {sector_target} ({unexp_cells} unrevealed cells)"
-        elif unexp_cells is None and not zone_fully_explored:
+        elif unexp_cells is None and not zone_fully_explored and not is_exiting_zone:
             # Fallback for synthetic dry-run tests without full zone grid telemetry
-            sector_target, sector_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
+            cand_target, cand_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
+            if cand_target and (zone_id, cand_target) not in UNREACHABLE_SECTORS:
+                sector_target, sector_reason = cand_target, cand_reason
 
         best_sector_m = None
         if sector_target and valid_moves:
@@ -2527,18 +2545,12 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         is_swimming_now = game_state.get("is_swimming", False) or any("swim" in ef.lower() for ef in game_state.get("effects", []))
 
         # Check if native autoexplore can run:
-        # Native autoexplore runs whenever the zone is not marked fully explored and not stuck cycling.
-        # But if the player is actively swimming, native autoexplore cannot path in water, so we manually navigate.
-        # If unexp_cells is 0, the zone is already completely explored (e.g. Joppa village start), so we don't spin in autoexplore!
         can_use_native_autoexplore = (not is_swimming_now) and (not is_stuck_explore) and (not zone_fully_explored) and (unexp_cells is None or unexp_cells > 0)
         if can_use_native_autoexplore:
             return {"action": "AUTOEXPLORE", "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder"}
 
         # 8. Unexplored Sector across Water / Obstacles (Macro-sector navigation)
-        # When native autoexplore has finished the current reachable landmass (or is stuck cycling on a shoreline),
-        # navigate toward the unexplored sector across the water!
-        # Only navigate to unexplored sector if the zone is NOT fully explored!
-        if (not zone_fully_explored) and sector_target:
+        if (not zone_fully_explored) and sector_target and not is_exiting_zone:
             # Check if trapped in an enclosed pocket (visited multiple times with all moves leading to visited tiles)
             all_moves_visited = (not valid_moves) or all(visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) >= 1 for m in valid_moves)
             # In towns/settlements, NEVER attack walls or whack huts!
@@ -2556,7 +2568,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         # 9. Local unexplored frontier: If any adjacent move leads to a completely unvisited tile (0 visits)
         # ONLY if the zone is not fully cleared (e.g. recovering from room loop in Joppa)
-        if not zone_fully_explored:
+        if not zone_fully_explored and not is_exiting_zone:
             unvisited_local = [
                 m for m in valid_moves
                 if visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) == 0
@@ -2565,11 +2577,20 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 unvisited_local.sort(key=lambda m: (1 if is_swim_move(m, surroundings) else 0))
                 return {"action": unvisited_local[0], "reason": f"Scouting zone frontier {unvisited_local[0]}"}
 
+        # If autoexplore is stuck and there is no reachable unexplored sector or local frontier, mark zone explored for transition!
+        if is_stuck_explore and sector_target is None and not zone_fully_explored and not is_exiting_zone:
+            zone_fully_explored = True
+            if zone_id:
+                EXPLORED_ZONE_SET.add(zone_id)
+
         # 10. Transition to adjacent zone via exit border (if standing directly on exit or adjacent to chosen border)
         exit_moves = [m for m in valid_moves if "[zone_exit" in surroundings.get(m[5:], "").lower() or "exit" in surroundings.get(m[5:], "").lower()]
 
+        # Validate or select zone exit target
+        exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos, game_state)
+
         # If a zone exit direction was chosen, commit to stepping onto or across the border
-        if CURRENT_ZONE_CHOSEN_EXIT:
+        if CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == zone_id:
             chosen_m = f"MOVE_{CURRENT_ZONE_CHOSEN_EXIT}"
             # Standing directly on border edge (px=0 for W, px=79 for E, py=0 for N, py=24 for S)
             is_on_chosen_border = (
@@ -2590,6 +2611,9 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             )
             if is_adj_to_border and chosen_m in valid_moves:
                 return {"action": chosen_m, "reason": f"Border Transition: Advancing {chosen_m} onto zone exit border"}
+
+            # If not yet on or adjacent to border, navigate toward the chosen exit border via native engine pathfinder!
+            return {"action": f"NAVIGATE_ZONE_EXIT:{CURRENT_ZONE_CHOSEN_EXIT}", "reason": f"Zone fully explored: navigating via engine pathfinder toward {exit_tag}"}
 
         if exit_moves:
             forward_exits = [m for m in exit_moves if m != rev_exit]
@@ -3014,6 +3038,15 @@ def main():
                         last_executed_action.startswith("NAVIGATE_TO_CELL")
                         and (cur_pos == last_executed_pos or game_state.get("last_move_failed", False))
                     )
+                    if nav_cell_failed and last_executed_action.startswith("NAVIGATE_TO_CELL:"):
+                        try:
+                            coords = last_executed_action.split(":")[1].split(",")
+                            unreach_t = (int(coords[0]), int(coords[1]))
+                            UNREACHABLE_SECTORS.add((current_zone_id, unreach_t))
+                            if current_zone_id:
+                                EXPLORED_ZONE_SET.add(current_zone_id)
+                        except Exception:
+                            pass
 
                     # Check if an adjacent cell has a friendly companion we can swap places with to break bottlenecks
                     companion_escapes = []
@@ -3030,12 +3063,16 @@ def main():
                     elif is_adj_border and chosen_border_m and (chosen_border_m in valid_m):
                         action = chosen_border_m
                         reason = f"[Loop Breaker] Adjacent to exit border: stepping {chosen_border_m} onto border edge."
-                    elif frontier_target and unexp_c > 35 and cur_z <= 10 and not nav_cell_failed:
+                    elif frontier_target and unexp_c > 35 and cur_z <= 10 and not nav_cell_failed and (current_zone_id, frontier_target) not in UNREACHABLE_SECTORS:
                         action = f"NAVIGATE_TO_CELL:{frontier_target[0]},{frontier_target[1]}"
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Routing via native pathfinder to unexplored frontier at {frontier_target} ({unexp_c} unrevealed cells)."
                     elif (is_stuck_explore or game_state.get("zone_fully_explored", False) or (unexp_c == 0)) and exit_dir:
                         action = f"NAVIGATE_ZONE_EXIT:{exit_dir}"
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards forward exit {exit_tag} via native engine pathfinder."
+                        CURRENT_ZONE_CHOSEN_EXIT = exit_dir
+                        CURRENT_ZONE_CHOSEN_EXIT_ZONE = current_zone_id
+                        if current_zone_id:
+                            EXPLORED_ZONE_SET.add(current_zone_id)
                     elif open_escapes:
                         open_escapes.sort(key=lambda m: (
                             visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],

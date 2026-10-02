@@ -2888,7 +2888,79 @@ assert "MOVE_S" in comp_moves, f"Expected companion move MOVE_S, got: {comp_move
 print("  [OK] Scenario 48.3 Passed: Corridor companion swap detected when all alternative paths are solid walls.")
 
 print("\n==================================================")
-print(">>> ALL 48 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 49: Canyon Dead-End, Unreachable Sector Blacklisting & Exit Commitment")
+print("==================================================")
+
+# Scenario 49.1: Live state at (45, 11) with companion at (46, 11), 1613 unrevealed cells across canyon wall at (35, 11)
+canyon_dead_end_state = {
+    "hp": 31, "max_hp": 31, "x": 45, "y": 11, "z": 10,
+    "calling": "Apostle", "level": 5, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.10.18.1.1.10",
+    "zone_name": "desert canyon, surface",
+    "zone_fully_explored": False,
+    "autoexplore_stuck": True,
+    "unexplored_cells": 1613,
+    "unexplored_centroid_x": 35, "unexplored_centroid_y": 11,
+    "nearest_unexplored_x": 43, "nearest_unexplored_y": 9,
+    "reachable_edges": "NSEW",
+    "last_move_failed": True,
+    "last_failed_dir": "PATH_BLOCKED",
+    "has_companion": True,
+    "companions": [{"name": "giant amoeba", "dist": 1, "dir": "E", "tx": 46, "ty": 11}],
+    "surroundings": {
+        "NW": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "N": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "NE": "Empty ground",
+        "W": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "E": "[COMPANION: giant amoeba]",
+        "SW": "Empty ground",
+        "S": "dogthorn tree, ashes",
+        "SE": "Empty ground",
+        "NW2": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "NNW": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "NN": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "NNE": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "NE2": "Empty ground",
+        "WNW": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "ENE": "Empty ground",
+        "WW": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "EE": "Empty ground",
+        "WSW": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "ESE": "Empty ground",
+        "SW2": "dogthorn tree",
+        "SSW": "Empty ground",
+        "SS": "Empty ground",
+        "SSE": "Empty ground",
+        "SE2": "Empty ground"
+    },
+    "visible_entities": []
+}
+
+# When last action was NAVIGATE_TO_CELL:35,11 and it failed with PATH_BLOCKED, target is blacklisted
+brain.last_action = "NAVIGATE_TO_CELL:35,11"
+brain.CURRENT_ZONE_CHOSEN_EXIT = None
+brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+brain.FAILED_ZONE_EXITS.clear()
+brain.UNREACHABLE_SECTORS.clear()
+brain.stuck_autoexplore_zones.add("JoppaWorld.10.18.1.1.10")
+
+dec_49_1 = brain.query_decision(canyon_dead_end_state, took_damage=False, enemies=[])
+print(f"Scenario 49.1 decision: {dec_49_1['action']} | Reason: {dec_49_1['reason']}")
+assert ("JoppaWorld.10.18.1.1.10", (35, 11)) in brain.UNREACHABLE_SECTORS, "Centroid (35, 11) must be blacklisted in UNREACHABLE_SECTORS!"
+assert dec_49_1["action"] != "MOVE_SW", "Must NOT loop back into dead-end MOVE_SW towards unreachable centroid!"
+assert dec_49_1["action"].startswith("NAVIGATE_ZONE_EXIT:") or dec_49_1["action"] in ["MOVE_NE", "MOVE_SE", "MOVE_E"], f"Expected exit navigation or forward move, got: {dec_49_1['action']}"
+print("  [OK] Scenario 49.1 Passed: Unreachable sector blacklisted after PATH_BLOCKED and redirected to exit navigation.")
+
+# Scenario 49.2: Committed zone exit navigation when CURRENT_ZONE_CHOSEN_EXIT is set
+brain.CURRENT_ZONE_CHOSEN_EXIT = "E"
+brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = "JoppaWorld.10.18.1.1.10"
+dec_49_2 = brain.query_decision(canyon_dead_end_state, took_damage=False, enemies=[])
+print(f"Scenario 49.2 decision: {dec_49_2['action']} | Reason: {dec_49_2['reason']}")
+assert dec_49_2["action"] == "NAVIGATE_ZONE_EXIT:E", f"Expected committed NAVIGATE_ZONE_EXIT:E, got: {dec_49_2['action']}"
+print("  [OK] Scenario 49.2 Passed: Chosen exit E committedly preserved without reverting to macro sector exploration.")
+
+print("\n==================================================")
+print(">>> ALL 49 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 
