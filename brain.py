@@ -2342,6 +2342,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 def main():
     global current_zone_id, zone_step_count, last_action, last_hp, consecutive_kites
     global action_repeat_count, last_executed_action, last_executed_pos, twitch_manager
+    global CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS
 
     twitch_manager = twitch_bot.start_twitch_in_background()
 
