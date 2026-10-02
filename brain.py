@@ -549,6 +549,42 @@ def is_companion_name(ename, comp_names):
     return False
 
 
+DESTRUCTIBLE_OBSTACLE_KEYWORDS = [
+    "plant matter", "plantwall", "plant wall", "mudroot", "tangled mudroot",
+    "wood", "fence", "web", "fungus", "tree", "brush", "bramble", "vine", "wall"
+]
+
+
+def find_burrow_direction(surroundings, cur_pos, target_pos=None):
+    """
+    Finds the best adjacent destructible obstacle (e.g. plant matter, tangled mudroot)
+    to attack/burrow through when the agent is trapped in an enclosed pocket.
+    Prioritizes directions that advance toward target_pos (e.g. unexplored centroid).
+    """
+    candidates = []
+    px, py = cur_pos
+    tx, ty = target_pos if target_pos else (px, py)
+
+    for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]:
+        info = surroundings.get(d, "").lower()
+        if "[blocked:" in info or "impassable" in info or "wall" in info:
+            if any(k in info for k in DESTRUCTIBLE_OBSTACLE_KEYWORDS):
+                dx, dy = CARDINAL_OFFSETS[d]
+                nx, ny = px + dx, py + dy
+                dist_to_target = (nx - tx) ** 2 + (ny - ty) ** 2
+                # Prioritize softer materials (plant matter, mudroot, web) over solid rock
+                is_soft = any(k in info for k in ["plant", "mudroot", "web", "vine", "wood", "fungus", "brush"])
+                score = (0 if is_soft else 1, dist_to_target)
+                candidates.append((score, d, info))
+
+    if candidates:
+        candidates.sort(key=lambda x: x[0])
+        best_score, best_d, best_info = candidates[0]
+        clean_tag = next((k for k in DESTRUCTIBLE_OBSTACLE_KEYWORDS if k in best_info), "wall")
+        return best_d, clean_tag
+    return None, None
+
+
 def register_companion(name=None, coord=None):
     """Registers an allied companion into memory for 0-latency friendly fire immunity."""
     if name:
@@ -724,6 +760,10 @@ def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=Fals
         # If a friendly companion occupies this adjacent cell, avoid bumping into them
         if target_pos in CHARMED_COMPANION_COORDS or "[companion" in text:
             companion_moves.append(move_name)
+            continue
+
+        # Neutral/Friendly NPCs occupy their tile out of combat; do not bump into them
+        if not is_in_combat and "[npc:" in text:
             continue
 
         valid.append(move_name)
@@ -2150,7 +2190,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 print(f"[STAIRCASE GATED]: Standing on stairs down to stratum {cur_z + 1}, but Level {cur_lvl} < Req {req_depth_lvl} (or recovering from retreat). Exploring to gain levels first.")
 
         # If we know stairs down and are ready to delve, check if we should navigate to them
-        is_stuck_explore = (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones)
+        is_stuck_explore = (bool(zone_id and zone_id in stuck_autoexplore_zones) or (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones))
         is_zone_cleared = game_state.get("zone_fully_explored", False) or is_stuck_explore or (game_state.get("unexplored_cells", 999) == 0)
 
         if can_delve and is_zone_cleared and (zone_id in KNOWN_STAIRS_DOWN):
@@ -2238,6 +2278,16 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         # navigate toward the unexplored sector across the water!
         # Only navigate to unexplored sector if the zone is NOT fully explored!
         if (not zone_fully_explored) and sector_target:
+            # Check if trapped in an enclosed pocket (visited multiple times with all moves leading to visited tiles)
+            all_moves_visited = (not valid_moves) or all(visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) >= 1 for m in valid_moves)
+            if (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited:
+                burrow_d, burrow_info = find_burrow_direction(surroundings, cur_pos, sector_target)
+                if burrow_d:
+                    return {
+                        "action": f"ATTACK_WALL:{burrow_d}",
+                        "reason": f"Autonomous Burrowing: Attacking {burrow_info} ({burrow_d}) to breach enclosed pocket toward sector {sector_target}"
+                    }
+
             if best_sector_m:
                 return {"action": best_sector_m, "reason": sector_reason}
             return {"action": f"NAVIGATE_TO_CELL:{sector_target[0]},{sector_target[1]}", "reason": sector_reason}
@@ -2602,17 +2652,25 @@ def main():
                                 action = valid_m[0]
                                 reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Forcing reposition {action}."
                             else:
-                                action = "PASS"
-                                reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Passing turn."
+                                burrow_t = (game_state.get("unexplored_centroid_x", px), game_state.get("unexplored_centroid_y", py))
+                                b_d, b_info = find_burrow_direction(surroundings, cur_pos, burrow_t)
+                                if b_d:
+                                    action = f"ATTACK_WALL:{b_d}"
+                                    reason = f"[Loop Breaker] Action repeated {action_repeat_count}x and trapped at {cur_pos}. Burrowing through {b_info} ({b_d})."
+                                else:
+                                    action = "PASS"
+                                    reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Passing turn."
                         action_repeat_count = 0
                 elif is_oscillating and not is_in_combat:
-                    is_stuck_explore = (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones)
+                    is_stuck_explore = (bool(current_zone_id and current_zone_id in stuck_autoexplore_zones))
                     cur_z = game_state.get("z", 10)
                     if action == "AUTOEXPLORE":
-                        if current_zone_id and ((game_state.get("unexplored_cells", 0) or 0) < 35 or cur_z > 10 or game_state.get("zone_fully_explored", False)):
-                            stuck_autoexplore_zones.add(current_zone_id)
+                        unexp_c = game_state.get("unexplored_cells", 0) or 0
+                        if current_zone_id and (unexp_c < 35 or game_state.get("zone_fully_explored", False)):
                             EXPLORED_ZONE_SET.add(current_zone_id)
-                            is_stuck_explore = True
+                        if current_zone_id:
+                            stuck_autoexplore_zones.add(current_zone_id)
+                        is_stuck_explore = True
                         print(f"[Loop Breaker] Autoexplore oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}/{len(recent_positions)}). Forcing frontier breakout.")
 
                     valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
@@ -2630,7 +2688,14 @@ def main():
 
                     exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos, game_state)
 
-                    if is_stuck_explore or game_state.get("zone_fully_explored", False) or (game_state.get("unexplored_cells", 1) == 0):
+                    burrow_target = (game_state.get("unexplored_centroid_x", px), game_state.get("unexplored_centroid_y", py))
+                    burrow_d, burrow_info = find_burrow_direction(surroundings, cur_pos, burrow_target)
+                    unexp_c = game_state.get("unexplored_cells", 0) or 0
+
+                    if unexp_c > 35 and (not open_escapes or unique_positions <= 6) and burrow_d:
+                        action = f"ATTACK_WALL:{burrow_d}"
+                        reason = f"[Loop Breaker] Trapped in enclosed pocket with {unexp_c} unrevealed cells. Burrowing through {burrow_info} ({burrow_d}) to breach open corridor."
+                    elif is_stuck_explore or game_state.get("zone_fully_explored", False) or (game_state.get("unexplored_cells", 1) == 0):
                         action = f"NAVIGATE_ZONE_EXIT:{exit_dir}"
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards forward exit {exit_tag} via native engine pathfinder."
                     elif frontier_target and (game_state.get("unexplored_cells", 1) or 0) > 0 and cur_z <= 10:

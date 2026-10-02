@@ -1400,6 +1400,61 @@ namespace QudAIBrain
                 return;
             }
 
+            if (act.StartsWith("ATTACK_WALL:") || act.StartsWith("FORCE_ATTACK:") || act.StartsWith("ATTACK_CELL:"))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                string dir = act.Split(':')[1].Trim().ToUpper();
+                Cell targetCell = null;
+                if (player != null && player.CurrentCell != null)
+                {
+                    targetCell = player.CurrentCell.GetCellFromDirection(dir, false);
+                }
+
+                if (targetCell != null && targetCell.Objects != null)
+                {
+                    GameObject targetWall = null;
+                    for (int i = 0; i < targetCell.Objects.Count; i++)
+                    {
+                        GameObject o = targetCell.Objects[i];
+                        if (o != null && !o.IsPlayer() && !IsCompanion(o, player))
+                        {
+                            if (o.HasPart("Wall") || o.HasPart("Plant") || o.HasPart("Combat") || o.HasPart("Physics"))
+                            {
+                                targetWall = o;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (targetWall != null)
+                    {
+                        int energyBefore = player.Energy?.Value ?? 0;
+                        UnityEngine.Debug.Log($"[QudAI ATTACK_WALL] Burrowing through wall/obstacle {targetWall.DisplayNameOnly} ({dir}) at ({targetCell.X}, {targetCell.Y})");
+                        try
+                        {
+                            player.PerformMeleeAttack(targetWall);
+                        }
+                        catch (Exception ex)
+                        {
+                            UnityEngine.Debug.LogError("[QudAI ATTACK_WALL Error] " + ex.ToString());
+                        }
+
+                        if (player.Energy != null && player.Energy.Value >= energyBefore)
+                        {
+                            player.UseEnergy(1000, "Attack");
+                        }
+                        return;
+                    }
+                }
+
+                // If no wall found in target cell, report failure and pass
+                lastMoveFailed = true;
+                lastFailedDir = dir;
+                if (player.Energy != null) player.UseEnergy(1000, "Pass");
+                return;
+            }
+
             if (act == "USE_STAIRS_DOWN")
             {
                 lastMoveFailed = false;

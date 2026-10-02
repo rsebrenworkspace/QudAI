@@ -1930,9 +1930,69 @@ print(f"Loop breaker dead-end recovery decision: {dec_loop_breaker['action']} | 
 assert dec_loop_breaker["action"] == "NAVIGATE_ZONE_EXIT:N", f"Expected loop breaker to route to N, got: {dec_loop_breaker['action']}"
 assert ("JoppaWorld.10.23.0.1.11", "E") in brain.FAILED_ZONE_EXITS, "East exit should be blacklisted by loop breaker"
 
+# =====================================================================
+# TEST 38: Autonomous Enclosed Pocket Burrowing & Wall Destruction
+# =====================================================================
+print("\n" + "="*50)
+print("TEST 38: Autonomous Enclosed Pocket Burrowing & Wall Destruction")
+print("="*50)
+
+# Scenario 38.1: Live state where player is in sealed 3x3 pocket at (70, 6)
+sealed_pocket_state = {
+    "hp": 26, "max_hp": 26, "level": 4, "x": 70, "y": 6, "z": 11,
+    "zone_id": "JoppaWorld.9.23.2.1.11",
+    "zone_name": "subterranean salt marsh, 1 stratum deep",
+    "zone_fully_explored": False,
+    "unexplored_cells": 1822,
+    "unexplored_centroid_x": 36, "unexplored_centroid_y": 12,
+    "nearest_unexplored_x": 66, "nearest_unexplored_y": 7, "nearest_unexplored_dist": 4,
+    "last_move_failed": False,
+    "surroundings": {
+        "NW": "[NPC: salt-encrusted sprouting orb], salt-encrusted watervine",
+        "N": "[COMPANION: cave spider]",
+        "NE": "[BLOCKED: impassable terrain], [BLOCKED: plant matter]",
+        "W": "salt-encrusted watervine, puddle of rules|8 drams of dilute salt",
+        "E": "[BLOCKED: impassable terrain], [BLOCKED: plant matter]",
+        "SW": "[BLOCKED: impassable terrain], [BLOCKED: plant matter]",
+        "S": "[BLOCKED: impassable terrain], [BLOCKED: plant matter]",
+        "SE": "[BLOCKED: impassable terrain], [BLOCKED: plant matter]",
+        "WW": "[BLOCKED: impassable terrain], [BLOCKED: tangled mudroot]"
+    },
+    "companions": [{"name": "cave spider", "hp": 12, "max_hp": 12, "dist": 1, "dir": "N", "tx": 70, "ty": 5}],
+    "stairs_up": [], "stairs_down": [], "visible_entities": []
+}
+
+# Simulate having entered and explored the 2 open tiles in the pocket
+brain.CURRENT_TRACKED_ZONE = "JoppaWorld.9.23.2.1.11"
+brain.current_zone_id = "JoppaWorld.9.23.2.1.11"
+brain.visit_counts.clear()
+brain.visit_counts[(70, 6)] = 2
+brain.visit_counts[(69, 6)] = 1
+brain.stuck_autoexplore_zones.add("JoppaWorld.9.23.2.1.11")
+
+dec_burrow = brain.query_decision(sealed_pocket_state, took_damage=False, enemies=[])
+print(f"Autonomous burrowing decision: {dec_burrow['action']} | Reason: {dec_burrow['reason']}")
+assert dec_burrow["action"] == "ATTACK_WALL:SW", f"Expected ATTACK_WALL:SW to breach pocket toward (36, 12), got: {dec_burrow['action']}"
+assert "Autonomous Burrowing" in dec_burrow["reason"]
+assert "plant matter" in dec_burrow["reason"]
+
+# Scenario 38.2: find_burrow_direction helper verification
+best_d, best_info = brain.find_burrow_direction(sealed_pocket_state["surroundings"], (70, 6), (36, 12))
+print(f"find_burrow_direction: Best dir {best_d}, Target info: {best_info}")
+assert best_d == "SW", f"Expected best burrow dir SW, got: {best_d}"
+assert "plant matter" in best_info
+
+# Scenario 38.3: Loop Breaker oscillation inside sealed pocket
+brain.recent_positions.clear()
+brain.recent_positions.extend([(70, 6), (69, 6)] * 4)
+dec_lb_burrow = brain.query_decision(sealed_pocket_state, took_damage=False, enemies=[])
+print(f"Loop breaker pocket burrow decision: {dec_lb_burrow['action']} | Reason: {dec_lb_burrow['reason']}")
+assert dec_lb_burrow["action"].startswith("ATTACK_WALL:"), f"Expected ATTACK_WALL action from loop breaker, got: {dec_lb_burrow['action']}"
+
 print("\n==================================================")
-print(">>> ALL 37 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 38 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
+
 
 
 
