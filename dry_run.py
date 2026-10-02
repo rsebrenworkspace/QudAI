@@ -2126,8 +2126,84 @@ print(f"Nearby dungeon stairs navigation decision: {dec_nearby['action']} | Reas
 assert dec_nearby["action"] == "MOVE_N", f"Expected character to move N towards stairs down at (15, 12)! Got: {dec_nearby['action']}"
 assert "Dungeon Delving: Navigating to stairs down" in dec_nearby["reason"]
 
+# =====================================================================
+# TEST 41: Town Hut Whacking & Structure Vandalism Suppression
+# =====================================================================
+print("\n" + "="*50)
+print("TEST 41: Town Hut Whacking & Structure Vandalism Suppression")
+print("="*50)
+
+# Scenario 41.1: Settlement Identification
+joppa_state = {
+    "zone_id": "JoppaWorld.11.23.1.1.10",
+    "zone_name": "Joppa",
+    "is_settlement": True,
+    "visible_entities": [{"name": "Elder Irudad", "blueprint": "Irudad"}]
+}
+stilt_state = {"zone_id": "JoppaWorld.5.5.1.1.10", "zone_name": "The Six-Day Stilt"}
+wilderness_state = {"zone_id": "JoppaWorld.10.23.0.1.11", "zone_name": "subterranean ruins", "is_settlement": False}
+
+print(f"Joppa is_town_zone: {brain.is_town_zone(joppa_state)}")
+print(f"Stilt is_town_zone: {brain.is_town_zone(stilt_state)}")
+print(f"Wilderness is_town_zone: {brain.is_town_zone(wilderness_state)}")
+assert brain.is_town_zone(joppa_state) is True, "Joppa must be recognized as a town!"
+assert brain.is_town_zone(stilt_state) is True, "The Six-Day Stilt must be recognized as a town!"
+assert brain.is_town_zone(wilderness_state) is False, "Subterranean ruins must not be recognized as a town!"
+
+# Scenario 41.2: Inside a Joppa hut with visited floor tiles
+# The character is inside an elder's hut at (14, 10). North is a watervine wall,
+# South is an open doorway leading out.
+# Surrounding cells contain "watervine wall" (plant/wood).
+# The character must NOT attack the hut wall!
+hut_surroundings = {
+    "N": "[BLOCKED: watervine wall]",
+    "NW": "[BLOCKED: watervine wall]",
+    "NE": "[BLOCKED: watervine wall]",
+    "W": "[BLOCKED: watervine wall]",
+    "E": "[BLOCKED: watervine wall]",
+    "SW": "[BLOCKED: watervine wall]",
+    "SE": "[BLOCKED: watervine wall]",
+    "S": "open doorway", # door leading outside
+}
+brain.visit_counts.clear()
+brain.visit_counts[(14, 10)] = 3 # Current tile visited multiple times
+brain.visit_counts[(14, 11)] = 2 # Doorway tile also visited
+
+# find_burrow_direction with is_town=True must return None
+b_dir_town, b_tag_town = brain.find_burrow_direction(hut_surroundings, (14, 10), (14, 5), is_town=True)
+print(f"Town find_burrow_direction: dir={b_dir_town}, tag={b_tag_town}")
+assert b_dir_town is None, f"find_burrow_direction must return None in towns! Got: {b_dir_town}"
+
+joppa_hut_state = {
+    "hp": 25, "max_hp": 25, "x": 14, "y": 10, "z": 10,
+    "calling": "Apostle",
+    "level": 1,
+    "zone_id": "JoppaWorld.11.23.1.1.10",
+    "zone_name": "Joppa",
+    "is_settlement": True,
+    "zone_fully_explored": False,
+    "unexplored_cells": 150,
+    "unexplored_centroid_x": 14, "unexplored_centroid_y": 5, # Centroid north, through wall
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": hut_surroundings,
+    "visible_entities": []
+}
+
+dec_hut = brain.query_decision(joppa_hut_state, took_damage=False, enemies=[])
+print(f"Joppa hut decision: {dec_hut['action']} | Reason: {dec_hut['reason']}")
+assert not dec_hut["action"].startswith("ATTACK_WALL"), f"Must NEVER attack walls or whack huts in Joppa! Got: {dec_hut['action']}"
+assert dec_hut["action"] in ("MOVE_S", "AUTOEXPLORE") or dec_hut["action"].startswith("NAVIGATE"), f"Expected safe navigation, got: {dec_hut['action']}"
+
+# Scenario 41.3: Loop Breaker oscillation inside town hut
+# Character oscillating inside hut must NEVER trigger ATTACK_WALL
+brain.recent_positions.clear()
+brain.recent_positions.extend([(14, 10), (14, 11), (14, 10), (14, 11), (14, 10), (14, 11)])
+# find_burrow_direction call in loop breaker with is_town=True
+b_dir_lb, b_tag_lb = brain.find_burrow_direction(hut_surroundings, (14, 10), (14, 5), is_town=True)
+assert b_dir_lb is None, "Loop breaker must not burrow in town!"
+
 print("\n==================================================")
-print(">>> ALL 40 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 41 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

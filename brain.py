@@ -571,12 +571,16 @@ DESTRUCTIBLE_OBSTACLE_KEYWORDS = [
 ]
 
 
-def find_burrow_direction(surroundings, cur_pos, target_pos=None):
+def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False):
     """
     Finds the best adjacent destructible obstacle (e.g. plant matter, tangled mudroot)
     to attack/burrow through when the agent is trapped in an enclosed pocket.
     Prioritizes directions that advance toward target_pos (e.g. unexplored centroid).
+    NEVER burrows in towns or settlements!
     """
+    if is_town:
+        return None, None
+
     candidates = []
     px, py = cur_pos
     tx, ty = target_pos if target_pos else (px, py)
@@ -643,6 +647,32 @@ def is_peaceful_npc(name, blueprint=None):
         "archivist", "librarian", "domestic pig"
     ]
     return any(pk in combined for pk in peaceful_keywords)
+
+
+SETTLEMENT_KEYWORDS = [
+    "joppa", "stilt", "grit gate", "kyakukya", "yd freehold", "bey lah",
+    "omonporch", "ezra", "settlement", "village", "town", "commune",
+    "enclave", "haven", "bazaar", "kith and kin", "pariah"
+]
+
+
+def is_town_zone(game_state):
+    """
+    Checks whether the agent is currently in a peaceful town or settlement
+    where attacking structures, huts, or walls is strictly forbidden.
+    """
+    if not game_state:
+        return False
+    if game_state.get("is_settlement", False):
+        return True
+    zone_name = (game_state.get("zone_name") or "").lower()
+    if any(k in zone_name for k in SETTLEMENT_KEYWORDS):
+        return True
+    # If any visible entity is a peaceful townsfolk, treat as town
+    for e in game_state.get("visible_entities", []):
+        if is_peaceful_npc(e.get("name"), e.get("blueprint")):
+            return True
+    return False
 
 
 def is_proselytizable(entity, companions=None):
@@ -2005,6 +2035,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     cur_lvl = game_state.get("level", 1)
     abilities = game_state.get("abilities", [])
     companions = game_state.get("companions", [])
+    is_town = is_town_zone(game_state)
 
     enemies = filter_hostile_enemies(enemies, companions)
     adj_threats = get_adjacent_threats(surroundings, companions=companions)
@@ -2316,8 +2347,9 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         if (not zone_fully_explored) and sector_target:
             # Check if trapped in an enclosed pocket (visited multiple times with all moves leading to visited tiles)
             all_moves_visited = (not valid_moves) or all(visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) >= 1 for m in valid_moves)
-            if (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited:
-                burrow_d, burrow_info = find_burrow_direction(surroundings, cur_pos, sector_target)
+            # In towns/settlements, NEVER attack walls or whack huts!
+            if not is_town and (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited:
+                burrow_d, burrow_info = find_burrow_direction(surroundings, cur_pos, sector_target, is_town=is_town)
                 if burrow_d:
                     return {
                         "action": f"ATTACK_WALL:{burrow_d}",
@@ -2716,14 +2748,19 @@ def main():
                                 action = valid_m[0]
                                 reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Forcing reposition {action}."
                             else:
-                                burrow_t = (game_state.get("unexplored_centroid_x", px), game_state.get("unexplored_centroid_y", py))
-                                b_d, b_info = find_burrow_direction(surroundings, cur_pos, burrow_t)
-                                if b_d:
-                                    action = f"ATTACK_WALL:{b_d}"
-                                    reason = f"[Loop Breaker] Action repeated {action_repeat_count}x and trapped at {cur_pos}. Burrowing through {b_info} ({b_d})."
+                                is_town = is_town_zone(game_state)
+                                if not is_town:
+                                    burrow_t = (game_state.get("unexplored_centroid_x", px), game_state.get("unexplored_centroid_y", py))
+                                    b_d, b_info = find_burrow_direction(surroundings, cur_pos, burrow_t, is_town=is_town)
+                                    if b_d:
+                                        action = f"ATTACK_WALL:{b_d}"
+                                        reason = f"[Loop Breaker] Action repeated {action_repeat_count}x and trapped at {cur_pos}. Burrowing through {b_info} ({b_d})."
+                                    else:
+                                        action = "PASS"
+                                        reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Passing turn."
                                 else:
                                     action = "PASS"
-                                    reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Passing turn."
+                                    reason = f"[Loop Breaker] Action repeated {action_repeat_count}x in town at {cur_pos}. Passing turn."
                         action_repeat_count = 0
                 elif is_oscillating and not is_in_combat:
                     is_stuck_explore = (bool(current_zone_id and current_zone_id in stuck_autoexplore_zones))
@@ -2754,8 +2791,9 @@ def main():
 
                     exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos, game_state)
 
+                    is_town = is_town_zone(game_state)
                     burrow_target = (game_state.get("unexplored_centroid_x", px), game_state.get("unexplored_centroid_y", py))
-                    burrow_d, burrow_info = find_burrow_direction(surroundings, cur_pos, burrow_target)
+                    burrow_d, burrow_info = find_burrow_direction(surroundings, cur_pos, burrow_target, is_town=is_town)
                     unexp_c = game_state.get("unexplored_cells", 0) or 0
 
                     # If standing on or right next to border, commit to stepping across rather than turning around
@@ -2769,7 +2807,7 @@ def main():
                         or (exit_dir == "N" and py == 1) or (exit_dir == "S" and py == 23)
                     )
 
-                    if unexp_c > 35 and (not open_escapes or unique_positions <= 6) and burrow_d:
+                    if not is_town and unexp_c > 35 and (not open_escapes or unique_positions <= 6) and burrow_d:
                         action = f"ATTACK_WALL:{burrow_d}"
                         reason = f"[Loop Breaker] Trapped in enclosed pocket with {unexp_c} unrevealed cells. Burrowing through {burrow_info} ({burrow_d}) to breach open corridor."
                     elif is_on_border and (chosen_border_m in valid_m or "[zone_exit" in surroundings.get(exit_dir, "").lower()):

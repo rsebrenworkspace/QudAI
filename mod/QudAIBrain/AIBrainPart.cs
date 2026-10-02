@@ -826,6 +826,8 @@ namespace QudAIBrain
                 sb.Append($"\"zone_id\": \"{EscapeJson(zoneId)}\",");
                 sb.Append($"\"zone_name\": \"{EscapeJson(zoneName)}\",");
                 sb.Append($"\"zone_fully_explored\": {(isZoneFullyExplored ? "true" : "false")},");
+                bool isSettlement = IsSettlementZone(currentCell?.ParentZone);
+                sb.Append($"\"is_settlement\": {(isSettlement ? "true" : "false")},");
                 int zoneTier = 1;
                 try { zoneTier = currentCell?.ParentZone?.Tier ?? 1; } catch { }
                 sb.Append($"\"zone_tier\": {zoneTier},");
@@ -1166,6 +1168,31 @@ namespace QudAIBrain
             return false;
         }
 
+        public static bool IsSettlementZone(Zone zone)
+        {
+            if (zone == null) return false;
+            string zName = (zone.DisplayName ?? "").ToLower();
+            if (zName.Contains("joppa") || zName.Contains("stilt") || zName.Contains("grit gate") ||
+                zName.Contains("kyakukya") || zName.Contains("yd freehold") || zName.Contains("bey lah") ||
+                zName.Contains("omonporch") || zName.Contains("ezra") || zName.Contains("village") ||
+                zName.Contains("settlement") || zName.Contains("town") || zName.Contains("commune") ||
+                zName.Contains("enclave") || zName.Contains("pariah") || zName.Contains("haven") ||
+                zName.Contains("bazaar") || zName.Contains("kith and kin"))
+            {
+                return true;
+            }
+            try
+            {
+                if (zone.HasProperty("Settlement") || zone.HasProperty("Town") || zone.HasProperty("Village") ||
+                    zone.HasProperty("Peaceful") || zone.GetZoneProperty("Settlement") != null)
+                {
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
         private static string GetApproximateDirection(int fromX, int fromY, int toX, int toY)
         {
             int dx = toX - fromX;
@@ -1426,6 +1453,17 @@ namespace QudAIBrain
                 lastMoveFailed = false;
                 lastFailedDir = "";
                 string dir = act.Split(':')[1].Trim().ToUpper();
+
+                // NEVER attack walls, huts, or structures in peaceful towns/settlements!
+                if (IsSettlementZone(player?.CurrentCell?.ParentZone))
+                {
+                    UnityEngine.Debug.Log($"[QudAI ATTACK_WALL] Suppressed wall/hut attack in peaceful settlement '{player?.CurrentCell?.ParentZone?.DisplayName}'");
+                    lastMoveFailed = true;
+                    lastFailedDir = dir;
+                    if (player.Energy != null) player.UseEnergy(1000, "Pass");
+                    return;
+                }
+
                 Cell targetCell = null;
                 if (player != null && player.CurrentCell != null)
                 {
@@ -1440,6 +1478,10 @@ namespace QudAIBrain
                         GameObject o = targetCell.Objects[i];
                         if (o != null && !o.IsPlayer() && !IsCompanion(o, player))
                         {
+                            // Never attack owned objects or structures
+                            if (o.IsOwned() || !string.IsNullOrEmpty(o.Owner) || o.HasProperty("Owned") || o.HasProperty("OwnedBy"))
+                                continue;
+
                             if (o.HasPart("Wall") || o.HasPart("Plant") || o.HasPart("Combat") || o.HasPart("Physics"))
                             {
                                 targetWall = o;

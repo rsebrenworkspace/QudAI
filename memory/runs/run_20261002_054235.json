@@ -1,0 +1,284 @@
+{
+  "telemetry": {
+    "player_name": "bloody Kum",
+    "level": 1,
+    "turns": 467,
+    "zone": "salt marsh, surface",
+    "death_reason": "You were @@bitten to death by a snapjaw warrior.",
+    "death_category": "bitten to death",
+    "timestamp": "2026-10-02T05:42:35.7600161Z"
+  },
+  "recent_actions": [
+    {
+      "action": "MOVE_NW",
+      "reason": "[LLM in 3.01s] Kite backpedal NW to avoid melee threat while keeping pet alive and line-of-fire clear.",
+      "pos": [
+        43,
+        8
+      ],
+      "hp": 17
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[LLM in 2.89s] Retreat NW to avoid melee threat while keeping pet as shield.",
+      "pos": [
+        42,
+        7
+      ],
+      "hp": 17
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 2.86s] Recharge Lase charges while maintaining safe distance; avoid melee engagement.",
+      "pos": [
+        41,
+        6
+      ],
+      "hp": 17
+    },
+    {
+      "action": "MOVE_SW",
+      "reason": "[LLM in 2.91s] Retreat SW to maintain distance, avoid melee threat while kiting safely.",
+      "pos": [
+        41,
+        6
+      ],
+      "hp": 17
+    },
+    {
+      "action": "MOVE_SW",
+      "reason": "[LLM in 2.86s] Retreat SW to avoid melee threat while keeping pet as shield.",
+      "pos": [
+        40,
+        7
+      ],
+      "hp": 17
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.82s] Kite backpedal west to maintain safe distance from melee threat.",
+      "pos": [
+        39,
+        8
+      ],
+      "hp": 17
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.94s] Retreat west to kite enemy while keeping pet as shield and avoiding melee range.",
+      "pos": [
+        38,
+        8
+      ],
+      "hp": 18
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[LLM in 2.97s] Retreat NW to avoid melee threat while keeping pet as shield.",
+      "pos": [
+        37,
+        8
+      ],
+      "hp": 18
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:E",
+      "reason": "[LLM in 2.96s] Lase beam eliminates immediate melee threat while pet absorbs damage.",
+      "pos": [
+        36,
+        7
+      ],
+      "hp": 18
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 2.82s] Recharge Lase and mental cooldowns while maintaining safe distance.",
+      "pos": [
+        36,
+        7
+      ],
+      "hp": 18
+    },
+    {
+      "action": "MOVE_SW",
+      "reason": "[LLM in 2.92s] Retreat SW to avoid melee threat while keeping pet alive and range for psychic attacks.",
+      "pos": [
+        36,
+        7
+      ],
+      "hp": 18
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 2.86s] Recharge Lase and mental cooldowns while maintaining safe distance.",
+      "pos": [
+        35,
+        8
+      ],
+      "hp": 13
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.86s] Retreat west to maintain distance, avoid melee threat while kiting safely.",
+      "pos": [
+        35,
+        8
+      ],
+      "hp": 13
+    },
+    {
+      "action": "MOVE_SW",
+      "reason": "[LLM in 2.85s] Kite backward to avoid melee threat while keeping pet as shield.",
+      "pos": [
+        34,
+        8
+      ],
+      "hp": 13
+    },
+    {
+      "action": "MOVE_SW",
+      "reason": "[LLM in 2.90s] Retreat SW to maintain distance, avoid melee threat while kiting safely.",
+      "pos": [
+        33,
+        9
+      ],
+      "hp": 13
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.91s] Kite backpedal west to avoid melee threat while repositioning safely.",
+      "pos": [
+        32,
+        10
+      ],
+      "hp": 13
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.93s] Retreat west to gain distance from melee threat while preserving options for Proselytize.",
+      "pos": [
+        31,
+        10
+      ],
+      "hp": 13
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.89s] Retreat west to gain distance, avoid melee threat while preparing Proselytize.",
+      "pos": [
+        30,
+        10
+      ],
+      "hp": 13
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.91s] Retreat west to gain distance, avoid melee threat while preparing Proselytize.",
+      "pos": [
+        29,
+        10
+      ],
+      "hp": 13
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.89s] Retreat west to gain distance, avoid melee threat while recharging Lase.",
+      "pos": [
+        28,
+        10
+      ],
+      "hp": 13
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.93s] Retreat west to gain distance, avoid melee threat while recharging Lase.",
+      "pos": [
+        27,
+        10
+      ],
+      "hp": 14
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.88s] Retreat west to gain distance from melee threat while avoiding marsh hazards.",
+      "pos": [
+        26,
+        10
+      ],
+      "hp": 14
+    },
+    {
+      "action": "USE_ABILITY:CommandProselytize:NE",
+      "reason": "[LLM in 3.09s] Recruit snapjaw warrior as frontline tank to absorb melee threat safely.",
+      "pos": [
+        25,
+        10
+      ],
+      "hp": 14
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:NE",
+      "reason": "[LLM in 2.99s] Lase beam eliminates immediate melee threat with clear line-of-fire.",
+      "pos": [
+        25,
+        10
+      ],
+      "hp": 7
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.91s] Retreat west to gain distance, avoid melee threat while recharging abilities.",
+      "pos": [
+        25,
+        10
+      ],
+      "hp": 6
+    },
+    {
+      "action": "MOVE_SW",
+      "reason": "[LLM in 2.91s] Retreat SW to avoid melee threat while maintaining tactical distance for ranged attacks.",
+      "pos": [
+        24,
+        10
+      ],
+      "hp": 6
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 2.91s] Recharge Lase and mental abilities; avoid melee range until ready.",
+      "pos": [
+        23,
+        11
+      ],
+      "hp": 6
+    },
+    {
+      "action": "MOVE_SW",
+      "reason": "[LLM in 2.89s] Kite SW to avoid melee threat while keeping line-of-fire clear for ranged attacks.",
+      "pos": [
+        23,
+        11
+      ],
+      "hp": 6
+    },
+    {
+      "action": "MOVE_SW",
+      "reason": "[LLM in 2.87s] Kite SW to avoid melee threat while keeping line-of-fire clear for ranged attacks.",
+      "pos": [
+        22,
+        12
+      ],
+      "hp": 6
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[LLM in 2.98s] Retreat NW to avoid melee threats while kiting safely, preserving distance for ranged attacks.",
+      "pos": [
+        22,
+        13
+      ],
+      "hp": 4
+    }
+  ],
+  "archived_at": "2026-10-02T05:42:35.975442"
+}
