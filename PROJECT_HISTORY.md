@@ -838,6 +838,40 @@
       - 47.4: Fallback surroundings check detects 2-step wall obstructions even at `py < 20`.
     - All 47 verification tests pass cleanly. Mod deployed to game directory.
 
+### Iteration 38: Wall Collision Suppression in Path Navigation, Surface Exploration Guard & Companion Bottleneck Escape
+- **Problem Statement:**
+  1. *Character Stuck Against Wall at (74, 8)*:
+     - User reported: `"New change and character is not stuck against a wall and will not move."` (now stuck against wall).
+     - State analysis in `JoppaWorld.10.18.1.1.10`: player at `(74, 8)`, giant amoeba companion at `(74, 9)` ("S"), and solid shale walls to the NW, N, NE, W, and SW.
+     - `last_action_executed.txt` was `NAVIGATE_TO_CELL:35,11`.
+  2. *Blind Vector Fallback into Rock Wall*:
+     - In `AIBrainPart.cs` inside `NAVIGATE_TO_CELL`, when `AutoAct.TryFindPathStep` could not find a path to `(35, 11)` (blocked by canyon walls or the adjacent pet in the 1-tile corridor), it fell back to `player.CurrentCell?.GetDirectionFromCell(targetCell)`.
+     - `GetDirectionFromCell` computed the vector to `(35, 11)` as `"SW"`.
+     - `"SW"` was a solid shale wall. The engine called `player.Move("SW")` without verifying whether the target cell was a wall!
+     - The move repeatedly bumped into the wall and failed.
+  3. *Loop Breaker Self-Trap*:
+     - In `main()` loop breaker, `elif frontier_target and unexp_c > 35 and cur_z <= 10:` repeatedly dispatched `NAVIGATE_TO_CELL:35,11` every tick even though it had just failed at that exact position, creating an infinite wall-bumping loop.
+  4. *Premature Surface Zone Completion Override*:
+     - When native autoexplore could not step past the companion, C# executed `isZoneFullyExplored = true` despite having 1613 unrevealed cells on the surface (`z == 10`).
+     - In `brain.py`, `if is_subterranean or is_stuck_explore:` honored `zone_fully_explored: true` on the surface, causing Phase A to skip macro-sector navigation (`MOVE_SE`) and prematurely attempt zone border exits into solid rock.
+- **Solution:**
+  - **In-Engine Wall Collision Suppression (`AIBrainPart.cs`):**
+    - In `NAVIGATE_TO_CELL`, removed blind vector fallback. Now searches open, non-occluding adjacent cells that bring the character closer to the target cell.
+    - Verified `targetNext` before calling `player.Move`: if `targetNext.IsOccluding() || targetNext.HasWall()`, immediately reports `lastMoveFailed = true`, passes turn, and never bumps into rock walls.
+    - In `ExecuteAutoexplore`, added wall check before moving and sets `isAutoexploreStuck = true` on `!moved`.
+    - Gated `isZoneFullyExplored = true` to strictly require `z > 10 || unexploredCellCount <= 35`. On the surface with >35 unexplored cells, sets `isZoneFullyExplored = false` and `isAutoexploreStuck = true`.
+  - **Loop Breaker Frontier Failure Detection & Companion Swapping (`brain.py`):**
+    - Added `nav_cell_failed = (last_executed_action.startswith("NAVIGATE_TO_CELL") and (cur_pos == last_executed_pos or game_state.get("last_move_failed", False)))`.
+    - If `nav_cell_failed`, skips `NAVIGATE_TO_CELL` and falls through to `open_escapes` (`MOVE_SE` onto the dragonfly corpse tile).
+    - Added companion swapping in loop breaker (`companion_escapes`) to swap places with followers when trapped in 1-tile corridor bottlenecks.
+    - In `query_decision`, strictly enforces `zone_fully_explored = False` on surface (`z <= 10`) whenever `unexp_cells > 35`.
+  - **Verification (Test 48):**
+    - Added Test 48 in `dry_run.py` verifying:
+      - 48.1: Live bottleneck breakout at (74, 8) with companion at (74, 9) dispatches `MOVE_SE` towards sector `(35, 11)`.
+      - 48.2: Failed `NAVIGATE_TO_CELL` is immediately suppressed in loop breaker, redirecting to `open_escapes`.
+      - 48.3: Companion swap detected in narrow corridor bottlenecks when all alternatives are walls.
+    - All 48 verification tests pass cleanly. Mod deployed to game directory.
+
 ---
 
 ## 4. Current Codebase Specification (v1.3.2)
