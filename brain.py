@@ -2502,14 +2502,16 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         is_subterranean = (cur_z > 10)
         # In subterranean strata (z > 10), solid rock walls permanently occlude hundreds of cells (500-1500 cells).
         # When native autoexplore and pathfinding confirm no reachable unexplored cells remain,
-        # the engine sets zone_fully_explored: True. This MUST NOT be overridden by solid rock unexp_cells!
-        # On the surface (z <= 10), require unexp_cells <= 35 to guard against premature exit bailing.
-        if is_subterranean:
+        # the engine sets zone_fully_explored: True.
+        # In towns/settlements (is_town), buildings/huts permanently conceal hundreds of cells.
+        # When autoexplore finishes or stalls, the town is fully explored and character must exit.
+        # On the surface (z <= 10), trust native autoexplore completion or stuck resolution.
+        if zone_id and zone_id in EXPLORED_ZONE_SET:
+            zone_fully_explored = True
+        elif is_subterranean:
             zone_fully_explored = game_state.get("zone_fully_explored", False) or (unexp_cells == 0)
         else:
-            if zone_id and zone_id in EXPLORED_ZONE_SET:
-                zone_fully_explored = True
-            elif unexp_cells is not None and unexp_cells > 35:
+            if not is_stuck_explore and unexp_cells is not None and unexp_cells > 35 and not (zone_id and zone_id in EXPLORED_ZONE_SET):
                 zone_fully_explored = False
             else:
                 zone_fully_explored = game_state.get("zone_fully_explored", False) or (unexp_cells == 0)
@@ -2518,7 +2520,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         # Determine if there is an unexplored sector (across water/obstacles)
         is_exiting_zone = bool(CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == zone_id)
-        has_unexplored_sector = (not zone_fully_explored) and (not is_exiting_zone) and (unexp_cells is not None and unexp_cells > 0)
+        has_unexplored_sector = (not is_town) and (not zone_fully_explored) and (not is_exiting_zone) and (unexp_cells is not None and unexp_cells > 0)
         sector_target = None
         sector_reason = ""
         if has_unexplored_sector:
@@ -2532,7 +2534,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             elif 0 <= nx < 80 and 0 <= ny < 25 and (nx != px or ny != py) and (zone_id, (nx, ny)) not in UNREACHABLE_SECTORS:
                 sector_target = (nx, ny)
                 sector_reason = f"Water Traversal: Navigating toward nearest unexplored cell at {sector_target} ({unexp_cells} unrevealed cells)"
-        elif unexp_cells is None and not zone_fully_explored and not is_exiting_zone:
+        elif unexp_cells is None and not is_town and not zone_fully_explored and not is_exiting_zone:
             # Fallback for synthetic dry-run tests without full zone grid telemetry
             cand_target, cand_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
             if cand_target and (zone_id, cand_target) not in UNREACHABLE_SECTORS:
@@ -2550,7 +2552,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             return {"action": "AUTOEXPLORE", "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder"}
 
         # 8. Unexplored Sector across Water / Obstacles (Macro-sector navigation)
-        if (not zone_fully_explored) and sector_target and not is_exiting_zone:
+        if (not is_town) and (not zone_fully_explored) and sector_target and not is_exiting_zone:
             # Check if trapped in an enclosed pocket (visited multiple times with all moves leading to visited tiles)
             all_moves_visited = (not valid_moves) or all(visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) >= 1 for m in valid_moves)
             # In towns/settlements, NEVER attack walls or whack huts!
@@ -2562,9 +2564,12 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                         "reason": f"Autonomous Burrowing: Attacking {burrow_info} ({burrow_d}) to breach enclosed pocket toward sector {sector_target}"
                     }
 
-            if best_sector_m:
-                return {"action": best_sector_m, "reason": sector_reason}
-            return {"action": f"NAVIGATE_TO_CELL:{sector_target[0]},{sector_target[1]}", "reason": sector_reason}
+            # If stuck in an enclosed pocket with no burrow and all moves already visited, don't force moves toward unreachable sector!
+            is_stuck_in_visited_pocket = (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited
+            if not is_stuck_in_visited_pocket:
+                if best_sector_m:
+                    return {"action": best_sector_m, "reason": sector_reason}
+                return {"action": f"NAVIGATE_TO_CELL:{sector_target[0]},{sector_target[1]}", "reason": sector_reason}
 
         # 9. Local unexplored frontier: If any adjacent move leads to a completely unvisited tile (0 visits)
         # ONLY if the zone is not fully cleared (e.g. recovering from room loop in Joppa)
@@ -2577,8 +2582,8 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 unvisited_local.sort(key=lambda m: (1 if is_swim_move(m, surroundings) else 0))
                 return {"action": unvisited_local[0], "reason": f"Scouting zone frontier {unvisited_local[0]}"}
 
-        # If autoexplore is stuck and there is no reachable unexplored sector or local frontier, mark zone explored for transition!
-        if is_stuck_explore and sector_target is None and not zone_fully_explored and not is_exiting_zone:
+        # If autoexplore is stuck and there is no reachable local frontier, mark zone explored for transition!
+        if (is_stuck_explore or is_town) and not zone_fully_explored and not is_exiting_zone:
             zone_fully_explored = True
             if zone_id:
                 EXPLORED_ZONE_SET.add(zone_id)
@@ -3063,10 +3068,10 @@ def main():
                     elif is_adj_border and chosen_border_m and (chosen_border_m in valid_m):
                         action = chosen_border_m
                         reason = f"[Loop Breaker] Adjacent to exit border: stepping {chosen_border_m} onto border edge."
-                    elif frontier_target and unexp_c > 35 and cur_z <= 10 and not nav_cell_failed and (current_zone_id, frontier_target) not in UNREACHABLE_SECTORS:
+                    elif not is_town and not is_stuck_explore and frontier_target and unexp_c > 35 and cur_z <= 10 and not nav_cell_failed and (current_zone_id, frontier_target) not in UNREACHABLE_SECTORS:
                         action = f"NAVIGATE_TO_CELL:{frontier_target[0]},{frontier_target[1]}"
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Routing via native pathfinder to unexplored frontier at {frontier_target} ({unexp_c} unrevealed cells)."
-                    elif (is_stuck_explore or game_state.get("zone_fully_explored", False) or (unexp_c == 0)) and exit_dir:
+                    elif (is_town or is_stuck_explore or game_state.get("zone_fully_explored", False) or (unexp_c == 0)) and exit_dir:
                         action = f"NAVIGATE_ZONE_EXIT:{exit_dir}"
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards forward exit {exit_tag} via native engine pathfinder."
                         CURRENT_ZONE_CHOSEN_EXIT = exit_dir

@@ -887,6 +887,21 @@
   4. **Strict Direction Parsing in `check_exit_direction_failure`**: Fixed substring matching so only valid cardinal direction tokens (`"N"`, `"S"`, `"E"`, `"W"`, etc.) are checked, preventing non-directional status strings like `"PATH_BLOCKED"` from falsely triggering exit blacklisting.
   5. **Verification**: Added Test 49 to `dry_run.py` verifying unreachable sector blacklisting on `PATH_BLOCKED` and committed exit navigation. All 49 verification tests pass with 0 errors.
 
+### Iteration 40: Joppa Town Wall Sticking, Surface Fog Override Reversal & Exhausted Pocket Exit Resolution
+- **Problem**:
+  1. *Surface Zone Exploration Override*: In Iteration 38, `AIBrainPart.cs` was modified to set `isZoneFullyExplored = false` and `isAutoexploreStuck = true` whenever `zDepth <= 10` and `unexploredCellCount > 35`. Because almost every surface map (including Joppa with ~687 unrevealed house/fenced cells) has permanent black fog or inaccessible corners, this permanently prevented any surface zone from completing natural exploration.
+  2. *Joppa Wall Sticking Oscillation*: In `brain.py`, because `zone_fully_explored` was forced to `False`, Step 8 ("Unexplored Sector Navigation") calculated the centroid of Joppa's unrevealed cells at `(34, 10)` (behind/inside Mehmet's hut wall). From `(34, 9)`, Step 8 used a greedy 1-tile Chebyshev line-of-sight distance heuristic to output `MOVE_S` into the brinestalk wall, oscillating indefinitely between `(34, 9)` and `(34, 10)` because attacking town structures is strictly suppressed (`is_town_zone`).
+  3. *Corridor Pendulum Pacing*: In canyon corridors, when native autoexplore completed all reachable corridor tiles, Step 8 dynamically targeted the nearest unrevealed fog coordinate across the cliff (e.g. `(43, 9)`). As the Apostle walked along the passage, the nearest fog coordinate shifted relative to him, repeatedly reversing his direction and causing him to pace back and forth like a pendulum rather than exiting to the East.
+- **Solution**:
+  1. **Restore Natural Zone Completion in C# (`AIBrainPart.cs`)**: Removed the arbitrary surface `>35` unrevealed cell check. When native autoexplore (`FasterDMapAutoexplore`, `AutoAct`, and nearest unexplored pathfinding) exhausts all reachable unexplored cells in a zone, the accessible region is marked fully explored (`isZoneFullyExplored = true`, `isAutoexploreStuck = false`), allowing the AI to naturally transition to stairs or zone exit borders.
+  2. **Town Safety & Sector Exclusion (`brain.py`)**: Gated Step 8 with `(not is_town)`. In towns and settlements, the AI never performs macro-sector navigation towards interior building fog centroids; once open town streets have been walked, the AI smoothly routes to the zone exit border via `NAVIGATE_ZONE_EXIT`.
+  3. **Exhausted Pocket Exit Resolution (`brain.py`)**: Added `is_stuck_in_visited_pocket = (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited`. When trapped in an enclosed visited pocket with no destructible walls, Step 8 suppresses macro-sector moves. Step 9 checks for local unvisited doorways; if none remain, the zone is marked fully explored and the AI commits to the zone exit.
+  4. **Verification**: Added Test 50 to `dry_run.py` covering:
+     - 50.1a: Fresh unvisited street tile exploration in Joppa without wall bumping.
+     - 50.1b: Explored town street cleanly routes to zone exit border (`NAVIGATE_ZONE_EXIT`).
+     - 50.2: Canyon dead-end pocket transitions to `NAVIGATE_ZONE_EXIT:E`.
+     - All 50 verification tests pass with 0 errors. Active mod updated in Caves of Qud.
+
 ---
 
 ## 4. Current Codebase Specification (v1.3.2)

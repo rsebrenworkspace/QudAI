@@ -2959,8 +2959,101 @@ print(f"Scenario 49.2 decision: {dec_49_2['action']} | Reason: {dec_49_2['reason
 assert dec_49_2["action"] == "NAVIGATE_ZONE_EXIT:E", f"Expected committed NAVIGATE_ZONE_EXIT:E, got: {dec_49_2['action']}"
 print("  [OK] Scenario 49.2 Passed: Chosen exit E committedly preserved without reverting to macro sector exploration.")
 
+# ==================================================
+# TEST 50: Joppa Town Natural Exit & Exhausted Pocket Exit Resolution
+# ==================================================
 print("\n==================================================")
-print(">>> ALL 49 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 50: Joppa Town Natural Exit & Exhausted Pocket Exit Resolution")
+print("==================================================")
+
+# Scenario 50.1: Joppa Town State at (34, 9)
+joppa_state = {
+    "hp": 24, "max_hp": 24, "x": 34, "y": 9, "z": 10,
+    "calling": "Nomad", "level": 1, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.11.22.1.1.10",
+    "zone_name": "Joppa",
+    "is_settlement": True,
+    "zone_fully_explored": False,
+    "autoexplore_stuck": True,
+    "unexplored_cells": 687,
+    "unexplored_centroid_x": 34, "unexplored_centroid_y": 10,
+    "nearest_unexplored_x": 30, "nearest_unexplored_y": 5,
+    "reachable_edges": "NSEW",
+    "last_move_failed": False,
+    "surroundings": {
+        "NW": "Empty ground", "N": "Empty ground", "NE": "dirt path",
+        "W": "[BLOCKED: impassable terrain], [BLOCKED: brinestalk wall]",
+        "E": "dirt path",
+        "SW": "[BLOCKED: impassable terrain], [BLOCKED: brinestalk wall]",
+        "S": "Empty ground", "SE": "Empty ground"
+    },
+    "companions": [],
+    "visible_entities": []
+}
+
+# Scenario 50.1a: Joppa Town State at (34, 9) with unvisited open tile
+brain.visit_counts.clear()
+brain.stuck_autoexplore_zones.add("JoppaWorld.11.22.1.1.10")
+brain.CURRENT_ZONE_CHOSEN_EXIT = None
+brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+brain.EXPLORED_ZONE_SET.clear()
+
+dec_50_1a = brain.query_decision(joppa_state, took_damage=False, enemies=[])
+print(f"Scenario 50.1a Joppa Fresh Tile Decision: {dec_50_1a['action']} | Reason: {dec_50_1a['reason']}")
+assert dec_50_1a["action"] == "MOVE_NW", f"Expected fresh tile move MOVE_NW, got: {dec_50_1a['action']}"
+assert dec_50_1a["action"] != "MOVE_S", "Must NOT greedily step South into Mehmet's wall oscillation!"
+assert dec_50_1a["action"] != "NAVIGATE_TO_CELL:34,10", "Must NOT pathfind to fog centroid inside town house!"
+print("  [OK] Scenario 50.1a Passed: Character steps onto unvisited open street tile instead of wall bumping.")
+
+# Scenario 50.1b: Joppa Town State when all street tiles have been walked
+for d, (dx, dy) in brain.CARDINAL_OFFSETS.items():
+    brain.visit_counts[(34 + dx, 9 + dy)] = 1
+brain.visit_counts[(34, 9)] = 2
+
+dec_50_1b = brain.query_decision(joppa_state, took_damage=False, enemies=[])
+print(f"Scenario 50.1b Joppa Exit Decision: {dec_50_1b['action']} | Reason: {dec_50_1b['reason']}")
+assert dec_50_1b["action"].startswith("NAVIGATE_ZONE_EXIT:"), f"Expected Joppa to navigate to zone exit, got: {dec_50_1b['action']}"
+print("  [OK] Scenario 50.1b Passed: Explored town street safely routes to zone exit without wall sticking or fog centroid pull.")
+
+# Scenario 50.2: Exhausted Pocket Exit Resolution (Non-town with all visited moves)
+pocket_dead_end = {
+    "hp": 31, "max_hp": 31, "x": 45, "y": 11, "z": 10,
+    "calling": "Apostle", "level": 5, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.10.18.1.1.10",
+    "zone_name": "desert canyon, surface",
+    "zone_fully_explored": False,
+    "autoexplore_stuck": True,
+    "unexplored_cells": 1613,
+    "unexplored_centroid_x": 35, "unexplored_centroid_y": 11,
+    "nearest_unexplored_x": 43, "nearest_unexplored_y": 9,
+    "reachable_edges": "E",
+    "last_move_failed": False,
+    "surroundings": {
+        "NW": "[BLOCKED: canyon cliff]", "N": "[BLOCKED: canyon cliff]", "NE": "[BLOCKED: canyon cliff]",
+        "W": "[BLOCKED: canyon cliff]", "SW": "[BLOCKED: canyon cliff]",
+        "E": "dirt path", "S": "[BLOCKED: canyon cliff]", "SE": "[BLOCKED: canyon cliff]"
+    },
+    "companions": [],
+    "visible_entities": []
+}
+
+brain.visit_counts.clear()
+brain.visit_counts[(45, 11)] = 2
+brain.visit_counts[(46, 11)] = 2  # East move already visited
+brain.current_zone_id = "JoppaWorld.10.18.1.1.10"
+brain.CURRENT_TRACKED_ZONE = "JoppaWorld.10.18.1.1.10"
+brain.stuck_autoexplore_zones.add("JoppaWorld.10.18.1.1.10")
+brain.CURRENT_ZONE_CHOSEN_EXIT = None
+brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+brain.EXPLORED_ZONE_SET.clear()
+
+dec_50_2 = brain.query_decision(pocket_dead_end, took_damage=False, enemies=[])
+print(f"Scenario 50.2 Pocket Decision: {dec_50_2['action']} | Reason: {dec_50_2['reason']}")
+assert dec_50_2["action"] == "NAVIGATE_ZONE_EXIT:E", f"Expected NAVIGATE_ZONE_EXIT:E, got: {dec_50_2['action']}"
+print("  [OK] Scenario 50.2 Passed: Exhausted pocket dead-end transitions cleanly to zone exit.")
+
+print("\n==================================================")
+print(">>> ALL 50 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

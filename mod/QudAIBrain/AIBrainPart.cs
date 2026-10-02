@@ -2821,20 +2821,9 @@ namespace QudAIBrain
                 return;
             }
 
-            // 4. If neither native autoexplore nor pathfinder can find an unexplored step:
-            // In subterranean strata (z > 10) or small clear zones (unexp <= 35), mark zone as explored so AI advances to stairs or exits!
-            // On surface with large unexplored count, autoexplore is blocked by obstacles/companions, NOT fully explored!
-            int zDepth = player.CurrentCell?.ParentZone?.Z ?? 10;
-            if (zDepth > 10 || lastUnexploredCellCount <= 35)
-            {
-                isZoneFullyExplored = true;
-                isAutoexploreStuck = false;
-            }
-            else
-            {
-                isZoneFullyExplored = false;
-                isAutoexploreStuck = true;
-            }
+            // 4. If neither native autoexplore nor pathfinder can find an unexplored step, mark zone as explored so AI advances to stairs or exits!
+            isZoneFullyExplored = true;
+            isAutoexploreStuck = false;
             autoexplorePosHistory.Clear();
             lastMoveFailed = false;
             lastFailedDir = "";
