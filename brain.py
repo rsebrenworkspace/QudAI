@@ -495,10 +495,37 @@ def get_zone_exit_target(cur_pos, game_state=None):
     return pos, tag, chosen_dir
 
 
+def is_valid_stair_down(name: str, bp: str = "") -> bool:
+    """Validates that a detected down passage is genuine terrain/architecture, not a plant, creature, or vine."""
+    name_l = (name or "").lower()
+    bp_l = (bp or "").lower()
+    combined = f"{name_l} {bp_l}"
+    invalid_keywords = [
+        "vine", "spit", "plant", "creature", "fungus", "corpse", "seed",
+        "tree", "bush", "flower", "spider", "beetle", "worm", "fly", "centipede"
+    ]
+    if any(k in combined for k in invalid_keywords):
+        return False
+    if "pit" in combined:
+        words = set(re.findall(r"\w+", combined))
+        if "pit" not in words and not any(w.startswith("pit") or w.endswith("pit") for w in words):
+            return False
+    return True
+
+
+def get_stair_priority(name: str, bp: str = "") -> int:
+    """Returns priority for down passages: 2 for staircases/ladders, 1 for pits/holes/shafts/chasms."""
+    combined = f"{(name or '').lower()} {(bp or '').lower()}"
+    if "stair" in combined or "ladder" in combined:
+        return 2
+    return 1
+
+
 def update_stair_records(game_state):
     """
     Ingests stairs_down and stairs_up telemetry from state.json,
     maintaining persistent spatial memory of discovered staircases across zones.
+    Filters out plants/vines/creatures and prioritizes true staircases over pits/holes.
     """
     zone_id = game_state.get("zone_id", "")
     cur_z = game_state.get("z", 10)
@@ -506,16 +533,34 @@ def update_stair_records(game_state):
 
     # 1. Ingest stairs down from dedicated telemetry
     raw_sd = game_state.get("stairs_down", [])
+    valid_sd = []
     for sd in raw_sd:
+        sname = sd.get("name", "stairs down")
+        sbp = sd.get("blueprint", "")
+        if is_valid_stair_down(sname, sbp):
+            valid_sd.append(sd)
+
+    # Sort so higher priority (stairs down > pit/hole) is processed last
+    valid_sd.sort(key=lambda s: get_stair_priority(s.get("name", ""), s.get("blueprint", "")))
+
+    for sd in valid_sd:
         stx, sty = sd.get("tx"), sd.get("ty")
         if stx is not None and sty is not None and zone_id:
+            sname = sd.get("name", "stairs down")
+            sbp = sd.get("blueprint", "")
             req_lvl = min_level_for_depth(cur_z + 1)
+            prio = get_stair_priority(sname, sbp)
             prev = KNOWN_STAIRS_DOWN.get(zone_id)
+            prev_prio = prev.get("priority", 0) if prev else 0
+
+            # Don't downgrade from a staircase (priority 2) to a pit (priority 1)
+            if prev and prev_prio > prio:
+                continue
+
             if not prev or prev.get("tx") != stx or prev.get("ty") != sty:
-                sname = sd.get("name", "stairs down")
                 print(f"[STAIRCASE NOTED]: Discovered {sname} at ({stx}, {sty}) in {zone_id}. Delving requires Level {req_lvl} (Current: {cur_lvl}).")
             KNOWN_STAIRS_DOWN[zone_id] = {
-                "tx": stx, "ty": sty, "z": cur_z, "name": sd.get("name", "stairs down"), "req_level": req_lvl
+                "tx": stx, "ty": sty, "z": cur_z, "name": sname, "req_level": req_lvl, "priority": prio
             }
 
     # Fallback to visible_entities for stairs down
@@ -523,11 +568,20 @@ def update_stair_records(game_state):
         ename = ent.get("name", "").lower()
         ebp = ent.get("blueprint", "").lower()
         if ("stair" in ename or "stair" in ebp or "hole" in ename or "shaft" in ename or "ladder" in ename) and "down" in ename:
+            if not is_valid_stair_down(ename, ebp):
+                continue
             stx, sty = ent.get("tx"), ent.get("ty")
-            if stx is not None and sty is not None and zone_id and zone_id not in KNOWN_STAIRS_DOWN:
+            if stx is not None and sty is not None and zone_id:
+                prio = get_stair_priority(ename, ebp)
+                prev = KNOWN_STAIRS_DOWN.get(zone_id)
+                prev_prio = prev.get("priority", 0) if prev else 0
+                if prev and prev_prio > prio:
+                    continue
                 req_lvl = min_level_for_depth(cur_z + 1)
+                if not prev or prev.get("tx") != stx or prev.get("ty") != sty:
+                    print(f"[STAIRCASE NOTED]: Discovered {ent.get('name')} at ({stx}, {sty}) in {zone_id}. Delving requires Level {req_lvl} (Current: {cur_lvl}).")
                 KNOWN_STAIRS_DOWN[zone_id] = {
-                    "tx": stx, "ty": sty, "z": cur_z, "name": ent.get("name", "stairs down"), "req_level": req_lvl
+                    "tx": stx, "ty": sty, "z": cur_z, "name": ent.get("name", "stairs down"), "req_level": req_lvl, "priority": prio
                 }
 
     # 2. Ingest stairs up from dedicated telemetry
@@ -535,15 +589,20 @@ def update_stair_records(game_state):
     for su in raw_su:
         stx, sty = su.get("tx"), su.get("ty")
         if stx is not None and sty is not None and zone_id:
-            KNOWN_STAIRS_UP[zone_id] = {
-                "tx": stx, "ty": sty, "z": cur_z, "name": su.get("name", "stairs up")
-            }
+            sname = su.get("name", "stairs up")
+            sbp = su.get("blueprint", "")
+            if is_valid_stair_down(sname, sbp):
+                KNOWN_STAIRS_UP[zone_id] = {
+                    "tx": stx, "ty": sty, "z": cur_z, "name": sname
+                }
 
     # Fallback to visible_entities for stairs up
     for ent in game_state.get("visible_entities", []):
         ename = ent.get("name", "").lower()
         ebp = ent.get("blueprint", "").lower()
         if ("stair" in ename or "stair" in ebp or "hole" in ename or "shaft" in ename or "ladder" in ename) and "up" in ename:
+            if not is_valid_stair_down(ename, ebp):
+                continue
             stx, sty = ent.get("tx"), ent.get("ty")
             if stx is not None and sty is not None and zone_id and zone_id not in KNOWN_STAIRS_UP:
                 KNOWN_STAIRS_UP[zone_id] = {
@@ -1105,8 +1164,12 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     companions = game_state.get("companions", [])
     enemies = filter_hostile_enemies(enemies, companions)
 
-    px = game_state.get("x", 0)
-    py = game_state.get("y", 0)
+    pos = game_state.get("pos")
+    if pos and len(pos) >= 2:
+        px, py = pos[0], pos[1]
+    else:
+        px = game_state.get("x", 0)
+        py = game_state.get("y", 0)
     hp = game_state.get("hp", 0)
     max_hp = game_state.get("max_hp", 1)
     ammo = game_state.get("missile_ammo", 0)
@@ -1200,7 +1263,12 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
         # 0. PET RECRUITMENT: Proselytize / Beguile adjacent beasts or humanoids (HIGHEST PRIORITY IF NO PET!)
         companions = game_state.get("companions", [])
         raw_ents = game_state.get("visible_entities", [])
-        has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_ents)
+        has_companion = (
+            game_state.get("has_companion", False)
+            or bool(companions)
+            or any(e.get("is_companion") for e in raw_ents)
+            or bool(CHARMED_COMPANION_NAMES)
+        )
         if not has_companion:
             for ab in abilities:
                 if is_ability_ready(ab) and ab.get("command"):
@@ -1216,7 +1284,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                                     action_choices.append(f"USE_ABILITY:{cmd}:{edir} (RECRUIT PET: Proselytize adjacent {ename} {edir} to become your permanent combat companion & frontline tank!)")
 
         # Check line-of-fire from player to primary target
-        c_lof_clear, c_lof_reason = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords)
+        c_lof_clear, c_lof_reason = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest, surroundings=surroundings)
 
         # 1. RANGED ATTACKS: Missile Fire & Ranged Mental/Beam Abilities (HIGHEST PRIORITY)
         # A. Missile Fire (Requires clear line of fire past companions)
@@ -2618,46 +2686,55 @@ def main():
                 pos_frequency = recent_positions.count(cur_pos)
                 unique_positions = len(set(recent_positions))
 
-                companions = game_state.get("companions", [])
+                companions = list(game_state.get("companions", []))
                 raw_entities = game_state.get("visible_entities", [])
-                has_active_companion = (
-                    bool(game_state.get("has_companion", False))
-                    or bool(companions)
-                    or any(e.get("is_companion", False) for e in raw_entities)
-                )
 
                 current_comp_coords = set()
                 current_comp_names = set()
 
-                if has_active_companion:
-                    for c in companions:
-                        cx, cy = c.get("tx"), c.get("ty")
-                        if cx is not None and cy is not None:
-                            current_comp_coords.add((cx, cy))
-                        cname = c.get("name")
-                        if cname:
-                            clean = re.sub(r'\{\{[^}]*\}\}', '', cname).strip().lower()
-                            if clean and not any(bad in clean for bad in ["pool of", "puddle of", "dram", "drams", "ground", "wall", "watervine", "glowpad", "brinestalk", "rules"]):
-                                current_comp_names.add(clean)
+                # 1. Update from raw_entities: check if any entity is already marked or matches a previously charmed companion
+                for e in raw_entities:
+                    ename = e.get("name")
+                    clean = re.sub(r'\{\{[^}]*\}\}', '', ename).strip().lower() if ename else ""
+                    is_charmed = e.get("is_companion", False) or (clean and any(cname in clean or clean in cname for cname in CHARMED_COMPANION_NAMES))
+                    if is_charmed:
+                        e["is_companion"] = True
+                        e["is_enemy"] = False
+                        ex, ey = e.get("tx"), e.get("ty")
+                        if ex is not None and ey is not None:
+                            current_comp_coords.add((ex, ey))
+                        if clean and not any(bad in clean for bad in ["pool of", "puddle of", "dram", "drams", "ground", "wall", "watervine", "glowpad", "brinestalk", "rules"]):
+                            current_comp_names.add(clean)
 
-                    for e in raw_entities:
-                        if e.get("is_companion", False):
-                            ex, ey = e.get("tx"), e.get("ty")
-                            if ex is not None and ey is not None:
-                                current_comp_coords.add((ex, ey))
-                            ename = e.get("name")
-                            if ename:
-                                clean = re.sub(r'\{\{[^}]*\}\}', '', ename).strip().lower()
-                                if clean and not any(bad in clean for bad in ["pool of", "puddle of", "dram", "drams", "ground", "wall", "watervine", "glowpad", "brinestalk", "rules"]):
-                                    current_comp_names.add(clean)
+                # 2. Ingest from engine companions list
+                for c in companions:
+                    cx, cy = c.get("tx"), c.get("ty")
+                    if cx is not None and cy is not None:
+                        current_comp_coords.add((cx, cy))
+                    cname = c.get("name")
+                    if cname:
+                        clean = re.sub(r'\{\{[^}]*\}\}', '', cname).strip().lower()
+                        if clean and not any(bad in clean for bad in ["pool of", "puddle of", "dram", "drams", "ground", "wall", "watervine", "glowpad", "brinestalk", "rules"]):
+                            current_comp_names.add(clean)
 
-                    CHARMED_COMPANION_NAMES.clear()
+                # 3. Maintain persistent companion memory
+                if current_comp_names:
                     CHARMED_COMPANION_NAMES.update(current_comp_names)
+                if current_comp_coords:
                     CHARMED_COMPANION_COORDS.clear()
                     CHARMED_COMPANION_COORDS.update(current_comp_coords)
-                else:
-                    CHARMED_COMPANION_NAMES.clear()
-                    CHARMED_COMPANION_COORDS.clear()
+
+                # Synthesize companion display if engine companions array is momentarily empty but we have an active companion
+                if not companions and current_comp_coords:
+                    for e in raw_entities:
+                        if e.get("is_companion"):
+                            companions.append({
+                                "name": e.get("name"),
+                                "hp": e.get("hp", 10),
+                                "max_hp": e.get("max_hp", 10),
+                                "tx": e.get("tx"),
+                                "ty": e.get("ty")
+                            })
 
                 if companions:
                     c_display = [f"{c.get('name')} (HP {c.get('hp')}/{c.get('max_hp')})" for c in companions]

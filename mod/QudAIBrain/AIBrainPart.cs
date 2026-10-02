@@ -59,6 +59,50 @@ namespace QudAIBrain
         public static GameObject PreferredTargetObj = null;
         public static string PreferredMutation = "";
 
+        public static HashSet<string> RegisteredCompanionIds = new HashSet<string>();
+        public static HashSet<string> RegisteredCompanionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        public static List<Cell> GetLineBetween(Cell from, Cell to)
+        {
+            List<Cell> line = new List<Cell>();
+            if (from == null || to == null || from.ParentZone == null) return line;
+            int x0 = from.X;
+            int y0 = from.Y;
+            int x1 = to.X;
+            int y1 = to.Y;
+
+            int dx = Math.Abs(x1 - x0);
+            int dy = Math.Abs(y1 - y0);
+            int sx = x0 < x1 ? 1 : -1;
+            int sy = y0 < y1 ? 1 : -1;
+            int err = dx - dy;
+
+            int currX = x0;
+            int currY = y0;
+
+            while (true)
+            {
+                if (currX != x0 || currY != y0)
+                {
+                    Cell cell = from.ParentZone.GetCell(currX, currY);
+                    if (cell != null) line.Add(cell);
+                }
+                if (currX == x1 && currY == y1) break;
+                int e2 = 2 * err;
+                if (e2 > -dy)
+                {
+                    err -= dy;
+                    currX += sx;
+                }
+                if (e2 < dx)
+                {
+                    err += dx;
+                    currY += sy;
+                }
+            }
+            return line;
+        }
+
         public static string GetBestAdjacentEnemyDirection(GameObject player)
         {
             if (player == null || player.CurrentCell == null) return "";
@@ -160,29 +204,64 @@ namespace QudAIBrain
             if (obj == null || player == null || obj == player || obj.IsPlayer() || !obj.IsAlive) return false;
             try
             {
+                // 0. Registered companion memory cache
+                if (!string.IsNullOrEmpty(obj.ID) && RegisteredCompanionIds.Contains(obj.ID))
+                    return true;
+                string dName = StripQudFormatting(obj.DisplayNameOnly ?? obj.DisplayName ?? "");
+                if (!string.IsNullOrEmpty(dName) && RegisteredCompanionNames.Contains(dName))
+                    return true;
+
                 // 1. Direct effect checks (Proselytize, Beguile, Rebuke, Love)
                 if (obj.HasEffect("Proselytized") || obj.HasEffect("Beguiled") || obj.HasEffect("Rebuked") || obj.HasEffect("Lovesick") || obj.HasEffect("LoveTonic"))
+                {
+                    if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
+                    if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
                     return true;
+                }
 
                 // 2. Direct AI part checks on creature
                 if (obj.HasPart("AllyProselytize") || obj.HasPart("AllyBeguile") || obj.HasPart("AllyRebuke") || obj.HasPart("AllyPet") || obj.HasPart("AllyClone"))
+                {
+                    if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
+                    if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
                     return true;
+                }
 
                 // 3. Brain leader checks
                 var brain = obj.Brain ?? obj.GetPart<Brain>();
                 if (brain != null)
                 {
-                    if (brain.PartyLeader == player) return true;
-                    if (brain.PartyLeader != null && (brain.PartyLeader.IsPlayer() || brain.PartyLeader.ID == player.ID)) return true;
+                    if (brain.PartyLeader == player)
+                    {
+                        if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
+                        if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
+                        return true;
+                    }
+                    if (brain.PartyLeader != null && (brain.PartyLeader.IsPlayer() || brain.PartyLeader.ID == player.ID))
+                    {
+                        if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
+                        if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
+                        return true;
+                    }
                 }
 
                 // 4. Engine leader and alliance methods
-                if (obj.IsLedBy(player)) return true;
+                if (obj.IsLedBy(player))
+                {
+                    if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
+                    if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
+                    return true;
+                }
 
                 try
                 {
                     var comps = player.GetCompanions();
-                    if (comps != null && comps.Contains(obj)) return true;
+                    if (comps != null && comps.Contains(obj))
+                    {
+                        if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
+                        if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
+                        return true;
+                    }
                 }
                 catch { }
             }
@@ -1150,21 +1229,33 @@ namespace QudAIBrain
 
         private static bool IsDownPassage(GameObject obj)
         {
-            if (obj == null) return false;
-            if (obj.HasPart("StairsDown") || obj.HasPart("Hole") || obj.HasPart("OpenShaft") || obj.HasPart("Pit")) return true;
+            if (obj == null || obj.IsPlayer()) return false;
+            if (obj.IsAlive || obj.HasPart("Combat") || obj.HasPart("Brain") || obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasPart("Creature")) return false;
+
             string bp = (obj.Blueprint ?? "").ToLower();
-            string name = (obj.DisplayName ?? "").ToLower();
-            if (bp.Contains("stairsdown") || bp.Contains("hole") || bp.Contains("pit") || bp.Contains("shaft") || bp.Contains("chasm")) return true;
-            if (name.Contains("stairs down") || name.Contains("hole") || name.Contains("pit") || name.Contains("shaft") || name.Contains("ladder down") || name.Contains("chasm")) return true;
+            string name = StripQudFormatting(obj.DisplayName ?? "").ToLower();
+            if (bp.Contains("vine") || bp.Contains("spit") || name.Contains("vine") || name.Contains("spit")) return false;
+
+            if (obj.HasPart("StairsDown") || obj.HasPart("Hole") || obj.HasPart("OpenShaft") || obj.HasPart("Pit")) return true;
+
+            bool isPit = bp == "pit" || bp.StartsWith("pit_") || bp.EndsWith("_pit") || bp.Contains("_pit_") ||
+                         name == "pit" || name.StartsWith("pit ") || name.EndsWith(" pit") || name.Contains(" pit ");
+
+            if (bp.Contains("stairsdown") || bp.Contains("hole") || bp.Contains("shaft") || bp.Contains("chasm") || isPit) return true;
+            if (name.Contains("stairs down") || name.Contains("hole") || name.Contains("shaft") || name.Contains("ladder down") || name.Contains("chasm") || isPit) return true;
             return false;
         }
 
         private static bool IsUpPassage(GameObject obj)
         {
-            if (obj == null) return false;
-            if (obj.HasPart("StairsUp")) return true;
+            if (obj == null || obj.IsPlayer()) return false;
+            if (obj.IsAlive || obj.HasPart("Combat") || obj.HasPart("Brain") || obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasPart("Creature")) return false;
+
             string bp = (obj.Blueprint ?? "").ToLower();
-            string name = (obj.DisplayName ?? "").ToLower();
+            string name = StripQudFormatting(obj.DisplayName ?? "").ToLower();
+            if (bp.Contains("vine") || bp.Contains("spit") || name.Contains("vine") || name.Contains("spit")) return false;
+
+            if (obj.HasPart("StairsUp")) return true;
             if (bp.Contains("stairsup") || name.Contains("stairs up") || name.Contains("ladder up")) return true;
             return false;
         }
@@ -1425,6 +1516,12 @@ namespace QudAIBrain
                         if (targetCell.Objects != null && targetCell.Objects.Any(o => o != null && IsCompanion(o, player)))
                         {
                             UnityEngine.Debug.LogWarning("[QudAI FIRE_MISSILE] Refusing to fire missile at friendly companion's cell!");
+                            return;
+                        }
+                        var missileRay = GetLineBetween(current, targetCell);
+                        if (missileRay.Any(c => c.Objects != null && c.Objects.Any(o => o != null && IsCompanion(o, player))))
+                        {
+                            UnityEngine.Debug.LogWarning("[QudAI FIRE_MISSILE] Refusing to fire missile because a friendly companion is standing in the line of fire!");
                             return;
                         }
                         bool cellHasLOS = true;
@@ -1986,7 +2083,7 @@ namespace QudAIBrain
                     {
                         targetObj = safeZoneObjs
                             .Where(o => o != null && !o.IsPlayer() && (isProselytize ? CanBeProselytized(o, player) : (!IsCompanion(o, player) && CheckIsEnemy(o, player))) && o.CurrentCell != null)
-                            .Where(o => !isDirectRay || player.HasLOSTo(o))
+                            .Where(o => !isDirectRay || (player.HasLOSTo(o) && !GetLineBetween(pCell, o.CurrentCell).Any(c => c.Objects != null && c.Objects.Any(comp => IsCompanion(comp, player)))))
                             .Where(o => pCell.GetDirectionFromCell(o.CurrentCell).Equals(PreferredDirection, StringComparison.OrdinalIgnoreCase))
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
@@ -1996,7 +2093,7 @@ namespace QudAIBrain
                     {
                         targetObj = safeZoneObjs
                             .Where(o => o != null && !o.IsPlayer() && (isProselytize ? CanBeProselytized(o, player) : (!IsCompanion(o, player) && CheckIsEnemy(o, player))) && o.CurrentCell != null)
-                            .Where(o => !isDirectRay || player.HasLOSTo(o))
+                            .Where(o => !isDirectRay || (player.HasLOSTo(o) && !GetLineBetween(pCell, o.CurrentCell).Any(c => c.Objects != null && c.Objects.Any(comp => IsCompanion(comp, player)))))
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
                     }
@@ -2018,6 +2115,16 @@ namespace QudAIBrain
                         targetCell = null;
                         targetObj = null;
                     }
+                    else
+                    {
+                        var rayCells = GetLineBetween(player.CurrentCell, targetCell);
+                        if (rayCells.Any(c => c.Objects != null && c.Objects.Any(o => o != null && IsCompanion(o, player))))
+                        {
+                            UnityEngine.Debug.LogWarning($"[QudAI USE_ABILITY] Aborting direct ray {cmd} because a friendly companion is standing in the line of fire!");
+                            targetCell = null;
+                            targetObj = null;
+                        }
+                    }
                 }
 
                 if (!isProselytize)
@@ -2033,11 +2140,25 @@ namespace QudAIBrain
                         targetObj = null;
                     }
                 }
+                else
+                {
+                    if (targetObj != null)
+                    {
+                        if (!string.IsNullOrEmpty(targetObj.ID)) RegisteredCompanionIds.Add(targetObj.ID);
+                        string dName = StripQudFormatting(targetObj.DisplayNameOnly ?? targetObj.DisplayName ?? "");
+                        if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
+                    }
+                }
 
-                if (targetObj != null)
+                if (targetObj != null && !isProselytize)
                 {
                     player.Target = targetObj;
                     try { Sidebar.CurrentTarget = targetObj; } catch { }
+                }
+                else if (isProselytize)
+                {
+                    player.Target = null;
+                    try { Sidebar.CurrentTarget = null; } catch { }
                 }
 
                 PreferredTargetCell = targetCell;
@@ -2053,6 +2174,12 @@ namespace QudAIBrain
                 catch (Exception ex)
                 {
                     UnityEngine.Debug.LogError("[QudAI CommandEvent Error] " + ex.ToString());
+                }
+
+                if (isProselytize)
+                {
+                    player.Target = null;
+                    try { Sidebar.CurrentTarget = null; } catch { }
                 }
 
                 try
@@ -3249,6 +3376,8 @@ namespace QudAIBrain
                     string category = !string.IsNullOrEmpty(DeathCategory) ? DeathCategory : "Combat";
 
                     AIPlayerTurnPatch.ExportDeath(__instance, deathReason, category);
+                    AIPlayerTurnPatch.RegisteredCompanionIds.Clear();
+                    AIPlayerTurnPatch.RegisteredCompanionNames.Clear();
                 }
             }
             catch (Exception ex)
@@ -3403,6 +3532,7 @@ namespace QudAIBrain
                         target = safeZoneObjs
                             .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
                             .Where(o => { try { return player.HasLOSTo(o); } catch { return true; } })
+                            .Where(o => !AIPlayerTurnPatch.GetLineBetween(pCell, o.CurrentCell).Any(c => c.Objects != null && c.Objects.Any(comp => AIPlayerTurnPatch.IsCompanion(comp, player))))
                             .Where(o => pCell.GetDirectionFromCell(o.CurrentCell).Equals(AIPlayerTurnPatch.PreferredDirection, StringComparison.OrdinalIgnoreCase))
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
@@ -3412,6 +3542,7 @@ namespace QudAIBrain
                         target = safeZoneObjs
                             .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
                             .Where(o => { try { return player.HasLOSTo(o); } catch { return true; } })
+                            .Where(o => !AIPlayerTurnPatch.GetLineBetween(pCell, o.CurrentCell).Any(c => c.Objects != null && c.Objects.Any(comp => AIPlayerTurnPatch.IsCompanion(comp, player))))
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
                     }
@@ -3431,7 +3562,7 @@ namespace QudAIBrain
                     {
                         bool dirHasLOS = true;
                         try { dirHasLOS = player.HasLOSTo(dirCell); } catch { }
-                        if (dirHasLOS)
+                        if (dirHasLOS && !AIPlayerTurnPatch.GetLineBetween(player.CurrentCell, dirCell).Any(c => c.Objects != null && c.Objects.Any(comp => AIPlayerTurnPatch.IsCompanion(comp, player))))
                         {
                             __result = dirCell;
                             UnityEngine.Debug.Log($"[QudAI AIPickTargetPatch] Auto-selected direction cell: {__result.X},{__result.Y}");
@@ -3476,6 +3607,7 @@ namespace QudAIBrain
                     {
                         target = safeZoneObjs
                             .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .Where(o => !AIPlayerTurnPatch.GetLineBetween(pCell, o.CurrentCell).Any(c => c.Objects != null && c.Objects.Any(comp => AIPlayerTurnPatch.IsCompanion(comp, player))))
                             .Where(o => pCell.GetDirectionFromCell(o.CurrentCell).Equals(AIPlayerTurnPatch.PreferredDirection, StringComparison.OrdinalIgnoreCase))
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
@@ -3484,6 +3616,7 @@ namespace QudAIBrain
                     {
                         target = safeZoneObjs
                             .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .Where(o => !AIPlayerTurnPatch.GetLineBetween(pCell, o.CurrentCell).Any(c => c.Objects != null && c.Objects.Any(comp => AIPlayerTurnPatch.IsCompanion(comp, player))))
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
                     }

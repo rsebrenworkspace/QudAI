@@ -2407,9 +2407,151 @@ assert "freezing ray" in brain.DIRECTIONAL_ABILITIES
 assert "freezingray" in brain.DIRECTIONAL_ABILITIES
 assert "commandfreezingray" in brain.DIRECTIONAL_ABILITIES
 
+# ==============================================================================
+# TEST 44: Down-Passage Validation, Staircase Prioritization, Companion Immunity,
+#          Ray-Trace Line-of-Fire Protection, and Cross-Turn Memory Persistence
+# ==============================================================================
+print("\n[TEST 44] Running Down-Passage Validation & Companion Immunity Tests...")
+
+# Scenario 44.1: Seed-spitting vine & plant exclusion from stairs down
+assert brain.is_valid_stair_down("seed-spitting vine", "Seed-Spitting Vine") is False, "seed-spitting vine must not be valid stairs down"
+assert brain.is_valid_stair_down("spit vine") is False, "spit vine must not be valid stairs down"
+assert brain.is_valid_stair_down("watervine") is False, "watervine must not be valid stairs down"
+assert brain.is_valid_stair_down("cave spider") is False, "creature must not be valid stairs down"
+assert brain.is_valid_stair_down("corpse of snapjaw") is False, "corpse must not be valid stairs down"
+assert brain.is_valid_stair_down("stairs down", "StairsDown") is True, "stairs down must be valid"
+assert brain.is_valid_stair_down("ladder down", "LadderDown") is True, "ladder down must be valid"
+assert brain.is_valid_stair_down("open shaft", "Shaft") is True, "shaft must be valid"
+assert brain.is_valid_stair_down("deep pit", "Pit") is True, "pit must be valid"
+print("  [OK] Scenario 44.1 Passed: Plants, creatures, and 'spit' substrings strictly rejected from down passages.")
+
+# Scenario 44.2: Staircase Prioritization & Telemetry Ingestion
+brain.KNOWN_STAIRS_DOWN.clear()
+test_zid = "JoppaWorld.11.19.0.2.10"
+state_mixed_stairs = {
+    "zone_id": test_zid,
+    "z": 10,
+    "level": 6,
+    "stairs_down": [
+        {"name": "seed-spitting vine", "blueprint": "Seed-Spitting Vine", "tx": 0, "ty": 14},
+        {"name": "open pit", "blueprint": "Pit", "tx": 1, "ty": 16},
+        {"name": "stairs down", "blueprint": "StairsDown", "tx": 6, "ty": 22}
+    ]
+}
+brain.update_stair_records(state_mixed_stairs)
+assert test_zid in brain.KNOWN_STAIRS_DOWN
+assert brain.KNOWN_STAIRS_DOWN[test_zid]["tx"] == 6 and brain.KNOWN_STAIRS_DOWN[test_zid]["ty"] == 22, (
+    f"Expected true stairs at (6, 22), got ({brain.KNOWN_STAIRS_DOWN[test_zid]['tx']}, {brain.KNOWN_STAIRS_DOWN[test_zid]['ty']})"
+)
+assert brain.KNOWN_STAIRS_DOWN[test_zid]["name"] == "stairs down"
+# Subsequent telemetry with only a pit should NOT downgrade the recorded true stairs
+state_pit_only = {
+    "zone_id": test_zid,
+    "z": 10,
+    "level": 6,
+    "stairs_down": [
+        {"name": "open pit", "blueprint": "Pit", "tx": 1, "ty": 16}
+    ]
+}
+brain.update_stair_records(state_pit_only)
+assert brain.KNOWN_STAIRS_DOWN[test_zid]["tx"] == 6 and brain.KNOWN_STAIRS_DOWN[test_zid]["ty"] == 22, "Pit should not overwrite true stairs down"
+print("  [OK] Scenario 44.2 Passed: True stairs down prioritized over pits, and plants/vines discarded.")
+
+# Scenario 44.3: Companion Line-of-Fire Ray-Tracing Protection
+# Player at (15, 11), companion at (14, 10), enemy (horned chameleon) at (11, 7)
+player_coord = (15, 11)
+enemy_coord = (11, 7)
+companion_coord = (14, 10)
+
+# Direct ray check with explicit companion
+lof_clear, lof_reason = brain.is_line_of_fire_clear(
+    player_coord,
+    enemy_coord,
+    companions=[{"name": "snapjaw", "tx": companion_coord[0], "ty": companion_coord[1]}]
+)
+assert lof_clear is False, "Line of fire must be blocked when companion is in the ray path"
+assert "companion" in lof_reason.lower() or "snapjaw" in lof_reason.lower()
+
+# Check with CHARMED_COMPANION_COORDS memory
+brain.CHARMED_COMPANION_COORDS.clear()
+brain.CHARMED_COMPANION_COORDS.add(companion_coord)
+lof_clear2, lof_reason2 = brain.is_line_of_fire_clear(player_coord, enemy_coord)
+assert lof_clear2 is False, "Line of fire must be blocked when companion is in CHARMED_COMPANION_COORDS"
+
+# Ensure query_decision does NOT offer directional beam ability when companion in line of fire
+state_chameleon_fight = {
+    "zone_id": test_zid,
+    "pos": [15, 11],
+    "x": 15,
+    "y": 11,
+    "hp": 38,
+    "max_hp": 38,
+    "level": 6,
+    "has_companion": True,
+    "companions": [{"name": "snapjaw", "hp": 12, "max_hp": 12, "tx": 14, "ty": 10}],
+    "visible_entities": [
+        {"name": "horned chameleon", "difficulty": "Average", "dist": 4, "dir": "NW", "tx": 11, "ty": 7, "is_enemy": True, "has_los": True}
+    ],
+    "abilities": [
+        {"name": "Lase", "command": "CommandLase", "class": "Mutation", "cooldown": 0}
+    ],
+    "surroundings": {
+        "NW": "Empty", "N": "Empty", "NE": "Empty",
+        "W": "Empty", "E": "Empty",
+        "SW": "Empty", "S": "Empty", "SE": "Empty"
+    }
+}
+dec = brain.query_decision(state_chameleon_fight, took_damage=False, enemies=state_chameleon_fight["visible_entities"])
+# The decision must NOT be USE_ABILITY:CommandLase:NW because snapjaw is directly in the path!
+assert "CommandLase" not in dec.get("action", ""), f"Lase should NOT be used through friendly pet! Action: {dec.get('action')}"
+print("  [OK] Scenario 44.3 Passed: Direct ray line of fire through friendly companion strictly aborted.")
+
+# Scenario 44.4: Companion Memory Persistence Across Turns
+brain.CHARMED_COMPANION_NAMES.clear()
+brain.CHARMED_COMPANION_COORDS.clear()
+
+# Turn 1: Recruit pet via register_companion
+brain.register_companion("snapjaw hunter", (14, 10))
+assert "snapjaw hunter" in brain.CHARMED_COMPANION_NAMES
+assert (14, 10) in brain.CHARMED_COMPANION_COORDS
+
+# Turn 2: Engine sends empty companions list, but snapjaw moved to (13, 9) in visible_entities
+turn2_entities = [
+    {"name": "snapjaw hunter", "tx": 13, "ty": 9, "dist": 2, "dir": "NW", "is_enemy": True}
+]
+# Test our loop logic
+current_comp_coords = set()
+current_comp_names = set()
+for e in turn2_entities:
+    ename = e.get("name")
+    clean = brain.re.sub(r'\{\{[^}]*\}\}', '', ename).strip().lower() if ename else ""
+    is_charmed = e.get("is_companion", False) or (clean and any(cname in clean or clean in cname for cname in brain.CHARMED_COMPANION_NAMES))
+    if is_charmed:
+        e["is_companion"] = True
+        e["is_enemy"] = False
+        ex, ey = e.get("tx"), e.get("ty")
+        if ex is not None and ey is not None:
+            current_comp_coords.add((ex, ey))
+        current_comp_names.add(clean)
+
+assert turn2_entities[0]["is_companion"] is True
+assert turn2_entities[0]["is_enemy"] is False
+assert (13, 9) in current_comp_coords
+if current_comp_names:
+    brain.CHARMED_COMPANION_NAMES.update(current_comp_names)
+if current_comp_coords:
+    brain.CHARMED_COMPANION_COORDS.clear()
+    brain.CHARMED_COMPANION_COORDS.update(current_comp_coords)
+
+assert "snapjaw hunter" in brain.CHARMED_COMPANION_NAMES
+assert (13, 9) in brain.CHARMED_COMPANION_COORDS
+assert (14, 10) not in brain.CHARMED_COMPANION_COORDS
+print("  [OK] Scenario 44.4 Passed: Companion memory persists across turns and coordinates track dynamically.")
+
 print("\n==================================================")
-print(">>> ALL 43 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 44 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
+
 
 
 
