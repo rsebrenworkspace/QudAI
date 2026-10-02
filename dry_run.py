@@ -1579,8 +1579,84 @@ print(f"Standing-on-centroid decision: {dec_standing['action']} | Reason: {dec_s
 assert dec_standing["action"] == "MOVE_S", f"Expected MOVE_S towards nearest unexplored cell (62, 13), got: {dec_standing['action']}"
 
 print("\n==================================================")
-print(">>> ALL 32 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 33: Opportunistic Pet Recruitment & Memory Clearance")
 print("==================================================")
+
+# Scenario 33.1: Phase A Exploration Pet Recruitment (Distance 1)
+# Apostle exploring without a companion encounters an adjacent snapjaw scavenger.
+# Must immediately recruit with CommandProselytize!
+explore_recruit_state = {
+    "hp": 18, "max_hp": 18, "x": 10, "y": 10, "z": 10,
+    "calling": "Apostle",
+    "level": 1, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.12.22.2.0.10",
+    "zone_name": "salt marsh, surface",
+    "unexplored_cells": 100,
+    "has_companion": False,
+    "companions": [],
+    "abilities": [
+        {"name": "Proselytize", "command": "CommandProselytize", "usable": True, "cooldown": 0},
+        {"name": "Intimidate", "command": "CommandIntimidate", "usable": True, "cooldown": 0}
+    ],
+    "surroundings": {
+        "NW": "Empty ground", "N": "Empty ground", "NE": "Empty ground",
+        "W": "Empty ground", "E": "Empty ground",
+        "SW": "Empty ground", "S": "Empty ground", "SE": "Empty ground"
+    },
+    "visible_entities": [
+        {"name": "snapjaw scavenger", "blueprint": "Snapjaw", "dist": 1, "dir": "E", "tx": 11, "ty": 10, "can_proselytize": True}
+    ]
+}
+
+dec_recruit_adj = brain.query_decision(explore_recruit_state, took_damage=False, enemies=[])
+print(f"Phase A adjacent pet recruit decision: {dec_recruit_adj['action']} | Reason: {dec_recruit_adj['reason']}")
+assert dec_recruit_adj["action"] == "USE_ABILITY:CommandProselytize:E", f"Expected proselytize adjacent pet, got: {dec_recruit_adj['action']}"
+
+# Scenario 33.2: Phase A Exploration Candidate Approach (Distance 2)
+# Candidate is at dist 2 (12, 10). Character must step towards it (MOVE_E) to recruit!
+explore_dist2_state = dict(explore_recruit_state)
+explore_dist2_state["visible_entities"] = [
+    {"name": "giant dragonfly", "blueprint": "Dragonfly", "dist": 2, "dir": "E", "tx": 12, "ty": 10, "can_proselytize": True}
+]
+dec_recruit_dist2 = brain.query_decision(explore_dist2_state, took_damage=False, enemies=[])
+print(f"Phase A distance-2 approach decision: {dec_recruit_dist2['action']} | Reason: {dec_recruit_dist2['reason']}")
+assert dec_recruit_dist2["action"] == "MOVE_E", f"Expected MOVE_E to approach candidate, got: {dec_recruit_dist2['action']}"
+
+# Scenario 33.3: Combat (fallback_esper) Approach at Distance 2
+# Combat encounter: Apostle has Lase and Stunning Force, but prospective pet is at dist 2.
+# Must approach (MOVE_E) rather than blasting it to pieces!
+combat_candidate = {"name": "snapjaw warrior", "blueprint": "Snapjaw", "dist": 2, "dir": "E", "tx": 12, "ty": 10, "can_proselytize": True, "difficulty": "Average"}
+combat_recruit_state = dict(explore_recruit_state)
+combat_recruit_state["visible_entities"] = [combat_candidate]
+combat_recruit_state["abilities"].extend([
+    {"name": "Lase", "command": "CommandLase", "usable": True, "cooldown": 0},
+    {"name": "Stunning Force", "command": "CommandStunningForce", "usable": True, "cooldown": 0}
+])
+dec_combat_dist2 = brain.query_decision(combat_recruit_state, took_damage=False, enemies=[combat_candidate])
+print(f"Combat distance-2 approach decision: {dec_combat_dist2['action']} | Reason: {dec_combat_dist2['reason']}")
+assert dec_combat_dist2["action"] == "MOVE_E", f"Expected MOVE_E in combat to close distance for proselytize, got: {dec_combat_dist2['action']}"
+
+# Scenario 33.4: Post-Pet-Death Memory Leak Prevention
+# Simulate a previous pet died. Memory must NOT permanently bar that species from being proselytized again!
+brain.CHARMED_COMPANION_NAMES.clear()
+brain.CHARMED_COMPANION_COORDS.clear()
+new_candidate = {"name": "snapjaw scavenger", "blueprint": "Snapjaw", "dist": 1, "dir": "E", "tx": 11, "ty": 10, "can_proselytize": True}
+assert brain.is_proselytizable(new_candidate, companions=[]), "Candidate of same species must be proselytizable after previous companion died!"
+
+# Scenario 33.5: Active Companion Immunity
+# Active companion at (11, 10) must NOT be proselytized
+active_comp_state = dict(explore_recruit_state)
+active_comp_state["has_companion"] = True
+active_comp_state["companions"] = [{"name": "snapjaw scavenger", "tx": 11, "ty": 10, "hp": 15, "max_hp": 15, "dist": 1, "dir": "E"}]
+active_comp_state["visible_entities"] = [{"name": "snapjaw scavenger", "tx": 11, "ty": 10, "dist": 1, "dir": "E", "is_companion": True}]
+dec_active_comp = brain.query_decision(active_comp_state, took_damage=False, enemies=[])
+print(f"Active companion decision: {dec_active_comp['action']} | Reason: {dec_active_comp['reason']}")
+assert not dec_active_comp["action"].startswith("USE_ABILITY:CommandProselytize"), "Must NOT proselytize already-active companion!"
+
+print("\n==================================================")
+print(">>> ALL 33 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("==================================================")
+
 
 
 

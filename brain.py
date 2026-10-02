@@ -526,17 +526,18 @@ def is_proselytizable(entity, companions=None):
     combined = f"{ename} {bp}"
     if any(ex in combined for ex in PROSELYTIZE_EXCLUSIONS):
         return False
-    if is_companion_name(ename, CHARMED_COMPANION_NAMES):
-        return False
     etx, ety = entity.get("tx"), entity.get("ty")
-    if (etx, ety) in CHARMED_COMPANION_COORDS:
-        return False
     if companions:
         comp_coords = {(c.get("tx"), c.get("ty")) for c in companions if c.get("tx") is not None and c.get("ty") is not None}
         if (etx, ety) in comp_coords:
             return False
         comp_names = {c.get("name", "").lower() for c in companions if c.get("name")}
         if is_companion_name(ename, comp_names):
+            return False
+    else:
+        if (etx, ety) in CHARMED_COMPANION_COORDS:
+            return False
+        if is_companion_name(ename, CHARMED_COMPANION_NAMES):
             return False
     return True
 
@@ -1002,7 +1003,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
 
         # 0. PET RECRUITMENT: Proselytize / Beguile adjacent beasts or humanoids (HIGHEST PRIORITY IF NO PET!)
         companions = game_state.get("companions", [])
-        has_companion = game_state.get("has_companion", False) or bool(companions)
+        raw_ents = game_state.get("visible_entities", [])
+        has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_ents)
         if not has_companion:
             for ab in abilities:
                 if is_ability_ready(ab) and ab.get("command"):
@@ -1010,9 +1012,9 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                     cmd = ab.get("command", "")
                     combined = f"{name} {cmd}".lower()
                     if "proselytize" in combined or "beguile" in combined:
-                        for ent in game_state.get("visible_entities", []):
+                        for ent in raw_ents:
                             if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions):
-                                edir = ent.get("dir", "")
+                                edir = ent.get("dir") or get_step_direction((px, py), (ent.get("tx", px), ent.get("ty", py)))
                                 ename = ent.get("name", "Creature")
                                 if edir:
                                     action_choices.append(f"USE_ABILITY:{cmd}:{edir} (RECRUIT PET: Proselytize adjacent {ename} {edir} to become your permanent combat companion & frontline tank!)")
@@ -1352,6 +1354,19 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     c_tx = closest_enemy.get("tx", px) if closest_enemy else px
     c_ty = closest_enemy.get("ty", py) if closest_enemy else py
 
+    raw_entities = game_state.get("visible_entities", [])
+    has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_entities)
+    # 0. Pet Recruitment: If without an active companion, proselytize adjacent beasts or humanoids
+    if not has_companion:
+        ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
+        if ab_proselytize and ab_proselytize.get("command"):
+            for ent in raw_entities:
+                if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions):
+                    p_dir = ent.get("dir") or get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
+                    if p_dir:
+                        p_name = ent.get("name", "Creature")
+                        return {"action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}", "reason": f"[{template['name']} Fallback] Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"}
+
     # 1. Critical Encirclement: Melee warriors hold ground; only retreat if HP < 35% AND surrounded by 3+ hostiles
     if hp / max(1, max_hp) < 0.35 and len(adj_threats) >= 3 and open_moves:
         best_retreat = open_moves[0]
@@ -1413,7 +1428,8 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo):
     """Pure Mental Sorcerer Tactical Fallback (Esper Mindflayer)."""
     companions = game_state.get("companions", [])
-    has_companion = game_state.get("has_companion", False) or bool(companions) or bool(CHARMED_COMPANION_NAMES)
+    raw_entities = game_state.get("visible_entities", [])
+    has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_entities)
     enemies = filter_hostile_enemies(enemies, companions)
     if (companions or CHARMED_COMPANION_NAMES) and adj_threats:
         comp_names = {c.get("name", "").lower() for c in companions if c.get("name")} | CHARMED_COMPANION_NAMES
@@ -1434,11 +1450,22 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     if not has_companion:
         ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
         if ab_proselytize and ab_proselytize.get("command"):
-            for ent in game_state.get("visible_entities", []):
-                if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions) and ent.get("dir"):
-                    p_dir = ent["dir"]
-                    p_name = ent.get("name", "Creature")
-                    return {"action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}", "reason": f"[{template['name']} Fallback] Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"}
+            # A. Adjacent candidate recruitment (dist == 1)
+            for ent in raw_entities:
+                if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions):
+                    p_dir = ent.get("dir") or get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
+                    if p_dir:
+                        p_name = ent.get("name", "Creature")
+                        return {"action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}", "reason": f"[{template['name']} Fallback] Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"}
+
+            # B. Distance-2 recruitment approach: close distance instead of killing prospective thralls at range
+            if not adj_threats:
+                for ent in raw_entities:
+                    if ent.get("dist") == 2 and is_proselytizable(ent, companions=companions):
+                        s_step = get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
+                        if s_step and f"MOVE_{s_step}" in valid_moves:
+                            p_name = ent.get("name", "Creature")
+                            return {"action": f"MOVE_{s_step}", "reason": f"[{template['name']} Fallback] Approaching {p_name} ({s_step}) to recruit into combat pet & frontline tank"}
 
     # 1. Close-Contact Emergency: Defensive Mental Shielding, Banishment & Evasion
     if adj_threats or closest_dist <= 2:
@@ -1583,6 +1610,19 @@ def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_move
     c_tx = closest_enemy.get("tx", px) if closest_enemy else px
     c_ty = closest_enemy.get("ty", py) if closest_enemy else py
 
+    raw_entities = game_state.get("visible_entities", [])
+    has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_entities)
+    # 0. Pet Recruitment: If without an active companion, proselytize adjacent beasts or humanoids
+    if not has_companion:
+        ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
+        if ab_proselytize and ab_proselytize.get("command"):
+            for ent in raw_entities:
+                if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions):
+                    p_dir = ent.get("dir") or get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
+                    if p_dir:
+                        p_name = ent.get("name", "Creature")
+                        return {"action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}", "reason": f"[{template['name']} Fallback] Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"}
+
     # 1. Encirclement Break (2+ threats)
     if len(adj_threats) >= 2 and open_moves:
         best_retreat = open_moves[0]
@@ -1665,6 +1705,19 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     c_name = closest_enemy.get("name", "Enemy") if closest_enemy else ""
     c_tx = closest_enemy.get("tx", px) if closest_enemy else px
     c_ty = closest_enemy.get("ty", py) if closest_enemy else py
+
+    raw_entities = game_state.get("visible_entities", [])
+    has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_entities)
+    # 0. Pet Recruitment: If without an active companion, proselytize adjacent beasts or humanoids
+    if not has_companion:
+        ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
+        if ab_proselytize and ab_proselytize.get("command"):
+            for ent in raw_entities:
+                if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions):
+                    p_dir = ent.get("dir") or get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
+                    if p_dir:
+                        p_name = ent.get("name", "Creature")
+                        return {"action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}", "reason": f"[{template['name']} Fallback] Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"}
 
     # 1. Encirclement Break: If surrounded by 2+ adjacent hostiles and open retreat tiles exist
     if len(adj_threats) >= 2 and open_moves:
@@ -1938,6 +1991,34 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         if has_missile and max_ammo > 0 and ammo < max_ammo and inv_ammo > 0:
             return {"action": "RELOAD", "reason": f"Safe top-off: reloading rifle ({ammo}/{max_ammo}, Inv: {inv_ammo})"}
 
+        # 4B. Companion Recruitment (Exploration Phase)
+        # If without an active pet, recruit adjacent or nearby beasts/humanoids into combat tanks
+        raw_entities = game_state.get("visible_entities", [])
+        has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_entities)
+        if not has_companion:
+            ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
+            if ab_proselytize and ab_proselytize.get("command"):
+                # Adjacent candidate recruitment (dist == 1)
+                for ent in raw_entities:
+                    if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions):
+                        p_dir = ent.get("dir") or get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
+                        if p_dir:
+                            p_name = ent.get("name", "Creature")
+                            return {
+                                "action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}",
+                                "reason": f"Companion Recruitment: Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"
+                            }
+                # Nearby candidate approach (dist == 2)
+                for ent in raw_entities:
+                    if ent.get("dist") == 2 and is_proselytizable(ent, companions=companions):
+                        s_step = get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
+                        if s_step and f"MOVE_{s_step}" in valid_moves:
+                            p_name = ent.get("name", "Creature")
+                            return {
+                                "action": f"MOVE_{s_step}",
+                                "reason": f"Companion Recruitment: Approaching nearby {p_name} ({s_step}) to recruit as frontline pet"
+                            }
+
         # 5. Stratum Progression & Staircase Delving (Gated by minimum level)
         req_depth_lvl = min_level_for_depth(cur_z + 1)
         can_delve = (cur_lvl >= req_depth_lvl) and (RETREAT_TARGET_LEVEL is None)
@@ -2159,6 +2240,8 @@ def main():
                     os.remove(DEATH_FILE)
                 except OSError:
                     pass
+                CHARMED_COMPANION_NAMES.clear()
+                CHARMED_COMPANION_COORDS.clear()
                 if death_data:
                     chronicler.process_death_event(death_data, list(recent_actions), active_model_id)
             except Exception as ex:
@@ -2208,27 +2291,45 @@ def main():
                 unique_positions = len(set(recent_positions))
 
                 companions = game_state.get("companions", [])
-                current_comp_coords = set()
-                for c in companions:
-                    cx, cy = c.get("tx"), c.get("ty")
-                    if cx is not None and cy is not None:
-                        current_comp_coords.add((cx, cy))
-                    register_companion(c.get("name"), (cx, cy))
-
                 raw_entities = game_state.get("visible_entities", [])
-                for e in raw_entities:
-                    if e.get("is_companion", False):
-                        ex, ey = e.get("tx"), e.get("ty")
-                        if ex is not None and ey is not None:
-                            current_comp_coords.add((ex, ey))
-                            register_companion(e.get("name"), (ex, ey))
-                    elif is_companion_name(e.get("name"), CHARMED_COMPANION_NAMES):
-                        ex, ey = e.get("tx"), e.get("ty")
-                        if ex is not None and ey is not None:
-                            current_comp_coords.add((ex, ey))
+                has_active_companion = (
+                    bool(game_state.get("has_companion", False))
+                    or bool(companions)
+                    or any(e.get("is_companion", False) for e in raw_entities)
+                )
 
-                CHARMED_COMPANION_COORDS.clear()
-                CHARMED_COMPANION_COORDS.update(current_comp_coords)
+                current_comp_coords = set()
+                current_comp_names = set()
+
+                if has_active_companion:
+                    for c in companions:
+                        cx, cy = c.get("tx"), c.get("ty")
+                        if cx is not None and cy is not None:
+                            current_comp_coords.add((cx, cy))
+                        cname = c.get("name")
+                        if cname:
+                            clean = re.sub(r'\{\{[^}]*\}\}', '', cname).strip().lower()
+                            if clean and not any(bad in clean for bad in ["pool of", "puddle of", "dram", "drams", "ground", "wall", "watervine", "glowpad", "brinestalk", "rules"]):
+                                current_comp_names.add(clean)
+
+                    for e in raw_entities:
+                        if e.get("is_companion", False):
+                            ex, ey = e.get("tx"), e.get("ty")
+                            if ex is not None and ey is not None:
+                                current_comp_coords.add((ex, ey))
+                            ename = e.get("name")
+                            if ename:
+                                clean = re.sub(r'\{\{[^}]*\}\}', '', ename).strip().lower()
+                                if clean and not any(bad in clean for bad in ["pool of", "puddle of", "dram", "drams", "ground", "wall", "watervine", "glowpad", "brinestalk", "rules"]):
+                                    current_comp_names.add(clean)
+
+                    CHARMED_COMPANION_NAMES.clear()
+                    CHARMED_COMPANION_NAMES.update(current_comp_names)
+                    CHARMED_COMPANION_COORDS.clear()
+                    CHARMED_COMPANION_COORDS.update(current_comp_coords)
+                else:
+                    CHARMED_COMPANION_NAMES.clear()
+                    CHARMED_COMPANION_COORDS.clear()
 
                 if companions:
                     c_display = [f"{c.get('name')} (HP {c.get('hp')}/{c.get('max_hp')})" for c in companions]
