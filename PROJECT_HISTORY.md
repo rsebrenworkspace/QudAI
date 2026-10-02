@@ -40,6 +40,8 @@
    - [Iteration 26: Subterranean Stratum Zone Exit & Reachable Edge Prioritization](#iteration-26-subterranean-stratum-zone-exit--reachable-edge-prioritization)
    - [Iteration 27: Subterranean Dead-End Exit Invalidation, Wall-Bump Prevention & Corridor Alignment](#iteration-27-subterranean-dead-end-exit-invalidation-wall-bump-prevention--corridor-alignment)
    - [Iteration 28: Autonomous Enclosed Pocket Burrowing & Vegetative Wall Destruction (`ATTACK_WALL`)](#iteration-28-autonomous-enclosed-pocket-burrowing--vegetative-wall-destruction-attack_wall)
+   - [Iteration 29: Dungeon Diving, Pit & Hole Traversal, and Bold Subterranean Stratum Descent](#iteration-29-dungeon-diving-pit--hole-traversal-and-bold-subterranean-stratum-descent)
+   - [Iteration 30: Town Hut Whacking & Structure Vandalism Suppression](#iteration-30-town-hut-whacking--structure-vandalism-suppression)
 4. [Current Codebase Specification (v1.3.2)](#4-current-codebase-specification-v132)
    - [Directory Structure](#directory-structure)
    - [Telemetry & IPC Protocol](#telemetry--ipc-protocol)
@@ -619,30 +621,142 @@
     - Implemented `find_burrow_direction(surroundings, cur_pos, target_pos)`: detects adjacent destructible obstacles, prioritizes soft vegetative matter over solid rock, and chooses the direction that advances closest toward the unexplored sector centroid (`(36, 12)`).
     - In `query_decision` (Step 8): if `visit_counts[cur_pos] >= 2` and all open moves lead to visited tiles, automatically issues `ATTACK_WALL:<dir>` to breach the pocket.
     - In `get_valid_moves`: excluded `[npc:` when `not is_in_combat`, preventing the AI from falsely assuming neutral NPCs are open walkable corridors.
-    - In `Loop Breaker`: if trapped in a small cycle (`unique_positions <= 6`) with unrevealed cells remaining, prioritizes burrowing through adjacent obstacles before falling back to zone exit.
-  - **Test Suite Expansion (Test 38):**
-    - Added Test 38 in `dry_run.py` verifying autonomous burrowing in the 3x3 pocket at `(70, 6)` toward sector `(36, 12)`, `find_burrow_direction` soft-material prioritization, and loop breaker pocket burrowing.
-    - All 38 tests pass cleanly. Mod deployed via `sync_mod.py` and committed to Git.
+### Iteration 29: Dungeon Diving, Pit & Hole Traversal, and Bold Subterranean Stratum Descent
+- **Observed Failure Modes:**
+  1. *Rigid Dungeon Stratum Level Gating*: In subterranean strata (`z > 10`), each stratum required progressively higher levels (`z=11 -> Level 3`, `z=12 -> Level 5`, `z=13 -> Level 7`). When an under-leveled character (e.g. Level 3 Apostle in stratum 11) found stairs down or a pit, the brain refused to delve (`can_delve = False`) and either bailed to horizontal zone exits or wandered endlessly in circles.
+  2. *Pits, Holes, and Shafts Misclassified as Blocked Hazards*: In *Caves of Qud*, vertical movement occurs not only via stairs down, but also via pits, open holes in the ground, fissures, and shafts. The C# telemetry only looked for `StairsDown` parts, and `brain.py` classified `"chasm"` as an impassable hazard in `get_valid_moves`, preventing the AI from stepping onto or plunging down holes/pits.
+  3. *Unaware of Vertical Delving vs Resting*: Injured characters on stairs down could blindly descend into danger, while healthy characters refused to descend even when perfectly capable of surviving deeper strata.
+- **Solution:**
+  - **Comprehensive Passage Down & Up Telemetry (`AIBrainPart.cs`):**
+    - Implemented `IsDownPassage(GameObject obj)`: detects `StairsDown`, `Hole`, `OpenShaft`, `Pit`, and blueprint/name matches for `"hole"`, `"pit"`, `"shaft"`, `"chasm"`, `"stairsdown"`.
+    - Implemented `IsUpPassage(GameObject obj)`: detects `StairsUp` and blueprint/name matches.
+    - Updated `standingOnStairsDown`, `stairsDownEntries`, `GetCellSummary` (`[STAIRS_DOWN: ...]`), and `USE_STAIRS_DOWN` to fire `CommandMoveDown` on any downward passage object.
+  - **Bold Subterranean Delving & Health-Based Gating (`brain.py`):**
+    - Updated `get_valid_moves`: exempts cells tagged with `[STAIRS_DOWN:` or `[STAIRS_UP:` from being blocked by hazard keywords (`"chasm"`), allowing traversal across pits and holes.
+    - Decoupled delving from rigid level requirements when subterranean (`is_subterranean = cur_z > 10`): healthy characters (`HP >= 70%`) make the bold choice to descend immediately upon encountering stairs down, pits, or holes.
+    - Preserved safety: injured characters (`HP < 70%`) rest on stairs down to recover before descending, while characters in active critical retreat (`RETREAT_TARGET_LEVEL`) flee to stairs up.
+    - Preserved surface level gating: surface zones (`z <= 10`) still require Level 3 before entering the subterranean abyss.
+  - **Test Suite Expansion (Test 40):**
+    - Added Test 40 in `dry_run.py` verifying pit/shaft passability in `get_valid_moves`, bold descent when under-leveled in stratum 11 (Level 3 < Rec 5, HP 28/28), resting on stairs down when injured (< 70% HP), and nearby stairs/pit navigation.
+    - All 40 verification tests pass cleanly. Mod deployed via `sync_mod.py` and committed to Git.
 
-### Milestone 7.1: Level 4 Mutant Ability Unlock & Autonomous Modal Interception
-- **The Problem:**
-  - In *Caves of Qud*, Mutated Humans gain 1 MP per level. At Level 4 (or accumulating 4 MP), mutants unlock the ability to buy an entirely new mutation.
-  - Furthermore, reaching Level 4/5 triggers Rapid Advancement, which prompts a blocking UI modal: `"Your genome enters an excited state! Would you like to spend 4 mutation points to buy a mutation before rapidly mutating?"` (`Popup.ShowYesNo`), followed by `"Choose a mutation."` (`Popup.PickOption`), followed by variant selections (`BaseMutation.SelectVariant`), and rapid advancement choices.
-  - In headless automated runs, these unhandled modal popups capture input focus, halting the game loop indefinitely.
-- **The Solution:**
-  - **Harmony Dialog Hooks (`AIBrainPart.cs`):**
-    - `AIPopupShowYesNoPatch` & `AIPopupShowYesNoCancelPatch`: Hook `XRL.UI.Popup.ShowYesNo` and `ShowYesNoCancel`. When the AI is active, automatically returns `DialogResult.Yes` and invokes callbacks, preventing game loop stalls.
-    - `AIPickOptionPatch`: Hooks `XRL.UI.Popup.PickOption` and `ShowOptionList`. Evaluates candidate options against `AIPlayerTurnPatch.PreferredMutation` or archetype priorities (`build_templates.py`), automatically choosing the best mutation and variant headlessly.
-  - **Programmatic Acquisition (`MutationsAPI.BuyRandomMutation`):**
-    - Implemented `BuyNewMutation(player, target)` in `AIBrainPart.cs` invoking `Qud.API.MutationsAPI.BuyRandomMutation(player, 4, false, null)`.
-    - Added `AUTOLEVEL_BUY_MUTATION` command handling in `AIBrainPart.cs` and autolevel loop fallback when existing mutations are capped.
-  - **Archetype Progression (`build_templates.py` & `brain.py`):**
-    - Added `get_mutation_allocation_recommendation` in `build_templates.py` which recommends purchasing missing priority mutations for 4 MP or leveling core mutations.
-    - Updated `brain.py` so `can_spend_mp = (mp > 0 and can_level_any_mut) or (mp >= 4)`.
-  - **Twitch Integration (`twitch_bot.py`):**
-    - Added `MUTATION_ALIASES` and `!vote [mutation]` command for live Twitch chat audiences.
-  - **Verification:**
-    - Added Test 42 in `dry_run.py` verifying 4 MP new mutation purchases, build priorities, capped mutation handling, and Twitch vote overrides. All 42 tests pass cleanly. Mod deployed via `sync_mod.py`.
+### Iteration 30: Town Hut Whacking & Structure Vandalism Suppression
+- **Observed Failure Modes:**
+  1. *Hut Whacking Vandalism in Joppa*: When entering Joppa or navigating inside town huts, the character explored small 2x2 or 3x3 rooms. Once all floor tiles inside the hut had been stepped on (`visit_counts >= 1`), `all_moves_visited` evaluated to `True`. Because the hut was made of watervine or wood walls, `find_burrow_direction` matched the wall keyword, mistook the house for an enclosed subterranean cave pocket, and dispatched `ATTACK_WALL` against the hut wall.
+  2. *Risk of Faction Hostility & Aesthetic Disruption*: Whacking walls or huts in peaceful towns is vandalism, looks unnatural on stream, and risks irritating peaceful townsfolk or wardens.
+- **Solution:**
+  - **Comprehensive Settlement Detection (`AIBrainPart.cs` & `brain.py`):**
+    - In `AIBrainPart.cs`: Implemented `IsSettlementZone(Zone zone)` inspecting display names and zone properties for settlement keywords (`joppa`, `stilt`, `grit gate`, `kyakukya`, `yd freehold`, `bey lah`, `omonporch`, `ezra`, `village`, `settlement`, `town`, `commune`, `bazaar`, `kith and kin`).
+    - In `AIBrainPart.cs`: Exported `"is_settlement": true/false` in `state.json` telemetry.
+    - In `brain.py`: Implemented `is_town_zone(game_state)` checking `is_settlement`, `zone_name`, and scanning for nearby peaceful NPCs (`is_peaceful_npc`).
+  - **In-Engine & Decision Layer Hut Whacking Suppression:**
+    - In `AIBrainPart.cs` (`ExecuteAction`): If `act.StartsWith("ATTACK_WALL:")` is dispatched in any settlement zone, the attack is strictly intercepted and suppressed (`[QudAI ATTACK_WALL] Suppressed wall/hut attack in peaceful settlement`).
+    - In `AIBrainPart.cs`: Prohibited attacking any object with `o.IsOwned()` or `o.HasProperty("Owned")`.
+    - In `brain.py` (`find_burrow_direction`): Added `is_town` check that returns `None, None` in towns.
+    - In `brain.py` (Step 8 & Loop Breaker): Disabled autonomous burrowing whenever `is_town` is `True`, forcing the agent to exit huts naturally via doorways and visited pathways.
+  - **Test Suite Expansion (Test 41):**
+    - Added Test 41 in `dry_run.py` verifying settlement identification, `find_burrow_direction` town suppression, hut navigation preservation without wall attacks, and loop breaker non-burrowing in towns.
+    - All 41 verification tests pass cleanly. Mod deployed via `sync_mod.py` and committed to Git.
+
+### Iteration 31: Level 4 Mutant Ability Unlock & Autonomous Modal Interception
+- **Observed Failure Modes:**
+  1. *Level 4 Mutant Ability Prompt Block*: In Caves of Qud, mutant characters acquire 4 Mutation Points (MP) at Level 4 and every 4 levels thereafter. When 4 MP is accumulated and all current mutations are capped, mutants can unlock a brand new mutation choice. The game prompts an interactive full-screen modal dialog (`Popup.ShowYesNoCancel` or `PickOption`) presenting random mutation selections, which could block headless autonomous execution.
+- **Solution:**
+  - **Autonomous Modal Interception (`AIBrainPart.cs`):**
+    - Added Harmony patches (`AIPopupShowYesNoPatch`, `AIPopupShowYesNoCancelPatch`, `AIPickOptionPatch`) to intercept engine dialogs and automatically return default positive selections when autonomous mode is engaged.
+    - Added `BuyNewMutation(GameObject player, string desiredMutation)` in `AIBrainPart.cs` utilizing `Qud.API.MutationsAPI.BuyRandomMutation(player)`.
+  - **Mutant Progression Doctrine (`build_templates.py`):**
+    - Added `get_mutation_allocation_recommendation(template, mutations, mp)` checking mutation level caps and prioritizing new ability unlocks when current mutations reach level caps and $MP \ge 4$.
+    - Added priority lists for new mutation unlocks across all mutant archetypes (e.g. Teleportation, Flaming Ray, Phasing).
+  - **Verification (Test 42):**
+    - Added Test 42 in `dry_run.py` verifying Level 4 4-MP new mutation purchase dispatch, 1-MP leveling when uncapped, Twitch chat mutation voting integration, and MP preservation without loops when $MP < 4$.
+    - All 42 tests passed cleanly.
+
+### Iteration 32: Action Bar Decoupling, Ability Command Resolution & Alternating Dual-Ray Tactics
+- **Observed Failure Modes:**
+  1. *Action Bar Pagination Confusion*: When the character hit Level 5 and acquired Flaming Ray, the GUI placed Flaming Ray and Butcher on page 2 of the action bar. The user questioned whether the agent could access abilities on the second action bar.
+  2. *Internal Engine Architecture*: Reverse engineering of `XRL.World.Parts.ActivatedAbilities` revealed that Qud's GUI action bars are purely visual paginations; all player abilities exist in `player.GetPart<ActivatedAbilities>().AbilityByGuid` and are completely exported to `state.json` regardless of action bar placement.
+  3. *Ability Command Name Discrepancies*: In internal Qud code, Flaming Ray uses `ab.Command = "CommandFlamingRay"`, whereas players or LLMs might dispatch `USE_ABILITY:FlamingRay:E` or `USE_ABILITY:Flame Ray:E`.
+- **Solution:**
+  - **Dynamic Engine Ability Resolver (`AIBrainPart.cs`):**
+    - In `AIBrainPart.cs` under `act.StartsWith("USE_ABILITY:")`, dynamically resolved any incoming ability name or alias against `player.GetPart<ActivatedAbilities>().AbilityByGuid` (matching `ab.Command`, `cleanName`, whitespace-stripped names, and `"Command"` prefixes) so aliases like `FlamingRay` or `Flaming Ray` normalize cleanly to `CommandFlamingRay`.
+    - Added automatic routing for `Butcher` and `Harvest` abilities to execute the robust built-in field butchering and harvesting routines.
+  - **Directional Aliases in Python (`brain.py`):**
+    - Updated `DIRECTIONAL_ABILITIES` to include `"flaming ray"`, `"freezing ray"`, `"flameray"`, `"flame ray"`, `"commandflamingray"`, and `"commandfreezingray"`.
+  - **Tactical Dual-Ray Alternation & Point-Blank Melee Bursts:**
+    - Updated `fallback_nomad` and `fallback_melee` to alternate ray cooldowns: opening with Freezing Ray (CC freeze opener at dist 2–6) $\rightarrow$ alternating to Flaming Ray thermal beam during Freezing Ray cooldown.
+    - Added point-blank ray burst capability: if an enemy is in adjacent melee contact and strike abilities are on cooldown, the agent fires point-blank thermal or freeze rays into the hostile before basic bump-attacking.
+    - Updated Phase B choices in `brain.py` to offer Flaming Ray thermal beam bursts and point-blank melee ray bursts to the LLM.
+  - **Verification (Test 43):**
+    - Added Test 43 in `dry_run.py` verifying:
+      - 43.1: Dual-Ray opener fires Freezing Ray.
+      - 43.2: While Freezing Ray is on cooldown, agent alternates to Flaming Ray.
+      - 43.3: Adjacent melee contact triggers point-blank Flaming Ray burst.
+      - 43.4: Melee Marauder at distance 3 with Charge on cooldown blasts enemy with Flaming Ray.
+      - 43.5: Melee Marauder in melee contact with Dismember on cooldown executes point-blank Flaming Ray burst.
+      - 43.6: All directional ability aliases verified in `DIRECTIONAL_ABILITIES`.
+    - All 43 tests pass cleanly. Mod deployed to game directory.
+
+### Iteration 34: Down-Passage Plant/Vine Exclusion, Staircase Prioritization, Companion Ray-Trace Immunity & Memory Persistence
+- **Problem Statement:**
+  1. *Seed-Spitting Vine Registered as Down Passage*: During gameplay in `JoppaWorld.11.19.0.2.10`, the agent discovered seed-spitting vines that were repeatedly logged as down passages (`[STAIRCASE NOTED]: Discovered seed-spitting vine at (0, 14)...`), overwriting the actual stairs down at `(6, 22)`. This occurred because `IsDownPassage` in `AIBrainPart.cs` checked `bp.Contains("pit") || name.Contains("pit")`, matching the substring `"pit"` inside `"spit"`/`"seed-spitting vine"`, and lacked checks for living plants/creatures.
+  2. *Friendly Companion Lased on Turn N+1*: After charming a snapjaw using Proselytize, the character immediately fired a Light Manipulation beam (`CommandLase:NW`) through the adjacent snapjaw on the following turn to attack a distant horned chameleon. This occurred because:
+     - `player.Target` and `Sidebar.CurrentTarget` remained locked onto the charmed creature after casting Proselytize.
+     - On turn $N+1$, when `state.json` momentarily reported `has_companion: false` before faction synchronization, `brain.py` wiped `CHARMED_COMPANION_NAMES.clear()`.
+     - In both C# and Python, line-of-fire checks only validated the destination cell rather than raytracing intermediate tiles along the beam path.
+- **Solution:**
+  - **Down-Passage Plant & Living Entity Rejection (`AIBrainPart.cs` & `brain.py`):**
+    - In `AIBrainPart.cs`, updated `IsDownPassage` and `IsUpPassage` to immediately reject any object with `IsAlive`, `HasPart("Combat")`, `HasPart("Brain")`, `HasPart("Plant")`, `HasPart("Fungus")`, or `HasPart("Creature")`.
+    - Explicitly excluded blueprint/name substrings `"vine"` and `"spit"`, and restricted pit matching to exact word boundaries.
+    - In `brain.py`, added `is_valid_stair_down` and `get_stair_priority`: true staircases/ladders (priority 2) are strictly prioritized over pits/holes/chasms (priority 1), preventing pits from downgrading known stairs.
+  - **Companion Absolute Immunity & Ray-Trace Blocking (`AIBrainPart.cs`):**
+    - Added static companion memory sets: `RegisteredCompanionIds` and `RegisteredCompanionNames` in `AIPlayerTurnPatch`.
+    - Implemented `GetLineBetween(Cell from, Cell to)` using 2D Bresenham line stepping.
+    - In `ExecuteCommand` under `USE_ABILITY:`, if `isProselytize`: registered the target in companion memory and immediately cleared `player.Target = null; Sidebar.CurrentTarget = null;`.
+    - If `isDirectRay` or `FIRE_MISSILE`: raytraced all cells between player and target. If ANY intermediate cell contains an allied companion, the attack is strictly aborted.
+    - Updated `AIPickTargetPatch` and `AIPickFieldTargetPatch` to exclude any target where the ray path intersects a companion.
+  - **Persistent Companion Memory Across Turns (`brain.py`):**
+    - Prevented wiping `CHARMED_COMPANION_NAMES` when telemetry is momentarily empty.
+    - Dynamically scanned `visible_entities`: any creature matching a charmed companion name is marked `is_companion: true`, `is_enemy: false`, and updates `CHARMED_COMPANION_COORDS`.
+    - In `query_decision` and `query_llm_decision`, passed surroundings and targets to `is_line_of_fire_clear`, preventing directional beam abilities from being offered to the LLM when an ally is in the line of fire.
+  - **Verification (Test 44):**
+    - Added Test 44 to `dry_run.py` verifying:
+      - 44.1: Plants, vines, and `"spit"` substrings strictly rejected from down passages.
+      - 44.2: True stairs down prioritized over pits in mixed telemetry.
+      - 44.3: Direct ray line of fire through friendly companion strictly aborted (in LLM choices and fallback).
+      - 44.4: Companion memory persists across turns and tracks dynamically.
+    - All 44 tests pass cleanly. Mod deployed to game directory.
+
+### Iteration 35: Dungeon Engagement, Proselytize High-Priority Recruitment & Occluded Corridor Maneuvering
+- **Problem Statement:**
+  1. *Character Approached Mob and Wanted to Leave*: The character encountered an eyeless crab in a subterranean dungeon, approached it to distance 2-3, and then abruptly backpedaled or wanted to leave/delve down stairs instead of engaging, despite all cooldowns being ready.
+  2. *Under-Prioritized Proselytize*: Proselytize was only offered when adjacent (`dist == 1`). If the character was at distance 2 or 3, no recruitment approach action was generated, causing prospective thralls to be killed at range or prompting casters to run away due to fear of melee bumping.
+  3. *Premature Kiting at Distance 2 in `fallback_esper`*: In `brain.py`, a block backpedaled whenever `closest_dist <= 2` before psychic assault abilities were evaluated. As a result, healthy Espers at distance 2 never fired Sunder Mind, Lase, or Flaming Ray.
+  4. *Premature Delving Snapping Near Stairs*: In subterranean zones, `can_delve` navigated to known stairs down whenever `dist_to_stairs <= 6` even if the floor had active hostile threats present.
+- **Solution:**
+  - **High-Priority Proselytize & Approach Recruitment (`query_llm_decision`, `fallback_esper`, `fallback_nomad`, Phase A):**
+    - In `query_llm_decision`, when petless, candidates at distance 2–3 generate high-priority `MOVE_<dir> (RECRUIT PET: Approach <name> to get adjacent and Proselytize into frontline combat tank!)`.
+    - Added `0. PET RECRUITMENT DOCTRINE` to LLM system prompt instructing the agent to prioritize recruiting a meat shield tank over killing prospective thralls.
+    - In `fallback_esper` and `fallback_nomad`, added distance 2–3 approach recruitment moves when petless before offensive combat routines.
+    - In Phase A, extended companion recruitment candidate approach to distance 2 and 3.
+  - **Elimination of Distance-2 Premature Kiting (`fallback_esper`):**
+    - Removed pre-emptive backpedaling at `closest_dist <= 2` from the top of `fallback_esper`.
+    - Offensive powers (Sunder Mind, Stunning Force, Lase, Flaming Ray, Freezing Ray) now execute at distance $\ge 1$ whenever line of fire is clear.
+    - Standoff kiting is relegated to Section I, executing only when powers are cooling down or depleted.
+  - **Occluded Corridor Tactical Maneuvering (`query_llm_decision` & LOF Safety Guardrail):**
+    - In Section 6, when line of fire is blocked by corner walls (`not c_lof_clear`), advance moves are explicitly labeled `MOVE_<dir> (Tactical Maneuver <dir> around corner to establish clear Line of Sight on <name>)`.
+    - Updated caster Rule 2 to instruct the LLM that maneuvering to establish line of sight is required positioning, not charging into melee.
+    - In the LOF safety guardrail in `query_llm_decision`, passed `surroundings` to check wall collisions. If an occluded beam is generated by the LLM, it is intercepted and converted to a maneuver move around the corner.
+  - **Suppression of Premature Delving During Combat (`decide_action` Phase A):**
+    - Enforced `not has_visible_threats` before navigating to known stairs down on uncleared subterranean floors.
+  - **Verification (Test 45):**
+    - Added Test 45 to `dry_run.py` verifying:
+      - 45.1: Petless Esper approaches eyeless crab at distance 2 to recruit as combat thrall (both LLM and fallback).
+      - 45.2: Petless Esper proselytizes adjacent eyeless crab into combat companion.
+      - 45.3: Esper with companion attacks eyeless crab at distance 2 with ready Lase instead of backpedaling.
+      - 45.4: Subterranean zone with stairs down nearby does NOT abandon combat to navigate to stairs when an enemy is visible.
+      - 45.5: Occluded crab behind corridor corner triggers tactical maneuver around wall to establish line of sight.
+    - All 45 verification tests pass successfully. Mod deployed and committed to git.
 
 ---
 
