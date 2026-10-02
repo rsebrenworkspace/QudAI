@@ -872,6 +872,21 @@
       - 48.3: Companion swap detected in narrow corridor bottlenecks when all alternatives are walls.
     - All 48 verification tests pass cleanly. Mod deployed to game directory.
 
+### Iteration 39: Canyon Dead-End Oscillation Loop, Unreachable Sector Blacklisting & Exit Commitment
+- **Problem**:
+  1. In canyon terrain (`desert canyon, surface`), the player navigated down a winding canyon corridor to a dead end at `(45, 11)`. The remaining 1613 unrevealed cells were located across an impassable canyon cliff at centroid `(35, 11)`.
+  2. Because `unexp_cells > 35` on the surface, `zone_fully_explored` was forced to `False`. Step 8 ("Unexplored Sector across Water / Obstacles") greedily selected `MOVE_SW` toward `(35, 11)` based on Chebyshev distance, causing the character to repeatedly step into the dead-end wall and dogthorn trees.
+  3. The spatial oscillation loop breaker detected the cycle and attempted `NAVIGATE_TO_CELL:35,11`, which immediately failed in C# with `PATH_BLOCKED` because the target was unreachable through the canyon wall.
+  4. The loop breaker then selected `NAVIGATE_ZONE_EXIT:E` to escape the cycle, stepping East (or swapping places with the allied giant amoeba).
+  5. However, as soon as the character moved East, the oscillation frequency counter reset. On the very next turn, normal Phase A exploration ran, saw `zone_fully_explored == False` and `sector_target == (35, 11)`, and immediately issued `MOVE_W` or `MOVE_SW` toward `(35, 11)` again. This created a rapid ping-pong loop swapping places with the companion and pacing between the exit and the canyon dead end.
+  6. Furthermore, in `check_exit_direction_failure`, `if last_failed == chosen_exit or (chosen_exit in last_failed):` erroneously matched `"E" in "PATH_BLOCKED"`, causing the engine to falsely treat a pathfinding failure as an impassable exit failure to the East and blacklisting valid East exits.
+- **Solution**:
+  1. **Unreachable Sector Blacklisting (`UNREACHABLE_SECTORS`)**: Added global set `UNREACHABLE_SECTORS` tracking `(zone_id, (tx, ty))`. When `NAVIGATE_TO_CELL` fails with `last_failed_dir == "PATH_BLOCKED"`, the target coordinate is blacklisted. Step 8 and the loop breaker skip blacklisted sectors.
+  2. **Exhausted Surface Sector Resolution**: When native autoexplore is stuck (`autoexplore_stuck == True`) and all candidates in `UNREACHABLE_SECTORS` confirm no reachable sectors or local unvisited tiles remain, the accessible portion of the zone is marked fully explored (`zone_fully_explored = True`, `EXPLORED_ZONE_SET.add(zone_id)`).
+  3. **Committed Exit Navigation (`CURRENT_ZONE_CHOSEN_EXIT`) Priority**: When `CURRENT_ZONE_CHOSEN_EXIT` is set for the current zone, `is_exiting_zone = True` suppresses both Step 8 (macro sector navigation) and Step 9 (local unvisited moves). Step 10 committedly navigates to the exit border via `NAVIGATE_ZONE_EXIT` and steps across without diverting back toward unreachable sectors.
+  4. **Strict Direction Parsing in `check_exit_direction_failure`**: Fixed substring matching so only valid cardinal direction tokens (`"N"`, `"S"`, `"E"`, `"W"`, etc.) are checked, preventing non-directional status strings like `"PATH_BLOCKED"` from falsely triggering exit blacklisting.
+  5. **Verification**: Added Test 49 to `dry_run.py` verifying unreachable sector blacklisting on `PATH_BLOCKED` and committed exit navigation. All 49 verification tests pass with 0 errors.
+
 ---
 
 ## 4. Current Codebase Specification (v1.3.2)
