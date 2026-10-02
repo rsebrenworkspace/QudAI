@@ -2105,6 +2105,44 @@ namespace QudAIBrain
                     }
                 }
 
+                // Fallback: Check open border cells on requested edge if TryFindEdgeStep didn't find a direct step
+                if (string.IsNullOrEmpty(step) || step == ".")
+                {
+                    try
+                    {
+                        Zone z = player.CurrentCell?.ParentZone;
+                        if (z != null && player.CurrentCell != null)
+                        {
+                            List<Cell> borderCells = new List<Cell>();
+                            if (edgeChar == 'N') { for (int x = 0; x < z.Width; x++) borderCells.Add(z.GetCell(x, 0)); }
+                            else if (edgeChar == 'S') { for (int x = 0; x < z.Width; x++) borderCells.Add(z.GetCell(x, z.Height - 1)); }
+                            else if (edgeChar == 'E') { for (int y = 0; y < z.Height; y++) borderCells.Add(z.GetCell(z.Width - 1, y)); }
+                            else if (edgeChar == 'W') { for (int y = 0; y < z.Height; y++) borderCells.Add(z.GetCell(0, y)); }
+
+                            Cell bestBorder = null;
+                            int bestD = int.MaxValue;
+                            foreach (var bc in borderCells)
+                            {
+                                if (bc != null && !bc.IsOccluding() && !bc.HasWall())
+                                {
+                                    int d = Math.Abs(bc.X - player.CurrentCell.X) + Math.Abs(bc.Y - player.CurrentCell.Y);
+                                    if (d < bestD)
+                                    {
+                                        string testStep = null;
+                                        if (AutoAct.TryFindPathStep(bc, out testStep) && !string.IsNullOrEmpty(testStep) && testStep != ".")
+                                        {
+                                            bestD = d;
+                                            bestBorder = bc;
+                                            step = testStep;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
                 if (!string.IsNullOrEmpty(step) && step != ".")
                 {
                     int energyBefore = player.Energy?.Value ?? 0;
@@ -2134,8 +2172,19 @@ namespace QudAIBrain
                 }
                 else
                 {
-                    // Fall back to MOVE in that direction
-                    act = "MOVE_" + edgeChar;
+                    // Fall back to MOVE in that direction ONLY if not facing an impassable wall
+                    Cell c = player.CurrentCell?.GetCellFromDirection(edgeChar.ToString(), false);
+                    if (c != null && !c.IsOccluding() && !c.HasWall())
+                    {
+                        act = "MOVE_" + edgeChar;
+                    }
+                    else
+                    {
+                        lastMoveFailed = true;
+                        lastFailedDir = edgeChar.ToString();
+                        if (player.Energy != null) player.UseEnergy(1000, "Pass");
+                        return;
+                    }
                 }
             }
 

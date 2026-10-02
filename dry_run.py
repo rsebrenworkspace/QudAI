@@ -1878,9 +1878,62 @@ assert pos_freq_sub >= 3, "Setup condition: oscillation frequency must be >= 3"
 exit_pos_lb, exit_tag_lb, exit_dir_lb = brain.get_zone_exit_target((17, 2), subterranean_stratum_state)
 assert exit_dir_lb == "N"
 
+# =====================================================================
+# TEST 37: Subterranean Dead-End Exit Invalidation & Corridor Alignment
+# =====================================================================
+print("\n" + "="*50)
+print("TEST 37: Subterranean Dead-End Exit Invalidation & Corridor Alignment")
+print("="*50)
+
+# Scenario 37.1: Live state where East border is a dead end into solid rock at (74, 11)
+dead_end_east_state = {
+    "hp": 26, "max_hp": 26, "level": 4, "x": 74, "y": 11, "z": 11,
+    "zone_id": "JoppaWorld.10.23.0.1.11",
+    "zone_name": "subterranean salt marsh, 1 stratum deep",
+    "zone_fully_explored": True,
+    "unexplored_cells": 605,
+    "nearest_unexplored_x": 72, "nearest_unexplored_y": 9, "nearest_unexplored_dist": 2,
+    "last_move_failed": False,
+    "surroundings": {
+        "E": "[BLOCKED: impassable terrain], [BLOCKED: tangled mudroot]",
+        "NE": "[BLOCKED: impassable terrain], [BLOCKED: tangled mudroot]",
+        "SE": "[BLOCKED: impassable terrain], [BLOCKED: tangled mudroot]",
+        "N": "[BLOCKED: impassable terrain], [BLOCKED: tangled mudroot]",
+        "NW": "[BLOCKED: impassable terrain], [BLOCKED: tangled mudroot]",
+        "W": "Empty ground", "SW": "Empty ground", "S": "Empty ground",
+        "WW": "Empty ground", "WSW": "Empty ground", "SW2": "Empty ground", "SSW": "Empty ground"
+    },
+    "stairs_up": [{"name": "stairs up", "blueprint": "StairsUp", "dist": 40, "dir": "W", "tx": 34, "ty": 2}],
+    "stairs_down": [],
+    "visible_entities": []
+}
+
+# Pre-set chosen exit to East to simulate the stuck state
+brain.CURRENT_ZONE_CHOSEN_EXIT = "E"
+brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = "JoppaWorld.10.23.0.1.11"
+brain.FAILED_ZONE_EXITS.clear()
+
+dec_dead_end = brain.query_decision(dead_end_east_state, took_damage=False, enemies=[])
+print(f"Dead-end East recovery decision: {dec_dead_end['action']} | Reason: {dec_dead_end['reason']}")
+assert dec_dead_end["action"] == "NAVIGATE_ZONE_EXIT:N", f"Expected switch from dead-end E to N, got: {dec_dead_end['action']}"
+assert ("JoppaWorld.10.23.0.1.11", "E") in brain.FAILED_ZONE_EXITS, "East exit should be blacklisted in FAILED_ZONE_EXITS"
+assert brain.CURRENT_ZONE_CHOSEN_EXIT == "N", f"Expected chosen exit to be N, got: {brain.CURRENT_ZONE_CHOSEN_EXIT}"
+
+# Scenario 37.2: Loop breaker oscillation recovery at dead-end
+brain.CURRENT_ZONE_CHOSEN_EXIT = "E"
+brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = "JoppaWorld.10.23.0.1.11"
+brain.FAILED_ZONE_EXITS.clear()
+brain.recent_positions.clear()
+brain.recent_positions.extend([(74, 11), (73, 11)] * 4)
+dec_loop_breaker = brain.query_decision(dead_end_east_state, took_damage=False, enemies=[])
+print(f"Loop breaker dead-end recovery decision: {dec_loop_breaker['action']} | Reason: {dec_loop_breaker['reason']}")
+assert dec_loop_breaker["action"] == "NAVIGATE_ZONE_EXIT:N", f"Expected loop breaker to route to N, got: {dec_loop_breaker['action']}"
+assert ("JoppaWorld.10.23.0.1.11", "E") in brain.FAILED_ZONE_EXITS, "East exit should be blacklisted by loop breaker"
+
 print("\n==================================================")
-print(">>> ALL 36 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 37 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
+
 
 
 

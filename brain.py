@@ -222,6 +222,8 @@ def update_zone_records(game_state):
         blocked_coords.clear()
         recent_positions.clear()
         ZONE_STEP_COUNT = 0
+        CURRENT_ZONE_CHOSEN_EXIT = None
+        CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
     elif CURRENT_TRACKED_ZONE is None and zone_id:
         RECENT_ZONES.append(zone_id)
         ZONE_STEP_COUNT = 0
@@ -338,6 +340,42 @@ _OPPOSITE_DIR = {"N": "S", "S": "N", "E": "W", "W": "E"}
 
 CURRENT_ZONE_CHOSEN_EXIT = None
 CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+FAILED_ZONE_EXITS = set()  # set of (zone_id, exit_dir)
+
+
+def check_exit_direction_failure(game_state, cur_pos, chosen_exit):
+    """
+    Checks if the chosen exit direction in the current zone has failed due to:
+    1. Direct movement failure (last_move_failed in that direction).
+    2. Dead-end wall obstruction directly facing that border.
+    Returns True if the exit direction should be blacklisted as unreachable.
+    """
+    if not chosen_exit or not game_state:
+        return False
+
+    # 1. Did the engine report a movement failure in that direction?
+    if game_state.get("last_move_failed", False):
+        last_failed = (game_state.get("last_failed_dir", "") or "").upper()
+        if last_failed == chosen_exit or (chosen_exit in last_failed):
+            return True
+
+    # 2. Are all immediate and diagonal tiles in that direction solid impassable rock?
+    surroundings = game_state.get("surroundings", {})
+    px, py = cur_pos
+    if chosen_exit == "E" and px >= 70:
+        if all("[BLOCKED:" in surroundings.get(d, "") for d in ["E", "NE", "SE"]):
+            return True
+    elif chosen_exit == "W" and px <= 10:
+        if all("[BLOCKED:" in surroundings.get(d, "") for d in ["W", "NW", "SW"]):
+            return True
+    elif chosen_exit == "N" and py <= 5:
+        if all("[BLOCKED:" in surroundings.get(d, "") for d in ["N", "NW", "NE"]):
+            return True
+    elif chosen_exit == "S" and py >= 20:
+        if all("[BLOCKED:" in surroundings.get(d, "") for d in ["S", "SW", "SE"]):
+            return True
+
+    return False
 
 
 def get_zone_exit_target(cur_pos, game_state=None):
@@ -347,27 +385,63 @@ def get_zone_exit_target(cur_pos, game_state=None):
     to keep runs unpredictable, emergent, and diverse, while caching the decision for the duration
     of the zone so the character navigates steadily toward that chosen border without jittering.
     Prioritizes verified reachable edges from game_state telemetry when available.
+    Automatically invalidates and blacklists exits that dead-end into solid rock or fail.
     """
-    global CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE
+    global CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS
     px, py = cur_pos
     cur_zone = current_zone_id or ""
+
+    # Check if current chosen exit has dead-ended or failed
+    if CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == cur_zone:
+        if game_state and check_exit_direction_failure(game_state, cur_pos, CURRENT_ZONE_CHOSEN_EXIT):
+            print(f"[ZONE EXIT FAILED]: Exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {cur_zone} is blocked by impassable dead-end terrain at {cur_pos}. Blacklisting and re-routing.")
+            FAILED_ZONE_EXITS.add((cur_zone, CURRENT_ZONE_CHOSEN_EXIT))
+            CURRENT_ZONE_CHOSEN_EXIT = None
+            CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 
     reachable_str = (game_state.get("reachable_edges", "") if game_state else "") or ""
     reachable_set = set(reachable_str) if reachable_str else None
 
     # If an exit was already chosen for this zone, check if it's still valid/reachable
     if CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == cur_zone:
-        if reachable_set is None or CURRENT_ZONE_CHOSEN_EXIT in reachable_set:
-            pos, tag = _EXIT_TARGETS[CURRENT_ZONE_CHOSEN_EXIT](px, py)
-            return pos, tag, CURRENT_ZONE_CHOSEN_EXIT
+        if (cur_zone, CURRENT_ZONE_CHOSEN_EXIT) not in FAILED_ZONE_EXITS:
+            if reachable_set is None or CURRENT_ZONE_CHOSEN_EXIT in reachable_set:
+                pos, tag = _EXIT_TARGETS[CURRENT_ZONE_CHOSEN_EXIT](px, py)
+                return pos, tag, CURRENT_ZONE_CHOSEN_EXIT
 
     rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
 
-    # Determine candidate directions: prioritize reachable edges if telemetry provides them
+    # Determine candidate directions: prioritize reachable edges if telemetry provides them,
+    # and strictly exclude directions known to have failed/dead-ended in this zone
     all_dirs = [d for d in reachable_set] if reachable_set else ["N", "S", "E", "W"]
-    candidates = [d for d in all_dirs if d != rev_dir]
+    if game_state:
+        for d in list(all_dirs):
+            if check_exit_direction_failure(game_state, cur_pos, d):
+                FAILED_ZONE_EXITS.add((cur_zone, d))
+    candidates = [d for d in all_dirs if d != rev_dir and (cur_zone, d) not in FAILED_ZONE_EXITS]
     if not candidates:
-        candidates = all_dirs if all_dirs else ["N", "S", "E", "W"]
+        candidates = [d for d in all_dirs if (cur_zone, d) not in FAILED_ZONE_EXITS]
+    if not candidates:
+        # If all candidates somehow failed, reset failed exits for this zone as a fallback
+        FAILED_ZONE_EXITS = {f for f in FAILED_ZONE_EXITS if f[0] != cur_zone}
+        candidates = [d for d in all_dirs if d != rev_dir] or all_dirs or ["N", "S", "E", "W"]
+
+    # In subterranean strata (z > 10), prioritize directions suggested by unexplored boundaries / corridors
+    cur_z = game_state.get("z", 10) if game_state else 10
+    prioritized = []
+    if cur_z > 10 and game_state:
+        ny = game_state.get("nearest_unexplored_y", -1)
+        nx = game_state.get("nearest_unexplored_x", -1)
+        if ny >= 0 and ny < py and "N" in candidates:
+            prioritized.append("N")
+        if ny >= 0 and ny > py and "S" in candidates:
+            prioritized.append("S")
+        if nx >= 0 and nx > px and "E" in candidates:
+            prioritized.append("E")
+        if nx >= 0 and nx < px and "W" in candidates:
+            prioritized.append("W")
+        if prioritized:
+            candidates = prioritized + [c for c in candidates if c not in prioritized]
 
     # Check for novel (unvisited) adjacent zones
     cycle_zones = set(list(RECENT_ZONES)[-max(ZONE_CYCLE_LENGTH, 2):]) if ZONE_HOPPING_DETECTED else set()
@@ -381,7 +455,8 @@ def get_zone_exit_target(cur_pos, game_state=None):
 
     # Prefer novel unvisited zones if available to foster organic world exploration
     if novel_candidates:
-        chosen_dir = random.choice(novel_candidates)
+        prioritized_novel = [d for d in prioritized if d in novel_candidates]
+        chosen_dir = prioritized_novel[0] if prioritized_novel else random.choice(novel_candidates)
         pos, tag = _EXIT_TARGETS[chosen_dir](px, py)
         CURRENT_ZONE_CHOSEN_EXIT = chosen_dir
         CURRENT_ZONE_CHOSEN_EXIT_ZONE = cur_zone
@@ -392,8 +467,9 @@ def get_zone_exit_target(cur_pos, game_state=None):
             print(f"[ORGANIC EXPLORATION] Selected organic novel exit {chosen_dir} ({label}) for zone {cur_zone}")
         return pos, label, chosen_dir
 
-    # If no strictly novel zones are detected, pick randomly among candidates
-    chosen_dir = random.choice(candidates)
+    # If no strictly novel zones are detected, pick among candidates
+    prioritized_candidates = [d for d in prioritized if d in candidates]
+    chosen_dir = prioritized_candidates[0] if prioritized_candidates else random.choice(candidates)
     pos, tag = _EXIT_TARGETS[chosen_dir](px, py)
     CURRENT_ZONE_CHOSEN_EXIT = chosen_dir
     CURRENT_ZONE_CHOSEN_EXIT_ZONE = cur_zone
@@ -1848,7 +1924,7 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
 
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
-    global last_action, consecutive_kites, RETREAT_TARGET_LEVEL
+    global last_action, consecutive_kites, RETREAT_TARGET_LEVEL, CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS
 
     update_zone_records(game_state)
     update_stair_records(game_state)
@@ -2543,6 +2619,13 @@ def main():
                                     if (cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]) not in recent_positions]
 
                     frontier_target, frontier_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
+
+                    # If oscillation occurs while trying to exit or after choosing an exit, blacklist it and re-evaluate
+                    if CURRENT_ZONE_CHOSEN_EXIT and (pos_frequency >= 3 or (action and action.startswith("NAVIGATE_ZONE_EXIT"))):
+                        print(f"[ZONE EXIT RECOVERY] Loop breaker detected oscillation while navigating to exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {current_zone_id}. Blacklisting.")
+                        FAILED_ZONE_EXITS.add((current_zone_id, CURRENT_ZONE_CHOSEN_EXIT))
+                        CURRENT_ZONE_CHOSEN_EXIT = None
+                        CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 
                     exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos, game_state)
 
