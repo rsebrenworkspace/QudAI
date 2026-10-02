@@ -1484,14 +1484,15 @@ graveyard_state = {
 }
 dec_gy = brain.query_decision(graveyard_state, took_damage=False, enemies=[])
 print(f"Graveyard decision: {dec_gy['action']} | Reason: {dec_gy['reason']}")
-assert dec_gy["action"] == "NAVIGATE_ZONE_EXIT:E", f"Expected NAVIGATE_ZONE_EXIT:E to delegate pathfinding to native engine, got: {dec_gy['action']}"
+assert dec_gy["action"].startswith("NAVIGATE_ZONE_EXIT:"), f"Expected NAVIGATE_ZONE_EXIT:<DIR> to delegate pathfinding to native engine, got: {dec_gy['action']}"
 assert "navigating via engine pathfinder" in dec_gy["reason"]
 
 # Scenario 30.2: get_zone_exit_target returns 3-tuple (pos, tag, exit_dir)
 pos, tag, exit_dir = brain.get_zone_exit_target((47, 11))
 print(f"get_zone_exit_target: Pos: {pos}, Tag: {tag}, Dir: {exit_dir}")
 assert exit_dir in ("N", "S", "E", "W"), f"Exit dir must be cardinal, got: {exit_dir}"
-assert pos == (78, 11), f"Expected pos (78, 11), got: {pos}"
+expected_pos = brain._EXIT_TARGETS[exit_dir](47, 11)[0]
+assert pos == expected_pos, f"Expected pos {expected_pos} for {exit_dir}, got: {pos}"
 
 # ==================================================
 # TEST 31: Zone Bailing Prevention & Native Target Cell Pathfinding

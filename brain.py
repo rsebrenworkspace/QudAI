@@ -2,6 +2,7 @@ import os
 import time
 import json
 import re
+import random
 import threading
 import requests
 from collections import deque, defaultdict
@@ -156,6 +157,7 @@ def update_zone_records(game_state):
     Detects 2-cycle (A->B->A), 3-cycle (A->B->C->A), and 4-cycle oscillations.
     """
     global CURRENT_TRACKED_ZONE, current_zone_id, ZONE_STEP_COUNT, ZONE_HOPPING_DETECTED, LAST_ZONE_ENTRY, ZONE_CYCLE_LENGTH
+    global CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE
     zone_id = game_state.get("zone_id", "")
     px = game_state.get("x", 0)
     py = game_state.get("y", 0)
@@ -169,6 +171,8 @@ def update_zone_records(game_state):
         leaving_zone = CURRENT_TRACKED_ZONE
         if leaving_zone in stuck_autoexplore_zones or game_state.get("zone_fully_explored", False):
             EXPLORED_ZONE_SET.add(leaving_zone)
+        CURRENT_ZONE_CHOSEN_EXIT = None
+        CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 
         RECENT_ZONES.append(zone_id)
         # Determine entry border and reverse direction
@@ -332,54 +336,63 @@ _EXIT_TARGETS = {
 _OPPOSITE_DIR = {"N": "S", "S": "N", "E": "W", "W": "E"}
 
 
+CURRENT_ZONE_CHOSEN_EXIT = None
+CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+
+
 def get_zone_exit_target(cur_pos):
     """
-    Returns (target_coord, exit_tag, exit_dir) of the forward zone border exit to transition to the next zone.
-    When zone hopping is detected, avoids exits that lead back into the cycle or already-explored zones.
+    Returns (target_coord, exit_tag, exit_dir) of the zone border exit to transition to the next zone.
+    Chooses exits organically (random selection among novel / non-backtracking directions)
+    to keep runs unpredictable, emergent, and diverse, while caching the decision for the duration
+    of the zone so the character navigates steadily toward that chosen border without jittering.
     """
+    global CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE
     px, py = cur_pos
-    rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
-    forward_dir = _OPPOSITE_DIR.get(rev_dir) if rev_dir else None
-
-    # Normal case: no cycle detected, use simple forward exit
-    if not ZONE_HOPPING_DETECTED:
-        if forward_dir and forward_dir in _EXIT_TARGETS:
-            pos, tag = _EXIT_TARGETS[forward_dir](px, py)
-            return pos, tag, forward_dir
-        # Default: East
-        return (78, py), "East zone exit", "E"
-
-    # Zone hopping detected — pick a NOVEL exit that avoids the cycle
     cur_zone = current_zone_id or ""
-    cycle_zones = set(list(RECENT_ZONES)[-max(ZONE_CYCLE_LENGTH, 2):])
+
+    # If an exit was already chosen for this zone, maintain it steadily until we cross the border
+    if CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == cur_zone:
+        pos, tag = _EXIT_TARGETS[CURRENT_ZONE_CHOSEN_EXIT](px, py)
+        return pos, tag, CURRENT_ZONE_CHOSEN_EXIT
+
+    rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
+
+    # Determine candidate directions: avoid immediate backtracking
+    candidates = [d for d in ["N", "S", "E", "W"] if d != rev_dir]
+    if not candidates:
+        candidates = ["N", "S", "E", "W"]
+
+    # Check for novel (unvisited) adjacent zones
+    cycle_zones = set(list(RECENT_ZONES)[-max(ZONE_CYCLE_LENGTH, 2):]) if ZONE_HOPPING_DETECTED else set()
     avoid_zones = cycle_zones | EXPLORED_ZONE_SET
 
-    # Rank all 4 directions by preference: novel > forward > any non-reverse
-    candidate_dirs = []
-    for d in ["N", "S", "E", "W"]:
-        if d == rev_dir:
-            continue  # Never go back the way we came
+    novel_candidates = []
+    for d in candidates:
         adj_zone = _compute_adjacent_zone_id(cur_zone, d)
-        is_novel = adj_zone is not None and adj_zone not in avoid_zones
-        is_forward = (d == forward_dir)
-        # Priority: novel zones first, then forward, then anything
-        candidate_dirs.append((0 if is_novel else 1, 0 if is_forward else 1, d))
+        if adj_zone and adj_zone not in avoid_zones:
+            novel_candidates.append(d)
 
-    candidate_dirs.sort()
+    # Prefer novel unvisited zones if available to foster organic world exploration
+    if novel_candidates:
+        chosen_dir = random.choice(novel_candidates)
+        pos, tag = _EXIT_TARGETS[chosen_dir](px, py)
+        CURRENT_ZONE_CHOSEN_EXIT = chosen_dir
+        CURRENT_ZONE_CHOSEN_EXIT_ZONE = cur_zone
+        label = f"{tag} (novel)"
+        if ZONE_HOPPING_DETECTED:
+            print(f"[ZONE HOPPING BREAKER] Organically picked novel exit {chosen_dir} ({label}) avoiding cycle: {avoid_zones}")
+        else:
+            print(f"[ORGANIC EXPLORATION] Selected organic novel exit {chosen_dir} ({label}) for zone {cur_zone}")
+        return pos, label, chosen_dir
 
-    if candidate_dirs:
-        best_dir = candidate_dirs[0][2]
-        pos, tag = _EXIT_TARGETS[best_dir](px, py)
-        is_novel = candidate_dirs[0][0] == 0
-        label = f"{tag} (novel)" if is_novel else tag
-        print(f"[ZONE HOPPING BREAKER] Choosing {best_dir} exit ({label}) to escape {ZONE_CYCLE_LENGTH}-zone cycle. Avoiding: {avoid_zones}")
-        return pos, label, best_dir
-
-    # All exits lead to cycle zones — pick forward anyway and hope inward navigation helps
-    if forward_dir and forward_dir in _EXIT_TARGETS:
-        pos, tag = _EXIT_TARGETS[forward_dir](px, py)
-        return pos, tag, forward_dir
-    return (78, py), "East zone exit", "E"
+    # If no strictly novel zones are detected, pick randomly among non-reverse candidates
+    chosen_dir = random.choice(candidates)
+    pos, tag = _EXIT_TARGETS[chosen_dir](px, py)
+    CURRENT_ZONE_CHOSEN_EXIT = chosen_dir
+    CURRENT_ZONE_CHOSEN_EXIT_ZONE = cur_zone
+    print(f"[ORGANIC EXPLORATION] Selected organic exit {chosen_dir} ({tag}) for zone {cur_zone}")
+    return pos, tag, chosen_dir
 
 
 def update_stair_records(game_state):
