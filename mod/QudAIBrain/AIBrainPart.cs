@@ -1183,8 +1183,8 @@ namespace QudAIBrain
             }
             try
             {
-                if (zone.HasProperty("Settlement") || zone.HasProperty("Town") || zone.HasProperty("Village") ||
-                    zone.HasProperty("Peaceful") || zone.GetZoneProperty("Settlement") != null)
+                if (zone.HasZoneProperty("Settlement") || zone.HasZoneProperty("Town") || zone.HasZoneProperty("Village") ||
+                    zone.HasZoneProperty("Peaceful") || !string.IsNullOrEmpty(zone.GetZoneProperty("Settlement")))
                 {
                     return true;
                 }
