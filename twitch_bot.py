@@ -31,6 +31,25 @@ SKILL_ALIASES = {
     "shakeitoff": "Endurance_ShakeItOff", "harvestry": "CookingAndGathering_Harvestry", "butchery": "CookingAndGathering_Butchery"
 }
 
+# Valid mutation vote aliases
+MUTATION_ALIASES = {
+    "freezingray": "FreezingRay", "freeze": "FreezingRay", "ice": "FreezingRay",
+    "lightmanipulation": "LightManipulation", "laser": "LightManipulation", "light": "LightManipulation",
+    "flamingray": "FlamingRay", "fire": "FlamingRay", "flame": "FlamingRay",
+    "forcebubble": "ForceBubble", "bubble": "ForceBubble",
+    "forcewall": "ForceWall", "wall": "ForceWall",
+    "teleportation": "Teleportation", "teleport": "Teleportation", "blink": "Teleportation",
+    "multiplelegs": "MultipleLegs", "legs": "MultipleLegs", "speed": "MultipleLegs",
+    "multiplearms": "MultipleArms", "arms": "MultipleArms",
+    "doublemuscled": "DoubleMuscled", "muscles": "DoubleMuscled",
+    "triplejointed": "TripleJointed", "joints": "TripleJointed",
+    "regeneration": "Regeneration", "regen": "Regeneration",
+    "carapace": "Carapace", "shell": "Carapace",
+    "phasing": "Phasing", "phase": "Phasing",
+    "electricalgeneration": "ElectricalGeneration", "shock": "ElectricalGeneration", "lightning": "ElectricalGeneration",
+    "corrosivegasgeneration": "CorrosiveGasGeneration", "gas": "CorrosiveGasGeneration"
+}
+
 class TwitchVoteManager:
     def __init__(self, config_file=CONFIG_PATH):
         self.config_file = config_file
@@ -42,6 +61,7 @@ class TwitchVoteManager:
 
         self.stat_votes = {}    # user -> stat
         self.skill_votes = {}   # user -> skill
+        self.mutation_votes = {} # user -> mutation
         self.lock = threading.Lock()
         self.sock = None
         self.running = False
@@ -60,12 +80,15 @@ class TwitchVoteManager:
             with self.lock:
                 stat_counts = dict(Counter(self.stat_votes.values()))
                 skill_counts = dict(Counter(self.skill_votes.values()))
+                mutation_counts = dict(Counter(self.mutation_votes.values()))
             
             data = {
                 "stat_votes": stat_counts,
                 "skill_votes": skill_counts,
+                "mutation_votes": mutation_counts,
                 "total_stat_votes": len(self.stat_votes),
                 "total_skill_votes": len(self.skill_votes),
+                "total_mutation_votes": len(self.mutation_votes),
                 "timestamp": time.time()
             }
             with open(VOTES_FILE, "w", encoding="utf-8") as f:
@@ -87,6 +110,13 @@ class TwitchVoteManager:
             counts = Counter(self.skill_votes.values())
             return counts.most_common(1)[0]  # (skill_class, count)
 
+    def get_top_mutation(self):
+        with self.lock:
+            if not self.mutation_votes:
+                return None
+            counts = Counter(self.mutation_votes.values())
+            return counts.most_common(1)[0]  # (mutation_name, count)
+
     def reset_stat_votes(self):
         with self.lock:
             self.stat_votes.clear()
@@ -95,6 +125,11 @@ class TwitchVoteManager:
     def reset_skill_votes(self):
         with self.lock:
             self.skill_votes.clear()
+        self.save_votes_to_disk()
+
+    def reset_mutation_votes(self):
+        with self.lock:
+            self.mutation_votes.clear()
         self.save_votes_to_disk()
 
     def send_chat(self, msg):
@@ -125,14 +160,22 @@ class TwitchVoteManager:
                     self.skill_votes[user] = skill
                 self.save_votes_to_disk()
                 print(f"[Twitch Vote] {user} voted for SKILL: {skill}")
+            elif target in MUTATION_ALIASES:
+                mut = MUTATION_ALIASES[target]
+                with self.lock:
+                    self.mutation_votes[user] = mut
+                self.save_votes_to_disk()
+                print(f"[Twitch Vote] {user} voted for MUTATION: {mut}")
 
         elif cmd == "!votes":
             with self.lock:
                 stats = dict(Counter(self.stat_votes.values()))
                 skills = dict(Counter(self.skill_votes.values()))
+                muts = dict(Counter(self.mutation_votes.values()))
             s_str = ", ".join(f"{k}:{v}" for k, v in stats.items()) or "None"
             sk_str = ", ".join(f"{k}:{v}" for k, v in skills.items()) or "None"
-            reply = f"Current Votes -> Stats: [{s_str}] | Skills: [{sk_str}]"
+            m_str = ", ".join(f"{k}:{v}" for k, v in muts.items()) or "None"
+            reply = f"Current Votes -> Stats: [{s_str}] | Skills: [{sk_str}] | Mutations: [{m_str}]"
             print(f"[Twitch] {reply}")
             self.send_chat(reply)
 

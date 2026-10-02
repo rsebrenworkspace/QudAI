@@ -2116,7 +2116,8 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         muts = game_state.get("mutations", [])
         can_level_any_mut = any(m.get("can_level", False) and m.get("level", 0) < m.get("cap", 99) for m in muts)
-        can_spend_mp = mp > 0 and can_level_any_mut
+        can_buy_mutation = mp >= 4
+        can_spend_mp = (mp > 0 and can_level_any_mut) or can_buy_mutation
         has_points_to_spend = (ap > 0) or (sp >= 50) or can_spend_mp
 
         # Check for eligible skills or free (0-cost) powers
@@ -2135,6 +2136,14 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     skill_class, count = top_skill
                     twitch_manager.reset_skill_votes()
                     return {"action": f"AUTOLEVEL_SKILL:{skill_class}", "reason": f"Twitch Chat Vote winner: {skill_class} ({count} votes)"}
+                top_mut = getattr(twitch_manager, "get_top_mutation", lambda: None)()
+                if can_spend_mp and top_mut:
+                    mut_name, count = top_mut
+                    twitch_manager.reset_mutation_votes()
+                    if mp >= 4 and (not can_level_any_mut or not any(m.get("class", "").lower() == mut_name.lower() for m in muts)):
+                        return {"action": f"AUTOLEVEL_BUY_MUTATION:{mut_name}", "reason": f"Twitch Chat Vote winner: {mut_name} ({count} votes) - unlocking new ability"}
+                    else:
+                        return {"action": f"AUTOLEVEL_MUTATION:{mut_name}", "reason": f"Twitch Chat Vote winner: {mut_name} ({count} votes) - leveling mutation"}
 
             # Class template allocation priorities
             if ap > 0:
@@ -2148,13 +2157,12 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 # Character is purposefully saving SP for the next priority milestone in the tree
                 pass
 
-            if mp > 0 and can_level_any_mut:
-                for p_mut in template.get("mutation_priorities", []):
-                    m_obj = next((m for m in muts if m.get("class", "").lower() == p_mut.lower() and m.get("can_level", False) and m.get("level", 0) < m.get("cap", 99)), None)
-                    if m_obj:
-                        return {"action": f"AUTOLEVEL_MUTATION:{m_obj.get('class')}", "reason": f"Class Progression ({template['name']}): Leveling {m_obj.get('name')}"}
+            if can_spend_mp:
+                rec_action, rec_reason = build_templates.get_mutation_allocation_recommendation(template, muts, mp)
+                if rec_action:
+                    return {"action": rec_action, "reason": rec_reason}
 
-            if ap > 0 or (mp > 0 and can_level_any_mut):
+            if ap > 0 or can_spend_mp:
                 return {"action": "AUTOLEVEL", "reason": f"Safe autoleveling: allocating unspent points (AP:{ap}, SP:{sp}, MP:{mp})"}
 
         # 2. Survival & Sustenance Routine: Butchering, Cooking, Camping & Relieving Hunger

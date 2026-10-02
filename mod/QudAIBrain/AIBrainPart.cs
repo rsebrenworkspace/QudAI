@@ -57,6 +57,7 @@ namespace QudAIBrain
         public static string PreferredDirection = "";
         public static Cell PreferredTargetCell = null;
         public static GameObject PreferredTargetObj = null;
+        public static string PreferredMutation = "";
 
         public static string GetBestAdjacentEnemyDirection(GameObject player)
         {
@@ -2625,6 +2626,17 @@ namespace QudAIBrain
                     return;
                 }
 
+                if (command.StartsWith("AUTOLEVEL_BUY_MUTATION", StringComparison.OrdinalIgnoreCase))
+                {
+                    string targetMut = "";
+                    if (command.Contains(":"))
+                    {
+                        targetMut = command.Substring(command.IndexOf(':') + 1).Trim();
+                    }
+                    BuyNewMutation(player, targetMut);
+                    return;
+                }
+
                 // 2. Full Autolevel Doctrine
                 // A. Spend AP (Attributes)
                 int ap = player.Stat("AP", 0);
@@ -2643,7 +2655,17 @@ namespace QudAIBrain
                 int mp = player.Stat("MP", 0);
                 while (mp > 0)
                 {
-                    if (!AllocateMutation(player, null)) break;
+                    if (!AllocateMutation(player, null))
+                    {
+                        if (mp >= 4)
+                        {
+                            if (!BuyNewMutation(player, null)) break;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
                     int newMp = player.Stat("MP", 0);
                     if (newMp >= mp) break;
                     mp = newMp;
@@ -2786,6 +2808,38 @@ namespace QudAIBrain
             catch (Exception ex)
             {
                 UnityEngine.Debug.LogError("[QudAI AllocateMutation Exception] " + ex.ToString());
+            }
+            return false;
+        }
+
+        private static bool BuyNewMutation(GameObject player, string preferredMutation = null)
+        {
+            try
+            {
+                if (player == null) return false;
+                int mp = player.Stat("MP", 0);
+                if (mp < 4) return false;
+
+                AIPlayerTurnPatch.PreferredMutation = preferredMutation ?? "";
+                try
+                {
+                    bool bought = Qud.API.MutationsAPI.BuyRandomMutation(player, 4, false, null);
+                    if (bought)
+                    {
+                        string msg = "{G|[AI Level Up] Unlocked new mutation ability for 4 MP!}";
+                        MessageQueue.AddPlayerMessage(msg);
+                        UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);
+                        return true;
+                    }
+                }
+                finally
+                {
+                    AIPlayerTurnPatch.PreferredMutation = "";
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI BuyNewMutation Exception] " + ex.ToString());
             }
             return false;
         }
@@ -3415,6 +3469,130 @@ namespace QudAIBrain
                 }
 
                 __result = new List<Cell>();
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(XRL.UI.Popup), "ShowYesNo")]
+    public static class AIPopupShowYesNoPatch
+    {
+        public static bool Prefix(string Message, Action<DialogResult> callback, ref DialogResult __result)
+        {
+            if (File.Exists(AIPlayerTurnPatch.FlagFile))
+            {
+                __result = DialogResult.Yes;
+                try { callback?.Invoke(DialogResult.Yes); } catch { }
+                UnityEngine.Debug.Log($"[QudAI AIPopupShowYesNoPatch] Auto-confirmed YES for: {Message}");
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(XRL.UI.Popup), "ShowYesNoCancel")]
+    public static class AIPopupShowYesNoCancelPatch
+    {
+        public static bool Prefix(string Message, ref DialogResult __result)
+        {
+            if (File.Exists(AIPlayerTurnPatch.FlagFile))
+            {
+                __result = DialogResult.Yes;
+                UnityEngine.Debug.Log($"[QudAI AIPopupShowYesNoCancelPatch] Auto-confirmed YES for: {Message}");
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(XRL.UI.Popup), "PickOption")]
+    public static class AIPickOptionPatch
+    {
+        private static readonly string[] MutationPriorities = new string[]
+        {
+            "Light Manipulation", "Freezing Ray", "Flaming Ray", "Force Bubble", "Force Wall",
+            "Phasing", "Teleportation", "Precognition", "Clairvoyance", "Double-muscled",
+            "Triple-jointed", "Two-headed", "Multiple Arms", "Multiple Legs", "Regeneration",
+            "Adrenal Control", "Corrosive Gas", "Electrical Generation", "Quills", "Burrowing Claws",
+            "Wings", "Heightened Hearing", "Heightened Smell", "Night Vision", "Spiny", "Carapace",
+            "LightManipulation", "FreezingRay", "FlamingRay", "ForceBubble", "ForceWall",
+            "DoubleMuscled", "TripleJointed", "TwoHeaded", "MultipleArms", "MultipleLegs",
+            "AdrenalControl", "CorrosiveGasGeneration", "ElectricalGeneration", "BurrowingClaws",
+            "HeightenedHearing", "HeightenedSmell", "NightVision"
+        };
+
+        public static bool Prefix(
+            string Title,
+            string Intro,
+            IReadOnlyList<string> Options,
+            int DefaultSelected,
+            Action<int> OnResult,
+            ref int __result)
+        {
+            if (File.Exists(AIPlayerTurnPatch.FlagFile))
+            {
+                if (Options == null || Options.Count == 0)
+                {
+                    __result = -1;
+                    return false;
+                }
+
+                int chosenIndex = -1;
+
+                // 1. If PreferredMutation is specified by brain command (e.g. AUTOLEVEL_BUY_MUTATION:LightManipulation)
+                if (!string.IsNullOrEmpty(AIPlayerTurnPatch.PreferredMutation))
+                {
+                    string target = AIPlayerTurnPatch.PreferredMutation.Trim();
+                    for (int i = 0; i < Options.Count; i++)
+                    {
+                        if (Options[i] != null && Options[i].IndexOf(target, StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            chosenIndex = i;
+                            break;
+                        }
+                    }
+                }
+
+                // 2. Mutation or Advance Selection: evaluate against build priority list
+                if (chosenIndex < 0 && Options.Count > 1)
+                {
+                    bool isMutationPicker = (Intro != null && (Intro.IndexOf("mutation", StringComparison.OrdinalIgnoreCase) >= 0 || Intro.IndexOf("advance", StringComparison.OrdinalIgnoreCase) >= 0))
+                                         || (Title != null && (Title.IndexOf("mutation", StringComparison.OrdinalIgnoreCase) >= 0 || Title.IndexOf("advance", StringComparison.OrdinalIgnoreCase) >= 0));
+
+                    if (isMutationPicker)
+                    {
+                        foreach (string p in MutationPriorities)
+                        {
+                            for (int i = 0; i < Options.Count; i++)
+                            {
+                                if (Options[i] != null && Options[i].IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    chosenIndex = i;
+                                    break;
+                                }
+                            }
+                            if (chosenIndex >= 0) break;
+                        }
+                    }
+                }
+
+                // 3. Fallback: default selected or 0
+                if (chosenIndex < 0)
+                {
+                    chosenIndex = (DefaultSelected >= 0 && DefaultSelected < Options.Count) ? DefaultSelected : 0;
+                }
+
+                __result = chosenIndex;
+                try { OnResult?.Invoke(chosenIndex); } catch { }
+
+                string chosenText = (chosenIndex >= 0 && chosenIndex < Options.Count) ? Options[chosenIndex] : "";
+                try { chosenText = ConsoleLib.Console.ColorUtility.StripFormatting(chosenText); } catch { }
+                if (chosenText.Length > 60) chosenText = chosenText.Substring(0, 60) + "...";
+
+                string logMsg = $"{{G|[AI Autonomous Choice] Picked option {chosenIndex}: '{chosenText}'}}";
+                MessageQueue.AddPlayerMessage(logMsg);
+                UnityEngine.Debug.Log($"[QudAI AIPickOptionPatch] Intro: '{Intro}', Picked [{chosenIndex}]: {chosenText}");
                 return false;
             }
             return true;

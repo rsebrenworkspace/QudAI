@@ -83,19 +83,29 @@ Popup.Suppress = true;
 ```
 Furthermore, the mod patches `XRL.UI.Popup.Show` and related dialog methods using Harmony prefixes that return `false` (skipping the original method) whenever `AIBrainPart.IsActive` is true.
 
+### 3.3 Confirmation Dialog Interception (`Popup.ShowYesNo` & `ShowYesNoCancel`)
+Many core mechanics prompt confirmation modals during player turns:
+- **Rapid Advancement at Level 4/5:** `"Your genome enters an excited state! Would you like to spend 4 mutation points to buy a mutation before rapidly mutating?"`
+- **Mutation Point Purchases:** `"Are you sure you want to spend 4 mutation points to buy a new mutation?"`
+- **Skill Tree Progression:** Confirmations when unlocking high-tier disciplines.
+
+`Popup.ShowYesNo` does **not** check `Popup.Suppress`. When unhandled, it blocks the main thread waiting for mouse clicks or Y/N keys.
+**The Solution:** `AIPopupShowYesNoPatch` and `AIPopupShowYesNoCancelPatch` hook `XRL.UI.Popup.ShowYesNo` and `ShowYesNoCancel`. When the AI is active (`FlagFile` exists), the patch sets `__result = DialogResult.Yes`, invokes `callback?.Invoke(DialogResult.Yes)`, logs the action, and returns `false`, enabling completely autonomous headless progression.
+
 ---
 
-## 4. UI Picker Interception Architecture (Direction, Target & GameObject)
+## 4. UI Picker Interception Architecture (Direction, Target, GameObject & Options)
 
-Whenever a player activates a directional ability (e.g. `Charge`, `Dismember`, `Freezing Ray`, `Stunning Force`) or a ranged weapon, Qud's game loop calls modal picker classes:
+Whenever a player activates a directional ability, ranged weapon, or makes in-game choices, Qud's game loop calls modal picker classes:
 1. `XRL.UI.PickDirection.ShowPicker(...)`
 2. `XRL.UI.PickTarget.ShowPicker(...)` and `ShowFieldPicker(...)`
 3. `XRL.UI.PickGameObject.ShowPicker(...)`
+4. `XRL.UI.Popup.PickOption(...)` (and `ShowOptionList(...)`)
 
-If unpatched, these methods spawn an interactive cursor on the screen and block until the user hits arrow keys and Space/Enter.
+If unpatched, these methods spawn interactive cursors or selection menus on the screen and block until the user hits arrow keys, Enter, or Space.
 
 ### 4.1 Headless Picker Interception Patches
-`AIBrainPart.cs` contains Harmony patches for all three pickers:
+`AIBrainPart.cs` contains Harmony patches for all picker categories:
 - **`AIPickDirectionPatch` (`PickDirection.ShowPicker`)**:
   - Checks if `PreferredDirection` or `PreferredTargetCell` is set by the incoming command.
   - If set, returns the direction string (`"N"`, `"S"`, `"E"`, `"W"`, etc.) immediately and sets `__result`, skipping the GUI.
@@ -104,6 +114,12 @@ If unpatched, these methods spawn an interactive cursor on the screen and block 
   - Returns `PreferredTargetCell` directly as `__result`.
 - **`AIPickGameObjectPatch` (`PickGameObject.ShowPicker`)**:
   - Automatically selects `PreferredTargetObj`, strictly filtering out friendly pets and companions.
+- **`AIPickOptionPatch` (`Popup.PickOption`)**:
+  - Intercepts all menu and choice pickers (`PickOption` and `ShowOptionList`):
+    1. **Mutation Acquisition:** When 3 random mutation choices are presented (via 4 MP purchase, Rapid Advancement, or Unstable Genome), evaluates the options against `AIPlayerTurnPatch.PreferredMutation` (sent by Python/Twitch) and the archetype's priority order (`MutationPriorities`). Automatically selects the highest-priority mutation.
+    2. **Physical Advance:** When selecting which physical mutation to rapidly advance, picks the highest-priority physical mutation on the character.
+    3. **Mutation Variants:** When a newly acquired mutation has cosmetic or physical variants (e.g., `BaseMutation.SelectVariant` for Quills, Horns, Wings), automatically selects option 0.
+    4. **General Menus:** Falls back to `DefaultSelected` or option 0, invoking `OnResult` and setting `__result` to bypass any modal blocking.
 
 ---
 
@@ -366,6 +382,17 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
 - **Food Telemetry:** Packaged rations may have either the `Food` part or the `PreparedCookingIngredient` part (e.g. jerky, dried fruit, starapple wafers). AIBrainPart checks `item.HasPart<Food>() || item.HasPart<PreparedCookingIngredient>()`.
 - **Mutation API Deprecation:**
   - In `BaseMutation`, the property `m.DisplayName` is obsolete (`CS0618`). Modern Qud requires calling `m.GetDisplayName()`.
+
+### 11.4 The 4 MP New Mutation Mechanic & Headless Progression
+- **Mechanic Overview:** Mutated Humans gain 1 Mutation Point (MP) per level. Existing mutations have rank caps based on character level (`player.Stat("Level") / 2 + 1`). At low levels, core mutations hit their cap quickly (e.g. Rank 3 cap at Level 4), leaving MP to accumulate.
+- **The Level 4 Milestone:** At Level 4 (or upon accumulating 4 MP), a mutant can unlock an entirely new mutation ability for 4 MP. In addition, Rapid Advancement triggers on certain levels (Level 4/5 for Mutants/Chimeras), prompting `Popup.ShowYesNo` ("Your genome enters an excited state! Would you like to spend 4 mutation points to buy a mutation before rapidly mutating?").
+- **Headless Execution Architecture:**
+  - `brain.py` checks `can_spend_mp = (mp > 0 and can_level_any_mut) or (mp >= 4)`. When `mp >= 4`, `build_templates.get_mutation_allocation_recommendation` evaluates missing core archetype mutations and proposes `AUTOLEVEL_BUY_MUTATION:{preferred}`.
+  - In `AIBrainPart.cs`, `BuyNewMutation(player, target)` calls `Qud.API.MutationsAPI.BuyRandomMutation(player, Cost: 4, Confirm: false, MutationTerm: null)`.
+  - When the engine generates the 3 random mutation choices via `XRL.UI.StatusScreen.BuyRandomMutation`, it invokes `Popup.PickOption`.
+  - `AIPickOptionPatch` intercepts `Popup.PickOption`, matches against `PreferredMutation` or archetype priority doctrines, selects the optimal choice, and returns `false`.
+  - If the chosen mutation has variants (e.g., Quills, Horns), `BaseMutation.SelectVariant` calls `Popup.PickOption`, which `AIPickOptionPatch` automatically resolves to variant 0.
+  - `AIPopupShowYesNoPatch` automatically confirms YES to Rapid Advancement and mutation confirmation dialogs, preventing any modal screen halts during 24/7 autonomous Twitch streams.
 
 ---
 

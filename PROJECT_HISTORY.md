@@ -624,6 +624,26 @@
     - Added Test 38 in `dry_run.py` verifying autonomous burrowing in the 3x3 pocket at `(70, 6)` toward sector `(36, 12)`, `find_burrow_direction` soft-material prioritization, and loop breaker pocket burrowing.
     - All 38 tests pass cleanly. Mod deployed via `sync_mod.py` and committed to Git.
 
+### Milestone 7.1: Level 4 Mutant Ability Unlock & Autonomous Modal Interception
+- **The Problem:**
+  - In *Caves of Qud*, Mutated Humans gain 1 MP per level. At Level 4 (or accumulating 4 MP), mutants unlock the ability to buy an entirely new mutation.
+  - Furthermore, reaching Level 4/5 triggers Rapid Advancement, which prompts a blocking UI modal: `"Your genome enters an excited state! Would you like to spend 4 mutation points to buy a mutation before rapidly mutating?"` (`Popup.ShowYesNo`), followed by `"Choose a mutation."` (`Popup.PickOption`), followed by variant selections (`BaseMutation.SelectVariant`), and rapid advancement choices.
+  - In headless automated runs, these unhandled modal popups capture input focus, halting the game loop indefinitely.
+- **The Solution:**
+  - **Harmony Dialog Hooks (`AIBrainPart.cs`):**
+    - `AIPopupShowYesNoPatch` & `AIPopupShowYesNoCancelPatch`: Hook `XRL.UI.Popup.ShowYesNo` and `ShowYesNoCancel`. When the AI is active, automatically returns `DialogResult.Yes` and invokes callbacks, preventing game loop stalls.
+    - `AIPickOptionPatch`: Hooks `XRL.UI.Popup.PickOption` and `ShowOptionList`. Evaluates candidate options against `AIPlayerTurnPatch.PreferredMutation` or archetype priorities (`build_templates.py`), automatically choosing the best mutation and variant headlessly.
+  - **Programmatic Acquisition (`MutationsAPI.BuyRandomMutation`):**
+    - Implemented `BuyNewMutation(player, target)` in `AIBrainPart.cs` invoking `Qud.API.MutationsAPI.BuyRandomMutation(player, 4, false, null)`.
+    - Added `AUTOLEVEL_BUY_MUTATION` command handling in `AIBrainPart.cs` and autolevel loop fallback when existing mutations are capped.
+  - **Archetype Progression (`build_templates.py` & `brain.py`):**
+    - Added `get_mutation_allocation_recommendation` in `build_templates.py` which recommends purchasing missing priority mutations for 4 MP or leveling core mutations.
+    - Updated `brain.py` so `can_spend_mp = (mp > 0 and can_level_any_mut) or (mp >= 4)`.
+  - **Twitch Integration (`twitch_bot.py`):**
+    - Added `MUTATION_ALIASES` and `!vote [mutation]` command for live Twitch chat audiences.
+  - **Verification:**
+    - Added Test 42 in `dry_run.py` verifying 4 MP new mutation purchases, build priorities, capped mutation handling, and Twitch vote overrides. All 42 tests pass cleanly. Mod deployed via `sync_mod.py`.
+
 ---
 
 ## 4. Current Codebase Specification (v1.3.2)

@@ -638,3 +638,60 @@ def get_skill_progression_list(template):
 
 def get_combat_doctrine(template):
     return template.get("combat_doctrine", {})
+
+
+def get_mutation_allocation_recommendation(template, current_mutations, mp):
+    """
+    Evaluates mutation points (MP) spending according to archetype doctrine.
+    Returns (action_string, reason_string) or (None, None).
+    - If mp >= 4:
+      Checks whether to unlock a new mutation ability (especially if core priorities are missing,
+      or existing mutations are capped).
+    - If mp >= 1:
+      Checks whether to level up an existing core mutation.
+    """
+    if mp <= 0:
+        return None, None
+
+    mut_priorities = template.get("mutation_priorities", [])
+    if not mut_priorities:
+        # True Kin or unconfigured
+        return None, None
+
+    # Check which existing mutations can be leveled
+    can_level_muts = [
+        m for m in current_mutations
+        if m.get("can_level", False) and m.get("level", 0) < m.get("cap", 99)
+    ]
+    can_level_any_mut = len(can_level_muts) > 0
+
+    # Check for missing priority mutations
+    curr_classes = {m.get("class", "").lower() for m in current_mutations}
+    curr_names = {m.get("name", "").lower() for m in current_mutations}
+    missing_priorities = [
+        p for p in mut_priorities
+        if p.lower() not in curr_classes and p.lower() not in curr_names
+    ]
+
+    # Level 4 mechanic: At 4 MP, mutants can unlock a new mutation ability!
+    if mp >= 4:
+        # If there are core missing priority mutations, or if existing mutations cannot be leveled:
+        if missing_priorities:
+            preferred = missing_priorities[0]
+            return f"AUTOLEVEL_BUY_MUTATION:{preferred}", f"Class Progression ({template['name']}): Unlocking new mutation ability (Priority: {preferred}) for 4 MP"
+        elif not can_level_any_mut:
+            return "AUTOLEVEL_BUY_MUTATION", f"Class Progression ({template['name']}): All mutations capped; unlocking new mutation ability for 4 MP"
+
+    # Otherwise, level up existing priority mutations
+    if can_level_any_mut:
+        for p in mut_priorities:
+            m_obj = next((m for m in can_level_muts if m.get("class", "").lower() == p.lower()), None)
+            if m_obj:
+                return f"AUTOLEVEL_MUTATION:{m_obj.get('class')}", f"Class Progression ({template['name']}): Leveling {m_obj.get('name')}"
+
+    # Fallback if mp >= 4 and nothing else to level
+    if mp >= 4:
+        return "AUTOLEVEL_BUY_MUTATION", f"Class Progression ({template['name']}): Unlocking new mutation ability for 4 MP"
+
+    return None, None
+

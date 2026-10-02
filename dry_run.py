@@ -2202,8 +2202,92 @@ brain.recent_positions.extend([(14, 10), (14, 11), (14, 10), (14, 11), (14, 10),
 b_dir_lb, b_tag_lb = brain.find_burrow_direction(hut_surroundings, (14, 10), (14, 5), is_town=True)
 assert b_dir_lb is None, "Loop breaker must not burrow in town!"
 
+# ==============================================================================
+# TEST 42: Level 4 Mutant Ability Unlock & Autonomous Modal Interception
+# ==============================================================================
 print("\n==================================================")
-print(">>> ALL 41 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 42: Level 4 Mutant Ability Unlock & Autonomous Modal Interception")
+print("==================================================")
+
+# Scenario 42.1: Level 4 Mutant with 4 MP and all current mutations capped
+# Marauder has FreezingRay (capped at 3) and MultipleLegs (capped at 3).
+# Next priority in template is Teleportation!
+lvl4_marauder_state = {
+    "hp": 35, "max_hp": 35, "x": 10, "y": 10, "z": 10,
+    "calling": "Marauder",
+    "level": 4,
+    "ap": 0, "sp": 20, "mp": 4,
+    "mutations": [
+        {"name": "Freezing Ray", "class": "FreezingRay", "level": 3, "cap": 3, "can_level": False},
+        {"name": "Multiple Legs", "class": "MultipleLegs", "level": 3, "cap": 3, "can_level": False}
+    ],
+    "skills": ["Axe", "Axe_Expertise"],
+    "zone_id": "JoppaWorld.10.23.0.1.10",
+    "zone_name": "Canyon",
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"(10, 10)": {"walkable": True, "type": "Empty"}},
+    "visible_entities": []
+}
+
+tpl_marauder = build_templates.detect_build(lvl4_marauder_state)
+mut_rec_action, mut_rec_reason = build_templates.get_mutation_allocation_recommendation(
+    tpl_marauder, lvl4_marauder_state["mutations"], lvl4_marauder_state["mp"]
+)
+print(f"Level 4 Marauder 4-MP recommendation: {mut_rec_action} | Reason: {mut_rec_reason}")
+assert mut_rec_action == "AUTOLEVEL_BUY_MUTATION:Teleportation", f"Expected buy mutation Teleportation, got: {mut_rec_action}"
+
+dec_lvl4 = brain.query_decision(lvl4_marauder_state, took_damage=False, enemies=[])
+print(f"Level 4 Marauder decision: {dec_lvl4['action']} | Reason: {dec_lvl4['reason']}")
+assert dec_lvl4["action"] == "AUTOLEVEL_BUY_MUTATION:Teleportation", f"Expected AUTOLEVEL_BUY_MUTATION:Teleportation, got {dec_lvl4['action']}"
+
+# Scenario 42.2: Normal 1-MP mutation level up when not capped
+lvl2_marauder_state = dict(lvl4_marauder_state)
+lvl2_marauder_state["mp"] = 1
+lvl2_marauder_state["mutations"] = [
+    {"name": "Freezing Ray", "class": "FreezingRay", "level": 1, "cap": 3, "can_level": True},
+    {"name": "Multiple Legs", "class": "MultipleLegs", "level": 1, "cap": 3, "can_level": True}
+]
+dec_lvl2 = brain.query_decision(lvl2_marauder_state, took_damage=False, enemies=[])
+print(f"Level 2 Marauder 1-MP decision: {dec_lvl2['action']} | Reason: {dec_lvl2['reason']}")
+assert dec_lvl2["action"] == "AUTOLEVEL_MUTATION:FreezingRay", f"Expected leveling FreezingRay, got: {dec_lvl2['action']}"
+
+# Scenario 42.3: Twitch Chat Vote Winner for Mutation Purchase
+class MockTwitchVoteManager:
+    def __init__(self):
+        self.reset_called = False
+    def get_top_stat(self):
+        return None
+    def get_top_skill(self):
+        return None
+    def get_top_mutation(self):
+        return ("LightManipulation", 12)
+    def reset_mutation_votes(self):
+        self.reset_called = True
+
+orig_twitch = brain.twitch_manager
+brain.twitch_manager = MockTwitchVoteManager()
+try:
+    dec_twitch_mut = brain.query_decision(lvl4_marauder_state, took_damage=False, enemies=[])
+    print(f"Twitch mutation vote decision: {dec_twitch_mut['action']} | Reason: {dec_twitch_mut['reason']}")
+    assert dec_twitch_mut["action"] == "AUTOLEVEL_BUY_MUTATION:LightManipulation", f"Expected Twitch vote winner LightManipulation, got: {dec_twitch_mut['action']}"
+    assert brain.twitch_manager.reset_called, "Twitch mutation votes must be reset after winner is selected"
+finally:
+    brain.twitch_manager = orig_twitch
+
+# Scenario 42.4: 3 MP with capped mutations preserves points without looping
+lvl3_capped_state = dict(lvl4_marauder_state)
+lvl3_capped_state["mp"] = 3
+lvl3_capped_state["mutations"] = [
+    {"name": "Freezing Ray", "class": "FreezingRay", "level": 3, "cap": 3, "can_level": False},
+    {"name": "Multiple Legs", "class": "MultipleLegs", "level": 3, "cap": 3, "can_level": False}
+]
+dec_lvl3 = brain.query_decision(lvl3_capped_state, took_damage=False, enemies=[])
+print(f"Level 3 3-MP capped decision: {dec_lvl3['action']} | Reason: {dec_lvl3['reason']}")
+assert not dec_lvl3["action"].startswith("AUTOLEVEL"), f"Must not autolevel when MP < 4 and all mutations capped! Got: {dec_lvl3['action']}"
+
+print("\n==================================================")
+print(">>> ALL 42 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 
