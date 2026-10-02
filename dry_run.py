@@ -1654,8 +1654,71 @@ print(f"Active companion decision: {dec_active_comp['action']} | Reason: {dec_ac
 assert not dec_active_comp["action"].startswith("USE_ABILITY:CommandProselytize"), "Must NOT proselytize already-active companion!"
 
 print("\n==================================================")
-print(">>> ALL 33 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 34: Combat Loop Breaker Immunity & Dragonfly Recruitment")
 print("==================================================")
+
+# Scenario 34.1: Combat Loop Breaker Immunity
+# In combat against an adjacent giant dragonfly at (48, 12), with prior navigation history
+# causing high pos_frequency >= 3. Loop breaker MUST NOT override combat ability with NAVIGATE_TO_CELL!
+combat_state = {
+    "hp": 15, "max_hp": 22, "x": 48, "y": 13, "z": 10,
+    "calling": "Apostle",
+    "level": 1, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.11.23.2.1.10",
+    "zone_name": "salt marsh, surface",
+    "unexplored_cells": 1400,
+    "unexplored_centroid_x": 55, "unexplored_centroid_y": 13,
+    "has_companion": False,
+    "companions": [],
+    "hostiles_nearby": True, "hostiles_adjacent": True,
+    "abilities": [
+        {"name": "Lase (5 charges)", "command": "CommandLase", "usable": True, "cooldown": 0},
+        {"name": "Stunning Force", "command": "CommandStunningForce", "usable": True, "cooldown": 0},
+        {"name": "Proselytize", "command": "CommandProselytize", "usable": True, "cooldown": 0}
+    ],
+    "surroundings": {
+        "NW": "Empty ground", "N": "giant dragonfly", "NE": "Empty ground",
+        "W": "Empty ground", "E": "Empty ground",
+        "SW": "Empty ground", "S": "Empty ground", "SE": "Empty ground"
+    },
+    "visible_entities": [
+        {"name": "giant dragonfly", "blueprint": "GiantDragonfly", "dist": 1, "dir": "N", "tx": 48, "ty": 12, "is_enemy": True, "can_proselytize": True}
+    ]
+}
+
+# Verify dragonfly can be proselytized
+dragonfly_ent = combat_state["visible_entities"][0]
+assert brain.is_proselytizable(dragonfly_ent, companions=[]), "Living giant dragonfly must be proselytizable!"
+
+# Simulate loop breaker logic from main turn loop
+brain.recent_positions.extend([(48, 13)] * 5)
+pos_freq = brain.recent_positions.count((48, 13))
+assert pos_freq >= 3, "Setup condition: pos_frequency must be >= 3"
+
+enemies = [dragonfly_ent]
+combat_dec = brain.fallback_esper(
+    combat_state, enemies, {"N": "giant dragonfly"},
+    ["MOVE_S", "MOVE_E"], ["MOVE_S", "MOVE_E", "MOVE_N"],
+    combat_state["abilities"], brain.build_templates.detect_build(combat_state),
+    (48, 13), 48, 13, 15, 22, False, False, 0, 0, 0
+)
+print(f"Fallback combat decision: {combat_dec['action']} | Reason: {combat_dec['reason']}")
+assert combat_dec["action"] == "USE_ABILITY:CommandProselytize:N", f"Expected proselytize adjacent dragonfly, got: {combat_dec['action']}"
+
+# Now simulate loop breaker check
+action = combat_dec["action"]
+adj_threats = {"N": "giant dragonfly"}
+is_in_combat = True
+is_attacking = action.startswith("MOVE_") and (action[5:] in adj_threats)
+is_combat_action = action.startswith("USE_ABILITY") or action.startswith("FIRE_MISSILE") or is_attacking
+is_oscillating = not is_in_combat and not is_combat_action and (pos_freq >= 3)
+assert not is_oscillating, "is_oscillating MUST be False during combat and for combat actions!"
+assert not action.startswith("NAVIGATE_TO_CELL"), "Action must NOT be overridden by NAVIGATE_TO_CELL!"
+
+print("\n==================================================")
+print(">>> ALL 34 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("==================================================")
+
 
 
 

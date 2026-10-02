@@ -194,7 +194,7 @@ namespace QudAIBrain
             if (obj == null || player == null || obj == player || obj.IsPlayer() || !obj.IsAlive) return false;
             if (IsCompanion(obj, player)) return false;
             if (obj.Brain == null && !obj.HasPart("Brain")) return false;
-            if (obj.HasPart("Corpse") || obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasPart("Robot")) return false;
+            if (obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasPart("Robot")) return false;
             string bp = obj.Blueprint ?? "";
             string name = obj.DisplayName ?? "";
             if (bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0 ||

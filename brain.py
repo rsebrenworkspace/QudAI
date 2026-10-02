@@ -2433,10 +2433,11 @@ def main():
                         reason = "[Sprint Cooldown] Passing turn."
 
                 # Loop Breaker: Detect and break repeated non-progressing actions or coordinate oscillation
-                # (Ignore if player is actively bump-attacking an adjacent enemy in melee!)
+                # (Ignore if player is using abilities, firing missiles, or actively attacking enemies in melee!)
                 is_attacking = action.startswith("MOVE_") and (action[5:] in adj_threats)
-                is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_attacking)
-                is_oscillating = not is_attacking and (
+                is_combat_action = action.startswith("USE_ABILITY") or action.startswith("FIRE_MISSILE") or is_attacking
+                is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_combat_action)
+                is_oscillating = not is_in_combat and not is_combat_action and (
                     (pos_frequency >= 3) or
                     (len(recent_positions) >= 10 and unique_positions <= 5)
                 )
@@ -2474,7 +2475,7 @@ def main():
                                 action = "PASS"
                                 reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Passing turn."
                         action_repeat_count = 0
-                elif is_oscillating:
+                elif is_oscillating and not is_in_combat:
                     is_stuck_explore = (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones)
                     if action == "AUTOEXPLORE":
                         if current_zone_id and (game_state.get("unexplored_cells", 0) or 0) < 35:
