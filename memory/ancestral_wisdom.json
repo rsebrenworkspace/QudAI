@@ -8,5 +8,15 @@
     "death_reason": "stung and crushed by a scorpiock in a narrow dune cove",
     "lesson": "Avoid narrow dune coves\u2014scorpiocks ambush in confined spaces; retreat or flank instead of advancing blindly.",
     "timestamp": "2026-10-01T07:10:48.650214"
+  },
+  {
+    "generation": 2,
+    "name": "Nirooshworaq",
+    "level": 2,
+    "turns": 2526,
+    "zone": "salt marsh, lair of Mafulu-Ubu-Uz, legendary snapjaw scavenger, surface",
+    "death_reason": "You were @@bitten to death by Ugoof, the nimble Snapjaw Firesnarler.",
+    "lesson": "Never engage snapjaw scavengers without ranged support or escape routes in marsh zones.",
+    "timestamp": "2026-10-01T20:52:01.742991"
   }
 ]

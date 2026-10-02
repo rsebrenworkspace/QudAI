@@ -2361,10 +2361,12 @@ def main():
                                 reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Passing turn."
                         action_repeat_count = 0
                 elif is_oscillating:
+                    is_stuck_explore = (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones)
                     if action == "AUTOEXPLORE":
                         if current_zone_id and (game_state.get("unexplored_cells", 0) or 0) < 35:
                             stuck_autoexplore_zones.add(current_zone_id)
                             EXPLORED_ZONE_SET.add(current_zone_id)
+                            is_stuck_explore = True
                         print(f"[Loop Breaker] Autoexplore oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}/{len(recent_positions)}). Forcing frontier breakout.")
 
                     valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
