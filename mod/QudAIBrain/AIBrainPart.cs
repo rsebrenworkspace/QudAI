@@ -965,7 +965,7 @@ namespace QudAIBrain
                 string reachableEdges = "";
                 try
                 {
-                    if (isZoneFullyExplored || unexploredCellCount < 35 || (currentCell?.ParentZone?.Z ?? 10) > 10)
+                    if (currentCell?.ParentZone != null && !currentCell.ParentZone.IsWorldMap())
                     {
                         char[] testEdges = new char[] { 'N', 'S', 'E', 'W' };
                         foreach (char edge in testEdges)
@@ -2451,13 +2451,20 @@ namespace QudAIBrain
                     catch { }
                 }
 
-                // If no complex path step found, check if moving directly in edgeChar direction is open
+                // If no complex path step found, check if player is directly adjacent to the target edge border
                 if (string.IsNullOrEmpty(step) || step == ".")
                 {
                     Cell c = player.CurrentCell?.GetCellFromDirection(edgeChar.ToString(), false);
                     if (c != null && !c.IsOccluding() && !c.HasWall())
                     {
-                        step = edgeChar.ToString();
+                        bool isBorderCell = (edgeChar == 'W' && c.X == 0)
+                                         || (edgeChar == 'E' && c.X == (c.ParentZone?.Width - 1 ?? 79))
+                                         || (edgeChar == 'N' && c.Y == 0)
+                                         || (edgeChar == 'S' && c.Y == (c.ParentZone?.Height - 1 ?? 24));
+                        if (isBorderCell)
+                        {
+                            step = edgeChar.ToString();
+                        }
                     }
                 }
 

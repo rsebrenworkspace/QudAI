@@ -2755,7 +2755,72 @@ assert dec_nomad_fb["action"] == "FIRE_MISSILE@12,10", f"Expected sniper shot, g
 print("  [OK] Scenario 46.5 Passed: Nomad sniper shoots prospective target at distance 2 instead of closing into melee.")
 
 print("\n==================================================")
-print(">>> ALL 46 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 47: Canyon & Subterranean Reachable Edges Enforcement")
+print("==================================================")
+
+# Scenario 47.1: Surface Canyon Reachable Edges Verification
+canyon_state = {
+    "hp": 31, "max_hp": 31, "x": 36, "y": 6, "z": 10,
+    "calling": "Apostle", "level": 5, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.10.18.1.2.10",
+    "zone_name": "desert canyon, surface",
+    "unexplored_cells": 932,
+    "unexplored_centroid_x": 36, "unexplored_centroid_y": 6,
+    "nearest_unexplored_x": 34, "nearest_unexplored_y": 8,
+    "reachable_edges": "N",
+    "has_companion": True,
+    "companions": [{"name": "giant amoeba", "dist": 1, "dir": "E", "tx": 37, "ty": 6}],
+    "surroundings": {
+        "NW": "Empty ground", "N": "Empty ground", "NE": "Empty ground",
+        "W": "Empty ground", "E": "[COMPANION: giant amoeba]",
+        "SW": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "S": "Empty ground", "SE": "Empty ground",
+        "SS": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "SSW": "[BLOCKED: impassable terrain], [BLOCKED: shale]"
+    },
+    "visible_entities": []
+}
+
+# Verify check_exit_direction_failure rejects unreachable edges (S, E, W) and accepts N
+assert brain.check_exit_direction_failure(canyon_state, (36, 6), "S") is True, "South exit must be flagged failed when not in reachable_edges 'N'!"
+assert brain.check_exit_direction_failure(canyon_state, (36, 6), "E") is True, "East exit must be flagged failed when not in reachable_edges 'N'!"
+assert brain.check_exit_direction_failure(canyon_state, (36, 6), "W") is True, "West exit must be flagged failed when not in reachable_edges 'N'!"
+assert brain.check_exit_direction_failure(canyon_state, (36, 6), "N") is False, "North exit must NOT be flagged failed when in reachable_edges 'N'!"
+print("  [OK] Scenario 47.1 Passed: reachable_edges strictly validates feasible borders and rejects blocked edges.")
+
+# Scenario 47.2: Invalidation of previously-chosen unreachable exit
+brain.CURRENT_ZONE_CHOSEN_EXIT = "S"
+brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = "JoppaWorld.10.18.1.2.10"
+exit_pos, exit_tag, chosen_dir = brain.get_zone_exit_target((36, 6), canyon_state)
+assert chosen_dir == "N", f"Expected exit N to be chosen instead of invalid S, got: {chosen_dir}"
+assert ("JoppaWorld.10.18.1.2.10", "S") in brain.FAILED_ZONE_EXITS, "South exit must be blacklisted in FAILED_ZONE_EXITS!"
+print("  [OK] Scenario 47.2 Passed: Previously locked South exit immediately invalidated and replaced with reachable North exit.")
+
+# Scenario 47.3: Fully enclosed pocket (reachable_edges="")
+enclosed_state = dict(canyon_state)
+enclosed_state["reachable_edges"] = ""
+assert brain.check_exit_direction_failure(enclosed_state, (36, 6), "N") is True, "All exits must fail when reachable_edges is empty!"
+assert brain.check_exit_direction_failure(enclosed_state, (36, 6), "S") is True, "All exits must fail when reachable_edges is empty!"
+enc_pos, enc_tag, enc_dir = brain.get_zone_exit_target((36, 6), enclosed_state)
+assert enc_dir is None, f"Expected None exit dir in fully enclosed pocket, got: {enc_dir}"
+print("  [OK] Scenario 47.3 Passed: Fully enclosed pocket correctly yields None exit dir without crashing or picking impossible edge.")
+
+# Scenario 47.4: Fallback 3 Wall Detection (Surroundings with 2-step offsets)
+fallback_canyon_state = {
+    "hp": 31, "max_hp": 31, "x": 36, "y": 6, "z": 10,
+    "zone_id": "JoppaWorld.10.18.1.2.10",
+    "surroundings": {
+        "S": "[BLOCKED: impassable terrain]",
+        "SS": "[BLOCKED: impassable terrain]",
+        "SSW": "[BLOCKED: impassable terrain]",
+        "SSE": "[BLOCKED: impassable terrain]"
+    }
+}
+assert brain.check_exit_direction_failure(fallback_canyon_state, (36, 6), "S") is True, "South must fail in fallback check when S/SS/SSW/SSE are blocked by walls!"
+print("  [OK] Scenario 47.4 Passed: Fallback surroundings check detects blocked exit direction even when py < 20.")
+
+print("\n==================================================")
+print(">>> ALL 47 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

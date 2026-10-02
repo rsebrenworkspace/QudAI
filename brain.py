@@ -372,26 +372,30 @@ def check_exit_direction_failure(game_state, cur_pos, chosen_exit):
     )
 
     # 2. If the engine provided verified reachable edges telemetry, trust it!
-    reachable_edges = game_state.get("reachable_edges", "")
-    if reachable_edges:
-        if chosen_exit not in reachable_edges and not is_on_border:
+    reachable_val = game_state.get("reachable_edges", None)
+    if reachable_val is not None:
+        if chosen_exit not in reachable_val and not is_on_border:
             return True
-        if chosen_exit in reachable_edges:
+        if chosen_exit in reachable_val:
             return False
 
     # 3. Fallback for states without reachable_edges telemetry (e.g. synthetic test scenarios):
     surroundings = game_state.get("surroundings", {})
-    if chosen_exit == "E" and px >= 70:
-        if all("[BLOCKED:" in surroundings.get(d, "") for d in ["E", "NE", "SE"]):
+    if chosen_exit == "E":
+        if (px >= 70 and all("[BLOCKED:" in surroundings.get(d, "") for d in ["E", "NE", "SE"])) or \
+           all("[BLOCKED:" in surroundings.get(d, "") for d in ["E", "ENE", "EE", "ESE"]):
             return True
-    elif chosen_exit == "W" and px <= 10:
-        if all("[BLOCKED:" in surroundings.get(d, "") for d in ["W", "NW", "SW"]):
+    elif chosen_exit == "W":
+        if (px <= 10 and all("[BLOCKED:" in surroundings.get(d, "") for d in ["W", "NW", "SW"])) or \
+           all("[BLOCKED:" in surroundings.get(d, "") for d in ["W", "WNW", "WW", "WSW"]):
             return True
-    elif chosen_exit == "N" and py <= 5:
-        if all("[BLOCKED:" in surroundings.get(d, "") for d in ["N", "NW", "NE"]):
+    elif chosen_exit == "N":
+        if (py <= 5 and all("[BLOCKED:" in surroundings.get(d, "") for d in ["N", "NW", "NE"])) or \
+           all("[BLOCKED:" in surroundings.get(d, "") for d in ["N", "NNW", "NN", "NNE"]):
             return True
-    elif chosen_exit == "S" and py >= 20:
-        if all("[BLOCKED:" in surroundings.get(d, "") for d in ["S", "SW", "SE"]):
+    elif chosen_exit == "S":
+        if (py >= 20 and all("[BLOCKED:" in surroundings.get(d, "") for d in ["S", "SW", "SE"])) or \
+           all("[BLOCKED:" in surroundings.get(d, "") for d in ["S", "SSW", "SS", "SSE"]):
             return True
 
     return False
@@ -418,21 +422,30 @@ def get_zone_exit_target(cur_pos, game_state=None):
             CURRENT_ZONE_CHOSEN_EXIT = None
             CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 
-    reachable_str = (game_state.get("reachable_edges", "") if game_state else "") or ""
-    reachable_set = set(reachable_str) if reachable_str else None
+    reachable_val = game_state.get("reachable_edges", None) if game_state else None
+    reachable_set = set(reachable_val) if reachable_val is not None and reachable_val != "" else None
+    reachable_telemetry_present = (reachable_val is not None)
 
     # If an exit was already chosen for this zone, check if it's still valid/reachable
     if CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == cur_zone:
-        if (cur_zone, CURRENT_ZONE_CHOSEN_EXIT) not in FAILED_ZONE_EXITS:
-            if reachable_set is None or CURRENT_ZONE_CHOSEN_EXIT in reachable_set:
-                pos, tag = _EXIT_TARGETS[CURRENT_ZONE_CHOSEN_EXIT](px, py)
-                return pos, tag, CURRENT_ZONE_CHOSEN_EXIT
+        if reachable_telemetry_present and (reachable_set is None or CURRENT_ZONE_CHOSEN_EXIT not in reachable_set):
+            print(f"[ZONE EXIT INVALIDATED]: Previously chosen exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {cur_zone} is not in reachable edges '{reachable_val}'. Blacklisting.")
+            FAILED_ZONE_EXITS.add((cur_zone, CURRENT_ZONE_CHOSEN_EXIT))
+            CURRENT_ZONE_CHOSEN_EXIT = None
+            CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+        elif (cur_zone, CURRENT_ZONE_CHOSEN_EXIT) not in FAILED_ZONE_EXITS:
+            pos, tag = _EXIT_TARGETS[CURRENT_ZONE_CHOSEN_EXIT](px, py)
+            return pos, tag, CURRENT_ZONE_CHOSEN_EXIT
 
     rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
 
     # Determine candidate directions: prioritize reachable edges if telemetry provides them,
     # and strictly exclude directions known to have failed/dead-ended in this zone
-    all_dirs = [d for d in reachable_set] if reachable_set else ["N", "S", "E", "W"]
+    if reachable_telemetry_present:
+        all_dirs = [d for d in ["N", "S", "E", "W"] if reachable_set and d in reachable_set]
+    else:
+        all_dirs = ["N", "S", "E", "W"]
+
     if game_state:
         for d in list(all_dirs):
             if check_exit_direction_failure(game_state, cur_pos, d):
@@ -440,10 +453,17 @@ def get_zone_exit_target(cur_pos, game_state=None):
     candidates = [d for d in all_dirs if d != rev_dir and (cur_zone, d) not in FAILED_ZONE_EXITS]
     if not candidates:
         candidates = [d for d in all_dirs if (cur_zone, d) not in FAILED_ZONE_EXITS]
-    if not candidates:
+    if not candidates and reachable_telemetry_present:
+        # If all candidates failed, reset failed exits ONLY within reachable_set
+        FAILED_ZONE_EXITS = {f for f in FAILED_ZONE_EXITS if f[0] != cur_zone or (reachable_set and f[1] not in reachable_set)}
+        candidates = [d for d in all_dirs if d != rev_dir] or all_dirs
+    elif not candidates:
         # If all candidates somehow failed, reset failed exits for this zone as a fallback
         FAILED_ZONE_EXITS = {f for f in FAILED_ZONE_EXITS if f[0] != cur_zone}
         candidates = [d for d in all_dirs if d != rev_dir] or all_dirs or ["N", "S", "E", "W"]
+
+    if not candidates:
+        return (px, py), "No Reachable Exit", None
 
     # In subterranean strata (z > 10), prioritize directions suggested by unexplored boundaries / corridors
     cur_z = game_state.get("z", 10) if game_state else 10
@@ -2606,7 +2626,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         # 11. Navigate directly to forward zone exit border if zone is fully explored
         if zone_fully_explored or is_stuck_explore or (unexp_cells == 0):
             exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos, game_state)
-            if valid_moves:
+            if exit_dir and valid_moves:
                 return {"action": f"NAVIGATE_ZONE_EXIT:{exit_dir}", "reason": f"Zone fully explored: navigating via engine pathfinder toward {exit_tag}"}
 
         # 12. Least-visited fallback
@@ -2966,7 +2986,7 @@ def main():
                     # If oscillation occurs while trying to exit or after choosing an exit, only blacklist if away from border
                     is_near_border = (px <= 1 or px >= 78 or py <= 1 or py >= 23)
                     if CURRENT_ZONE_CHOSEN_EXIT:
-                        if not is_near_border and (pos_frequency >= 4 or game_state.get("last_move_failed", False)):
+                        if not is_near_border and (pos_frequency >= 3 or is_oscillating or game_state.get("last_move_failed", False)):
                             print(f"[ZONE EXIT RECOVERY] Loop breaker detected oscillation while navigating to exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {current_zone_id}. Blacklisting.")
                             FAILED_ZONE_EXITS.add((current_zone_id, CURRENT_ZONE_CHOSEN_EXIT))
                             CURRENT_ZONE_CHOSEN_EXIT = None
@@ -2980,7 +3000,7 @@ def main():
                     unexp_c = game_state.get("unexplored_cells", 0) or 0
 
                     # If standing on or right next to border, commit to stepping across rather than turning around
-                    chosen_border_m = f"MOVE_{exit_dir}"
+                    chosen_border_m = f"MOVE_{exit_dir}" if exit_dir else None
                     is_on_border = (
                         (exit_dir == "W" and px == 0) or (exit_dir == "E" and px == 79)
                         or (exit_dir == "N" and py == 0) or (exit_dir == "S" and py == 24)
@@ -2993,18 +3013,18 @@ def main():
                     if not is_town and unexp_c > 35 and (not open_escapes or unique_positions <= 6) and burrow_d:
                         action = f"ATTACK_WALL:{burrow_d}"
                         reason = f"[Loop Breaker] Trapped in enclosed pocket with {unexp_c} unrevealed cells. Burrowing through {burrow_info} ({burrow_d}) to breach open corridor."
-                    elif is_on_border and (chosen_border_m in valid_m or "[zone_exit" in surroundings.get(exit_dir, "").lower()):
+                    elif is_on_border and chosen_border_m and (chosen_border_m in valid_m or "[zone_exit" in surroundings.get(exit_dir or "", "").lower()):
                         action = chosen_border_m
                         reason = f"[Loop Breaker] Standing directly on exit border: committing to {chosen_border_m} to cross into adjacent zone."
-                    elif is_adj_border and (chosen_border_m in valid_m):
+                    elif is_adj_border and chosen_border_m and (chosen_border_m in valid_m):
                         action = chosen_border_m
                         reason = f"[Loop Breaker] Adjacent to exit border: stepping {chosen_border_m} onto border edge."
-                    elif is_stuck_explore or game_state.get("zone_fully_explored", False) or (game_state.get("unexplored_cells", 1) == 0):
+                    elif frontier_target and unexp_c > 35 and cur_z <= 10:
+                        action = f"NAVIGATE_TO_CELL:{frontier_target[0]},{frontier_target[1]}"
+                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Routing via native pathfinder to unexplored frontier at {frontier_target} ({unexp_c} unrevealed cells)."
+                    elif (is_stuck_explore or game_state.get("zone_fully_explored", False) or (unexp_c == 0)) and exit_dir:
                         action = f"NAVIGATE_ZONE_EXIT:{exit_dir}"
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards forward exit {exit_tag} via native engine pathfinder."
-                    elif frontier_target and (game_state.get("unexplored_cells", 1) or 0) > 0 and cur_z <= 10:
-                        action = f"NAVIGATE_TO_CELL:{frontier_target[0]},{frontier_target[1]}"
-                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Routing via native pathfinder to unexplored frontier at {frontier_target}."
                     elif open_escapes:
                         open_escapes.sort(key=lambda m: (
                             visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],
