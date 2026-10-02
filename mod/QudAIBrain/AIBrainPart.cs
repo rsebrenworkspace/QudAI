@@ -2321,15 +2321,49 @@ namespace QudAIBrain
 
                         if (string.IsNullOrEmpty(step) || step == ".")
                         {
+                            // Check open adjacent cells that reduce distance to targetCell
                             try
                             {
-                                step = player.CurrentCell?.GetDirectionFromCell(targetCell);
+                                Cell pCell = player.CurrentCell;
+                                if (pCell != null)
+                                {
+                                    int curDist = Math.Abs(pCell.X - tx) + Math.Abs(pCell.Y - ty);
+                                    int bestDist = curDist;
+                                    string bestDir = null;
+                                    string[] candidateDirs = new string[] { "N", "S", "E", "W", "NE", "NW", "SE", "SW" };
+                                    foreach (var cd in candidateDirs)
+                                    {
+                                        Cell nc = pCell.GetCellFromDirection(cd, false);
+                                        if (nc != null && !nc.IsOccluding() && !nc.HasWall())
+                                        {
+                                            int nd = Math.Abs(nc.X - tx) + Math.Abs(nc.Y - ty);
+                                            if (nd < bestDist)
+                                            {
+                                                bestDist = nd;
+                                                bestDir = cd;
+                                            }
+                                        }
+                                    }
+                                    if (!string.IsNullOrEmpty(bestDir))
+                                    {
+                                        step = bestDir;
+                                    }
+                                }
                             }
                             catch { }
                         }
 
                         if (!string.IsNullOrEmpty(step) && step != ".")
                         {
+                            Cell targetNext = player.CurrentCell?.GetCellFromDirection(step, false);
+                            if (targetNext != null && (targetNext.IsOccluding() || targetNext.HasWall()))
+                            {
+                                lastMoveFailed = true;
+                                lastFailedDir = step.ToUpper();
+                                if (player.Energy != null) player.UseEnergy(1000, "Pass");
+                                return;
+                            }
+
                             int energyBefore = player.Energy?.Value ?? 0;
                             int pxBefore = player.CurrentCell?.X ?? -1;
                             int pyBefore = player.CurrentCell?.Y ?? -1;
@@ -2353,6 +2387,13 @@ namespace QudAIBrain
                             {
                                 player.UseEnergy(1000, "Movement");
                             }
+                            return;
+                        }
+                        else
+                        {
+                            lastMoveFailed = true;
+                            lastFailedDir = "PATH_BLOCKED";
+                            if (player.Energy != null) player.UseEnergy(1000, "Pass");
                             return;
                         }
                     }
@@ -2723,6 +2764,16 @@ namespace QudAIBrain
 
             if (!string.IsNullOrEmpty(step) && step != ".")
             {
+                Cell targetNext = player.CurrentCell?.GetCellFromDirection(step, false);
+                if (targetNext != null && (targetNext.IsOccluding() || targetNext.HasWall()))
+                {
+                    lastMoveFailed = true;
+                    lastFailedDir = step.ToUpper();
+                    isAutoexploreStuck = true;
+                    if (player.Energy != null) player.UseEnergy(1000, "Pass");
+                    return;
+                }
+
                 isZoneFullyExplored = false;
                 isAutoexploreStuck = false;
                 int energyBefore = player.Energy != null ? player.Energy.Value : 0;
@@ -2731,6 +2782,7 @@ namespace QudAIBrain
                 {
                     lastMoveFailed = true;
                     lastFailedDir = step.ToUpper();
+                    isAutoexploreStuck = true;
                     TryOpenDoorInDirection(player, step);
 
                     // If autoexplore told us to move into an impassable object (e.g. table, sign, wall), suppress that object so it won't target it again!
@@ -2766,9 +2818,20 @@ namespace QudAIBrain
                 return;
             }
 
-            // 4. If neither native autoexplore nor pathfinder can find an unexplored step, mark zone as explored so AI advances to stairs or exits!
-            isZoneFullyExplored = true;
-            isAutoexploreStuck = false;
+            // 4. If neither native autoexplore nor pathfinder can find an unexplored step:
+            // In subterranean strata (z > 10) or small clear zones (unexp <= 35), mark zone as explored so AI advances to stairs or exits!
+            // On surface with large unexplored count, autoexplore is blocked by obstacles/companions, NOT fully explored!
+            int zDepth = player.CurrentCell?.ParentZone?.Z ?? 10;
+            if (zDepth > 10 || unexploredCellCount <= 35)
+            {
+                isZoneFullyExplored = true;
+                isAutoexploreStuck = false;
+            }
+            else
+            {
+                isZoneFullyExplored = false;
+                isAutoexploreStuck = true;
+            }
             autoexplorePosHistory.Clear();
             lastMoveFailed = false;
             lastFailedDir = "";

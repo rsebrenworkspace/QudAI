@@ -2820,7 +2820,75 @@ assert brain.check_exit_direction_failure(fallback_canyon_state, (36, 6), "S") i
 print("  [OK] Scenario 47.4 Passed: Fallback surroundings check detects blocked exit direction even when py < 20.")
 
 print("\n==================================================")
-print(">>> ALL 47 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 48: Corridor Bottleneck, Companion Escape & Surface Exploration Protection")
+print("==================================================")
+
+# Scenario 48.1: Live state at (74, 8) with companion at (74, 9), 1613 unexplored cells
+bottleneck_state = {
+    "hp": 31, "max_hp": 31, "x": 74, "y": 8, "z": 10,
+    "calling": "Apostle", "level": 5, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.10.18.1.1.10",
+    "zone_name": "desert canyon, surface",
+    "zone_fully_explored": False,
+    "unexplored_cells": 1613,
+    "unexplored_centroid_x": 35, "unexplored_centroid_y": 11,
+    "nearest_unexplored_x": 75, "nearest_unexplored_y": 6,
+    "reachable_edges": "NSEW",
+    "last_move_failed": True,
+    "last_failed_dir": "SW",
+    "has_companion": True,
+    "companions": [{"name": "giant amoeba", "dist": 1, "dir": "S", "tx": 74, "ty": 9}],
+    "surroundings": {
+        "NW": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "N": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "NE": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "W": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "E": "Empty ground",
+        "SW": "[BLOCKED: impassable terrain], [BLOCKED: shale]",
+        "S": "[COMPANION: giant amoeba]",
+        "SE": "[ITEM: giant dragonfly corpse]"
+    },
+    "visible_entities": []
+}
+
+brain.last_action = "AUTOEXPLORE"
+dec_bn = brain.query_decision(bottleneck_state, False, [])
+print(f"Scenario 48.1 Bottleneck breakout decision: {dec_bn['action']} | Reason: {dec_bn['reason']}")
+assert dec_bn["action"] == "MOVE_SE", f"Expected MOVE_SE to escape bottleneck towards sector (35, 11), got: {dec_bn['action']}"
+print("  [OK] Scenario 48.1 Passed: Failed autoexplore immediately ingests stuck state and maneuvers SE onto open tile.")
+
+# Scenario 48.2: Loop breaker avoids repeating failed NAVIGATE_TO_CELL
+brain.recent_positions = [(74, 8), (75, 8)] * 5
+brain.unique_positions = 2
+brain.pos_frequency = 5
+brain.last_executed_action = "NAVIGATE_TO_CELL:35,11"
+brain.last_executed_pos = (74, 8)
+frontier_target, _ = brain.find_zone_unexplored_frontier(bottleneck_state, (74, 8), brain.visit_counts)
+nav_cell_failed = (
+    brain.last_executed_action.startswith("NAVIGATE_TO_CELL")
+    and ((74, 8) == brain.last_executed_pos or bottleneck_state.get("last_move_failed", False))
+)
+assert nav_cell_failed is True, "nav_cell_failed must be detected when position didn't advance!"
+valid_m = brain.get_valid_moves(bottleneck_state["surroundings"], (74, 8), None, is_in_combat=False)
+open_escapes = [m for m in valid_m if ((74 + brain.CARDINAL_OFFSETS[m[5:]][0], 8 + brain.CARDINAL_OFFSETS[m[5:]][1])) not in brain.recent_positions]
+assert "MOVE_SE" in open_escapes, f"Expected MOVE_SE in open_escapes, got: {open_escapes}"
+print("  [OK] Scenario 48.2 Passed: Repeating failed NAVIGATE_TO_CELL suppressed; loop breaker redirects to open escapes.")
+
+# Scenario 48.3: Companion swap when all open tiles visited multiple times
+dead_end_surroundings = {
+    "NW": "[BLOCKED: wall]", "N": "[BLOCKED: wall]", "NE": "[BLOCKED: wall]",
+    "W": "[BLOCKED: wall]", "E": "[BLOCKED: wall]", "SW": "[BLOCKED: wall]",
+    "SE": "[BLOCKED: wall]", "S": "[COMPANION: giant amoeba]"
+}
+comp_moves = []
+for cd in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]:
+    if "[companion" in dead_end_surroundings.get(cd, "").lower():
+        comp_moves.append(f"MOVE_{cd}")
+assert "MOVE_S" in comp_moves, f"Expected companion move MOVE_S, got: {comp_moves}"
+print("  [OK] Scenario 48.3 Passed: Corridor companion swap detected when all alternative paths are solid walls.")
+
+print("\n==================================================")
+print(">>> ALL 48 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

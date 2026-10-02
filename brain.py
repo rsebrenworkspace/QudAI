@@ -2192,7 +2192,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     update_zone_records(game_state)
     update_stair_records(game_state)
 
-    if game_state.get("autoexplore_stuck", False):
+    if game_state.get("autoexplore_stuck", False) or (last_action == "AUTOEXPLORE" and game_state.get("last_move_failed", False)):
         zid = game_state.get("zone_id", "")
         if zid:
             stuck_autoexplore_zones.add(zid)
@@ -2491,7 +2491,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         # When native autoexplore and pathfinding confirm no reachable unexplored cells remain,
         # the engine sets zone_fully_explored: True. This MUST NOT be overridden by solid rock unexp_cells!
         # On the surface (z <= 10), require unexp_cells <= 35 to guard against premature exit bailing.
-        if is_subterranean or is_stuck_explore:
+        if is_subterranean:
             zone_fully_explored = game_state.get("zone_fully_explored", False) or (unexp_cells == 0)
         else:
             if unexp_cells is not None and unexp_cells > 35:
@@ -3010,6 +3010,17 @@ def main():
                         or (exit_dir == "N" and py == 1) or (exit_dir == "S" and py == 23)
                     )
 
+                    nav_cell_failed = (
+                        last_executed_action.startswith("NAVIGATE_TO_CELL")
+                        and (cur_pos == last_executed_pos or game_state.get("last_move_failed", False))
+                    )
+
+                    # Check if an adjacent cell has a friendly companion we can swap places with to break bottlenecks
+                    companion_escapes = []
+                    for cd in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]:
+                        if "[companion" in surroundings.get(cd, "").lower() or (px + CARDINAL_OFFSETS[cd][0], py + CARDINAL_OFFSETS[cd][1]) in CHARMED_COMPANION_COORDS:
+                            companion_escapes.append(f"MOVE_{cd}")
+
                     if not is_town and unexp_c > 35 and (not open_escapes or unique_positions <= 6) and burrow_d:
                         action = f"ATTACK_WALL:{burrow_d}"
                         reason = f"[Loop Breaker] Trapped in enclosed pocket with {unexp_c} unrevealed cells. Burrowing through {burrow_info} ({burrow_d}) to breach open corridor."
@@ -3019,7 +3030,7 @@ def main():
                     elif is_adj_border and chosen_border_m and (chosen_border_m in valid_m):
                         action = chosen_border_m
                         reason = f"[Loop Breaker] Adjacent to exit border: stepping {chosen_border_m} onto border edge."
-                    elif frontier_target and unexp_c > 35 and cur_z <= 10:
+                    elif frontier_target and unexp_c > 35 and cur_z <= 10 and not nav_cell_failed:
                         action = f"NAVIGATE_TO_CELL:{frontier_target[0]},{frontier_target[1]}"
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Routing via native pathfinder to unexplored frontier at {frontier_target} ({unexp_c} unrevealed cells)."
                     elif (is_stuck_explore or game_state.get("zone_fully_explored", False) or (unexp_c == 0)) and exit_dir:
@@ -3032,6 +3043,9 @@ def main():
                         ))
                         action = open_escapes[0]
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}). Escaping cycle towards unvisited frontier {action}."
+                    elif companion_escapes and (not valid_m or all(visit_counts.get((px + CARDINAL_OFFSETS[m[5:]][0], py + CARDINAL_OFFSETS[m[5:]][1]), 0) >= 2 for m in valid_m)):
+                        action = companion_escapes[0]
+                        reason = f"[Loop Breaker] Corridor blocked by companion: swapping places via {action} to break bottleneck."
                     else:
                         if valid_m:
                             # Maximize distance from the cycle centroid to escape shoreline/subgraph loops
