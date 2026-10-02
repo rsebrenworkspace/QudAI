@@ -26,7 +26,20 @@
    - [Iteration 12: Staircase Navigation, Stratum Delving & Tactical Retreat](#iteration-12-staircase-navigation-stratum-delving--tactical-retreat)
    - [Iteration 13: Class Skill Trees, Prerequisite Gating & SP Savings Doctrine](#iteration-13-class-skill-trees-prerequisite-gating--sp-savings-doctrine)
    - [Iteration 14: Zone Hopping Prevention & Sustenance / Survival Routines](#iteration-14-zone-hopping-prevention--sustenance--survival-routines)
-4. [Current Codebase Specification (v1.2.0)](#4-current-codebase-specification-v120)
+   - [Iteration 15: 5-Tile Shoreline Loop Detection, Centroid Steering & Sustenance Refinement](#iteration-15-5-tile-shoreline-loop-detection-centroid-steering--sustenance-refinement)
+   - [Iteration 16: Safe Swimming Dynamics, Liquid Hazard Classification & Water Traversal](#iteration-16-safe-swimming-dynamics-liquid-hazard-classification--water-traversal)
+   - [Iteration 17: Macro-Frontier Water Traversal & River Exploration Decoupling](#iteration-17-macro-frontier-water-traversal--river-exploration-decoupling)
+   - [Iteration 18: Native Autoexplore Exit Decoupling & Active Water Interception](#iteration-18-native-autoexplore-exit-decoupling--active-water-interception)
+   - [Iteration 19: Unexplored Sector Telemetry & Elimination of Micro-Tile Touching](#iteration-19-unexplored-sector-telemetry--elimination-of-micro-tile-touching)
+   - [Iteration 20: Mutation Cap Safeguards, Fog-of-War Grid Frontier Breakout & Shoreline Water Crossing](#iteration-20-mutation-cap-safeguards-fog-of-war-grid-frontier-breakout--shoreline-water-crossing)
+   - [Iteration 21: Forensic Elimination of the 2-Tile Post-Levelup Stall Cycle & Combat Radius Physics](#iteration-21-forensic-elimination-of-the-2-tile-post-levelup-stall-cycle--combat-radius-physics)
+   - [Iteration 22: Skill System Architecture, Telemetry Export & Class Archetype SP Allocation](#iteration-22-skill-system-architecture-telemetry-export--class-archetype-sp-allocation)
+   - [Iteration 23: N-Cycle Zone Hopping Breaker & Death Chronicler Hook](#iteration-23-n-cycle-zone-hopping-breaker--death-chronicler-hook)
+   - [Iteration 24: Engine Native Pathfinding Integration (`AutoAct.TryFindEdgeStep`) & The Three Strikes Rule](#iteration-24-engine-native-pathfinding-integration-autoacttryfindedgestep--the-three-strikes-rule)
+   - [Iteration 25: Line-of-Sight Ray Occlusion, Narrow Hallway Autoexplore Fallback & Stat Point Deduction](#iteration-25-line-of-sight-ray-occlusion-narrow-hallway-autoexplore-fallback--stat-point-deduction)
+   - [Iteration 26: Subterranean Stratum Zone Exit & Reachable Edge Prioritization](#iteration-26-subterranean-stratum-zone-exit--reachable-edge-prioritization)
+   - [Iteration 27: Subterranean Dead-End Exit Invalidation, Wall-Bump Prevention & Corridor Alignment](#iteration-27-subterranean-dead-end-exit-invalidation-wall-bump-prevention--corridor-alignment)
+4. [Current Codebase Specification (v1.3.2)](#4-current-codebase-specification-v132)
    - [Directory Structure](#directory-structure)
    - [Telemetry & IPC Protocol](#telemetry--ipc-protocol)
    - [Decision Pipeline (Phases A, B, C)](#decision-pipeline-phases-a-b-c)
@@ -357,9 +370,243 @@
   - **Escape Towards Sector Target:** In `is_oscillating`, `frontier_escape` towards the unexplored sector is always prioritized over dry-land `open_escapes`.
   - **Verification (Test 27):** Added Test 27 to `dry_run.py`, verifying mutation cap suppression, grid-centroid frontier detection, and direct breakout move `MOVE_NE` into water towards `(44, 16)`. All 27 verification tests pass.
 
+### Iteration 21: Forensic Elimination of the 2-Tile Post-Levelup Stall Cycle & Combat Radius Physics
+- **The Problem:**
+  - In a live game run in `JoppaWorld.8.20.1.0.10`, the character engaged a scorpiock, killed it, and leveled to Level 3 (`hp: 27/27, ap: 1, sp: 106, mp: 2`).
+  - Immediately post-levelup, the character froze, pacing back and forth on two tiles (`(44, 11)` $\leftrightarrow$ `(44, 10)`). The character refused to allocate points and refused to explore.
+  - **Root Cause Analysis:**
+    1. **The Phantom Combat Lock (`dist <= 20`):** In `brain.py`, `close_threats` looked up to 20 tiles away. Another scorpiock existed in the zone at $(62, 19)$, 18 tiles away across open dunes. Even though `player.AreHostilesNearby()` returned `false`, `is_in_combat` was set to `True`.
+    2. **Autolevel Starvation:** Autoleveling was strictly gated behind `if not is_in_combat:`. Because `is_in_combat` was stuck `True`, Phase A autoleveling was never reached. The unspent points (`ap: 1, sp: 106, mp: 2`) sat permanently frozen.
+    3. **Out-of-Range Combat Spam:** The LLM and fallback logic were invoked in combat mode against the enemy at distance 18. Abilities like `CommandStunningForce` (range 8) and `CommandLase` (range 10) were fired at distance 18, failing in engine. When abilities went on cooldown, the LLM spammed `WAIT`, and the fallback matrix sorted moves by visit counts (`Maneuver`), bouncing between `(44, 11)` and `(44, 10)`.
+    4. **The 4-MP Mutation Cap Loop:** When `mp >= 4`, buying a new mutation in Qud requires an interactive popup modal (`"Are you sure you want to spend 4 mutation points..."`), which is unsupported headlessly. `AllocateMutation` only levels existing mutations. When mutations were capped, `mp >= 4` triggered infinite `AUTOLEVEL` calls.
+- **Solution:**
+  - **Bounded Combat Engagement Radius:** Redefined `close_threats` in `brain.py`:
+    `close_threats = [e for e in enemies if not is_ignorable_stationary_enemy(e) and (e.get("dist", 999) <= 6 or (e.get("dist", 999) <= 10 and game_state.get("hostiles_nearby", False)))]`
+    Distant enemies ($> 10$ tiles, or $> 6$ tiles when engine reports `hostiles_nearby == False`) never trigger combat mode.
+  - **Priority Attribute Allocation:** If `ap > 0` and the player has no adjacent melee threats (`not adj_threats`) and took no damage (`not took_damage`), AP is allocated immediately (`AUTOLEVEL_STAT:<Stat>`) even if combat is pending.
+  - **Mutation Spendability Guard:** Updated `can_spend_mp = mp > 0 and can_level_any_mut`. MP is strictly held when all mutations are capped until level-up raises the cap.
+  - **Ability Range Gating in LLM Choices & Fallbacks:** Bounded `Stunning Force` (range 8), `Lase` (range 10), `Sunder Mind` (range 12), and `Syphon Vim` (range 4).
+  - **Fallback Pursuit Navigation:** When an enemy is beyond ability range, all fallbacks (`fallback_melee`, `fallback_esper`, `fallback_gunslinger`, `fallback_nomad`) actively advance toward the target via `get_best_move_towards(cur_pos, target_pos, valid_moves, surroundings)` rather than pacing on neighbor tiles.
+  - **Verification (Test 28):** Added Test 28 to `dry_run.py`, verifying disengagement at dist 18, 4-step autoleveling cascade (`AUTOLEVEL_STAT:Ego` $\to$ `AUTOLEVEL_SKILL:Tactics` $\to$ `AUTOLEVEL_SKILL:Tactics_Hurdle` $\to$ `AUTOEXPLORE`), priority combat AP spending at dist 7, and fallback target pursuit. All 28 verification tests pass.
+
+### Iteration 22: Skill System Architecture, Telemetry Export & Class Archetype SP Allocation
+- **The Problem:**
+  - In a live game session with an Apostle character who reached Level 3 with 106 unspent SP, the character never spent any Skill Points.
+  - Telemetry examination of `last_state.json` revealed:
+    `"calling": "Apostle", "skills": [], "sp": 106, "learnable_skills": [...]`
+    1. **Empty Telemetry Export (`skills: []`):** `AIBrainPart.cs` exported learned skills by iterating `player.GetPart<Skills>().SkillList`. In Caves of Qud, starting skills and powers granted by callings (e.g. `Tactics`, `Persuasion`, `Proselytize`, `Axe`, `Pistol`) are attached directly as part components on the player `GameObject`, leaving `SkillList` empty.
+    2. **The SP Hoarding Trap in `is_skill_learnable`:** When Python evaluated `esper_ited_away` progression, it checked `Tactics` (rejected because not in `learnable_skills` since player already owned it), then `Tactics_Hurdle` (rejected because parent `Tactics` was believed unlearned), and then `Tactics_Juke` (cost 200 SP). In `is_skill_learnable`, `sp < cost` was evaluated **before** attribute requirements (`Agi >= 21`). Because 106 < 200, it returned `"Insufficient SP"`, which triggered `is_saving = True`! The AI hoarded points indefinitely for a skill requiring Agility 21 that an Apostle (Agility 16) could not even learn!
+    3. **Suboptimal Archetype Progression:** `esper_ited_away` placed `Tactics_Juke` (200 SP, Agi 21) ahead of crucial survival and sustain skills (`CookingAndGathering`, `Butchery`, `MealPreparation`, and `Discipline`).
+    4. **The Circuit Breaker 0-SP Trap:** `AllocateSkill` in `AIBrainPart.cs` previously had `if (sp <= 0) return false;`, blocking 0-cost subpowers from being claimed at 0 SP. Furthermore, the autolevel circuit breaker in `brain.py` tracked `cur_points = (ap, sp, mp)`. Learning a 0-cost skill didn't reduce SP, so `cur_points == last_autolevel_points` falsely incremented `autolevel_failed_attempts` and suppressed autoleveling.
+- **Solution:**
+  - **In-Engine SkillFactory Telemetry Export:** Unified `AIBrainPart.cs` to iterate `SkillFactory.GetSkills()`, checking `player.HasSkill(s.Class)` and `player.HasSkill(p.Class)`. Now exports both `Class` and `Name` into `state.json["skills"]` accurately on every turn.
+  - **Strict Requirement Order in `is_skill_learnable`:** Parents, prerequisites, and attribute thresholds (`min_stat`) are now strictly evaluated **before** `sp < cost`. Skills whose stat requirements are unmet are never flagged as `Insufficient SP`, preventing spurious SP hoarding freezes.
+  - **Archetype Survival Prioritization:** All 9 archetypes in `build_templates.py` prioritize `CookingAndGathering` (100 SP), `CookingAndGathering_Butchery` (50 SP, Int 15), and `CookingAndGathering_MealPreparation` (0 SP) right after starting weapon proficiencies, followed by class core attributes.
+  - **Zero-Cost Power Engine & Breaker Fix:**
+    - Allowed 0-SP powers in `AllocateSkill` (`if (sp < 0) return false;`).
+    - Updated `cur_points = (ap, sp, mp, len(skills))` in `brain.py`. Learning a 0-SP skill changes the tuple signature, resetting failed attempts to 0.
+  - **Multi-Class Regression Verification (Test 29):** Added Test 29 to `dry_run.py`, testing starting skills ingestion and SP spending across Apostle (`CookingAndGathering`), free 0-SP `MealPreparation`, Marauder free `Axe_Expertise`, Gunslinger `Pistol_SteadyHands`, and 0-SP breaker preservation. All 29 verification tests pass cleanly.
+
+### Iteration 23: N-Cycle Zone Hopping Breaker & Death Chronicler Hook
+- **The Problem:**
+  - The AI character was caught in a 3-zone oscillation loop ($A \to B \to C \to A$), but the old zone-hopping breaker only detected 2-cycle ping-pongs ($A \leftrightarrow B$).
+  - When the player died to a scorpiock in the salt desert, the Chronicler never fired because the death hook was inside the player turn handler, which is never called after death in Caves of Qud.
+- **Solution:**
+  - **N-Cycle Oscillation Detection:** Upgraded `update_zone_records()` in `brain.py` to detect 2-, 3-, and 4-zone cycle patterns.
+  - **Novel Exit Direction Routing:** Implemented `_compute_adjacent_zone_id()` to calculate world-grid topology and pick exit directions leading strictly to unvisited/novel zones.
+  - **Harmony Hook on `GameObject.Die`:** Added `AIDiePatch` on `XRL.World.GameObject.Die` in `AIBrainPart.cs` to capture player deaths instantly with the killer's name, reason, and coordinates.
+  - **Gen 1 Chronicling & Ancestral Memory:** Verified the Chronicler, generating `Chronicle_Gen1_Apostle_of_the_Salt_1790838662.md` and adding the first ancestral rule to `ancestral_wisdom.json`.
+
+### Iteration 24: Engine Native Pathfinding Integration (`AutoAct.TryFindEdgeStep`) & The Three Strikes Rule
+- **The Problem:**
+  - The new character got trapped in the starting Joppa hut, and upon leaving the room, stalled in the hallway.
+  - Movement was "losing cohesion" because local heuristics were fighting each other:
+    1. A greedy 1-step Euclidean vector pointed straight at the East border `(78, y)`, walking directly into walls and furniture.
+    2. Furniture (cushions, chairs, tables, beds) was not marked `[BLOCKED]` because it lacked `Physics.Solid == true`.
+    3. In Joppa, all cells start revealed (`unexplored_cells == 0`), causing native `AUTOEXPLORE` to return empty and pass the turn indefinitely.
+    4. The loop breaker shoved the character away from the wall, only for the exit vector to shove it right back into the wall next turn.
+- **Solution:**
+  - **Native Engine Pathfinding via `AutoAct.TryFindEdgeStep`:** In `AIBrainPart.cs`, when a `MOVE` command cannot advance into an adjacent cell, the engine automatically delegates to `AutoAct.TryFindEdgeStep(edgeChar, out string pathStep)`. Qud's built-in A* pathfinder charts the exact route around walls, corridors, and doorways toward that zone border.
+  - **Furniture Obstacle Classification:** Flagged `Chair`, `Bed`, `Table`, `Floor Cushion`, and `Bedroll` as `[BLOCKED]` in both C# telemetry and Python `get_valid_moves`.
+  - **Actual Coordinate Change Tracking:** Verified that `(pxBefore, pyBefore) != (pxAfter, pyAfter)` in `ExecuteCommand`; if a move does not change coordinates, it is flagged as failed.
+  - **Autoexplore Zero-Cell Gate:** In `brain.py`, `can_use_native_autoexplore` now strictly requires `unexp_cells > 0`, immediately transitioning to zone exit navigation in pre-revealed towns like Joppa.
+### Iteration 25: Native Engine Zone Exit Pathfinding (`NAVIGATE_ZONE_EXIT`) & Obstacle Loop Resolution
+- **The Problem:**
+  - In `outskirts, Joppa` (`JoppaWorld.11.22.1.0.10`), the Apostle character became trapped ping-ponging along a brinestalk fence in the graveyard between `(47, 10)` and `(47, 11)`.
+  - The East exit target was `(78, 11)`. The fence blocked East, NE, and SE.
+  - The 1-step Euclidean vector in `get_best_move_towards` evaluated open adjacent moves `MOVE_N` and `MOVE_S`. At `(47, 11)` it picked `MOVE_N` to `(47, 10)`, and at `(47, 10)` it picked `MOVE_S` back to `(47, 11)`. Both tiles were open dirt, so `player.Move()` succeeded every turn, meaning the engine saw valid moves while the character ping-ponged indefinitely along the fence.
+  - Because `unexplored_cells == 0` in pre-revealed Joppa outskirts, `AutoAct.FindAutoexploreStep` had no targets, and the Python loop breaker repeatedly fell back to `get_best_move_towards(cur_pos, exit_target)`, producing the exact same 2 oscillating moves.
+- **Solution (Executing The Three Strikes Rule):**
+  - **Decompiled `XRL.World.Capabilities.AutoAct` in `Assembly-CSharp.dll`:** Identified the native Caves of Qud edge-pathfinding API `AutoAct.TryFindEdgeStep(char Direction, out string Step)`.
+  - **Implemented `NAVIGATE_ZONE_EXIT:<DIR>` in `AIBrainPart.cs`:**
+    - Directly calls `AutoAct.TryFindEdgeStep(edgeChar, out step)` to run Qud's full-map A* pathfinder through gates, doors, and around obstacles toward the requested border.
+    - If the target border is completely unreachable, automatically falls back through other cardinal edges (`'E', 'N', 'S', 'W'`).
+    - Added automated door opening (`TryOpenDoorInDirection`) and energy consumption safeguards.
+  - **Updated `brain.py` Step 11 & Loop Breaker:**
+    - Step 11 now dispatches `NAVIGATE_ZONE_EXIT:{exit_dir}` instead of computing 1-step straight lines.
+    - The oscillation breaker now immediately triggers `NAVIGATE_ZONE_EXIT:{exit_dir}` whenever oscillation occurs in a fully explored or zero-unexplored-cell zone (`unexplored_cells == 0`).
+    - Updated `get_zone_exit_target` to return `(target_coord, exit_tag, exit_dir)`.
+  - **Test Suite Expansion (Test 30):** Added Test 30 to `dry_run.py` to verify graveyard fence breakout telemetry and cardinal edge targeting. All 30 verification tests pass cleanly.
+
+### Iteration 26: Zone Bailing Prevention & Native Target Cell Pathfinding (`NAVIGATE_TO_CELL`)
+- **The Problem:**
+  - After navigating past Joppa outskirts, the Apostle character beelined East across 4 consecutive zones (`11.22.1` -> `11.22.2` -> `12.22.0` -> `12.22.1` -> `12.22.2`) without stopping to explore any of them.
+  - In zone `12.22.2.0.10`, the character hit an oscillation loop next to some watervine at `(43, 14)` with 1439 unexplored cells remaining.
+- **Root Cause Analysis (Applying The Three Strikes Rule):**
+  - **Decompiled `AutoAct.FindAutoexploreStep` & `FasterDMapAutoexplore.FindAutoexploreStep` in `Assembly-CSharp.dll`:** Discovered that whenever the player enters a new zone or stands on a border tile, the engine's internal DMap distance map has not yet been seeded for that zone, so `FindAutoexploreStep` returns `"."` or `null` on turn 1.
+  - In `AIBrainPart.cs` (lines ~2220-2226), `ExecuteAutoexplore` unconditionally executed `isZoneFullyExplored = true;` whenever `FindAutoexploreStep` paused on a single turn!
+  - In `brain.py`, Step 11 saw `zone_fully_explored: True` and immediately commanded `NAVIGATE_ZONE_EXIT:E`, marching straight out of the zone before exploring anything.
+  - At `(43, 14)`, the frontier target was `(44, 12)` across watervine plants. The Python loop breaker used 1-step Euclidean vectors (`get_best_move_towards`) which ping-ponged between `(43, 14)` and `(44, 14)` because direct diagonals were blocked by plants.
+- **Solution:**
+  - **Ground-Truth Zone Explored Guard:**
+    - In `AIBrainPart.cs`, removed the premature `isZoneFullyExplored = true;`. Counted actual unrevealed cells in `parentZone`; `isZoneFullyExplored` can only be set to `true` if `unexpCount <= 0`.
+    - In `brain.py`, added a strict guard: `if unexp_cells is not None and unexp_cells > 0: zone_fully_explored = False`. A zone with hundreds of unrevealed cells can never be treated as explored.
+    - Gated Step 11 (Zone Exit Navigation) strictly behind `unexplored_cells == 0`.
+  - **Implemented `NAVIGATE_TO_CELL:X,Y` Command:**
+    - Decompiled and integrated `AutoAct.TryFindPathStep(Cell Target, out string Step)` into `AIBrainPart.cs`. Runs Qud's native A* pathfinder directly to any coordinate in the zone, routing smoothly around watervine, trees, and obstacles.
+    - Updated `brain.py` loop breaker to dispatch `NAVIGATE_TO_CELL:{tx},{ty}` to pathfind cleanly around watervine instead of 1-step Euclidean vector ping-pongs.
+  - **Test Suite Expansion (Test 31):** Added Test 31 to `dry_run.py` verifying that a zone with 1439 unrevealed cells commands `AUTOEXPLORE` even if `zone_fully_explored: True` was erroneously asserted. All 31 verification tests pass cleanly.
+
+### Iteration 27: Centroid Distance-1 Gravitational Bounce Elimination & Nearest Unexplored Telemetry
+- **The Problem:**
+  - In zone `JoppaWorld.12.22.2.0.10` while swimming in salty water, the character entered an oscillation loop between two tiles: `(62, 10)` and `(62, 11)`.
+  - The loop breaker repeatedly tripped, but immediately routed the player back into the same 2-tile ping-pong cycle.
+- **Root Cause Analysis (Applying The Three Strikes Rule):**
+  - **The Distance-1 Mathematical Deadzone:**
+    - The unexplored centroid of the remaining 551 cells was at `(62, 12)`.
+    - In `brain.py` (both in `find_zone_unexplored_frontier` line 245 and `query_decision` line 1984), the target selection required:
+      `max(abs(cx - px), abs(cy - py)) > 1`
+    - When the player was at `(62, 10)`, distance to `(62, 12)` was `2 > 1` (True). The AI correctly moved South to `(62, 11)`.
+    - Once at `(62, 11)`, distance to `(62, 12)` was `1 > 1` (False!).
+    - Because `1 > 1` failed, the AI abandoned `(62, 12)`. In Step 9, it found an unvisited tile at `(61, 10)` (NW) and moved `MOVE_NW` back to `(62, 10)`.
+    - At `(62, 10)`, distance was 2 again, so it moved South.
+    - Result: A perpetual 2-tile gravitational bounce at distance 1 from the target centroid.
+  - **Loop Breaker Infection:** The Loop Breaker also called `find_zone_unexplored_frontier`, which hit the same `> 1` failure at `(62, 11)`, fell through to distant `visible_entities`, and routed to `(60, 11)` (NW), reinforcing the oscillation instead of breaking it.
+- **Solution:**
+  - **Pinpoint `nearest_unexplored` Engine Telemetry:**
+    - In `AIBrainPart.cs`, during the zone fog-of-war scan, added tracking for `nearest_unexplored_x`, `nearest_unexplored_y`, and `nearest_unexplored_dist`.
+    - Unlike the centroid (which is an arithmetic average that can be explored or inside a wall), `nearest_unexplored` is an *actual unrevealed fog-of-war cell* (`c.Explored == false`). The player is never standing on it, eliminating dead-zones.
+  - **Distance-1 Target Resolution:**
+    - Replaced `max(abs(cx - px), abs(cy - py)) > 1` with `(cx != px or cy != py)`. If the target is 1 tile away, the AI directly steps onto it.
+    - If the player is standing directly on the centroid `(cx == px and cy == py)`, targeting falls through seamlessly to `(nearest_unexplored_x, nearest_unexplored_y)`.
+  - **Geometric Direction Fallback in `NAVIGATE_TO_CELL`:**
+    - In `AIBrainPart.cs`, if `AutoAct.TryFindPathStep` returns null or `.` (e.g. across water), it falls back to `player.CurrentCell.GetDirectionFromCell(targetCell)` to take the direct physical step.
+  - **Test Suite Expansion (Test 32):** Added Test 32 to `dry_run.py` verifying distance-1 centroid movement (`MOVE_S` from `(62, 11)` to `(62, 12)`) and standing-on-centroid nearest unexplored targeting. All 32 verification tests pass cleanly.
+
+### Iteration 28: Organic Random Exploration & Per-Zone Exit Caching
+- **The Problem:**
+  - Characters were locked into an artificial, rigid Eastward trans-continental march because `get_zone_exit_target` hardcoded `# Default: East` when starting in Joppa. Once entered from the West, forward momentum locked East indefinitely.
+  - Runs felt on-rails rather than organic and emergent for viewers and ancestral learning.
+- **Solution:**
+  - **Organic Exit Selection:**
+    - Filter out immediate backtracking (`d != rev_dir`).
+    - Query world topology (`_compute_adjacent_zone_id`) to find novel/unexplored adjacent zones (`novel_candidates`).
+    - Randomly select among novel exits (`random.choice(novel_candidates)`) to dynamically explore new biomes in any cardinal direction (North, East, South, West).
+    - If all adjacent zones have been visited, randomly choose among non-reverse candidate borders.
+  - **Per-Zone Exit Decision Caching:**
+    - Cached `CURRENT_ZONE_CHOSEN_EXIT` per zone so that once an organic exit is chosen for a cleared zone, the agent navigates steadily toward that border without turn-by-turn direction jitter. Resets cleanly upon transitioning into the next zone (`update_zone_records`).
+  - **Test Suite Verification:** Updated Test 30 in `dry_run.py` to verify organic cardinal exits; all 32 verification tests pass cleanly.
+
+### Iteration 29: Companion Memory Clearance & Opportunistic Pet Recruitment
+- **The Problem:**
+  - `CHARMED_COMPANION_NAMES` in `brain.py` acted as a sticky latch: once any pet was registered, the set was never cleared.
+  - `has_companion` evaluated permanently to `True`, so `fallback_esper` never attempted to cast `CommandProselytize`.
+  - `is_proselytizable` permanently barred any creature of that species from ever being recruited again, and wild hostiles of that species were treated as companions.
+  - Zero recruitment logic existed in Phase A exploration.
+- **Solution:**
+  - Synchronized companion memory every turn with live telemetry (`has_active_companion`); cleared `CHARMED_COMPANION_NAMES` and `CHARMED_COMPANION_COORDS` when petless and on player death.
+  - Added Phase A opportunistic recruitment at distance 1 and distance 2 approach.
+  - Added distance-2 recruitment approach in `fallback_esper`.
+  - Added Test 33 to `dry_run.py` (33/33 pass).
+
+### Iteration 30: Combat Loop Breaker Immunity & Living Creature Corpse Part Rejection Fix
+- **The Problem:**
+  - During battle with a giant dragonfly, the character hit a 2-tile loop and refused to cast ready charges of Lase or Stunning Force.
+  - `last_action_executed.txt` revealed `NAVIGATE_TO_CELL:55,13` was being dispatched every single turn in combat!
+  - **Root Cause 1 (Navigation Loop Breaker Hijacking Combat):**
+    - In `main()` (`brain.py`), `elif is_oscillating:` checked `pos_frequency >= 3` or cycle length, but had NO check for `is_in_combat` or `is_combat_action`.
+    - Exploration visit history accumulated in `recent_positions` triggered `is_oscillating = True` on turn 1 of combat.
+    - The loop breaker intercepted the LLM / fallback decision (`USE_ABILITY:CommandStunningForce:N` or `CommandLase`) and overwrote it with `NAVIGATE_TO_CELL:55,13` (routing to an unexplored frontier tile 15 tiles away while adjacent to the enemy!).
+  - **Root Cause 2 (`CanBeProselytized` Rejection of Living Creatures):**
+    - In `AIBrainPart.cs`, `CanBeProselytized` checked `if (obj.HasPart("Corpse")) return false;`.
+    - In Caves of Qud, virtually all living biological creatures (dragonflies, snapjaws, crocs, baboons) possess a `<part Name="Corpse" ... />` component defining their corpse drop blueprint upon death.
+    - As a result, living dragonflies were flagged with `can_proselytize: false`, causing Proselytize targeting to evaluate `targetObj = none` and Python to reject subsequent recruitment attempts.
+- **Solution:**
+  - **Combat Loop Breaker Immunity (`brain.py`):**
+    - Defined `is_combat_action = action.startswith("USE_ABILITY") or action.startswith("FIRE_MISSILE") or is_attacking`.
+    - Defined `is_oscillating = not is_in_combat and not is_combat_action and (...)`.
+    - Added `elif is_oscillating and not is_in_combat:`.
+    - Tactical abilities (`USE_ABILITY`), missile fire (`FIRE_MISSILE`), and melee counter-attacks are strictly protected and will never be hijacked by exploration frontier pathfinding.
+  - **Living Creature Corpse Part Rejection Fix (`AIBrainPart.cs`):**
+    - Removed `obj.HasPart("Corpse")` from `CanBeProselytized`.
+    - Dead corpses are already completely excluded by `!obj.IsAlive`. Living biological creatures with corpse drop definitions are now correctly identified as valid recruitment candidates.
+  - **Test Suite Expansion (Test 34):**
+    - Added Test 34 in `dry_run.py` verifying combat loop breaker immunity (tactical abilities preserved despite high position frequency) and dragonfly proselytization.
+    - All 34 tests pass cleanly. Mod deployed via `sync_mod.py`.
+
+### Iteration 25: Line-of-Sight Ray Occlusion, Narrow Hallway Autoexplore Fallback & Stat Point Deduction
+- **Observed Failure Modes:**
+  1. *Lase through Wall*: Character engaged a mob across a corridor and fired Lase directly into a solid wall because line of sight was not evaluated along the projectile ray, wasting laser charges.
+  2. *Single-Tile Hallway Stall*: In subterranean stratum 11, after banishing an enemy with Teleport Other, the native autoexplore pathfinder (`AutoAct.FindAutoexploreStep` / `FasterDMapAutoexplore`) returned null in the narrow corridor. The engine pass-turn was executed without setting `isZoneFullyExplored`, triggering an infinite 1-tile lock of repeated `AUTOEXPLORE` calls.
+  3. *AP/SP Telemetry Desync*: In `AllocateStat` and `AllocateSkill`, adjusting `Penalty` didn't immediately decrement `BaseValue`, occasionally causing the Python brain to re-request allocations before the engine cleared the pending pool.
+- **Solution:**
+  - **In-Engine Line-of-Sight Filtering (`AIBrainPart.cs`):**
+    - Exported `has_los: player.HasLOSTo(obj)` for all visible entities in `state.json`.
+    - Enforced `player.HasLOSTo(target)` and `player.HasLOSTo(targetCell)` in `FIRE_MISSILE`, `USE_ABILITY` (for physical rays, lase, spit, breath, and missile abilities), and `AIPickTargetPatch`.
+    - Preserved mental mutation bypass (`Sunder Mind`) through solid rock as designed by Qud mechanics.
+  - **Subterranean Narrow Corridor Autoexplore Fallback (`AIBrainPart.cs`):**
+    - When native autoexplore returns null/no step, the engine automatically attempts `AutoAct.TryFindPathStep(nearestUnexplored, out step)`.
+    - If no reachable unexplored cell exists anywhere in the subterranean zone, immediately sets `isZoneFullyExplored = true` so the agent smoothly transitions to staircase delving or exit navigation rather than freezing on a single tile.
+  - **Attribute & Skill Point Direct BaseValue Decrement (`AIBrainPart.cs`):**
+    - Decrements `apStat.BaseValue -= 1` and `spStat.BaseValue -= cost` alongside `Penalty` updates to guarantee immediate telemetry synchronization.
+  - **Python Ray Occlusion & Corridor Maneuvering (`brain.py`):**
+    - Updated `is_line_of_fire_clear` with `target_entity` (verifying `has_los is not False`) and `surroundings` (checking for `[BLOCKED:` wall tiles intersecting the Bresenham line).
+    - Updated `fallback_esper`: Direct rays (`Lase`, `Stunning Force`, `Cryokinesis`, missiles) require `c_lof_clear and c_has_los`. If occluded, the agent maneuvers around corridor corners towards the target rather than blindly waiting.
+  - **Test Suite Expansion (Test 35):**
+    - Added Test 35 in `dry_run.py` verifying line-of-sight ray occlusion, wall blocking in surroundings, corridor maneuvering, and Sunder Mind wall penetration.
+    - All 35 tests pass cleanly. Mod deployed via `sync_mod.py`.
+
+### Iteration 26: Subterranean Stratum Zone Exit & Reachable Edge Prioritization
+- **Observed Failure Modes:**
+  1. *Subterranean Infinite Autoexplore Loop*: In subterranean strata (`z > 10`), hundreds of cells (e.g. 605) are solid rock walls. Even when the C# engine confirmed all reachable corridor tiles were visited and exported `zone_fully_explored: True`, Python had a surface-oriented override `if unexp_cells > 0: zone_fully_explored = False`. This forced repeated `AUTOEXPLORE` calls, which passed the turn and froze the agent.
+  2. *Rock Wall Navigational Oscillation*: When loop breaker triggered, it unconditionally prioritized `NAVIGATE_TO_CELL:{centroid}` into unreachable solid rock behind walls, while the exit escape branch was unreachable dead code.
+  3. *Zone Exit Blindness in Corridors*: Subterranean zones often only have one reachable zone exit (e.g. North). Randomly picking an exit border (e.g. East or South) without verifying corridor connectivity could cause navigation to path into solid rock dead ends.
+- **Solution:**
+  - **In-Engine Reachable Edges Telemetry (`AIBrainPart.cs`):**
+    - When `isZoneFullyExplored` is true or in dungeons (`z > 10`), evaluates `AutoAct.TryFindEdgeStep` across all 4 cardinal directions and exports `"reachable_edges": "N"` in `state.json`.
+    - In `NAVIGATE_ZONE_EXIT`, updates `edgeChar` to the fallback direction that succeeded and logs the route.
+  - **Stratum Completion & Exit Selection (`brain.py`):**
+    - Preserved `zone_fully_explored = True` in subterranean strata (`cur_z > 10`), preventing solid rock occlusion from overriding completed exploration.
+    - Updated Step 8 (macro sector navigation) to only trigger when `not zone_fully_explored`.
+    - Removed arbitrary `unexp_cells == 0` constraint on Step 11 (`NAVIGATE_ZONE_EXIT`), allowing the agent to exit completed dungeon strata immediately.
+    - In `get_zone_exit_target`, prioritizes verified `reachable_edges` from telemetry, instantly choosing the open corridor exit (North) without dead-end guessing.
+    - In Loop Breaker, prioritized `NAVIGATE_ZONE_EXIT` whenever the zone is fully explored or autoexplore is stuck.
+  - **Test Suite Expansion (Test 36):**
+    - Added Test 36 in `dry_run.py` verifying subterranean stratum zone completion with 605 rock cells, `reachable_edges` prioritization, and loop breaker exit navigation.
+    - All 36 tests pass cleanly. Mod deployed via `sync_mod.py`.
+
+### Iteration 27: Subterranean Dead-End Exit Invalidation, Wall-Bump Prevention & Corridor Alignment
+- **Observed Failure Modes:**
+  1. *Subterranean Dead-End East Exit Trap*: In stratum 11 (`JoppaWorld.10.23.0.1.11`), the character explored the zone and decided to exit. `get_zone_exit_target` selected `"E"` (East) and cached `CURRENT_ZONE_CHOSEN_EXIT = "E"`. However, the eastern corridor dead-ended into solid rock at `(74, 11)`. The only viable exit was the second North corridor (`nearest_unexplored_y: 9 < py: 11`).
+  2. *Unbreakable Exit Cache*: Once `CURRENT_ZONE_CHOSEN_EXIT = "E"` was set, there was no mechanism to invalidate or blacklist it upon failure. Even the loop breaker called `get_zone_exit_target`, which returned the cached `"E"`, locking the character into repeatedly bumping into the dead-end wall.
+  3. *Engine Blind Wall-Bumping*: In C# `NAVIGATE_ZONE_EXIT`, when `AutoAct.TryFindEdgeStep` failed to find a step, the engine fell back to blind `MOVE_E`, repeatedly walking into the rock wall and passing turn.
+- **Solution:**
+  - **In-Engine Border Cell Fallback & Wall-Bump Suppression (`AIBrainPart.cs`):**
+    - Added border-cell pathfinding fallback: iterates over open, non-occluding border cells on the target edge and uses `AutoAct.TryFindPathStep(bc, out step)` if direct edge stepping fails.
+    - Suppressed blind wall bumping: verifies the adjacent cell in the target direction is not occluding/wall before falling back to `MOVE_<dir>`; otherwise logs movement failure (`lastMoveFailed = true`, `lastFailedDir = edgeChar.ToString()`) and passes turn.
+  - **Exit Failure Detection & Dynamic Blacklisting (`brain.py`):**
+    - Implemented `FAILED_ZONE_EXITS = set()` tracking `(zone_id, exit_dir)`.
+    - Implemented `check_exit_direction_failure(game_state, cur_pos, chosen_exit)`: checks both engine telemetry failure (`last_move_failed`) and dead-end stone walls facing the border (e.g. `px >= 70` with East, NE, SE blocked).
+    - In `get_zone_exit_target`: pre-emptively filters candidate directions to exclude known dead ends and blacklists them.
+    - In subterranean strata (`cur_z > 10`), inspects `nearest_unexplored_y` and `nearest_unexplored_x` to prioritize open corridor directions (`"N"` when `ny < py`).
+    - In Loop Breaker: if oscillation occurs while an exit is chosen, immediately blacklists `CURRENT_ZONE_CHOSEN_EXIT` and selects an alternative exit.
+  - **Test Suite Expansion (Test 37):**
+    - Added Test 37 in `dry_run.py` verifying dead-end East exit invalidation at `(74, 11)` into solid rock, corridor-based North exit prioritization, and loop breaker exit blacklisting.
+    - All 37 tests pass cleanly. Mod deployed via `sync_mod.py` and committed to Git.
+
 ---
 
-## 4. Current Codebase Specification (v1.2.4)
+## 4. Current Codebase Specification (v1.3.2)
 
 ### Directory Structure
 ```
@@ -402,6 +649,7 @@ All communication occurs via files in `%USERPROFILE%\AppData\LocalLow\Freehold G
    - **Step 2: Sustenance**: Opportunistically butchers corpses / harvests plants; cooks at campfire, pitches camp, or eats food when hungry/famished.
    - **Step 3: Rest**: Rests until HP $\ge 75\%$ (only if not famished).
    - **Step 4: Ammo Top-Off**: Reloads missile magazines from spare inventory ammo.
+   - **Step 4B: Pet Recruitment**: If petless and possesses Proselytize or Beguile, opportunistically recruits adjacent beasts/humanoids or approaches candidates at distance 2.
    - **Step 5: Stratum Delving**: Navigates to known stairs down when the zone is cleared, gated by depth level requirements.
    - **Step 6: Inward Border Steer**: Steers toward zone center $(40, 12)$ if on border tiles during the first 4 turns or during oscillation.
    - **Step 7: Autoexplore**: Autonomous exploration via native Caves of Qud autoexplore pathfinder.
