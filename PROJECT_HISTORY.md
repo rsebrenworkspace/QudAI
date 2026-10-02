@@ -39,6 +39,7 @@
    - [Iteration 25: Line-of-Sight Ray Occlusion, Narrow Hallway Autoexplore Fallback & Stat Point Deduction](#iteration-25-line-of-sight-ray-occlusion-narrow-hallway-autoexplore-fallback--stat-point-deduction)
    - [Iteration 26: Subterranean Stratum Zone Exit & Reachable Edge Prioritization](#iteration-26-subterranean-stratum-zone-exit--reachable-edge-prioritization)
    - [Iteration 27: Subterranean Dead-End Exit Invalidation, Wall-Bump Prevention & Corridor Alignment](#iteration-27-subterranean-dead-end-exit-invalidation-wall-bump-prevention--corridor-alignment)
+   - [Iteration 28: Autonomous Enclosed Pocket Burrowing & Vegetative Wall Destruction (`ATTACK_WALL`)](#iteration-28-autonomous-enclosed-pocket-burrowing--vegetative-wall-destruction-attack_wall)
 4. [Current Codebase Specification (v1.3.2)](#4-current-codebase-specification-v132)
    - [Directory Structure](#directory-structure)
    - [Telemetry & IPC Protocol](#telemetry--ipc-protocol)
@@ -603,6 +604,25 @@
   - **Test Suite Expansion (Test 37):**
     - Added Test 37 in `dry_run.py` verifying dead-end East exit invalidation at `(74, 11)` into solid rock, corridor-based North exit prioritization, and loop breaker exit blacklisting.
     - All 37 tests pass cleanly. Mod deployed via `sync_mod.py` and committed to Git.
+
+### Iteration 28: Autonomous Enclosed Pocket Burrowing & Vegetative Wall Destruction (`ATTACK_WALL`)
+- **Observed Failure Modes:**
+  1. *Procedural Enclosed Cavern Trap*: In subterranean stratum 11 (`JoppaWorld.9.23.2.1.11`), the character arrived inside a completely enclosed 3x3 pocket at `(70, 6)` surrounded by `plant matter` (`PlantWall`) and `tangled mudroot`.
+  2. *Autoexplore & Macro Navigation Lock*: Native `AUTOEXPLORE` immediately passed turn because no open tiles connected to the rest of the zone. Macro-sector navigation attempted `MOVE_W`, but with `(68, 6)` blocked by mudroot and `(69, 5)` occupied by a neutral Sprouting Orb, the character bounced indefinitely between `(70, 6)` and `(69, 6)`.
+  3. *Unaware of Wall Destructibility*: In *Caves of Qud*, vegetative obstacles (`PlantWall`, `Mudroot`, webs, fences) have low HP and AV, and can be destroyed by attacking them. However, neither `brain.py` nor `AIBrainPart.cs` had a mechanism to force-attack or burrow through walls to escape enclosed rooms.
+- **Solution:**
+  - **In-Engine Melee Strike Dispatch (`AIBrainPart.cs`):**
+    - Added `ATTACK_WALL:<dir>` (and `FORCE_ATTACK:<dir>`, `ATTACK_CELL:<dir>`) action handling.
+    - Inspects adjacent cell in target direction, retrieves the blocking wall/plant `GameObject` via `o.HasPart("Wall") || o.HasPart("Plant") || o.HasPart("Combat") || o.HasPart("Physics")`, and directly invokes `player.PerformMeleeAttack(targetWall)`.
+  - **Autonomous Burrowing & Destructible Terrain Prioritization (`brain.py`):**
+    - Implemented `DESTRUCTIBLE_OBSTACLE_KEYWORDS` covering vegetative and breakable barriers (`plant matter`, `plantwall`, `mudroot`, `tangled mudroot`, `fence`, `wood`, `web`, `bramble`).
+    - Implemented `find_burrow_direction(surroundings, cur_pos, target_pos)`: detects adjacent destructible obstacles, prioritizes soft vegetative matter over solid rock, and chooses the direction that advances closest toward the unexplored sector centroid (`(36, 12)`).
+    - In `query_decision` (Step 8): if `visit_counts[cur_pos] >= 2` and all open moves lead to visited tiles, automatically issues `ATTACK_WALL:<dir>` to breach the pocket.
+    - In `get_valid_moves`: excluded `[npc:` when `not is_in_combat`, preventing the AI from falsely assuming neutral NPCs are open walkable corridors.
+    - In `Loop Breaker`: if trapped in a small cycle (`unique_positions <= 6`) with unrevealed cells remaining, prioritizes burrowing through adjacent obstacles before falling back to zone exit.
+  - **Test Suite Expansion (Test 38):**
+    - Added Test 38 in `dry_run.py` verifying autonomous burrowing in the 3x3 pocket at `(70, 6)` toward sector `(36, 12)`, `find_burrow_direction` soft-material prioritization, and loop breaker pocket burrowing.
+    - All 38 tests pass cleanly. Mod deployed via `sync_mod.py` and committed to Git.
 
 ---
 
