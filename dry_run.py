@@ -1716,7 +1716,121 @@ assert not is_oscillating, "is_oscillating MUST be False during combat and for c
 assert not action.startswith("NAVIGATE_TO_CELL"), "Action must NOT be overridden by NAVIGATE_TO_CELL!"
 
 print("\n==================================================")
-print(">>> ALL 34 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 35: Line-of-Sight Ray Occlusion & Corridor Maneuvering")
+print("==================================================")
+
+# Scenario 35.1: is_line_of_fire_clear verification
+# A. Target entity has has_los explicitly False
+occluded_enemy = {"name": "beetle", "tx": 10, "ty": 15, "dist": 3, "has_los": False}
+clear, reason = brain.is_line_of_fire_clear((10, 12), (10, 15), target_entity=occluded_enemy)
+print(f"Occluded target LOF clear: {clear} | Reason: {reason}")
+assert not clear, "Line of fire must be blocked when target has has_los: False!"
+assert "no line of sight" in reason
+
+# B. Intermediate wall in surroundings
+surroundings_with_wall = {
+    "S": "[BLOCKED: shale wall]",
+    "SS": "Empty ground",
+}
+visible_enemy_behind_wall = {"name": "beetle", "tx": 10, "ty": 14, "dist": 2, "has_los": True}
+clear_wall, reason_wall = brain.is_line_of_fire_clear((10, 12), (10, 14), target_entity=visible_enemy_behind_wall, surroundings=surroundings_with_wall)
+print(f"Wall in surroundings LOF clear: {clear_wall} | Reason: {reason_wall}")
+assert not clear_wall, "Line of fire must be blocked when intermediate tile is a solid wall in surroundings!"
+assert "solid wall" in reason_wall
+
+# C. Clear line of sight
+clear_path, reason_path = brain.is_line_of_fire_clear((10, 12), (10, 14), target_entity=visible_enemy_behind_wall, surroundings={"S": "Empty ground"})
+print(f"Clear path LOF clear: {clear_path} | Reason: {reason_path}")
+assert clear_path, "Line of fire must be clear when no obstacles block the path!"
+
+# Scenario 35.2: fallback_esper behavior when occluded by walls
+# Esper Apostle at (64, 18) in stratum 11 hallway. Mob at (64, 15) behind a corridor corner.
+corridor_state = {
+    "hp": 24, "max_hp": 24, "x": 64, "y": 18, "z": 11,
+    "calling": "Apostle",
+    "level": 3, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.10.23.0.1.11",
+    "zone_name": "stratum 11",
+    "has_companion": False,
+    "companions": [],
+    "hostiles_nearby": True, "hostiles_adjacent": False,
+    "abilities": [
+        {"name": "Lase (5 charges)", "command": "CommandLase", "usable": True, "cooldown": 0},
+        {"name": "Sunder Mind", "command": "CommandSunderMind", "usable": True, "cooldown": 0},
+        {"name": "Stunning Force", "command": "CommandStunningForce", "usable": True, "cooldown": 0},
+        {"name": "Teleport Other", "command": "CommandTeleportOther", "usable": True, "cooldown": 0},
+    ],
+    "surroundings": {
+        "NW": "[BLOCKED: shale wall]", "N": "Empty ground", "NE": "[BLOCKED: shale wall]",
+        "W": "[BLOCKED: shale wall]",                       "E": "[BLOCKED: shale wall]",
+        "SW": "[BLOCKED: shale wall]", "S": "Empty ground", "SE": "[BLOCKED: shale wall]"
+    },
+    "visible_entities": [
+        {"name": "snapjaw hunter", "blueprint": "SnapjawHunter", "dist": 3, "dir": "N", "tx": 64, "ty": 15, "is_enemy": True, "has_los": False}
+    ]
+}
+
+# Subcase A: Mob is occluded (has_los: False), but Sunder Mind is ready!
+# Sunder Mind is mental and can penetrate solid rock!
+corridor_enemy = corridor_state["visible_entities"][0]
+esper_template = brain.build_templates.detect_build(corridor_state)
+dec_sunder = brain.fallback_esper(
+    corridor_state, [corridor_enemy], {},
+    ["MOVE_N", "MOVE_S"], ["MOVE_N", "MOVE_S"],
+    corridor_state["abilities"], esper_template,
+    (64, 18), 64, 18, 24, 24, False, False, 0, 0, 0
+)
+print(f"Occluded target with Sunder Mind ready: {dec_sunder['action']} | Reason: {dec_sunder['reason']}")
+assert dec_sunder["action"] == "USE_ABILITY:CommandSunderMind:N", f"Expected Sunder Mind through wall, got: {dec_sunder['action']}"
+
+# Subcase B: Sunder Mind on cooldown, Lase ready, mob occluded (has_los: False).
+# AI MUST NOT fire Lase or blind WAIT; it must maneuver along hallway (MOVE_N) to establish LOS!
+abilities_no_sunder = [
+    {"name": "Lase (5 charges)", "command": "CommandLase", "usable": True, "cooldown": 0},
+    {"name": "Sunder Mind", "command": "CommandSunderMind", "usable": False, "cooldown": 10},
+    {"name": "Stunning Force", "command": "CommandStunningForce", "usable": True, "cooldown": 0},
+]
+dec_maneuver = brain.fallback_esper(
+    corridor_state, [corridor_enemy], {},
+    ["MOVE_N", "MOVE_S"], ["MOVE_N", "MOVE_S"],
+    abilities_no_sunder, esper_template,
+    (64, 18), 64, 18, 24, 24, False, False, 0, 0, 0
+)
+print(f"Occluded target without Sunder Mind: {dec_maneuver['action']} | Reason: {dec_maneuver['reason']}")
+assert dec_maneuver["action"] != "USE_ABILITY:CommandLase:N", "Must NOT fire Lase through solid wall!"
+assert dec_maneuver["action"] != "WAIT", "Must NOT blindly wait when target is around corner without LOS!"
+assert dec_maneuver["action"] == "MOVE_N", f"Expected maneuvering MOVE_N towards target around corridor, got: {dec_maneuver['action']}"
+
+# Subcase C: Line of sight established (has_los: True).
+# With Stunning Force ready, AI uses CC opener!
+visible_corridor_enemy = dict(corridor_enemy)
+visible_corridor_enemy["has_los"] = True
+dec_stun = brain.fallback_esper(
+    corridor_state, [visible_corridor_enemy], {},
+    ["MOVE_N", "MOVE_S"], ["MOVE_N", "MOVE_S"],
+    abilities_no_sunder, esper_template,
+    (64, 18), 64, 18, 24, 24, False, False, 0, 0, 0
+)
+print(f"Clear LOS target with Stunning Force ready: {dec_stun['action']} | Reason: {dec_stun['reason']}")
+assert dec_stun["action"] == "USE_ABILITY:CommandStunningForce:N", f"Expected Stunning Force CC opener when LOS clear, got: {dec_stun['action']}"
+
+# Subcase D: Line of sight established, Stunning Force on cooldown -> AI fires Lase!
+abilities_lase_only = [
+    {"name": "Lase (5 charges)", "command": "CommandLase", "usable": True, "cooldown": 0},
+    {"name": "Sunder Mind", "command": "CommandSunderMind", "usable": False, "cooldown": 10},
+    {"name": "Stunning Force", "command": "CommandStunningForce", "usable": False, "cooldown": 10},
+]
+dec_lase = brain.fallback_esper(
+    corridor_state, [visible_corridor_enemy], {},
+    ["MOVE_N", "MOVE_S"], ["MOVE_N", "MOVE_S"],
+    abilities_lase_only, esper_template,
+    (64, 18), 64, 18, 24, 24, False, False, 0, 0, 0
+)
+print(f"Clear LOS target with only Lase ready: {dec_lase['action']} | Reason: {dec_lase['reason']}")
+assert dec_lase["action"] == "USE_ABILITY:CommandLase:N", f"Expected Lase when LOS is clear, got: {dec_lase['action']}"
+
+print("\n==================================================")
+print(">>> ALL 35 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

@@ -817,16 +817,22 @@ def bresenham_line(x0, y0, x1, y1):
     return points
 
 
-def is_line_of_fire_clear(from_pos, to_pos, companions=None, blocked_set=None):
+def is_line_of_fire_clear(from_pos, to_pos, companions=None, blocked_set=None, target_entity=None, surroundings=None):
     """
     Checks if a direct ray from from_pos to to_pos is unblocked.
     Returns (is_clear: bool, reason: str).
+    - If target entity has has_los explicitly False, returns (False, "Target is occluded by walls (no line of sight)").
     - If target coordinate is itself a companion, returns (False, f"Target coordinate ({x1}, {y1}) IS friendly companion {comp_name}!").
     - If any companion's tile lies strictly between from_pos and to_pos,
       returns (False, f"Blocked by companion {comp_name} at {pt}").
     - If any known solid wall/obstacle lies strictly between from_pos and to_pos,
       returns (False, f"Blocked by obstacle at {pt}").
+    - If surroundings 5x5 contains a solid wall/impassable obstacle intersecting the line,
+      returns (False, f"Line of fire obstructed by solid wall at {pt}").
     """
+    if target_entity is not None and target_entity.get("has_los") is False:
+        return False, f"Target {target_entity.get('name', 'enemy')} is occluded by walls (no line of sight)"
+
     x0, y0 = from_pos
     x1, y1 = to_pos
     if x0 == x1 and y0 == y1:
@@ -850,11 +856,29 @@ def is_line_of_fire_clear(from_pos, to_pos, companions=None, blocked_set=None):
     # Check intermediate points (exclude origin and target)
     intermediate = line[1:-1]
 
+    DELTA_TO_SURROUNDINGS = {
+        (-1, -1): "NW", (0, -1): "N", (1, -1): "NE",
+        (-1,  0): "W",                (1,  0): "E",
+        (-1,  1): "SW", (0,  1): "S", (1,  1): "SE",
+        (-2, -2): "NW2", (-1, -2): "NNW", (0, -2): "NN", (1, -2): "NNE", (2, -2): "NE2",
+        (-2, -1): "WNW",                                                   (2, -1): "ENE",
+        (-2,  0): "WW",                                                    (2,  0): "EE",
+        (-2,  1): "WSW",                                                   (2,  1): "ESE",
+        (-2,  2): "SW2", (-1,  2): "SSW", (0,  2): "SS", (1,  2): "SSE", (2,  2): "SE2",
+    }
+
     for pt in intermediate:
         if pt in comp_map:
             return False, f"Line of fire obstructed by friendly companion {comp_map[pt]} at {pt}!"
         if blocked_set and pt in blocked_set:
             return False, f"Line of fire obstructed by obstacle at {pt}"
+        if surroundings:
+            d_pt = (pt[0] - x0, pt[1] - y0)
+            if d_pt in DELTA_TO_SURROUNDINGS:
+                k = DELTA_TO_SURROUNDINGS[d_pt]
+                val = surroundings.get(k, "")
+                if "[BLOCKED:" in val and not any(ok in val.lower() for ok in ["door", "openable", "companion", "pet"]):
+                    return False, f"Line of fire obstructed by solid wall at {pt} ({k})"
 
     return True, "Clear"
 
@@ -1405,8 +1429,8 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     # 4. Long-range approach or suppressive missile fire
     if closest_enemy:
         if closest_dist >= 6 and has_missile and ammo > 0:
-            companions = game_state.get("companions", [])
-            is_clear, _ = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords)
+            surroundings = game_state.get("surroundings", {})
+            is_clear, _ = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest_enemy, surroundings=surroundings)
             if is_clear:
                 return {"action": f"FIRE_MISSILE@{c_tx},{c_ty}", "reason": f"[{template['name']} Fallback] Suppressive fire at {c_name} while closing distance"}
         s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
@@ -1504,54 +1528,63 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
     # 2. Long-Range Psychic Assault (Distance >= 1)
     if closest_enemy and closest_dist >= 1:
-        # Check line-of-fire from player to primary target
-        c_lof_clear, c_lof_reason = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords)
+        surroundings = game_state.get("surroundings", {})
+        c_has_los = closest_enemy.get("has_los", True) is not False
+        # Check line-of-fire from player to primary target (checking companions, bumps, and 5x5 wall terrain)
+        c_lof_clear, c_lof_reason = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest_enemy, surroundings=surroundings)
 
         # A. Sunder Mind (Uncapped psychic annihilation - max range 12, DIRECT MENTAL, 100% SAFE OVER PETS & WALLS!)
         ab_sunder = find_ready_ability(abilities, ["sunder mind", "sundermind", "sunder"])
         if ab_sunder and ab_sunder.get("command") and closest_dist <= 12 and s_dir:
             return {"action": f"USE_ABILITY:{ab_sunder['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Channeling Sunder Mind against {c_name} (dist: {closest_dist})"}
 
-        # B. Opener CC: Stunning Force on approaching mobile enemies (dist 3-8, requires clear LOF)
+        # B. Opener CC: Stunning Force on approaching mobile enemies (dist 3-8, requires clear LOF and LOS)
         ab_stun = find_ready_ability(abilities, ["stunning force", "stunningforce"])
-        if ab_stun and ab_stun.get("command") and 3 <= closest_dist <= 8 and not is_stationary and s_dir and c_lof_clear:
+        if ab_stun and ab_stun.get("command") and 3 <= closest_dist <= 8 and not is_stationary and s_dir and c_lof_clear and c_has_los:
             return {"action": f"USE_ABILITY:{ab_stun['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Blasting approaching {c_name} with Stunning Force CC opener ({s_dir})"}
 
-        # C. Lase (Light Manipulation focused laser beam - max range 10, requires clear LOF past companions)
+        # C. Lase (Light Manipulation focused laser beam - max range 10, requires clear LOF and LOS past companions and walls)
         ab_lase = find_ready_ability(abilities, ["lase", "light manipulation"])
-        if ab_lase and ab_lase.get("command") and closest_dist <= 10 and s_dir and c_lof_clear:
+        if ab_lase and ab_lase.get("command") and closest_dist <= 10 and s_dir and c_lof_clear and c_has_los:
             return {"action": f"USE_ABILITY:{ab_lase['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Firing Lase light beam at {c_name} ({s_dir}, dist: {closest_dist})"}
 
-        # D. Cryokinesis / Pyrokinesis / Ray / Elemental / Gas attacks (max range 10, requires clear LOF)
+        # D. Cryokinesis / Pyrokinesis / Ray / Elemental / Gas attacks (max range 10, requires clear LOF and LOS)
         ab_elemental = find_ready_ability(abilities, ["cryokinesis", "pyrokinesis", "flaming ray", "freezing ray", "spit poison", "electrical generation", "corrosive gas", "sleep gas"])
-        if ab_elemental and ab_elemental.get("command") and closest_dist <= 10 and s_dir and c_lof_clear:
+        if ab_elemental and ab_elemental.get("command") and closest_dist <= 10 and s_dir and c_lof_clear and c_has_los:
             return {"action": f"USE_ABILITY:{ab_elemental['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Manifesting {ab_elemental.get('name')} at {c_name} ({s_dir})"}
 
-        # E. Stunning Force (Secondary / Stationary / Close Finisher - dist <= 8, requires clear LOF)
-        if ab_stun and ab_stun.get("command") and closest_dist <= 8 and s_dir and c_lof_clear:
+        # E. Stunning Force (Secondary / Stationary / Close Finisher - dist <= 8, requires clear LOF and LOS)
+        if ab_stun and ab_stun.get("command") and closest_dist <= 8 and s_dir and c_lof_clear and c_has_los:
             return {"action": f"USE_ABILITY:{ab_stun['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Blasting {c_name} with Stunning Force ({s_dir})"}
 
-        # F. Syphon Vim (Life drain if within 4 tiles)
+        # F. Syphon Vim (Life drain if within 4 tiles, requires clear LOS)
         ab_syphon = find_ready_ability(abilities, ["syphon vim", "syphonvim"])
-        if ab_syphon and ab_syphon.get("command") and closest_dist <= 4 and s_dir:
+        if ab_syphon and ab_syphon.get("command") and closest_dist <= 4 and s_dir and c_has_los:
             return {"action": f"USE_ABILITY:{ab_syphon['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Draining life force from {c_name} ({s_dir})"}
 
-        # G. Equipped missile weapon fire (requires clear LOF)
-        if has_missile and ammo > 0 and not adj_threats and c_lof_clear:
+        # G. Equipped missile weapon fire (requires clear LOF and LOS)
+        if has_missile and ammo > 0 and not adj_threats and c_lof_clear and c_has_los:
             return {"action": f"FIRE_MISSILE@{c_tx},{c_ty}", "reason": f"[{template['name']} Fallback] Firing ranged weapon at {c_name} while mental cooldowns reset"}
 
-        # H. Friendly-fire evasion: If primary target line of fire is blocked by pet, redirect to unblocked target!
-        if not c_lof_clear:
+        # H. Friendly-fire / wall occlusion evasion: If primary target line of fire is blocked, redirect to unblocked target!
+        if not c_lof_clear or not c_has_los:
             for alt in enemies[1:]:
                 alt_tx = alt.get("tx", px)
                 alt_ty = alt.get("ty", py)
-                alt_clear, _ = is_line_of_fire_clear((px, py), (alt_tx, alt_ty), companions=companions, blocked_set=blocked_coords)
-                if alt_clear:
+                alt_has_los = alt.get("has_los", True) is not False
+                alt_clear, _ = is_line_of_fire_clear((px, py), (alt_tx, alt_ty), companions=companions, blocked_set=blocked_coords, target_entity=alt, surroundings=surroundings)
+                if alt_clear and alt_has_los:
                     alt_dir = get_step_direction(cur_pos, (alt_tx, alt_ty))
                     if ab_lase and ab_lase.get("command") and alt_dir:
-                        return {"action": f"USE_ABILITY:{ab_lase['command']}:{alt_dir}", "reason": f"[{template['name']} Fallback] Friendly-fire protection: redirecting Lase to unblocked {alt.get('name')} ({alt_dir})"}
+                        return {"action": f"USE_ABILITY:{ab_lase['command']}:{alt_dir}", "reason": f"[{template['name']} Fallback] Obstacle protection: redirecting Lase to unblocked {alt.get('name')} ({alt_dir})"}
                     if has_missile and ammo > 0:
-                        return {"action": f"FIRE_MISSILE@{alt_tx},{alt_ty}", "reason": f"[{template['name']} Fallback] Friendly-fire protection: redirecting missile to unblocked {alt.get('name')}"}
+                        return {"action": f"FIRE_MISSILE@{alt_tx},{alt_ty}", "reason": f"[{template['name']} Fallback] Obstacle protection: redirecting missile to unblocked {alt.get('name')}"}
+
+            # If primary target is occluded by a wall (no LOS), maneuver along corridor to establish line of sight instead of waiting!
+            if not c_has_los:
+                best_step = get_best_move_towards(cur_pos, (c_tx, c_ty), valid_moves, surroundings)
+                if best_step:
+                    return {"action": best_step, "reason": f"[{template['name']} Fallback] Maneuvering {best_step[5:]} around corridor/wall to establish line of sight on {c_name}"}
 
             # If all targets blocked, reposition sideways to get an open firing line!
             if open_moves:
@@ -1563,16 +1596,20 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             if kites:
                 return {"action": kites[0], "reason": f"[{template['name']} Fallback] Preserving safe standoff distance (dist {closest_dist} -> {kites[0][5:]})"}
 
-        # J. Standoff & Recharge: When all ranged powers / laser charges are cooling down and distance is 2-8 tiles:
+        # J. Standoff & Recharge: When all ranged powers / laser charges are cooling down and distance is 2-8 tiles with clear LOS:
         # HOLD GROUND and WAIT! Let ambient light recharge Lase charges and mental cooldowns tick down!
-        if closest_dist <= 8:
+        if closest_dist <= 8 and c_has_los:
             return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Holding safe standoff distance ({closest_dist} tiles) & recharging laser charges/mental cooldowns to finish {c_name}"}
 
-        # K. If enemy is distant (dist > 8), close the gap to bring into psychic range
-        if closest_dist > 8:
+        # K. If enemy is distant (dist > 8) or occluded, close the gap to bring into psychic range
+        if closest_dist > 8 or not c_has_los:
             step_move = f"MOVE_{s_dir}"
             if step_move in valid_moves:
                 return {"action": step_move, "reason": f"[{template['name']} Fallback] Advancing to psychic engagement range on {c_name} ({s_dir})"}
+            elif valid_moves:
+                best_adv = get_best_move_towards(cur_pos, (c_tx, c_ty), valid_moves, surroundings)
+                if best_adv:
+                    return {"action": best_adv, "reason": f"[{template['name']} Fallback] Navigating towards {c_name} ({best_adv[5:]})"}
             elif valid_moves:
                 best_adv = get_best_move_towards(cur_pos, (c_tx, c_ty), valid_moves, surroundings)
                 if best_adv:
@@ -1655,18 +1692,19 @@ def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_move
 
         if has_missile and ammo > 0:
             companions = game_state.get("companions", [])
-            is_clear, _ = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords)
+            surroundings = game_state.get("surroundings", {})
+            is_clear, _ = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest_enemy, surroundings=surroundings)
             if is_clear:
                 return {"action": f"FIRE_MISSILE@{c_tx},{c_ty}", "reason": f"[{template['name']} Fallback] Firing dual pistols at {c_name} (dist: {closest_dist})"}
             else:
                 for alt in enemies[1:]:
                     alt_tx = alt.get("tx", px)
                     alt_ty = alt.get("ty", py)
-                    alt_clear, _ = is_line_of_fire_clear((px, py), (alt_tx, alt_ty), companions=companions, blocked_set=blocked_coords)
+                    alt_clear, _ = is_line_of_fire_clear((px, py), (alt_tx, alt_ty), companions=companions, blocked_set=blocked_coords, target_entity=alt, surroundings=surroundings)
                     if alt_clear:
-                        return {"action": f"FIRE_MISSILE@{alt_tx},{alt_ty}", "reason": f"[{template['name']} Fallback] Redirecting pistols to unblocked {alt.get('name')} to protect companion"}
+                        return {"action": f"FIRE_MISSILE@{alt_tx},{alt_ty}", "reason": f"[{template['name']} Fallback] Redirecting pistols to unblocked {alt.get('name')} to protect companion/clear LOS"}
                 if open_moves:
-                    return {"action": open_moves[0], "reason": f"[{template['name']} Fallback] Repositioning {open_moves[0][5:]} for clear firing line past companion"}
+                    return {"action": open_moves[0], "reason": f"[{template['name']} Fallback] Repositioning {open_moves[0][5:]} for clear firing line past obstacle"}
 
         if has_missile and ammo <= 0 and inv_ammo > 0 and closest_dist >= 2:
             return {"action": "RELOAD", "reason": f"[{template['name']} Fallback] Fast pistol reload (empty 0/{max_ammo})"}

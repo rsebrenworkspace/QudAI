@@ -1008,6 +1008,8 @@ namespace QudAIBrain
                                     bool isCompanion = IsCompanion(obj, player);
                                     bool isEnemy = !isCompanion && CheckIsEnemy(obj, player);
                                     bool canProselytize = CanBeProselytized(obj, player);
+                                    bool hasLOS = false;
+                                    try { hasLOS = player.HasLOSTo(obj); } catch { }
 
                                     int objLevel = 1;
                                     try { objLevel = obj.Stat("Level", 1); } catch { }
@@ -1015,7 +1017,7 @@ namespace QudAIBrain
                                     string diffStr = levelDiff <= -5 ? "Trivial" : levelDiff <= -2 ? "Easy" : levelDiff <= 2 ? "Average" : levelDiff <= 5 ? "Tough" : levelDiff <= 9 ? "Very Tough" : "Impossible";
                                     bool isStationary = obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasTag("Immobile") || obj.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
 
-                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}, \"can_proselytize\": {(canProselytize ? "true" : "false")}, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}}}");
+                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}, \"can_proselytize\": {(canProselytize ? "true" : "false")}, \"has_los\": {(hasLOS ? "true" : "false")}, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}}}");
                                 }
                             }
                         }
@@ -1340,6 +1342,9 @@ namespace QudAIBrain
                         {
                             var enemy = GetSafeZoneObjects(zone)
                                 .Where(o => o != null && !o.IsPlayer() && CheckIsEnemy(o, player) && o.CurrentCell != null)
+                                .Where(o => {
+                                    try { return player.HasLOSTo(o); } catch { return true; }
+                                })
                                 .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - current.X), Math.Abs(o.CurrentCell.Y - current.Y)))
                                 .FirstOrDefault();
                             targetCell = enemy?.CurrentCell;
@@ -1351,6 +1356,13 @@ namespace QudAIBrain
                         if (targetCell.Objects != null && targetCell.Objects.Any(o => o != null && IsCompanion(o, player)))
                         {
                             UnityEngine.Debug.LogWarning("[QudAI FIRE_MISSILE] Refusing to fire missile at friendly companion's cell!");
+                            return;
+                        }
+                        bool cellHasLOS = true;
+                        try { cellHasLOS = player.HasLOSTo(targetCell); } catch { }
+                        if (!cellHasLOS)
+                        {
+                            UnityEngine.Debug.LogWarning($"[QudAI FIRE_MISSILE] Aborting missile fire on cell {targetCell.X},{targetCell.Y} because line of sight is occluded by walls!");
                             return;
                         }
                         ExecuteMissileFire(player, targetCell);
@@ -1747,6 +1759,10 @@ namespace QudAIBrain
 
                 bool isProselytize = cmd.IndexOf("proselytize", StringComparison.OrdinalIgnoreCase) >= 0 || cmd.IndexOf("beguile", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool isTouchOrDirect = isProselytize || cmd.IndexOf("teleportother", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool isDirectRay = cmd.IndexOf("lase", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                   cmd.IndexOf("stunningforce", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                   cmd.IndexOf("ray", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                   cmd.IndexOf("spit", StringComparison.OrdinalIgnoreCase) >= 0;
 
                 GameObject targetObj = player.Target ?? Sidebar.CurrentTarget;
                 if (!isProselytize && targetObj != null && IsCompanion(targetObj, player))
@@ -1794,6 +1810,7 @@ namespace QudAIBrain
                     {
                         targetObj = safeZoneObjs
                             .Where(o => o != null && !o.IsPlayer() && (isProselytize ? CanBeProselytized(o, player) : (!IsCompanion(o, player) && CheckIsEnemy(o, player))) && o.CurrentCell != null)
+                            .Where(o => !isDirectRay || player.HasLOSTo(o))
                             .Where(o => pCell.GetDirectionFromCell(o.CurrentCell).Equals(PreferredDirection, StringComparison.OrdinalIgnoreCase))
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
@@ -1803,6 +1820,7 @@ namespace QudAIBrain
                     {
                         targetObj = safeZoneObjs
                             .Where(o => o != null && !o.IsPlayer() && (isProselytize ? CanBeProselytized(o, player) : (!IsCompanion(o, player) && CheckIsEnemy(o, player))) && o.CurrentCell != null)
+                            .Where(o => !isDirectRay || player.HasLOSTo(o))
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
                     }
@@ -1812,6 +1830,18 @@ namespace QudAIBrain
                 if (targetCell == null && !string.IsNullOrEmpty(PreferredDirection) && player.CurrentCell != null)
                 {
                     targetCell = player.CurrentCell.GetCellFromDirection(PreferredDirection, false);
+                }
+
+                if (isDirectRay && targetCell != null && player.CurrentCell != null)
+                {
+                    bool cellHasLOS = false;
+                    try { cellHasLOS = player.HasLOSTo(targetCell); } catch { }
+                    if (!cellHasLOS)
+                    {
+                        UnityEngine.Debug.LogWarning($"[QudAI USE_ABILITY] Aborting direct ray {cmd} on cell {targetCell.X},{targetCell.Y} because line of sight is occluded by walls!");
+                        targetCell = null;
+                        targetObj = null;
+                    }
                 }
 
                 if (!isProselytize)
@@ -2253,6 +2283,42 @@ namespace QudAIBrain
                 catch { }
             }
 
+            if (string.IsNullOrEmpty(step) || step == ".")
+            {
+                // Fallback for narrow corridors / dungeons: search for nearest reachable unexplored cell via pathfinder
+                try
+                {
+                    Cell pCell = player.CurrentCell;
+                    if (pCell?.ParentZone != null)
+                    {
+                        Zone z = pCell.ParentZone;
+                        Cell nearestUnexplored = null;
+                        int bestDist = int.MaxValue;
+                        for (int x = 0; x < z.Width; x++)
+                        {
+                            for (int y = 0; y < z.Height; y++)
+                            {
+                                Cell c = z.GetCell(x, y);
+                                if (c != null && !c.Explored && !c.IsOccluding() && !c.HasWall())
+                                {
+                                    int d = Math.Abs(x - pCell.X) + Math.Abs(y - pCell.Y);
+                                    if (d < bestDist)
+                                    {
+                                        bestDist = d;
+                                        nearestUnexplored = c;
+                                    }
+                                }
+                            }
+                        }
+                        if (nearestUnexplored != null)
+                        {
+                            AutoAct.TryFindPathStep(nearestUnexplored, out step);
+                        }
+                    }
+                }
+                catch { }
+            }
+
             if (!string.IsNullOrEmpty(step) && step != ".")
             {
                 isZoneFullyExplored = false;
@@ -2297,32 +2363,8 @@ namespace QudAIBrain
                 return;
             }
 
-            // 4. Mark zone fully explored ONLY if all cells in the zone are actually explored!
-            int unexpCount = 0;
-            try
-            {
-                if (zone != null)
-                {
-                    for (int x = 0; x < zone.Width; x++)
-                    {
-                        for (int y = 0; y < zone.Height; y++)
-                        {
-                            Cell c = zone.GetCell(x, y);
-                            if (c != null && !c.Explored) unexpCount++;
-                        }
-                    }
-                }
-            }
-            catch { }
-
-            if (unexpCount <= 0)
-            {
-                isZoneFullyExplored = true;
-            }
-            else
-            {
-                isZoneFullyExplored = false;
-            }
+            // 4. If neither native autoexplore nor pathfinder can find an unexplored step, mark zone as explored so AI advances to stairs or exits!
+            isZoneFullyExplored = true;
             autoexplorePosHistory.Clear();
             lastMoveFailed = false;
             lastFailedDir = "";
@@ -2455,6 +2497,7 @@ namespace QudAIBrain
 
                 targetStat.BaseValue += 1;
                 apStat.Penalty += 1;
+                if (apStat.BaseValue > 0) apStat.BaseValue -= 1;
 
                 string msg = $"{{G|[AI Level Up] Allocated 1 AP to {canonicalStat} (Now: {targetStat.Value})}}";
                 MessageQueue.AddPlayerMessage(msg);
@@ -2550,7 +2593,11 @@ namespace QudAIBrain
                     {
                         skills.AddSkill(sEntry.Class);
                         var spStat = player.GetStat("SP");
-                        if (spStat != null) spStat.Penalty += sEntry.Cost;
+                        if (spStat != null)
+                        {
+                            spStat.Penalty += sEntry.Cost;
+                            if (spStat.BaseValue >= sEntry.Cost) spStat.BaseValue -= sEntry.Cost;
+                        }
                         string msg = $"{{G|[AI Level Up] Learned Skill: {sEntry.Name} for {sEntry.Cost} SP}}";
                         MessageQueue.AddPlayerMessage(msg);
                         UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);
@@ -2578,7 +2625,11 @@ namespace QudAIBrain
                                 skills.AddSkill(s.Class);
                                 skills.AddSkill(pEntry.Class);
                                 var spStat = player.GetStat("SP");
-                                if (spStat != null) spStat.Penalty += (s.Cost + pEntry.Cost);
+                                if (spStat != null)
+                                {
+                                    spStat.Penalty += (s.Cost + pEntry.Cost);
+                                    if (spStat.BaseValue >= (s.Cost + pEntry.Cost)) spStat.BaseValue -= (s.Cost + pEntry.Cost);
+                                }
                                 string msg = $"{{G|[AI Level Up] Learned Parent Skill {s.Name} ({s.Cost} SP) and Power {pEntry.Name} ({pEntry.Cost} SP)}}";
                                 MessageQueue.AddPlayerMessage(msg);
                                 UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);
@@ -2591,7 +2642,11 @@ namespace QudAIBrain
                         {
                             skills.AddSkill(pEntry.Class);
                             var spStat = player.GetStat("SP");
-                            if (spStat != null) spStat.Penalty += pEntry.Cost;
+                            if (spStat != null)
+                            {
+                                spStat.Penalty += pEntry.Cost;
+                                if (spStat.BaseValue >= pEntry.Cost) spStat.BaseValue -= pEntry.Cost;
+                            }
                             string msg = $"{{G|[AI Level Up] Learned Power: {pEntry.Name} for {pEntry.Cost} SP}}";
                             MessageQueue.AddPlayerMessage(msg);
                             UnityEngine.Debug.Log("[QudAI LevelUp] " + msg);
@@ -3030,6 +3085,7 @@ namespace QudAIBrain
                     {
                         target = safeZoneObjs
                             .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .Where(o => { try { return player.HasLOSTo(o); } catch { return true; } })
                             .Where(o => pCell.GetDirectionFromCell(o.CurrentCell).Equals(AIPlayerTurnPatch.PreferredDirection, StringComparison.OrdinalIgnoreCase))
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
@@ -3038,6 +3094,7 @@ namespace QudAIBrain
                     {
                         target = safeZoneObjs
                             .Where(o => o != null && !o.IsPlayer() && AIPlayerTurnPatch.CheckIsEnemy(o, player) && o.CurrentCell != null)
+                            .Where(o => { try { return player.HasLOSTo(o); } catch { return true; } })
                             .OrderBy(o => Math.Max(Math.Abs(o.CurrentCell.X - pCell.X), Math.Abs(o.CurrentCell.Y - pCell.Y)))
                             .FirstOrDefault();
                     }
@@ -3055,9 +3112,14 @@ namespace QudAIBrain
                     Cell dirCell = player.CurrentCell.GetCellFromDirection(AIPlayerTurnPatch.PreferredDirection, false);
                     if (dirCell != null)
                     {
-                        __result = dirCell;
-                        UnityEngine.Debug.Log($"[QudAI AIPickTargetPatch] Auto-selected direction cell: {__result.X},{__result.Y}");
-                        return false;
+                        bool dirHasLOS = true;
+                        try { dirHasLOS = player.HasLOSTo(dirCell); } catch { }
+                        if (dirHasLOS)
+                        {
+                            __result = dirCell;
+                            UnityEngine.Debug.Log($"[QudAI AIPickTargetPatch] Auto-selected direction cell: {__result.X},{__result.Y}");
+                            return false;
+                        }
                     }
                 }
 
