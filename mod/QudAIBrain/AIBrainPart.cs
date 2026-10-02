@@ -34,6 +34,7 @@ namespace QudAIBrain
         private static bool lastMoveFailed = false;
         private static string lastFailedDir = "";
         private static bool isZoneFullyExplored = false;
+        private static bool isAutoexploreStuck = false;
         private static string lastZoneId = "";
         private static readonly List<Tuple<int, int>> autoexplorePosHistory = new List<Tuple<int, int>>();
         private static MethodInfo cachedFireMethod = null;
@@ -553,6 +554,7 @@ namespace QudAIBrain
                 {
                     lastZoneId = zoneId;
                     isZoneFullyExplored = false;
+                    isAutoexploreStuck = false;
                     autoexplorePosHistory.Clear();
                 }
 
@@ -906,6 +908,7 @@ namespace QudAIBrain
                 sb.Append($"\"zone_id\": \"{EscapeJson(zoneId)}\",");
                 sb.Append($"\"zone_name\": \"{EscapeJson(zoneName)}\",");
                 sb.Append($"\"zone_fully_explored\": {(isZoneFullyExplored ? "true" : "false")},");
+                sb.Append($"\"autoexplore_stuck\": {(isAutoexploreStuck ? "true" : "false")},");
                 bool isSettlement = IsSettlementZone(currentCell?.ParentZone);
                 sb.Append($"\"is_settlement\": {(isSettlement ? "true" : "false")},");
                 int zoneTier = 1;
@@ -2647,6 +2650,7 @@ namespace QudAIBrain
             {
                 // Persistent cycling: yield to Python brain navigation without falsely claiming the zone is explored
                 isZoneFullyExplored = false;
+                isAutoexploreStuck = true;
                 autoexplorePosHistory.Clear();
                 lastMoveFailed = false;
                 lastFailedDir = "";
@@ -2713,6 +2717,7 @@ namespace QudAIBrain
             if (!string.IsNullOrEmpty(step) && step != ".")
             {
                 isZoneFullyExplored = false;
+                isAutoexploreStuck = false;
                 int energyBefore = player.Energy != null ? player.Energy.Value : 0;
                 bool moved = player.Move(step);
                 if (!moved)
@@ -2756,6 +2761,7 @@ namespace QudAIBrain
 
             // 4. If neither native autoexplore nor pathfinder can find an unexplored step, mark zone as explored so AI advances to stairs or exits!
             isZoneFullyExplored = true;
+            isAutoexploreStuck = false;
             autoexplorePosHistory.Clear();
             lastMoveFailed = false;
             lastFailedDir = "";

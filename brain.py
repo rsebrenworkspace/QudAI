@@ -84,7 +84,8 @@ PROSELYTIZE_EXCLUSIONS = {
     "lichen", "moss", "shroom", "mushroom", "flower", "leaf", "leaves", "wood", "log",
     "boulder", "rock", "stone", "chasm", "fence", "grass", "reed", "shrub", "algae",
     "coral", "strangler", "spore", "seed",
-    "turret", "robot", "chest", "door", "wall", "corpse", "slime", "ooze"
+    "turret", "robot", "chest", "door", "wall", "corpse", "slime", "ooze",
+    "fish", "glowfish", "piranha", "eel"
 }
 
 
@@ -748,6 +749,8 @@ def is_proselytizable(entity, companions=None):
     bp = entity.get("blueprint", "").lower()
     if is_peaceful_npc(ename, bp):
         return False
+    if entity.get("is_swimming") or "[swimming]" in ename:
+        return False
     combined = f"{ename} {bp}"
     if any(ex in combined for ex in PROSELYTIZE_EXCLUSIONS):
         return False
@@ -1282,13 +1285,23 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                                 ename = ent.get("name", "Creature")
                                 if edir:
                                     action_choices.append(f"USE_ABILITY:{cmd}:{edir} (RECRUIT PET: Proselytize adjacent {ename} {edir} to become your permanent combat companion & frontline tank!)")
-                        if not adj_threats:
-                            for ent in sorted([e for e in raw_ents if e.get("dist") in (2, 3)], key=lambda x: x.get("dist", 99)):
+                        # Only offer approach to recruit if healthy, facing a single manageable enemy at distance 2, not taking damage
+                        is_safe_to_approach = (
+                            not adj_threats
+                            and not took_damage
+                            and not is_bleeding
+                            and (hp / max(1, max_hp) >= 0.70)
+                            and len(enemies) <= 1
+                        )
+                        if is_safe_to_approach:
+                            for ent in sorted([e for e in raw_ents if e.get("dist") == 2], key=lambda x: x.get("dist", 99)):
                                 if is_proselytizable(ent, companions=companions):
-                                    s_step = get_step_direction((px, py), (ent.get("tx", px), ent.get("ty", py)))
-                                    if s_step and f"MOVE_{s_step}" in open_moves:
-                                        ename = ent.get("name", "Creature")
-                                        action_choices.append(f"MOVE_{s_step} (RECRUIT PET: Approach {ename} {s_step} to get adjacent and Proselytize into frontline combat tank!)")
+                                    diff = ent.get("difficulty", "Average")
+                                    if diff not in ("Tough", "Very Tough", "Impossible"):
+                                        s_step = get_step_direction((px, py), (ent.get("tx", px), ent.get("ty", py)))
+                                        if s_step and f"MOVE_{s_step}" in open_moves:
+                                            ename = ent.get("name", "Creature")
+                                            action_choices.append(f"MOVE_{s_step} (RECRUIT PET: Approach {ename} {s_step} to get adjacent and Proselytize into frontline combat tank!)")
 
         # Check line-of-fire from player to primary target
         c_lof_clear, c_lof_reason = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest, surroundings=surroundings)
@@ -1500,7 +1513,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
         )
 
     pet_rule = (
-        "0. PET RECRUITMENT DOCTRINE: If you have no active companion/pet and Proselytize is ready, PRIORITIZE RECRUITING A PET over killing prospective combat thralls! Choose the action to Approach or Proselytize the target (e.g. crabs, snapjaws, beasts) to serve as your frontline tank.\n"
+        "0. PET RECRUITMENT OPPORTUNITY: If you have no active companion/pet and Proselytize is ready, you may Proselytize an adjacent beast or approach a lone manageable foe at distance 2 to recruit a frontline tank. "
+        "HOWEVER, in dangerous combat (multiple enemies, taking damage, or facing tough foes), ELIMINATE THREATS WITH RANGED POWERS (Lase, Sunder Mind, Flaming Ray, Guns) FIRST. Never charge into danger to recruit!\n"
         if not has_companion else ""
     )
 
@@ -1772,14 +1786,22 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
                         p_name = ent.get("name", "Creature")
                         return {"action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}", "reason": f"[{template['name']} Fallback] Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"}
 
-            # B. Candidate recruitment approach (dist in 2, 3): close distance instead of killing prospective thralls at range
-            if not adj_threats:
-                for ent in sorted([e for e in raw_entities if e.get("dist") in (2, 3)], key=lambda x: x.get("dist", 99)):
+            # B. Candidate recruitment approach (dist == 2 ONLY): ONLY when healthy, facing a single manageable target, and not taking damage!
+            is_safe_to_approach = (
+                not adj_threats
+                and not game_state.get("took_damage", False)
+                and (hp / max(1, max_hp) >= 0.70)
+                and len(enemies) <= 1
+            )
+            if is_safe_to_approach:
+                for ent in sorted([e for e in raw_entities if e.get("dist") == 2], key=lambda x: x.get("dist", 99)):
                     if is_proselytizable(ent, companions=companions):
-                        s_step = get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
-                        if s_step and f"MOVE_{s_step}" in open_moves:
-                            p_name = ent.get("name", "Creature")
-                            return {"action": f"MOVE_{s_step}", "reason": f"[{template['name']} Fallback] Approaching {p_name} ({s_step}) to recruit into combat pet & frontline tank"}
+                        diff = ent.get("difficulty", "Average")
+                        if diff not in ("Tough", "Very Tough", "Impossible"):
+                            s_step = get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
+                            if s_step and f"MOVE_{s_step}" in open_moves:
+                                p_name = ent.get("name", "Creature")
+                                return {"action": f"MOVE_{s_step}", "reason": f"[{template['name']} Fallback] Approaching {p_name} ({s_step}) to recruit into combat pet & frontline tank"}
 
     # 1. Close-Contact Emergency: Defensive Mental Shielding, Banishment & Evasion
     if adj_threats:
@@ -2050,13 +2072,6 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
                     if p_dir:
                         p_name = ent.get("name", "Creature")
                         return {"action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}", "reason": f"[{template['name']} Fallback] Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"}
-            if not adj_threats:
-                for ent in sorted([e for e in raw_entities if e.get("dist") in (2, 3)], key=lambda x: x.get("dist", 99)):
-                    if is_proselytizable(ent, companions=companions):
-                        s_step = get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
-                        if s_step and f"MOVE_{s_step}" in open_moves:
-                            p_name = ent.get("name", "Creature")
-                            return {"action": f"MOVE_{s_step}", "reason": f"[{template['name']} Fallback] Approaching {p_name} ({s_step}) to recruit into combat pet & frontline tank"}
 
     # 1. Encirclement Break: If surrounded by 2+ adjacent hostiles and open retreat tiles exist
     if len(adj_threats) >= 2 and open_moves:
@@ -2156,6 +2171,13 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
     update_zone_records(game_state)
     update_stair_records(game_state)
+
+    if game_state.get("autoexplore_stuck", False):
+        zid = game_state.get("zone_id", "")
+        if zid:
+            stuck_autoexplore_zones.add(zid)
+        if CURRENT_TRACKED_ZONE:
+            stuck_autoexplore_zones.add(CURRENT_TRACKED_ZONE)
 
     template = build_templates.detect_build(game_state)
 
@@ -2365,11 +2387,11 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                                 "action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}",
                                 "reason": f"Companion Recruitment: Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"
                             }
-                # Nearby candidate approach (dist in 2, 3)
-                for ent in sorted([e for e in raw_entities if e.get("dist") in (2, 3)], key=lambda x: x.get("dist", 99)):
-                    if is_proselytizable(ent, companions=companions):
+                # Nearby candidate approach (dist == 2 ONLY): strictly 1 step away on dry land
+                for ent in raw_entities:
+                    if ent.get("dist") == 2 and is_proselytizable(ent, companions=companions):
                         s_step = get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
-                        if s_step and f"MOVE_{s_step}" in valid_moves:
+                        if s_step and f"MOVE_{s_step}" in valid_moves and not is_swim_move(f"MOVE_{s_step}", surroundings):
                             p_name = ent.get("name", "Creature")
                             return {
                                 "action": f"MOVE_{s_step}",

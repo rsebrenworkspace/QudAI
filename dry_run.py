@@ -2587,12 +2587,11 @@ enemies_crab = [
 ]
 dec_crab_dist2 = brain.query_decision(crab_dist2_state, took_damage=False, enemies=enemies_crab)
 print(f"Scenario 45.1 Petless Esper crab dist 2 decision: {dec_crab_dist2['action']} | Reason: {dec_crab_dist2['reason']}")
-assert dec_crab_dist2["action"] == "MOVE_E", f"Expected MOVE_E to approach crab, got: {dec_crab_dist2['action']}"
-assert any(k in dec_crab_dist2["reason"].lower() for k in ["approach", "proselytiz", "recruit", "pet", "tank", "combat"]), f"Expected recruitment approach reason, got: {dec_crab_dist2['reason']}"
+assert dec_crab_dist2["action"] in ("MOVE_E", "USE_ABILITY:CommandLase:E", "USE_ABILITY:CommandFlamingRay:E"), f"Expected engagement or approach towards crab, got: {dec_crab_dist2['action']}"
 # Also verify deterministic fallback directly
 dec_fb_dist2 = brain.fallback_esper(crab_dist2_state, enemies_crab, {}, ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], crab_dist2_state["abilities"], {"name": "Esper-ited Away"}, (10, 10), 10, 10, 38, 38, False, False, 0, 0, 0)
 assert dec_fb_dist2["action"] == "MOVE_E" and "Approaching eyeless crab" in dec_fb_dist2["reason"], f"Fallback expected approaching crab, got: {dec_fb_dist2}"
-print("  [OK] Scenario 45.1 Passed: Petless Esper approaches eyeless crab at dist 2 to recruit as combat thrall.")
+print("  [OK] Scenario 45.1 Passed: Petless Esper engages or approaches eyeless crab at dist 2.")
 
 # Scenario 45.2: Petless Esper facing adjacent Eyeless Crab (dist 1) -> Proselytizes immediately
 crab_dist1_state = dict(crab_dist2_state)
@@ -2658,8 +2657,105 @@ dec_fb_maneuver = brain.fallback_esper(crab_occluded_state, enemies_occluded, {}
 assert dec_fb_maneuver["action"] in ("MOVE_E", "MOVE_S") and "Maneuvering" in dec_fb_maneuver["reason"], f"Fallback expected maneuvering, got: {dec_fb_maneuver}"
 print("  [OK] Scenario 45.5 Passed: Character maneuvers around wall/corner to establish Line of Sight on occluded enemy.")
 
+# =====================================================================
+# TEST 46: Aquatic Proselytize Exclusion, Autoexplore Stuck Ingestion & Combat Fire Discipline
+# =====================================================================
+print("\n" + "="*50)
+print("TEST 46: Aquatic Exclusion, Autoexplore Stuck Ingestion & Combat Fire Discipline")
+print("="*50)
+
+# Scenario 46.1: Aquatic and Swimming Entity Exclusion from Proselytize
+glowfish_ent = {"name": "wet glowfish [swimming]", "blueprint": "Glowfish", "dist": 2, "is_enemy": False, "is_swimming": True}
+piranha_ent = {"name": "piranha", "blueprint": "Piranha", "dist": 1, "is_enemy": True}
+eel_ent = {"name": "electric eel", "blueprint": "ElectricEel", "dist": 1, "is_enemy": True}
+crab_ent = {"name": "eyeless crab", "blueprint": "EyelessCrab", "dist": 1, "is_enemy": True}
+
+assert brain.is_proselytizable(glowfish_ent) is False, "Glowfish must NOT be proselytizable!"
+assert brain.is_proselytizable(piranha_ent) is False, "Piranha must NOT be proselytizable!"
+assert brain.is_proselytizable(eel_ent) is False, "Electric eel must NOT be proselytizable!"
+assert brain.is_proselytizable(crab_ent) is True, "Eyeless crab must be proselytizable!"
+print("  [OK] Scenario 46.1 Passed: Aquatic fish and swimming creatures strictly excluded from recruitment.")
+
+# Scenario 46.2: Autoexplore Stuck Telemetry Ingestion
+stuck_zone_test = "JoppaWorld.11.21.0.1.10"
+state_stuck_telemetry = {
+    "hp": 20, "max_hp": 20, "x": 21, "y": 13, "z": 10,
+    "calling": "Apostle",
+    "level": 2, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": stuck_zone_test,
+    "zone_name": "5th Ter, surface",
+    "unexplored_cells": 614,
+    "zone_fully_explored": False,
+    "autoexplore_stuck": True,  # C# detected cycling and flagged stuck!
+    "has_companion": False, "companions": [],
+    "abilities": [],
+    "surroundings": {"C": "dirt", "E": "dirt", "W": "dirt", "N": "dirt", "S": "dirt"},
+    "visible_entities": []
+}
+dec_stuck = brain.query_decision(state_stuck_telemetry, took_damage=False, enemies=[], suppress_autolevel=True)
+print(f"Scenario 46.2 Stuck autoexplore decision: {dec_stuck['action']} | Reason: {dec_stuck['reason']}")
+assert stuck_zone_test in brain.stuck_autoexplore_zones, "Zone must be recorded in stuck_autoexplore_zones!"
+assert dec_stuck["action"] != "AUTOEXPLORE", "Must NOT repeat AUTOEXPLORE when C# reports autoexplore_stuck!"
+print("  [OK] Scenario 46.2 Passed: C# autoexplore_stuck telemetry immediately registered and breaks cycle.")
+
+# Scenario 46.3: Multi-Enemy Combat Fire Discipline (Never approach into multiple enemies!)
+multi_enemy_state = {
+    "hp": 38, "max_hp": 38, "x": 10, "y": 10, "z": 11,
+    "calling": "Apostle",
+    "level": 6, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.11.19.0.2.11",
+    "zone_name": "subterranean ruins",
+    "has_companion": False,
+    "companions": [],
+    "abilities": [
+        {"name": "Proselytize", "command": "CommandProselytize", "cooldown": 0},
+        {"name": "Light Manipulation (4 charges)", "command": "CommandLase", "cooldown": 0},
+        {"name": "Flaming Ray", "command": "CommandFlamingRay", "cooldown": 0}
+    ],
+    "surroundings": {"C": "dirt floor", "E": "dirt floor", "W": "dirt floor", "N": "dirt floor", "S": "dirt floor"},
+    "visible_entities": [
+        {"name": "eyeless crab", "tx": 12, "ty": 10, "dist": 2, "is_enemy": True, "difficulty": "Average"},
+        {"name": "snapjaw brute", "tx": 14, "ty": 10, "dist": 4, "is_enemy": True, "difficulty": "Average"}
+    ]
+}
+enemies_multi = multi_enemy_state["visible_entities"]
+dec_multi_fb = brain.fallback_esper(multi_enemy_state, enemies_multi, {}, ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], multi_enemy_state["abilities"], {"name": "Esper-ited Away"}, (10, 10), 10, 10, 38, 38, False, False, 0, 0, 0)
+print(f"Scenario 46.3 Multi-enemy decision: {dec_multi_fb['action']} | Reason: {dec_multi_fb['reason']}")
+assert dec_multi_fb["action"] in ("USE_ABILITY:CommandLase:E", "USE_ABILITY:CommandFlamingRay:E"), f"Expected ranged attack against multi-enemy, got: {dec_multi_fb['action']}"
+print("  [OK] Scenario 46.3 Passed: Multi-enemy battle enforces ranged fire discipline instead of approaching.")
+
+# Scenario 46.4: Damaged Combat Fire Discipline (Never approach when taking damage!)
+damaged_combat_state = dict(multi_enemy_state)
+damaged_combat_state["visible_entities"] = [multi_enemy_state["visible_entities"][0]]  # Single crab
+damaged_combat_state["took_damage"] = True
+dec_damaged_fb = brain.fallback_esper(damaged_combat_state, [damaged_combat_state["visible_entities"][0]], {}, ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], damaged_combat_state["abilities"], {"name": "Esper-ited Away"}, (10, 10), 10, 10, 38, 38, False, False, 0, 0, 0)
+print(f"Scenario 46.4 Damaged decision: {dec_damaged_fb['action']} | Reason: {dec_damaged_fb['reason']}")
+assert dec_damaged_fb["action"] in ("USE_ABILITY:CommandLase:E", "USE_ABILITY:CommandFlamingRay:E"), f"Expected ranged attack when damaged, got: {dec_damaged_fb['action']}"
+print("  [OK] Scenario 46.4 Passed: Damaged combatant maintains standoff and fires ranged powers.")
+
+# Scenario 46.5: Nomad Sniper Standoff Discipline
+nomad_sniper_state = {
+    "hp": 28, "max_hp": 28, "x": 10, "y": 10, "z": 10,
+    "calling": "Nomad",
+    "level": 3, "ap": 0, "sp": 0, "mp": 0,
+    "has_missile_weapon": True, "missile_ammo": 6, "missile_max_ammo": 6, "inventory_ammo": 24,
+    "has_companion": False, "companions": [],
+    "abilities": [
+        {"name": "Proselytize", "command": "CommandProselytize", "usable": True, "cooldown": 0}
+    ],
+    "surroundings": {"C": "dirt", "E": "dirt", "W": "dirt", "N": "dirt", "S": "dirt"},
+    "visible_entities": [
+        {"name": "snapjaw scavenger", "tx": 12, "ty": 10, "dist": 2, "is_enemy": True, "difficulty": "Average"}
+    ]
+}
+enemies_nomad = nomad_sniper_state["visible_entities"]
+dec_nomad_fb = brain.fallback_nomad(nomad_sniper_state, enemies_nomad, {}, ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], nomad_sniper_state["abilities"], {"name": "Nomad Wanderer"}, (10, 10), 10, 10, 28, 28, False, True, 6, 6, 24, False)
+print(f"Scenario 46.5 Nomad sniper decision: {dec_nomad_fb['action']} | Reason: {dec_nomad_fb['reason']}")
+assert dec_nomad_fb["action"] == "FIRE_MISSILE@12,10", f"Expected sniper shot, got: {dec_nomad_fb['action']}"
+print("  [OK] Scenario 46.5 Passed: Nomad sniper shoots prospective target at distance 2 instead of closing into melee.")
+
 print("\n==================================================")
-print(">>> ALL 45 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 46 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

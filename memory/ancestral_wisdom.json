@@ -38,5 +38,15 @@
     "death_reason": "You were @@bitten to death by a snapjaw warrior.",
     "lesson": "Avoid lingering near snapjaw-infested marsh edges\u2014retreat or engage only with ranged support.",
     "timestamp": "2026-10-02T05:42:38.521382"
+  },
+  {
+    "generation": 5,
+    "name": "Moshrushid",
+    "level": 6,
+    "turns": 3003,
+    "zone": "subterranean desert canyon, 1 stratum deep",
+    "death_reason": "You were @@killed by an |eyeless crab## with a |crab claw##.",
+    "lesson": "Never butcher near eyeless crabs\u2014clear the area first or risk clawed demise.",
+    "timestamp": "2026-10-02T10:24:13.026341"
   }
 ]

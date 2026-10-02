@@ -758,6 +758,49 @@
       - 45.5: Occluded crab behind corridor corner triggers tactical maneuver around wall to establish line of sight.
     - All 45 verification tests pass successfully. Mod deployed and committed to git.
 
+### Iteration 36: Exploration Flow Restoration, Autoexplore Oscillation Telemetry Ingestion & Combat Fire Discipline
+- **Problem Statement:**
+  1. *Movement Inconsistency & Twitching*:
+     - During exploration in wilderness/salt marsh zones, characters stuttered or veered off path instead of autoexploring smoothly.
+     - Forensic log analysis revealed two separate culprits:
+       - **Unconditional Dist 2-3 Stalking in Exploration (Phase A Step 4B)**: Step 4B scanned for ANY proselytizable entity within distance 2–3 before autoexplore, overriding `AUTOEXPLORE` to step toward ambient critters (such as glowfish in pools or domestic animals in pens).
+       - **Autoexplore Cycling Telemetry Desync**: In `AIBrainPart.cs`, when native autoexplore hit a coordinate cycle (`isCycling`), it called `player.UseEnergy(1000, "Pass")` and cleared its history without setting `isZoneFullyExplored` or exporting any stuck flag. Python saw an unexplored zone with non-zero unrevealed cells and repeatedly re-dispatched `AUTOEXPLORE`, locking into an oscillation of `AUTOEXPLORE -> C# Pass -> AUTOEXPLORE -> C# Pass`.
+  2. *Combat Seemed "A Little Off" (Over-Prioritizing Recruitment Over Killing)*:
+     - In `query_llm_decision`, system prompt rule #0 commanded: `"PRIORITIZE RECRUITING A PET over killing prospective combat thralls!"` and generated approach actions for all candidates within distance 2–3.
+     - In `fallback_esper`, a block at the very top unconditionally returned `MOVE_<step>` towards candidates at distance 2–3 before evaluating Sunder Mind, Stunning Force, Lase, or Flaming Ray.
+     - As a result, casters and snipers facing dangerous or multiple enemies walked into melee range without firing ready offensive abilities.
+  3. *Aquatic Companion Wastage*:
+     - Glowfish were not in `PROSELYTIZE_EXCLUSIONS`. Characters proselytized multiple glowfish in water pools, filling companion slots with creatures that cannot walk on dry land or follow into dungeons.
+- **Solution:**
+  - **In-Engine Cycling Telemetry Export (`AIBrainPart.cs`):**
+    - Added static `isAutoexploreStuck` flag: set to `true` when `isCycling` is detected; reset on zone change or successful movement.
+    - Exported `"autoexplore_stuck": true/false` in `DumpStateJson`.
+  - **Autoexplore Stuck Ingestion & Cycle Breakout (`brain.py`):**
+    - In `query_decision`, immediately records `zone_id` into `stuck_autoexplore_zones` upon receiving `"autoexplore_stuck": true`.
+    - Suppresses `AUTOEXPLORE` in stuck zones, cleanly transitioning to Step 8 (macro sector navigation), Step 9 (local frontier scouting), or Step 10 (zone transitions).
+  - **Restricted Exploration Recruitment (Phase A Step 4B):**
+    - Removed distance 3 candidate chasing.
+    - Distance 2 recruitment approach is strictly restricted to dry-land reachable tiles (`not is_swim_move`).
+  - **Combat Fire Discipline & Safe Recruitment Bounds (`query_llm_decision`, `fallback_esper`, `fallback_nomad`):**
+    - In `query_llm_decision` and `fallback_esper`, recruitment approach (`dist == 2`) is strictly gated by safety:
+      - Only for lone enemies (`len(enemies) <= 1`).
+      - Only when healthy (`hp_ratio >= 0.70`, `not took_damage`, `not is_bleeding`).
+      - Only for manageable difficulty (`diff not in ("Tough", "Very Tough", "Impossible")`).
+      - In multi-enemy combat or when taking damage, the agent strictly prioritizes offensive powers (Lase, Sunder Mind, Flaming Ray, guns).
+    - In `fallback_nomad`, removed candidate approach entirely so rifle snipers maintain standoff distance and snipe.
+    - Updated system prompt rule #0 from a mandatory imperative to an opportunistic rule that enforces eliminating threats first in dangerous situations.
+  - **Aquatic & Swimming Entity Exclusion (`brain.py`):**
+    - Added `"fish"`, `"glowfish"`, `"piranha"`, and `"eel"` to `PROSELYTIZE_EXCLUSIONS`.
+    - Added `entity.get("is_swimming") or "[swimming]" in ename` exclusion to `is_proselytizable`.
+  - **Verification (Test 46):**
+    - Added Test 46 in `dry_run.py` verifying:
+      - 46.1: Aquatic and swimming creatures rejected by `is_proselytizable`.
+      - 46.2: `autoexplore_stuck` telemetry ingested and breaks autoexplore loop.
+      - 46.3: Multi-enemy combat enforces ranged fire discipline instead of approaching.
+      - 46.4: Damaged combatant maintains standoff and fires offensive powers.
+      - 46.5: Nomad sniper shoots target at distance 2 rather than closing into melee.
+    - All 46 verification tests pass cleanly. Mod deployed to game directory.
+
 ---
 
 ## 4. Current Codebase Specification (v1.3.2)

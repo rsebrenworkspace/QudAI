@@ -1,0 +1,284 @@
+{
+  "telemetry": {
+    "player_name": "Moshrushid",
+    "level": 6,
+    "turns": 3003,
+    "zone": "subterranean desert canyon, 1 stratum deep",
+    "death_reason": "You were @@killed by an |eyeless crab## with a |crab claw##.",
+    "death_category": "killed",
+    "timestamp": "2026-10-02T10:24:10.2137150Z"
+  },
+  "recent_actions": [
+    {
+      "action": "REST",
+      "reason": "Safe resting: HP at 71% (< 75%)",
+      "pos": [
+        47,
+        10
+      ],
+      "hp": 27
+    },
+    {
+      "action": "REST",
+      "reason": "Safe resting: HP at 71% (< 75%)",
+      "pos": [
+        47,
+        10
+      ],
+      "hp": 27
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[Loop Breaker] Action repeated 2x at (47, 10). Forcing reposition MOVE_W.",
+      "pos": [
+        47,
+        10
+      ],
+      "hp": 28
+    },
+    {
+      "action": "REST",
+      "reason": "Safe resting: HP at 73% (< 75%)",
+      "pos": [
+        46,
+        10
+      ],
+      "hp": 28
+    },
+    {
+      "action": "REST",
+      "reason": "Safe resting: HP at 73% (< 75%)",
+      "pos": [
+        46,
+        10
+      ],
+      "hp": 28
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[Loop Breaker] Action repeated 2x at (46, 10). Forcing reposition MOVE_NW.",
+      "pos": [
+        46,
+        10
+      ],
+      "hp": 28
+    },
+    {
+      "action": "MOVE_SE",
+      "reason": "Water Traversal: Navigating across water toward unexplored sector at (50, 12) (954 unrevealed cells)",
+      "pos": [
+        45,
+        9
+      ],
+      "hp": 29
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:N",
+      "reason": "[Loop Breaker] Oscillation detected at (46, 10). Escaping cycle towards forward exit North zone exit (novel) via native engine pathfinder.",
+      "pos": [
+        46,
+        10
+      ],
+      "hp": 29
+    },
+    {
+      "action": "MOVE_SE",
+      "reason": "Water Traversal: Navigating across water toward unexplored sector at (50, 12) (954 unrevealed cells)",
+      "pos": [
+        45,
+        11
+      ],
+      "hp": 29
+    },
+    {
+      "action": "MOVE_E",
+      "reason": "Water Traversal: Navigating across water toward unexplored sector at (50, 12) (954 unrevealed cells)",
+      "pos": [
+        46,
+        12
+      ],
+      "hp": 29
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.90s] Establish clear LoS for Lase or Proselytize without risking pet.",
+      "pos": [
+        47,
+        12
+      ],
+      "hp": 24
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.85s] Establish clear LoS for ranged attack while kiting safely away from threat.",
+      "pos": [
+        48,
+        11
+      ],
+      "hp": 20
+    },
+    {
+      "action": "BUTCHER",
+      "reason": "Survival: Butchering animal corpse for meat & cooking ingredients",
+      "pos": [
+        49,
+        10
+      ],
+      "hp": 20
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.84s] Establish clear LoS for Lase on vine while maintaining pet safety.",
+      "pos": [
+        49,
+        10
+      ],
+      "hp": 19
+    },
+    {
+      "action": "BUTCHER",
+      "reason": "Survival: Butchering animal corpse for meat & cooking ingredients",
+      "pos": [
+        50,
+        9
+      ],
+      "hp": 19
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.89s] Establish clear LoS for Lase or Proselytize without risking pet.",
+      "pos": [
+        50,
+        9
+      ],
+      "hp": 17
+    },
+    {
+      "action": "BUTCHER",
+      "reason": "Survival: Butchering animal corpse for meat & cooking ingredients",
+      "pos": [
+        51,
+        8
+      ],
+      "hp": 17
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.91s] Establish clear LoS for ranged attack while kiting safely away from trivial threat.",
+      "pos": [
+        51,
+        8
+      ],
+      "hp": 14
+    },
+    {
+      "action": "BUTCHER",
+      "reason": "Survival: Butchering animal corpse for meat & cooking ingredients",
+      "pos": [
+        52,
+        7
+      ],
+      "hp": 14
+    },
+    {
+      "action": "MOVE_E",
+      "reason": "[LLM in 2.85s] Establish clear LoS for ranged blast while kiting safely away from vine.",
+      "pos": [
+        52,
+        7
+      ],
+      "hp": 12
+    },
+    {
+      "action": "BUTCHER",
+      "reason": "Survival: Butchering animal corpse for meat & cooking ingredients",
+      "pos": [
+        53,
+        7
+      ],
+      "hp": 12
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.86s] Establish clear LoS for ranged blast while kiting safely from vine.",
+      "pos": [
+        53,
+        7
+      ],
+      "hp": 7
+    },
+    {
+      "action": "BUTCHER",
+      "reason": "Survival: Butchering animal corpse for meat & cooking ingredients",
+      "pos": [
+        54,
+        6
+      ],
+      "hp": 7
+    },
+    {
+      "action": "BUTCHER",
+      "reason": "Survival: Butchering animal corpse for meat & cooking ingredients",
+      "pos": [
+        54,
+        6
+      ],
+      "hp": 7
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.89s] Establish clear LoS for Lase or Proselytize without risking pet.",
+      "pos": [
+        54,
+        6
+      ],
+      "hp": 4
+    },
+    {
+      "action": "REST",
+      "reason": "Safe resting: HP at 10% (< 75%)",
+      "pos": [
+        55,
+        5
+      ],
+      "hp": 4
+    },
+    {
+      "action": "BUTCHER",
+      "reason": "Survival: Butchering animal corpse for meat & cooking ingredients",
+      "pos": [
+        55,
+        5
+      ],
+      "hp": 4
+    },
+    {
+      "action": "BUTCHER",
+      "reason": "Survival: Butchering animal corpse for meat & cooking ingredients",
+      "pos": [
+        55,
+        5
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[Loop Breaker] Action repeated 2x at (55, 5). Forcing reposition MOVE_NW.",
+      "pos": [
+        55,
+        5
+      ],
+      "hp": 4
+    },
+    {
+      "action": "BUTCHER",
+      "reason": "Survival: Butchering animal corpse for meat & cooking ingredients",
+      "pos": [
+        54,
+        4
+      ],
+      "hp": 4
+    }
+  ],
+  "archived_at": "2026-10-02T10:24:10.490615"
+}
