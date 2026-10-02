@@ -2548,8 +2548,118 @@ assert (13, 9) in brain.CHARMED_COMPANION_COORDS
 assert (14, 10) not in brain.CHARMED_COMPANION_COORDS
 print("  [OK] Scenario 44.4 Passed: Companion memory persists across turns and coordinates track dynamically.")
 
+# =====================================================================
+# TEST 45: Dungeon Progress, Eyeless Crab Combat Engagement & High-Priority Proselytize
+# =====================================================================
+print("\n" + "="*50)
+print("TEST 45: Dungeon Progress, Eyeless Crab Combat Engagement & Proselytize Priority")
+print("="*50)
+
+# Clear companion caches
+brain.CHARMED_COMPANION_NAMES.clear()
+brain.CHARMED_COMPANION_COORDS.clear()
+
+dungeon_zone = "JoppaWorld.11.19.0.2.11"
+brain.current_zone_id = dungeon_zone
+brain.CURRENT_TRACKED_ZONE = dungeon_zone
+
+# Scenario 45.1: Petless Esper facing an Eyeless Crab at Distance 2 -> Approaches to Recruit
+crab_dist2_state = {
+    "hp": 38, "max_hp": 38, "x": 10, "y": 10, "z": 11,
+    "calling": "Apostle",
+    "level": 6, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": dungeon_zone,
+    "zone_name": "subterranean ruins",
+    "has_companion": False,
+    "companions": [],
+    "abilities": [
+        {"name": "Proselytize", "command": "CommandProselytize", "cooldown": 0},
+        {"name": "Light Manipulation (4 charges)", "command": "CommandLase", "cooldown": 0},
+        {"name": "Flaming Ray", "command": "CommandFlamingRay", "cooldown": 0}
+    ],
+    "surroundings": {"C": "dirt floor", "E": "dirt floor", "W": "dirt floor", "N": "dirt floor", "S": "dirt floor"},
+    "visible_entities": [
+        {"name": "eyeless crab", "tx": 12, "ty": 10, "dist": 2, "is_enemy": True, "difficulty": "Average"}
+    ]
+}
+enemies_crab = [
+    {"name": "eyeless crab", "tx": 12, "ty": 10, "dist": 2, "is_enemy": True, "difficulty": "Average"}
+]
+dec_crab_dist2 = brain.query_decision(crab_dist2_state, took_damage=False, enemies=enemies_crab)
+print(f"Scenario 45.1 Petless Esper crab dist 2 decision: {dec_crab_dist2['action']} | Reason: {dec_crab_dist2['reason']}")
+assert dec_crab_dist2["action"] == "MOVE_E", f"Expected MOVE_E to approach crab, got: {dec_crab_dist2['action']}"
+assert any(k in dec_crab_dist2["reason"].lower() for k in ["approach", "proselytiz", "recruit", "pet", "tank", "combat"]), f"Expected recruitment approach reason, got: {dec_crab_dist2['reason']}"
+# Also verify deterministic fallback directly
+dec_fb_dist2 = brain.fallback_esper(crab_dist2_state, enemies_crab, {}, ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], crab_dist2_state["abilities"], {"name": "Esper-ited Away"}, (10, 10), 10, 10, 38, 38, False, False, 0, 0, 0)
+assert dec_fb_dist2["action"] == "MOVE_E" and "Approaching eyeless crab" in dec_fb_dist2["reason"], f"Fallback expected approaching crab, got: {dec_fb_dist2}"
+print("  [OK] Scenario 45.1 Passed: Petless Esper approaches eyeless crab at dist 2 to recruit as combat thrall.")
+
+# Scenario 45.2: Petless Esper facing adjacent Eyeless Crab (dist 1) -> Proselytizes immediately
+crab_dist1_state = dict(crab_dist2_state)
+crab_dist1_state["surroundings"] = {"C": "dirt floor", "E": "[HOSTILE: eyeless crab]", "W": "dirt floor", "N": "dirt floor", "S": "dirt floor"}
+crab_dist1_state["visible_entities"] = [
+    {"name": "eyeless crab", "tx": 11, "ty": 10, "dist": 1, "dir": "E", "is_enemy": True, "difficulty": "Average"}
+]
+enemies_crab1 = [
+    {"name": "eyeless crab", "tx": 11, "ty": 10, "dist": 1, "is_enemy": True, "difficulty": "Average"}
+]
+dec_crab_dist1 = brain.query_decision(crab_dist1_state, took_damage=False, enemies=enemies_crab1)
+print(f"Scenario 45.2 Petless Esper crab dist 1 decision: {dec_crab_dist1['action']} | Reason: {dec_crab_dist1['reason']}")
+assert dec_crab_dist1["action"] == "USE_ABILITY:CommandProselytize:E", f"Expected Proselytize on adjacent crab, got: {dec_crab_dist1['action']}"
+assert any(k in dec_crab_dist1["reason"].lower() for k in ["proselytiz", "recruit", "pet", "tank", "companion"]), f"Expected proselytize reason, got: {dec_crab_dist1['reason']}"
+print("  [OK] Scenario 45.2 Passed: Petless Esper proselytizes adjacent eyeless crab into combat companion.")
+
+# Scenario 45.3: Esper with companion already active facing crab at distance 2 -> Attacks with Lase instead of kiting
+crab_with_pet_state = dict(crab_dist2_state)
+crab_with_pet_state["has_companion"] = True
+crab_with_pet_state["companions"] = [{"name": "snapjaw thrall", "tx": 10, "ty": 9, "dist": 1}]
+dec_crab_attack = brain.query_decision(crab_with_pet_state, took_damage=False, enemies=enemies_crab)
+print(f"Scenario 45.3 Esper with companion crab dist 2 decision: {dec_crab_attack['action']} | Reason: {dec_crab_attack['reason']}")
+assert dec_crab_attack["action"] in ("USE_ABILITY:CommandLase:E", "USE_ABILITY:CommandFlamingRay:E"), f"Expected Lase/Ray attack on crab at dist 2, got: {dec_crab_attack['action']}"
+assert any(k in dec_crab_attack["reason"].lower() for k in ["lase", "flaming", "beam", "ray", "damage", "attack", "dps"]), f"Expected Lase/Ray attack reason, got: {dec_crab_attack['reason']}"
+# Also verify deterministic fallback directly
+dec_fb_attack = brain.fallback_esper(crab_with_pet_state, enemies_crab, {}, ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], ["MOVE_E", "MOVE_W", "MOVE_N", "MOVE_S"], crab_with_pet_state["abilities"], {"name": "Esper-ited Away"}, (10, 10), 10, 10, 38, 38, False, False, 0, 0, 0)
+assert dec_fb_attack["action"] == "USE_ABILITY:CommandLase:E", f"Fallback expected Lase, got: {dec_fb_attack}"
+print("  [OK] Scenario 45.3 Passed: Esper attacks eyeless crab at distance 2 with ready Lase instead of backpedaling.")
+
+# Scenario 45.4: Subterranean zone with stairs down nearby but hostile eyeless crab visible -> Does NOT flee to stairs
+stairs_and_crab_state = dict(crab_dist2_state)
+brain.KNOWN_STAIRS_DOWN[dungeon_zone] = {"tx": 10, "ty": 12, "name": "stairs down", "req_level": 3, "priority": 2}
+stairs_and_crab_state["x"] = 10
+stairs_and_crab_state["y"] = 10
+stairs_and_crab_state["zone_fully_explored"] = False
+dec_no_flee = brain.query_decision(stairs_and_crab_state, took_damage=False, enemies=enemies_crab)
+print(f"Scenario 45.4 Stairs and crab decision: {dec_no_flee['action']} | Reason: {dec_no_flee['reason']}")
+assert dec_no_flee["action"] != "MOVE_S", f"Must NOT flee towards stairs down at (10, 12) while crab is present! Got: {dec_no_flee['action']}"
+assert dec_no_flee["action"] in ("MOVE_E", "USE_ABILITY:CommandLase:E", "USE_ABILITY:CommandFlamingRay:E"), f"Must engage/approach crab, got: {dec_no_flee['action']}"
+print("  [OK] Scenario 45.4 Passed: Character does not abandon combat to navigate to stairs down.")
+
+# Scenario 45.5: Eyeless crab occluded by corridor corner -> Maneuvers around corner to establish Line of Sight
+crab_occluded_state = dict(crab_with_pet_state)
+crab_occluded_state["visible_entities"] = [
+    {"name": "eyeless crab", "tx": 12, "ty": 12, "dist": 2, "is_enemy": True, "difficulty": "Average"}
+]
+enemies_occluded = [
+    {"name": "eyeless crab", "tx": 12, "ty": 12, "dist": 2, "is_enemy": True, "difficulty": "Average"}
+]
+# Wall blocks diagonal (11, 11)
+crab_occluded_state["surroundings"] = {
+    "C": "dirt floor",
+    "E": "dirt floor",
+    "S": "dirt floor",
+    "SE": "[BLOCKED: solid rock wall]"
+}
+dec_maneuver = brain.query_decision(crab_occluded_state, took_damage=False, enemies=enemies_occluded)
+print(f"Scenario 45.5 Occluded crab decision: {dec_maneuver['action']} | Reason: {dec_maneuver['reason']}")
+assert dec_maneuver["action"] in ("MOVE_E", "MOVE_S"), f"Expected maneuvering move E or S, got: {dec_maneuver['action']}"
+assert any(k in dec_maneuver["reason"].lower() for k in ["maneuver", "line of sight", "los", "corner", "wall", "corridor", "advance"]), f"Expected maneuvering for LOS reason, got: {dec_maneuver['reason']}"
+# Also verify deterministic fallback directly
+dec_fb_maneuver = brain.fallback_esper(crab_occluded_state, enemies_occluded, {}, ["MOVE_E", "MOVE_S"], ["MOVE_E", "MOVE_S"], crab_occluded_state["abilities"], {"name": "Esper-ited Away"}, (10, 10), 10, 10, 38, 38, False, False, 0, 0, 0)
+assert dec_fb_maneuver["action"] in ("MOVE_E", "MOVE_S") and "Maneuvering" in dec_fb_maneuver["reason"], f"Fallback expected maneuvering, got: {dec_fb_maneuver}"
+print("  [OK] Scenario 45.5 Passed: Character maneuvers around wall/corner to establish Line of Sight on occluded enemy.")
+
 print("\n==================================================")
-print(">>> ALL 44 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 45 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

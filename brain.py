@@ -1282,6 +1282,13 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                                 ename = ent.get("name", "Creature")
                                 if edir:
                                     action_choices.append(f"USE_ABILITY:{cmd}:{edir} (RECRUIT PET: Proselytize adjacent {ename} {edir} to become your permanent combat companion & frontline tank!)")
+                        if not adj_threats:
+                            for ent in sorted([e for e in raw_ents if e.get("dist") in (2, 3)], key=lambda x: x.get("dist", 99)):
+                                if is_proselytizable(ent, companions=companions):
+                                    s_step = get_step_direction((px, py), (ent.get("tx", px), ent.get("ty", py)))
+                                    if s_step and f"MOVE_{s_step}" in open_moves:
+                                        ename = ent.get("name", "Creature")
+                                        action_choices.append(f"MOVE_{s_step} (RECRUIT PET: Approach {ename} {s_step} to get adjacent and Proselytize into frontline combat tank!)")
 
         # Check line-of-fire from player to primary target
         c_lof_clear, c_lof_reason = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest, surroundings=surroundings)
@@ -1430,7 +1437,10 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 dx, dy = CARDINAL_OFFSETS.get(vdir, (0, 0))
                 new_dist = max(abs((px + dx) - c_tx), abs((py + dy) - c_ty))
                 if new_dist < c_dist:
-                    action_choices.append(f"{vm} (Advance {vdir} towards {c_name} [dist {c_dist} -> {new_dist}])")
+                    if not c_lof_clear:
+                        action_choices.append(f"{vm} (Tactical Maneuver {vdir} around corner to establish clear Line of Sight on {c_name})")
+                    else:
+                        action_choices.append(f"{vm} (Advance {vdir} towards {c_name} [dist {c_dist} -> {new_dist}])")
                 elif new_dist > c_dist:
                     action_choices.append(f"{vm} (Backpedal/Reposition {vdir} away from {c_name} [dist {c_dist} -> {new_dist}])")
                 else:
@@ -1441,16 +1451,24 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 action_choices.append(f"{vm} (Reposition {vdir})")
 
         # 7. STANDOFF & COOLDOWN RECHARGE (Casters / Ranged)
+        has_ready_offensive = any(
+            is_ability_ready(ab) and any(k in (f"{ab.get('name')} {ab.get('command')}").lower() for k in ["lase", "sunder", "ray", "stunning", "cryo", "pyro", "syphon"])
+            for ab in abilities
+        )
         if is_caster_or_ranged and enemies and not adj_threats:
-            action_choices.append("WAIT (Hold safe standoff distance & recharge Light Manipulation laser charges / mental cooldowns)")
+            if not has_ready_offensive or (c_lof_clear and c_dist >= 4):
+                action_choices.append("WAIT (Hold safe standoff distance & recharge Light Manipulation laser charges / mental cooldowns)")
 
         if is_caster_or_ranged and closest and c_dist <= 3 and open_moves:
-            for vm in open_moves:
-                vdir = vm[5:]
-                dx, dy = CARDINAL_OFFSETS.get(vdir, (0, 0))
-                new_dist = max(abs((px + dx) - c_tx), abs((py + dy) - c_ty))
-                if new_dist > c_dist:
-                    action_choices.append(f"{vm} (Kite backpedal {vdir} away from {c_name} to maintain safe standoff)")
+            # Only kite backpedal if offensive abilities are depleted or low HP (< 50%)
+            hp_ratio_val = hp / max(1, max_hp)
+            if not has_ready_offensive or hp_ratio_val < 0.50:
+                for vm in open_moves:
+                    vdir = vm[5:]
+                    dx, dy = CARDINAL_OFFSETS.get(vdir, (0, 0))
+                    new_dist = max(abs((px + dx) - c_tx), abs((py + dy) - c_ty))
+                    if new_dist > c_dist:
+                        action_choices.append(f"{vm} (Kite backpedal {vdir} away from {c_name} to maintain safe standoff)")
 
     ancestral_lore = chronicler.format_ancestral_memory_for_prompt()
     class_name = template.get("name", "Nomad Wanderer")
@@ -1468,8 +1486,10 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     if is_caster_or_ranged:
         rule2 = (
             "2. CASTER / RANGED ATTACK & KITING PRIORITY: Fire ranged powers (Lase, Sunder Mind, Stunning Force, Elemental Rays, Guns) "
-            "whenever available. When abilities or laser charges are cooling down, MAINTAIN SAFE DISTANCE (kiting backpedal or WAIT) "
-            "to let charges recharge and mental cooldowns reset. NEVER voluntarily charge into melee to strike with a frail staff! "
+            "whenever available. If Line of Sight is obstructed by a corner or corridor bend, MANEUVER around the corner to gain clear Line of Sight so you can blast the enemy with ranged powers or approach to Proselytize. "
+            "Maneuvering to establish Line of Sight or approaching to recruit a pet is NOT charging into melee; it is required tactical positioning! "
+            "Only when offensive abilities or laser charges are cooling down should you MAINTAIN SAFE DISTANCE (kiting backpedal or WAIT). "
+            "NEVER voluntarily strike enemies with a frail wooden staff in melee! "
             "If an enemy breaches adjacent melee range, prioritize EMERGENCY DEFENSE (Teleport Other banish, Force Bubble barrier, Intimidate fear) "
             "or Sprinting/Retreating into open ground!"
         )
@@ -1479,10 +1499,16 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
             "YOU MUST ATTACK. Never waste a turn walking away when you can already strike or charge the enemy!"
         )
 
+    pet_rule = (
+        "0. PET RECRUITMENT DOCTRINE: If you have no active companion/pet and Proselytize is ready, PRIORITIZE RECRUITING A PET over killing prospective combat thralls! Choose the action to Approach or Proselytize the target (e.g. crabs, snapjaws, beasts) to serve as your frontline tank.\n"
+        if not has_companion else ""
+    )
+
     system_prompt = (
         f"You are an expert tactical AI controlling a {class_name} ({archetype}) in Caves of Qud.\n"
         f"{ancestral_lore}\n\n"
         f"CLASS TACTICAL DOCTRINE ({doctrine_name.upper()} - Preferred Range: {pref_range} tiles):\n"
+        f"{pet_rule}"
         f"1. PRIMARY COMBAT GOAL: {open_action}.\n"
         f"{rule2}\n"
         f"3. ABILITY ROTATION & COMBO DOCTRINE:\n{rot_str}\n"
@@ -1579,24 +1605,29 @@ VALID ACTIONS:
                     if any(d in ab_cmd.lower() for d in DIRECTIONAL_ABILITIES) or ab_cmd.lower() in DIRECTIONAL_ABILITIES:
                         action = f"USE_ABILITY:{ab_cmd}:{closest_dir}"
 
-            # LOF Safety Guardrail: Prevent friendly fire on companions if LLM generated a beam/missile attack
+            # LOF Safety Guardrail: Prevent friendly fire on companions and wall impacts if LLM generated a beam/missile attack
             companions = game_state.get("companions", [])
-            if companions and enemies:
+            if enemies:
                 is_beam_or_missile = action.startswith("FIRE_MISSILE") or any(b in action.lower() for b in ["lase", "flaming", "freezing", "spit"])
                 if is_beam_or_missile:
                     closest = enemies[0]
                     ctx = closest.get("tx", px)
                     cty = closest.get("ty", py)
-                    clear, reason = is_line_of_fire_clear((px, py), (ctx, cty), companions=companions, blocked_set=blocked_coords)
+                    clear, reason = is_line_of_fire_clear((px, py), (ctx, cty), companions=companions, blocked_set=blocked_coords, target_entity=closest, surroundings=surroundings)
                     if not clear:
                         ab_sunder = find_ready_ability(abilities, ["sunder mind", "sundermind", "sunder"])
                         s_dir = get_step_direction((px, py), (ctx, cty))
                         if ab_sunder and ab_sunder.get("command") and s_dir:
                             action = f"USE_ABILITY:{ab_sunder['command']}:{s_dir}"
                             thought = f"[LOF Safety Override] {reason}. Redirected to Sunder Mind."
-                        elif open_moves:
-                            action = open_moves[0]
-                            thought = f"[LOF Safety Override] {reason}. Repositioning {open_moves[0][5:]}."
+                        else:
+                            best_step = get_best_move_towards((px, py), (ctx, cty), valid_moves, surroundings)
+                            if best_step:
+                                action = best_step
+                                thought = f"[LOF Safety Override] {reason}. Maneuvering {best_step[5:]} to establish line of sight."
+                            elif open_moves:
+                                action = open_moves[0]
+                                thought = f"[LOF Safety Override] {reason}. Repositioning {open_moves[0][5:]}."
 
             if action:
                 dt = time.time() - t0
@@ -1741,29 +1772,26 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
                         p_name = ent.get("name", "Creature")
                         return {"action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}", "reason": f"[{template['name']} Fallback] Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"}
 
-            # B. Distance-2 recruitment approach: close distance instead of killing prospective thralls at range
+            # B. Candidate recruitment approach (dist in 2, 3): close distance instead of killing prospective thralls at range
             if not adj_threats:
-                for ent in raw_entities:
-                    if ent.get("dist") == 2 and is_proselytizable(ent, companions=companions):
+                for ent in sorted([e for e in raw_entities if e.get("dist") in (2, 3)], key=lambda x: x.get("dist", 99)):
+                    if is_proselytizable(ent, companions=companions):
                         s_step = get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
-                        if s_step and f"MOVE_{s_step}" in valid_moves:
+                        if s_step and f"MOVE_{s_step}" in open_moves:
                             p_name = ent.get("name", "Creature")
                             return {"action": f"MOVE_{s_step}", "reason": f"[{template['name']} Fallback] Approaching {p_name} ({s_step}) to recruit into combat pet & frontline tank"}
 
     # 1. Close-Contact Emergency: Defensive Mental Shielding, Banishment & Evasion
-    if adj_threats or closest_dist <= 2:
+    if adj_threats:
         ab_bubble = find_ready_ability(abilities, ["force bubble", "forcebubble", "bubble", "force wall", "forcewall"])
         if ab_bubble and ab_bubble.get("command"):
             return {"action": f"USE_ABILITY:{ab_bubble['command']}", "reason": f"[{template['name']} Fallback] Popping Force Bubble impenetrable barrier against close hostiles"}
 
         ab_banish = find_ready_ability(abilities, ["teleport other", "teleportother"])
         if ab_banish and ab_banish.get("command"):
-            if adj_threats:
-                t_dir = list(adj_threats.keys())[0]
-                t_name = adj_threats[t_dir]
-                return {"action": f"USE_ABILITY:{ab_banish['command']}:{t_dir}", "reason": f"[{template['name']} Fallback] Banishing adjacent hostile {t_name} with Teleport Other ({t_dir})"}
-            elif closest_dist == 1 and s_dir:
-                return {"action": f"USE_ABILITY:{ab_banish['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Banishing close hostile {c_name} with Teleport Other ({s_dir})"}
+            t_dir = list(adj_threats.keys())[0]
+            t_name = adj_threats[t_dir]
+            return {"action": f"USE_ABILITY:{ab_banish['command']}:{t_dir}", "reason": f"[{template['name']} Fallback] Banishing adjacent hostile {t_name} with Teleport Other ({t_dir})"}
 
         ab_intimidate = find_ready_ability(abilities, ["intimidate"])
         if ab_intimidate and ab_intimidate.get("command"):
@@ -1773,17 +1801,11 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
         if ab_teleport and ab_teleport.get("command"):
             return {"action": f"USE_ABILITY:{ab_teleport['command']}", "reason": f"[{template['name']} Fallback] Teleporting away from close hostiles"}
 
-        if adj_threats and open_moves:
+        if open_moves:
             r_dir = open_moves[0][5:]
             if can_sp:
                 return {"action": f"SPRINT_{r_dir}", "reason": f"[{template['name']} Fallback] Sprint kiting away from fragile melee engagement"}
             return {"action": open_moves[0], "reason": f"[{template['name']} Fallback] Backpedaling away from melee threat"}
-
-        # If enemy is at dist 2 (not adjacent yet) and we have open moves, kite away!
-        if closest_dist <= 2 and open_moves:
-            kites = [m for m in open_moves if max(abs(px + CARDINAL_OFFSETS[m[5:]][0] - c_tx), abs(py + CARDINAL_OFFSETS[m[5:]][1] - c_ty)) > closest_dist]
-            if kites:
-                return {"action": kites[0], "reason": f"[{template['name']} Fallback] Backpedaling to maintain safe distance ({closest_dist} -> {kites[0][5:]})"}
 
     # 2. Long-Range Psychic Assault (Distance >= 1)
     if closest_enemy and closest_dist >= 1:
@@ -1808,7 +1830,7 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             return {"action": f"USE_ABILITY:{ab_lase['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Firing Lase light beam at {c_name} ({s_dir}, dist: {closest_dist})"}
 
         # D. Cryokinesis / Pyrokinesis / Ray / Elemental / Gas attacks (max range 10, requires clear LOF and LOS)
-        ab_elemental = find_ready_ability(abilities, ["cryokinesis", "pyrokinesis", "flaming ray", "freezing ray", "spit poison", "electrical generation", "corrosive gas", "sleep gas"])
+        ab_elemental = find_ready_ability(abilities, ["cryokinesis", "pyrokinesis", "flaming ray", "flamingray", "flameray", "flame ray", "freezing ray", "freezingray", "spit poison", "electrical generation", "corrosive gas", "sleep gas"])
         if ab_elemental and ab_elemental.get("command") and closest_dist <= 10 and s_dir and c_lof_clear and c_has_los:
             return {"action": f"USE_ABILITY:{ab_elemental['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Manifesting {ab_elemental.get('name')} at {c_name} ({s_dir})"}
 
@@ -1839,11 +1861,10 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
                     if has_missile and ammo > 0:
                         return {"action": f"FIRE_MISSILE@{alt_tx},{alt_ty}", "reason": f"[{template['name']} Fallback] Obstacle protection: redirecting missile to unblocked {alt.get('name')}"}
 
-            # If primary target is occluded by a wall (no LOS), maneuver along corridor to establish line of sight instead of waiting!
-            if not c_has_los:
-                best_step = get_best_move_towards(cur_pos, (c_tx, c_ty), valid_moves, surroundings)
-                if best_step:
-                    return {"action": best_step, "reason": f"[{template['name']} Fallback] Maneuvering {best_step[5:]} around corridor/wall to establish line of sight on {c_name}"}
+            # If primary target is occluded by a wall or corner, maneuver along corridor to establish line of sight instead of waiting or fleeing!
+            best_step = get_best_move_towards(cur_pos, (c_tx, c_ty), valid_moves, surroundings)
+            if best_step:
+                return {"action": best_step, "reason": f"[{template['name']} Fallback] Maneuvering {best_step[5:]} around corridor/wall to establish line of sight on {c_name}"}
 
             # If all targets blocked, reposition sideways to get an open firing line!
             if open_moves:
@@ -2029,6 +2050,13 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
                     if p_dir:
                         p_name = ent.get("name", "Creature")
                         return {"action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}", "reason": f"[{template['name']} Fallback] Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"}
+            if not adj_threats:
+                for ent in sorted([e for e in raw_entities if e.get("dist") in (2, 3)], key=lambda x: x.get("dist", 99)):
+                    if is_proselytizable(ent, companions=companions):
+                        s_step = get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
+                        if s_step and f"MOVE_{s_step}" in open_moves:
+                            p_name = ent.get("name", "Creature")
+                            return {"action": f"MOVE_{s_step}", "reason": f"[{template['name']} Fallback] Approaching {p_name} ({s_step}) to recruit into combat pet & frontline tank"}
 
     # 1. Encirclement Break: If surrounded by 2+ adjacent hostiles and open retreat tiles exist
     if len(adj_threats) >= 2 and open_moves:
@@ -2337,9 +2365,9 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                                 "action": f"USE_ABILITY:{ab_proselytize['command']}:{p_dir}",
                                 "reason": f"Companion Recruitment: Proselytizing adjacent {p_name} ({p_dir}) into combat pet & frontline tank"
                             }
-                # Nearby candidate approach (dist == 2)
-                for ent in raw_entities:
-                    if ent.get("dist") == 2 and is_proselytizable(ent, companions=companions):
+                # Nearby candidate approach (dist in 2, 3)
+                for ent in sorted([e for e in raw_entities if e.get("dist") in (2, 3)], key=lambda x: x.get("dist", 99)):
+                    if is_proselytizable(ent, companions=companions):
                         s_step = get_step_direction(cur_pos, (ent.get("tx", px), ent.get("ty", py)))
                         if s_step and f"MOVE_{s_step}" in valid_moves:
                             p_name = ent.get("name", "Creature")
@@ -2377,10 +2405,14 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 print(f"[STAIRCASE GATED]: Standing on stairs down to stratum {cur_z + 1}, but Level {cur_lvl} < Req {req_depth_lvl} (or recovering from retreat). Exploring to gain levels first.")
 
         # If we know stairs down and are ready to delve, check if we should navigate to them
-        if can_delve and (is_zone_cleared or (is_subterranean and is_healthy)) and (zone_id in KNOWN_STAIRS_DOWN):
+        has_visible_threats = bool(enemies) or any(
+            not is_peaceful_npc(e.get("name"), e.get("blueprint")) and not is_ignorable_stationary_enemy(e)
+            for e in game_state.get("visible_entities", [])
+        )
+        if can_delve and (is_zone_cleared or (is_subterranean and is_healthy and not has_visible_threats)) and (zone_id in KNOWN_STAIRS_DOWN):
             sd_info = KNOWN_STAIRS_DOWN[zone_id]
             sd_pos = (sd_info["tx"], sd_info["ty"])
-            # In dungeons, if zone is cleared, route to stairs down
+            # In dungeons, if zone is cleared (or subterranean with no visible threats), route to stairs down
             if is_zone_cleared or (is_subterranean and cur_pos != sd_pos and max(abs(px - sd_pos[0]), abs(py - sd_pos[1])) <= 6):
                 best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
                 if best_m:
