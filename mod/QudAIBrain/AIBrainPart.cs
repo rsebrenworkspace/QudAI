@@ -2134,31 +2134,53 @@ namespace QudAIBrain
                 char edgeChar = !string.IsNullOrEmpty(dirStr) ? dirStr[0] : 'E';
                 string step = null;
 
+                int curX = player.CurrentCell?.X ?? -1;
+                int curY = player.CurrentCell?.Y ?? -1;
+                bool isOnTargetEdge = (edgeChar == 'W' && curX == 0)
+                                   || (edgeChar == 'E' && curX == 79)
+                                   || (edgeChar == 'N' && curY == 0)
+                                   || (edgeChar == 'S' && curY == 24);
+
+                if (isOnTargetEdge)
+                {
+                    // Stepping directly off the zone border transitions to the adjacent zone!
+                    string exitDir = edgeChar.ToString();
+                    int energyBefore = player.Energy?.Value ?? 0;
+                    int pxBefore = curX;
+                    int pyBefore = curY;
+                    string zoneBefore = player.CurrentCell?.ParentZone?.ZoneID;
+
+                    bool moved = player.Move(exitDir);
+                    bool zoneOrCellChanged = (player.CurrentCell != null && (
+                        player.CurrentCell.ParentZone?.ZoneID != zoneBefore ||
+                        player.CurrentCell.X != pxBefore ||
+                        player.CurrentCell.Y != pyBefore
+                    ));
+
+                    if (moved || zoneOrCellChanged)
+                    {
+                        lastMoveFailed = false;
+                        lastFailedDir = "";
+                        autoexplorePosHistory.Clear();
+                    }
+                    else
+                    {
+                        lastMoveFailed = true;
+                        lastFailedDir = exitDir;
+                        TryOpenDoorInDirection(player, exitDir);
+                    }
+                    if (player.Energy != null && player.Energy.Value >= energyBefore)
+                    {
+                        player.UseEnergy(1000, "Movement");
+                    }
+                    return;
+                }
+
                 try
                 {
                     AutoAct.TryFindEdgeStep(edgeChar, out step);
                 }
                 catch { }
-
-                // Fallback to other edges if requested edge is completely unreachable
-                if (string.IsNullOrEmpty(step) || step == ".")
-                {
-                    char[] fallbacks = new char[] { 'E', 'N', 'S', 'W' };
-                    foreach (char fb in fallbacks)
-                    {
-                        if (fb == edgeChar) continue;
-                        try
-                        {
-                            if (AutoAct.TryFindEdgeStep(fb, out step) && !string.IsNullOrEmpty(step) && step != ".")
-                            {
-                                edgeChar = fb;
-                                UnityEngine.Debug.Log($"[QudAI NAVIGATE_ZONE_EXIT] Edge {dirStr} unreachable; fell back to edge {edgeChar} (step: {step})");
-                                break;
-                            }
-                        }
-                        catch { }
-                    }
-                }
 
                 // Fallback: Check open border cells on requested edge if TryFindEdgeStep didn't find a direct step
                 if (string.IsNullOrEmpty(step) || step == ".")
@@ -2198,16 +2220,31 @@ namespace QudAIBrain
                     catch { }
                 }
 
+                // If no complex path step found, check if moving directly in edgeChar direction is open
+                if (string.IsNullOrEmpty(step) || step == ".")
+                {
+                    Cell c = player.CurrentCell?.GetCellFromDirection(edgeChar.ToString(), false);
+                    if (c != null && !c.IsOccluding() && !c.HasWall())
+                    {
+                        step = edgeChar.ToString();
+                    }
+                }
+
                 if (!string.IsNullOrEmpty(step) && step != ".")
                 {
                     int energyBefore = player.Energy?.Value ?? 0;
                     int pxBefore = player.CurrentCell?.X ?? -1;
                     int pyBefore = player.CurrentCell?.Y ?? -1;
+                    string zoneBefore = player.CurrentCell?.ParentZone?.ZoneID;
 
                     bool moved = player.Move(step);
-                    bool cellChanged = (player.CurrentCell != null && (player.CurrentCell.X != pxBefore || player.CurrentCell.Y != pyBefore));
+                    bool zoneOrCellChanged = (player.CurrentCell != null && (
+                        player.CurrentCell.ParentZone?.ZoneID != zoneBefore ||
+                        player.CurrentCell.X != pxBefore ||
+                        player.CurrentCell.Y != pyBefore
+                    ));
 
-                    if (!moved || !cellChanged)
+                    if (!moved || !zoneOrCellChanged)
                     {
                         lastMoveFailed = true;
                         lastFailedDir = step.ToUpper();
@@ -2227,19 +2264,10 @@ namespace QudAIBrain
                 }
                 else
                 {
-                    // Fall back to MOVE in that direction ONLY if not facing an impassable wall
-                    Cell c = player.CurrentCell?.GetCellFromDirection(edgeChar.ToString(), false);
-                    if (c != null && !c.IsOccluding() && !c.HasWall())
-                    {
-                        act = "MOVE_" + edgeChar;
-                    }
-                    else
-                    {
-                        lastMoveFailed = true;
-                        lastFailedDir = edgeChar.ToString();
-                        if (player.Energy != null) player.UseEnergy(1000, "Pass");
-                        return;
-                    }
+                    lastMoveFailed = true;
+                    lastFailedDir = edgeChar.ToString();
+                    if (player.Energy != null) player.UseEnergy(1000, "Pass");
+                    return;
                 }
             }
 
@@ -2251,9 +2279,14 @@ namespace QudAIBrain
                 int energyBefore = player.Energy?.Value ?? 0;
                 int pxBefore = player.CurrentCell?.X ?? -1;
                 int pyBefore = player.CurrentCell?.Y ?? -1;
+                string zoneBefore = player.CurrentCell?.ParentZone?.ZoneID;
 
                 bool moved = player.Move(direction);
-                bool cellChanged = (player.CurrentCell != null && (player.CurrentCell.X != pxBefore || player.CurrentCell.Y != pyBefore));
+                bool cellChanged = (player.CurrentCell != null && (
+                    player.CurrentCell.ParentZone?.ZoneID != zoneBefore ||
+                    player.CurrentCell.X != pxBefore ||
+                    player.CurrentCell.Y != pyBefore
+                ));
 
                 if (!moved || !cellChanged)
                 {
@@ -2269,7 +2302,11 @@ namespace QudAIBrain
                     if (!string.IsNullOrEmpty(pathStep) && pathStep != "." && pathStep != direction)
                     {
                         moved = player.Move(pathStep);
-                        cellChanged = (player.CurrentCell != null && (player.CurrentCell.X != pxBefore || player.CurrentCell.Y != pyBefore));
+                        cellChanged = (player.CurrentCell != null && (
+                            player.CurrentCell.ParentZone?.ZoneID != zoneBefore ||
+                            player.CurrentCell.X != pxBefore ||
+                            player.CurrentCell.Y != pyBefore
+                        ));
                     }
                 }
 

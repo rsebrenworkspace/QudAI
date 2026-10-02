@@ -1989,8 +1989,74 @@ dec_lb_burrow = brain.query_decision(sealed_pocket_state, took_damage=False, ene
 print(f"Loop breaker pocket burrow decision: {dec_lb_burrow['action']} | Reason: {dec_lb_burrow['reason']}")
 assert dec_lb_burrow["action"].startswith("ATTACK_WALL:"), f"Expected ATTACK_WALL action from loop breaker, got: {dec_lb_burrow['action']}"
 
+# =====================================================================
+# TEST 39: Border Exit Commitment & Non-Oscillation Verification
+# =====================================================================
+print("\n" + "="*50)
+print("TEST 39: Border Exit Commitment & Non-Oscillation Verification")
+print("="*50)
+
+# Scenario 39.1: Corridor on west side with reachable_edges="NSEW" - must NOT fail or flip
+corridor_west_state = {
+    "hp": 26, "max_hp": 26, "level": 4, "x": 5, "y": 10, "z": 11,
+    "zone_id": "JoppaWorld.10.23.0.1.11",
+    "zone_name": "subterranean salt marsh, 1 stratum deep",
+    "zone_fully_explored": True,
+    "unexplored_cells": 605,
+    "reachable_edges": "NSEW",
+    "last_move_failed": False,
+    "surroundings": {
+        "W": "[BLOCKED: rock wall]", "NW": "[BLOCKED: rock wall]", "SW": "[BLOCKED: rock wall]",
+        "N": "Empty ground", "S": "Empty ground", "E": "Empty ground", "NE": "Empty ground", "SE": "Empty ground"
+    },
+    "visible_entities": []
+}
+
+brain.current_zone_id = "JoppaWorld.10.23.0.1.11"
+brain.CURRENT_TRACKED_ZONE = "JoppaWorld.10.23.0.1.11"
+brain.CURRENT_ZONE_CHOSEN_EXIT = "W"
+brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = "JoppaWorld.10.23.0.1.11"
+brain.FAILED_ZONE_EXITS.clear()
+
+fail_check = brain.check_exit_direction_failure(corridor_west_state, (5, 10), "W")
+print(f"West exit failure check in corridor (reachable_edges='NSEW'): {fail_check}")
+assert not fail_check, "Exit W must NOT be flagged as failed when engine reports reachable_edges='NSEW'!"
+
+pos_w, tag_w, dir_w = brain.get_zone_exit_target((5, 10), corridor_west_state)
+print(f"West exit target: {pos_w}, Tag: {tag_w}, Dir: {dir_w}")
+assert dir_w == "W", f"Expected exit direction to remain W, got: {dir_w}"
+assert ("JoppaWorld.10.23.0.1.11", "W") not in brain.FAILED_ZONE_EXITS, "W must not be blacklisted!"
+
+# Scenario 39.2: Adjacent to border edge at (1, 10) with chosen exit W
+border_adj_state = dict(corridor_west_state)
+border_adj_state["x"] = 1
+border_adj_state["y"] = 10
+border_adj_state["surroundings"] = {
+    "W": "Open ground", "NW": "Open ground", "SW": "Open ground",
+    "N": "Empty ground", "S": "Empty ground", "E": "Empty ground", "NE": "Empty ground", "SE": "Empty ground"
+}
+
+dec_border_adj = brain.query_decision(border_adj_state, took_damage=False, enemies=[])
+print(f"Adjacent to border decision: {dec_border_adj['action']} | Reason: {dec_border_adj['reason']}")
+assert dec_border_adj["action"] == "MOVE_W", f"Expected MOVE_W onto border, got: {dec_border_adj['action']}"
+assert "Border Transition" in dec_border_adj["reason"]
+
+# Scenario 39.3: Standing directly on border edge at (0, 10) facing [ZONE_EXIT: W]
+border_on_state = dict(corridor_west_state)
+border_on_state["x"] = 0
+border_on_state["y"] = 10
+border_on_state["surroundings"] = {
+    "W": "[ZONE_EXIT: W]", "NW": "[ZONE_EXIT: NW]", "SW": "[ZONE_EXIT: SW]",
+    "N": "Empty ground", "S": "Empty ground", "E": "Empty ground", "NE": "Empty ground", "SE": "Empty ground"
+}
+
+dec_border_on = brain.query_decision(border_on_state, took_damage=False, enemies=[])
+print(f"Standing on border decision: {dec_border_on['action']} | Reason: {dec_border_on['reason']}")
+assert dec_border_on["action"] == "MOVE_W", f"Expected MOVE_W across border, got: {dec_border_on['action']}"
+assert "Border Transition" in dec_border_on["reason"]
+
 print("\n==================================================")
-print(">>> ALL 38 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 39 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 
