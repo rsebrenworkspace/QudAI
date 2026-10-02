@@ -18,5 +18,15 @@
     "death_reason": "You were @@bitten to death by Ugoof, the nimble Snapjaw Firesnarler.",
     "lesson": "Never engage snapjaw scavengers without ranged support or escape routes in marsh zones.",
     "timestamp": "2026-10-01T20:52:01.742991"
+  },
+  {
+    "generation": 3,
+    "name": "slimy|slimy Tishishrila [wading]",
+    "level": 4,
+    "turns": 6795,
+    "zone": "subterranean salt marsh, 2 strata deep",
+    "death_reason": "You were @@killed by a wet plated knollworm## with a |crab-crushing beak##.",
+    "lesson": "Avoid wading near wet plated knollworms\u2014use ranged abilities first, then retreat.",
+    "timestamp": "2026-10-02T05:24:09.601981"
   }
 ]

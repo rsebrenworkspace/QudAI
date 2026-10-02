@@ -984,8 +984,8 @@ namespace QudAIBrain
                     foreach (var o in currentCell.Objects)
                     {
                         if (o == null || o.IsPlayer()) continue;
-                        if (o.HasPart("StairsDown")) standingOnStairsDown = true;
-                        if (o.HasPart("StairsUp")) standingOnStairsUp = true;
+                        if (IsDownPassage(o)) standingOnStairsDown = true;
+                        if (IsUpPassage(o)) standingOnStairsUp = true;
                     }
                 }
 
@@ -1016,11 +1016,11 @@ namespace QudAIBrain
                                     int dist = Math.Max(Math.Abs(x - px), Math.Abs(y - py));
                                     string dir = GetApproximateDirection(px, py, x, y);
 
-                                    if (obj.HasPart("StairsDown"))
+                                    if (IsDownPassage(obj))
                                     {
                                         stairsDownEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}}}");
                                     }
-                                    if (obj.HasPart("StairsUp"))
+                                    if (IsUpPassage(obj))
                                     {
                                         stairsUpEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}}}");
                                     }
@@ -1145,6 +1145,27 @@ namespace QudAIBrain
             return gear.Count > 0 ? string.Join("; ", gear) : "Nothing Equipped";
         }
 
+        private static bool IsDownPassage(GameObject obj)
+        {
+            if (obj == null) return false;
+            if (obj.HasPart("StairsDown") || obj.HasPart("Hole") || obj.HasPart("OpenShaft") || obj.HasPart("Pit")) return true;
+            string bp = (obj.Blueprint ?? "").ToLower();
+            string name = (obj.DisplayName ?? "").ToLower();
+            if (bp.Contains("stairsdown") || bp.Contains("hole") || bp.Contains("pit") || bp.Contains("shaft") || bp.Contains("chasm")) return true;
+            if (name.Contains("stairs down") || name.Contains("hole") || name.Contains("pit") || name.Contains("shaft") || name.Contains("ladder down") || name.Contains("chasm")) return true;
+            return false;
+        }
+
+        private static bool IsUpPassage(GameObject obj)
+        {
+            if (obj == null) return false;
+            if (obj.HasPart("StairsUp")) return true;
+            string bp = (obj.Blueprint ?? "").ToLower();
+            string name = (obj.DisplayName ?? "").ToLower();
+            if (bp.Contains("stairsup") || name.Contains("stairs up") || name.Contains("ladder up")) return true;
+            return false;
+        }
+
         private static string GetApproximateDirection(int fromX, int fromY, int toX, int toY)
         {
             int dx = toX - fromX;
@@ -1184,12 +1205,12 @@ namespace QudAIBrain
                     continue;
                 }
 
-                if (obj.HasPart("StairsDown"))
+                if (IsDownPassage(obj))
                 {
                     names.Insert(0, $"[STAIRS_DOWN: {cleanName}]");
                     continue;
                 }
-                if (obj.HasPart("StairsUp"))
+                if (IsUpPassage(obj))
                 {
                     names.Insert(0, $"[STAIRS_UP: {cleanName}]");
                     continue;
@@ -1465,7 +1486,7 @@ namespace QudAIBrain
                 {
                     try
                     {
-                        var stairs = player.CurrentCell?.Objects?.FirstOrDefault(o => o != null && o.HasPart("StairsDown"));
+                        var stairs = player.CurrentCell?.Objects?.FirstOrDefault(o => o != null && IsDownPassage(o));
                         if (stairs != null)
                         {
                             stairs.FireEvent(Event.New("CommandMoveDown", "User", player));
@@ -1490,7 +1511,7 @@ namespace QudAIBrain
                 {
                     try
                     {
-                        var stairs = player.CurrentCell?.Objects?.FirstOrDefault(o => o != null && o.HasPart("StairsUp"));
+                        var stairs = player.CurrentCell?.Objects?.FirstOrDefault(o => o != null && IsUpPassage(o));
                         if (stairs != null)
                         {
                             stairs.FireEvent(Event.New("CommandMoveUp", "User", player));

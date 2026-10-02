@@ -2055,8 +2055,79 @@ print(f"Standing on border decision: {dec_border_on['action']} | Reason: {dec_bo
 assert dec_border_on["action"] == "MOVE_W", f"Expected MOVE_W across border, got: {dec_border_on['action']}"
 assert "Border Transition" in dec_border_on["reason"]
 
+# =====================================================================
+# TEST 40: Dungeon Diving: Tough Choice Delving, Pits, Holes & Stratum Descent
+# =====================================================================
+print("\n" + "="*50)
+print("TEST 40: Dungeon Diving: Tough Choice Delving, Pits, Holes & Stratum Descent")
+print("="*50)
+
+# Scenario 40.1: Pit / Chasm Passability in get_valid_moves
+# Cells containing [STAIRS_DOWN: ...] must be passable even if they mention "pit", "hole", "shaft", or "chasm"
+pit_surroundings = {
+    "N": "[STAIRS_DOWN: deep pit leading to stratum 12]",
+    "S": "[STAIRS_DOWN: open shaft dropping into the dark]",
+    "E": "[HAZARD: pool of lava]",
+    "W": "[BLOCKED: chasm with no bottom]", # true hazard without stairs_down tag
+    "NE": "dirt floor", "NW": "dirt floor", "SE": "dirt floor", "SW": "dirt floor"
+}
+valid_pit_moves = brain.get_valid_moves(pit_surroundings, (10, 10), None)
+print(f"Valid moves with pit/shaft down passages: {valid_pit_moves}")
+assert "MOVE_N" in valid_pit_moves, "Cell with [STAIRS_DOWN: deep pit ...] must be a valid passable move!"
+assert "MOVE_S" in valid_pit_moves, "Cell with [STAIRS_DOWN: open shaft ...] must be a valid passable move!"
+assert "MOVE_W" not in valid_pit_moves, "Cell with raw chasm (not a passage) must remain blocked!"
+assert "MOVE_E" not in valid_pit_moves, "Cell with lava must remain blocked!"
+
+# Scenario 40.2: Bold Dungeon Delving when Under-leveled (Stratum 11 -> 12)
+# Recommended level for stratum 12 is 5, character is only Level 3 but healthy (HP 28/28)
+dungeon_stratum11_zone = "JoppaWorld.10.23.0.1.11"
+brain.current_zone_id = dungeon_stratum11_zone
+brain.CURRENT_TRACKED_ZONE = dungeon_stratum11_zone
+brain.RETREAT_TARGET_LEVEL = None
+
+delve_state_healthy = {
+    "hp": 28, "max_hp": 28, "x": 15, "y": 12, "z": 11,
+    "calling": "Apostle",
+    "level": 3, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": dungeon_stratum11_zone,
+    "zone_name": "subterranean ruins",
+    "standing_on_stairs_down": True,
+    "zone_fully_explored": False,
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {"C": "[STAIRS_DOWN: stone stairs down]"},
+    "visible_entities": []
+}
+dec_delve = brain.query_decision(delve_state_healthy, took_damage=False, enemies=[])
+print(f"Healthy under-leveled descent decision: {dec_delve['action']} | Reason: {dec_delve['reason']}")
+assert dec_delve["action"] == "USE_STAIRS_DOWN", f"Healthy character must boldly descend stairs down! Got: {dec_delve['action']}"
+assert "Dungeon Delving: Daring descent" in dec_delve["reason"], f"Expected daring descent reason, got: {dec_delve['reason']}"
+
+# Scenario 40.3: Delve Preparation (Resting on stairs down when injured)
+# Under-leveled character standing on stairs down/pit with low HP (< 70%) should rest first
+delve_state_injured = dict(delve_state_healthy)
+delve_state_injured["hp"] = 15 # 15/28 = 53% (< 70%)
+dec_rest_delve = brain.query_decision(delve_state_injured, took_damage=False, enemies=[])
+print(f"Injured descent preparation decision: {dec_rest_delve['action']} | Reason: {dec_rest_delve['reason']}")
+assert dec_rest_delve["action"] == "REST", f"Injured character must rest to recover before descending! Got: {dec_rest_delve['action']}"
+assert "resting" in dec_rest_delve["reason"].lower()
+
+# Scenario 40.4: Navigating to Nearby Stairs Down / Hole in Dungeon
+# When in dungeon and healthy, routes to known stairs down even if zone not yet 100% cleared
+brain.KNOWN_STAIRS_DOWN[dungeon_stratum11_zone] = {"tx": 15, "ty": 12, "name": "hole in the ground"}
+delve_state_nearby = dict(delve_state_healthy)
+delve_state_nearby["standing_on_stairs_down"] = False
+delve_state_nearby["x"] = 15
+delve_state_nearby["y"] = 15 # 3 tiles away
+delve_state_nearby["surroundings"] = {
+    "N": "dirt floor", "S": "dirt floor", "E": "dirt floor", "W": "dirt floor"
+}
+dec_nearby = brain.query_decision(delve_state_nearby, took_damage=False, enemies=[])
+print(f"Nearby dungeon stairs navigation decision: {dec_nearby['action']} | Reason: {dec_nearby['reason']}")
+assert dec_nearby["action"] == "MOVE_N", f"Expected character to move N towards stairs down at (15, 12)! Got: {dec_nearby['action']}"
+assert "Dungeon Delving: Navigating to stairs down" in dec_nearby["reason"]
+
 print("\n==================================================")
-print(">>> ALL 39 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print(">>> ALL 40 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 

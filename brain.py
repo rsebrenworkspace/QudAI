@@ -767,7 +767,8 @@ def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=Fals
         if target_pos in blocked_coords or move_name == last_failed_action:
             continue
         has_bridge = "bridge" in text
-        if any(w in text for w in ["wall", "rock", "chasm", "[blocked", "[hazard", "acid", "lava", "magma", "cushion", "chair", "table", "bed", "bedroll", "statue", "tombstone"]):
+        is_stair_passage = "[stairs_down" in text or "[stairs_up" in text
+        if not is_stair_passage and any(w in text for w in ["wall", "rock", "chasm", "[blocked", "[hazard", "acid", "lava", "magma", "cushion", "chair", "table", "bed", "bedroll", "statue", "tombstone"]):
             continue
         # During active combat, avoid blindly fleeing off the map into unknown zones
         if is_in_combat and ("[zone_exit" in text or "exit" in text):
@@ -796,7 +797,8 @@ def get_valid_moves(surroundings, cur_pos, last_failed_action, is_in_combat=Fals
             target_pos = (px + dx, py + dy)
             if target_pos in blocked_coords or move_name == last_failed_action:
                 continue
-            if any(w in text for w in ["wall", "rock", "chasm", "[blocked", "[hazard", "acid", "lava", "magma", "cushion", "chair", "table", "bed", "bedroll", "statue", "tombstone"]):
+            is_stair_passage = "[stairs_down" in text or "[stairs_up" in text
+            if not is_stair_passage and any(w in text for w in ["wall", "rock", "chasm", "[blocked", "[hazard", "acid", "lava", "magma", "cushion", "chair", "table", "bed", "bedroll", "statue", "tombstone"]):
                 continue
             valid.append(move_name)
 
@@ -2195,27 +2197,45 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                                 "reason": f"Companion Recruitment: Approaching nearby {p_name} ({s_step}) to recruit as frontline pet"
                             }
 
-        # 5. Stratum Progression & Staircase Delving (Gated by minimum level)
+        # 5. Stratum Progression & Staircase Delving (The Tough Choice)
         req_depth_lvl = min_level_for_depth(cur_z + 1)
-        can_delve = (cur_lvl >= req_depth_lvl) and (RETREAT_TARGET_LEVEL is None)
+        hp_ratio = hp / max(1, max_hp)
+        is_healthy = (hp_ratio >= 0.70)
+        is_subterranean = (cur_z > 10)
+        is_retreating = (RETREAT_TARGET_LEVEL is not None and cur_lvl < RETREAT_TARGET_LEVEL and hp_ratio < 0.85)
+
+        is_stuck_explore = (bool(zone_id and zone_id in stuck_autoexplore_zones) or (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones))
+        is_zone_cleared = game_state.get("zone_fully_explored", False) or is_stuck_explore or (game_state.get("unexplored_cells", 999) == 0)
+
+        # In dungeons (cur_z > 10), healthy adventurers make the tough choice to keep diving deeper,
+        # even if below the recommended level!
+        # On the surface (cur_z <= 10), explore first to reach Level 3 before entering the dungeon depths.
+        can_delve = (not is_retreating) and is_healthy and (
+            is_subterranean or (cur_lvl >= req_depth_lvl)
+        )
 
         if standing_on_sd:
             if can_delve:
-                return {"action": "USE_STAIRS_DOWN", "reason": f"Stratum Progression: Descending stairs down to stratum {cur_z + 1} (Level {cur_lvl} >= Req {req_depth_lvl})"}
+                if cur_lvl >= req_depth_lvl:
+                    return {"action": "USE_STAIRS_DOWN", "reason": f"Stratum Progression: Descending stairs down to stratum {cur_z + 1} (Level {cur_lvl} >= Req {req_depth_lvl})"}
+                else:
+                    return {"action": "USE_STAIRS_DOWN", "reason": f"Dungeon Delving: Daring descent into stratum {cur_z + 1} (Level {cur_lvl} < Rec {req_depth_lvl}, HP {hp}/{max_hp})"}
+            elif not is_healthy and not is_in_combat and is_subterranean:
+                return {"action": "REST", "reason": f"Delve Preparation: Resting on stairs down to recover HP ({hp}/{max_hp}) before descending to stratum {cur_z + 1}"}
             else:
                 print(f"[STAIRCASE GATED]: Standing on stairs down to stratum {cur_z + 1}, but Level {cur_lvl} < Req {req_depth_lvl} (or recovering from retreat). Exploring to gain levels first.")
 
         # If we know stairs down and are ready to delve, check if we should navigate to them
-        is_stuck_explore = (bool(zone_id and zone_id in stuck_autoexplore_zones) or (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones))
-        is_zone_cleared = game_state.get("zone_fully_explored", False) or is_stuck_explore or (game_state.get("unexplored_cells", 999) == 0)
-
-        if can_delve and is_zone_cleared and (zone_id in KNOWN_STAIRS_DOWN):
+        if can_delve and (is_zone_cleared or (is_subterranean and is_healthy)) and (zone_id in KNOWN_STAIRS_DOWN):
             sd_info = KNOWN_STAIRS_DOWN[zone_id]
             sd_pos = (sd_info["tx"], sd_info["ty"])
-            best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
-            if best_m:
-                delve_type = "Dungeon Delving" if cur_z > 10 else "Dungeon Entry"
-                return {"action": best_m, "reason": f"{delve_type}: Navigating to stairs down at {sd_pos} to delve stratum {cur_z + 1} (Level {cur_lvl} >= Req {req_depth_lvl})"}
+            # In dungeons, if zone is cleared, route to stairs down
+            if is_zone_cleared or (is_subterranean and cur_pos != sd_pos and max(abs(px - sd_pos[0]), abs(py - sd_pos[1])) <= 6):
+                best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
+                if best_m:
+                    delve_type = "Dungeon Delving" if is_subterranean else "Dungeon Entry"
+                    rec_str = f"Level {cur_lvl} >= Req {req_depth_lvl}" if cur_lvl >= req_depth_lvl else f"Level {cur_lvl} < Rec {req_depth_lvl}"
+                    return {"action": best_m, "reason": f"{delve_type}: Navigating to stairs down at {sd_pos} to delve stratum {cur_z + 1} ({rec_str})"}
 
         # 6. Inward Border Navigation & Zone Hopping Prevention
         rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None

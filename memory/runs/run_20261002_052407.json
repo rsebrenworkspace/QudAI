@@ -1,0 +1,284 @@
+{
+  "telemetry": {
+    "player_name": "slimy|slimy Tishishrila [wading]",
+    "level": 4,
+    "turns": 6795,
+    "zone": "subterranean salt marsh, 2 strata deep",
+    "death_reason": "You were @@killed by a wet plated knollworm## with a |crab-crushing beak##.",
+    "death_category": "killed",
+    "timestamp": "2026-10-02T05:24:06.8076667Z"
+  },
+  "recent_actions": [
+    {
+      "action": "ATTACK_WALL:SE",
+      "reason": "Autonomous Burrowing: Attacking mudroot (SE) to breach enclosed pocket toward sector (39, 12)",
+      "pos": [
+        27,
+        4
+      ],
+      "hp": 26
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[Loop Breaker] Action repeated 2x at (27, 4). Forcing reposition MOVE_NW.",
+      "pos": [
+        27,
+        4
+      ],
+      "hp": 26
+    },
+    {
+      "action": "MOVE_SE",
+      "reason": "Water Traversal: Navigating across water toward unexplored sector at (39, 12) (1910 unrevealed cells)",
+      "pos": [
+        26,
+        3
+      ],
+      "hp": 26
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 3.02s] Recharge Lase/Sunder Mind; avoid melee risk while pet holds front.",
+      "pos": [
+        27,
+        4
+      ],
+      "hp": 26
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 3.01s] Recharge Lase/Sunder Mind; avoid melee risk while pet holds front.",
+      "pos": [
+        27,
+        4
+      ],
+      "hp": 26
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[Loop Breaker] Action repeated 2x at (27, 4). Forcing reposition MOVE_NW.",
+      "pos": [
+        27,
+        4
+      ],
+      "hp": 26
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "[Loop Breaker] Oscillation detected at (26, 3). Escaping cycle towards forward exit East zone exit via native engine pathfinder.",
+      "pos": [
+        26,
+        3
+      ],
+      "hp": 26
+    },
+    {
+      "action": "ATTACK_WALL:E",
+      "reason": "[Loop Breaker] Trapped in enclosed pocket with 1910 unrevealed cells. Burrowing through mudroot (E) to breach open corridor.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 26
+    },
+    {
+      "action": "ATTACK_WALL:E",
+      "reason": "Autonomous Burrowing: Attacking mudroot (E) to breach enclosed pocket toward sector (39, 12)",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 26
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[Loop Breaker] Action repeated 2x at (26, 2). Forcing reposition MOVE_W.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 26
+    },
+    {
+      "action": "MOVE_SE",
+      "reason": "Water Traversal: Navigating across water toward unexplored sector at (39, 12) (1910 unrevealed cells)",
+      "pos": [
+        25,
+        2
+      ],
+      "hp": 26
+    },
+    {
+      "action": "USE_ABILITY:CommandIntimidate",
+      "reason": "[LLM in 3.13s] Apply Intimidate to shatter melee threat's advance, buy time for pet defense.",
+      "pos": [
+        26,
+        3
+      ],
+      "hp": 24
+    },
+    {
+      "action": "USE_ABILITY:CommandStunningForce:SE",
+      "reason": "[LLM in 3.03s] Blast advancing giant amoeba with Stunning Force to disrupt melee threat.",
+      "pos": [
+        26,
+        3
+      ],
+      "hp": 24
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[LLM in 3.00s] Retreat NW to avoid melee threat while keeping pet safe and line-of-fire clear.",
+      "pos": [
+        26,
+        3
+      ],
+      "hp": 16
+    },
+    {
+      "action": "MOVE_E",
+      "reason": "[LLM in 2.98s] Retreat from immediate melee threat while preserving pet position and line-of-fire for Lase.",
+      "pos": [
+        25,
+        2
+      ],
+      "hp": 16
+    },
+    {
+      "action": "MOVE_SE",
+      "reason": "[LLM in 3.01s] Retreat to avoid melee threat while keeping line-of-fire clear for Lase.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 13
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 3.03s] Recharge Lase and maintain safety; wet voider too far, knollworm closer but not immediate threat.",
+      "pos": [
+        27,
+        3
+      ],
+      "hp": 13
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[LLM in 2.83s] Retreat NW to avoid immediate melee threat while maintaining tactical distance.",
+      "pos": [
+        27,
+        3
+      ],
+      "hp": 13
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:SE",
+      "reason": "[LLM in 3.07s] Target tough knollworm at range with Lase for sustained DPS while pet holds front.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 7
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:SE",
+      "reason": "[LLM in 3.12s] Target high-threat knollworm at range with Lase for sustained DPS, safe from melee.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 7
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:SE",
+      "reason": "[LLM in 3.11s] Target high-threat knollworm at range with Lase for sustained DPS while pet holds front.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 3
+    },
+    {
+      "action": "ATTACK_WALL:E",
+      "reason": "[Loop Breaker] Trapped in enclosed pocket with 1910 unrevealed cells. Burrowing through mudroot (E) to breach open corridor.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 3
+    },
+    {
+      "action": "ATTACK_WALL:E",
+      "reason": "[Loop Breaker] Trapped in enclosed pocket with 1910 unrevealed cells. Burrowing through mudroot (E) to breach open corridor.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 3
+    },
+    {
+      "action": "ATTACK_WALL:E",
+      "reason": "[Loop Breaker] Trapped in enclosed pocket with 1910 unrevealed cells. Burrowing through mudroot (E) to breach open corridor.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 3
+    },
+    {
+      "action": "ATTACK_WALL:E",
+      "reason": "[Loop Breaker] Trapped in enclosed pocket with 1910 unrevealed cells. Burrowing through mudroot (E) to breach open corridor.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 3
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:SE",
+      "reason": "[LLM in 3.10s] Target high-threat knollworm with Lase for sustained DPS while pet holds front.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 3
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:SE",
+      "reason": "[LLM in 3.16s] Target high-threat knollworm with Lase for sustained DPS while pet holds front.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 3
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 2.78s] Recharge Lase and mental abilities; avoid melee risk with pet in front.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 3
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 2.80s] Recharge Lase and mental abilities; avoid melee risk with pet in front.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 3
+    },
+    {
+      "action": "MOVE_SE",
+      "reason": "[LLM in 2.89s] Advance SE to close range for Lase, but keep pet between you and enemy.",
+      "pos": [
+        26,
+        2
+      ],
+      "hp": 3
+    }
+  ],
+  "archived_at": "2026-10-02T05:24:07.034895"
+}
