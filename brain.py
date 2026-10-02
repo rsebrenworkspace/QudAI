@@ -340,28 +340,34 @@ CURRENT_ZONE_CHOSEN_EXIT = None
 CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 
 
-def get_zone_exit_target(cur_pos):
+def get_zone_exit_target(cur_pos, game_state=None):
     """
     Returns (target_coord, exit_tag, exit_dir) of the zone border exit to transition to the next zone.
     Chooses exits organically (random selection among novel / non-backtracking directions)
     to keep runs unpredictable, emergent, and diverse, while caching the decision for the duration
     of the zone so the character navigates steadily toward that chosen border without jittering.
+    Prioritizes verified reachable edges from game_state telemetry when available.
     """
     global CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE
     px, py = cur_pos
     cur_zone = current_zone_id or ""
 
-    # If an exit was already chosen for this zone, maintain it steadily until we cross the border
+    reachable_str = (game_state.get("reachable_edges", "") if game_state else "") or ""
+    reachable_set = set(reachable_str) if reachable_str else None
+
+    # If an exit was already chosen for this zone, check if it's still valid/reachable
     if CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == cur_zone:
-        pos, tag = _EXIT_TARGETS[CURRENT_ZONE_CHOSEN_EXIT](px, py)
-        return pos, tag, CURRENT_ZONE_CHOSEN_EXIT
+        if reachable_set is None or CURRENT_ZONE_CHOSEN_EXIT in reachable_set:
+            pos, tag = _EXIT_TARGETS[CURRENT_ZONE_CHOSEN_EXIT](px, py)
+            return pos, tag, CURRENT_ZONE_CHOSEN_EXIT
 
     rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
 
-    # Determine candidate directions: avoid immediate backtracking
-    candidates = [d for d in ["N", "S", "E", "W"] if d != rev_dir]
+    # Determine candidate directions: prioritize reachable edges if telemetry provides them
+    all_dirs = [d for d in reachable_set] if reachable_set else ["N", "S", "E", "W"]
+    candidates = [d for d in all_dirs if d != rev_dir]
     if not candidates:
-        candidates = ["N", "S", "E", "W"]
+        candidates = all_dirs if all_dirs else ["N", "S", "E", "W"]
 
     # Check for novel (unvisited) adjacent zones
     cycle_zones = set(list(RECENT_ZONES)[-max(ZONE_CYCLE_LENGTH, 2):]) if ZONE_HOPPING_DETECTED else set()
@@ -386,7 +392,7 @@ def get_zone_exit_target(cur_pos):
             print(f"[ORGANIC EXPLORATION] Selected organic novel exit {chosen_dir} ({label}) for zone {cur_zone}")
         return pos, label, chosen_dir
 
-    # If no strictly novel zones are detected, pick randomly among non-reverse candidates
+    # If no strictly novel zones are detected, pick randomly among candidates
     chosen_dir = random.choice(candidates)
     pos, tag = _EXIT_TARGETS[chosen_dir](px, py)
     CURRENT_ZONE_CHOSEN_EXIT = chosen_dir
@@ -2103,15 +2109,23 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         # 7. Autonomous area exploration via Caves of Qud native Autoexplore
         unexp_cells = game_state.get("unexplored_cells", None)
-        if unexp_cells is not None and unexp_cells > 0:
-            zone_fully_explored = False
-        else:
+        is_subterranean = (cur_z > 10)
+        # In subterranean strata (z > 10), solid rock walls permanently occlude hundreds of cells (500-1500 cells).
+        # When native autoexplore and pathfinding confirm no reachable unexplored cells remain,
+        # the engine sets zone_fully_explored: True. This MUST NOT be overridden by solid rock unexp_cells!
+        # On the surface (z <= 10), require unexp_cells <= 35 to guard against premature exit bailing.
+        if is_subterranean or is_stuck_explore:
             zone_fully_explored = game_state.get("zone_fully_explored", False) or (unexp_cells == 0)
+        else:
+            if unexp_cells is not None and unexp_cells > 35:
+                zone_fully_explored = False
+            else:
+                zone_fully_explored = game_state.get("zone_fully_explored", False) or (unexp_cells == 0)
         if zone_fully_explored and zone_id:
             EXPLORED_ZONE_SET.add(zone_id)
 
         # Determine if there is an unexplored sector (across water/obstacles)
-        has_unexplored_sector = (unexp_cells is not None and unexp_cells > 0)
+        has_unexplored_sector = (not zone_fully_explored) and (unexp_cells is not None and unexp_cells > 0)
         sector_target = None
         sector_reason = ""
         if has_unexplored_sector:
@@ -2125,7 +2139,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             elif 0 <= nx < 80 and 0 <= ny < 25 and (nx != px or ny != py):
                 sector_target = (nx, ny)
                 sector_reason = f"Water Traversal: Navigating toward nearest unexplored cell at {sector_target} ({unexp_cells} unrevealed cells)"
-        elif unexp_cells is None:
+        elif unexp_cells is None and not zone_fully_explored:
             # Fallback for synthetic dry-run tests without full zone grid telemetry
             sector_target, sector_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
 
@@ -2146,7 +2160,8 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         # 8. Unexplored Sector across Water / Obstacles (Macro-sector navigation)
         # When native autoexplore has finished the current reachable landmass (or is stuck cycling on a shoreline),
         # navigate toward the unexplored sector across the water!
-        if sector_target:
+        # Only navigate to unexplored sector if the zone is NOT fully explored!
+        if (not zone_fully_explored) and sector_target:
             if best_sector_m:
                 return {"action": best_sector_m, "reason": sector_reason}
             return {"action": f"NAVIGATE_TO_CELL:{sector_target[0]},{sector_target[1]}", "reason": sector_reason}
@@ -2193,8 +2208,8 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 print(f"[Zone Hopping Breaker] Suppressed immediate backtrack {exit_moves[0]} to avoid border ping-pong loop.")
 
         # 11. Navigate directly to forward zone exit border if zone is fully explored
-        if (zone_fully_explored and (unexp_cells is None or unexp_cells == 0)) or (is_stuck_explore and (unexp_cells is None or unexp_cells < 35)):
-            exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos)
+        if zone_fully_explored or is_stuck_explore or (unexp_cells == 0):
+            exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos, game_state)
             if valid_moves:
                 return {"action": f"NAVIGATE_ZONE_EXIT:{exit_dir}", "reason": f"Zone fully explored: navigating via engine pathfinder toward {exit_tag}"}
 
@@ -2515,8 +2530,9 @@ def main():
                         action_repeat_count = 0
                 elif is_oscillating and not is_in_combat:
                     is_stuck_explore = (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones)
+                    cur_z = game_state.get("z", 10)
                     if action == "AUTOEXPLORE":
-                        if current_zone_id and (game_state.get("unexplored_cells", 0) or 0) < 35:
+                        if current_zone_id and ((game_state.get("unexplored_cells", 0) or 0) < 35 or cur_z > 10 or game_state.get("zone_fully_explored", False)):
                             stuck_autoexplore_zones.add(current_zone_id)
                             EXPLORED_ZONE_SET.add(current_zone_id)
                             is_stuck_explore = True
@@ -2528,14 +2544,14 @@ def main():
 
                     frontier_target, frontier_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
 
-                    exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos)
+                    exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos, game_state)
 
-                    if frontier_target and (game_state.get("unexplored_cells", 1) or 0) > 0:
-                        action = f"NAVIGATE_TO_CELL:{frontier_target[0]},{frontier_target[1]}"
-                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Routing via native pathfinder to unexplored frontier at {frontier_target}."
-                    elif is_stuck_explore or game_state.get("zone_fully_explored", False) or (game_state.get("unexplored_cells", 1) == 0):
+                    if is_stuck_explore or game_state.get("zone_fully_explored", False) or (game_state.get("unexplored_cells", 1) == 0):
                         action = f"NAVIGATE_ZONE_EXIT:{exit_dir}"
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards forward exit {exit_tag} via native engine pathfinder."
+                    elif frontier_target and (game_state.get("unexplored_cells", 1) or 0) > 0 and cur_z <= 10:
+                        action = f"NAVIGATE_TO_CELL:{frontier_target[0]},{frontier_target[1]}"
+                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Routing via native pathfinder to unexplored frontier at {frontier_target}."
                     elif open_escapes:
                         open_escapes.sort(key=lambda m: (
                             visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],

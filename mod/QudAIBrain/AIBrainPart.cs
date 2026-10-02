@@ -876,6 +876,26 @@ namespace QudAIBrain
                 sb.Append($"\"nearest_unexplored_x\": {nearestUnexpX},");
                 sb.Append($"\"nearest_unexplored_y\": {nearestUnexpY},");
                 sb.Append($"\"nearest_unexplored_dist\": {(minUnexpDist != int.MaxValue ? minUnexpDist : -1)},");
+
+                string reachableEdges = "";
+                try
+                {
+                    if (isZoneFullyExplored || unexploredCellCount < 35 || (currentCell?.ParentZone?.Z ?? 10) > 10)
+                    {
+                        char[] testEdges = new char[] { 'N', 'S', 'E', 'W' };
+                        foreach (char edge in testEdges)
+                        {
+                            string edgeStep = null;
+                            if (AutoAct.TryFindEdgeStep(edge, out edgeStep) && !string.IsNullOrEmpty(edgeStep) && edgeStep != ".")
+                            {
+                                reachableEdges += edge.ToString();
+                            }
+                        }
+                    }
+                }
+                catch { }
+                sb.Append($"\"reachable_edges\": \"{reachableEdges}\",");
+
                 string genotype = "";
                 string subtype = "";
                 try { genotype = player.GetGenotype() ?? ""; } catch { }
@@ -2076,6 +2096,8 @@ namespace QudAIBrain
                         {
                             if (AutoAct.TryFindEdgeStep(fb, out step) && !string.IsNullOrEmpty(step) && step != ".")
                             {
+                                edgeChar = fb;
+                                UnityEngine.Debug.Log($"[QudAI NAVIGATE_ZONE_EXIT] Edge {dirStr} unreachable; fell back to edge {edgeChar} (step: {step})");
                                 break;
                             }
                         }

@@ -1830,7 +1830,56 @@ print(f"Clear LOS target with only Lase ready: {dec_lase['action']} | Reason: {d
 assert dec_lase["action"] == "USE_ABILITY:CommandLase:N", f"Expected Lase when LOS is clear, got: {dec_lase['action']}"
 
 print("\n==================================================")
-print(">>> ALL 35 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
+print("TEST 36: Subterranean Stratum Zone Exit & Reachable Edge Prioritization")
+print("==================================================")
+
+# Scenario 36.1: Subterranean stratum exploration completion
+# In stratum 11 (z = 11), player is at (17, 2). All reachable corridor cells are explored.
+# 605 unexplored cells exist in solid rock. Engine reports zone_fully_explored: True.
+# Telemetry reports reachable_edges: "N" (only North exit is reachable through the corridor).
+# Python must NOT call AUTOEXPLORE or NAVIGATE_TO_CELL into rock; it MUST navigate to the North exit!
+subterranean_stratum_state = {
+    "hp": 24, "max_hp": 24, "x": 17, "y": 2, "z": 11,
+    "calling": "Apostle",
+    "level": 3, "ap": 0, "sp": 0, "mp": 0,
+    "zone_id": "JoppaWorld.10.23.0.1.11",
+    "zone_name": "subterranean salt marsh, 1 stratum deep",
+    "zone_fully_explored": True,
+    "unexplored_cells": 605,
+    "unexplored_centroid_x": 40, "unexplored_centroid_y": 16,
+    "nearest_unexplored_x": 17, "nearest_unexplored_y": 0, "nearest_unexplored_dist": 2,
+    "reachable_edges": "N",
+    "hostiles_nearby": False, "hostiles_adjacent": False,
+    "surroundings": {
+        "NW": "[BLOCKED: impassable terrain]", "N": "[BLOCKED: impassable terrain]", "NE": "[BLOCKED: impassable terrain]",
+        "W": "[BLOCKED: impassable terrain]",                                       "E": "watervine",
+        "SW": "watervine",                    "S": "Empty ground",                  "SE": "campfire"
+    },
+    "stairs_up": [{"name": "stairs up", "blueprint": "StairsUp", "dist": 17, "dir": "E", "tx": 34, "ty": 2}],
+    "stairs_down": [],
+    "visible_entities": []
+}
+
+dec_sub = brain.query_decision(subterranean_stratum_state, took_damage=False, enemies=[])
+print(f"Subterranean stratum decision: {dec_sub['action']} | Reason: {dec_sub['reason']}")
+assert dec_sub["action"] == "NAVIGATE_ZONE_EXIT:N", f"Expected NAVIGATE_ZONE_EXIT:N to reach North exit in stratum 11, got: {dec_sub['action']}"
+assert "navigating via engine pathfinder toward North zone exit" in dec_sub["reason"]
+
+# Scenario 36.2: get_zone_exit_target prioritizes reachable_edges
+pos_n, tag_n, dir_n = brain.get_zone_exit_target((17, 2), subterranean_stratum_state)
+print(f"Reachable edge target: {pos_n}, Tag: {tag_n}, Dir: {dir_n}")
+assert dir_n == "N", f"Expected exit dir N from reachable_edges 'N', got: {dir_n}"
+
+# Scenario 36.3: Loop Breaker breakout in subterranean stratum with 605 solid rock cells
+brain.recent_positions.clear()
+brain.recent_positions.extend([(17, 2), (18, 2)] * 4)
+pos_freq_sub = brain.recent_positions.count((17, 2))
+assert pos_freq_sub >= 3, "Setup condition: oscillation frequency must be >= 3"
+exit_pos_lb, exit_tag_lb, exit_dir_lb = brain.get_zone_exit_target((17, 2), subterranean_stratum_state)
+assert exit_dir_lb == "N"
+
+print("\n==================================================")
+print(">>> ALL 36 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
 
