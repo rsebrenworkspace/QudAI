@@ -84,9 +84,19 @@ To discriminate (do this on the next hang, **before restarting the game**):
 - Retrieve `Player.log` right after a level 5 hang. Check for `HarmonyException`, `Parameter`, `Ambiguous`, `[QudAI`.
 - Confirm which mod folder is loaded (the log said `QUDAITEST`; the repo calls it `QudAIBrain`). Check for duplicate copies in `...\CavesOfQud\Mods`.
 - Check whether a stale `death.json` is in the QudAI folder.
+- Check `ancestral_wisdom.json`: confirm it contains the Gen 6 and Gen 7 lessons. The Gen 6/7 chronicles were lost and restored from the Recycle Bin, and the wisdom file may have been written without them. Confirm the restored chronicles are complete and, if lessons are missing, regenerate them from the chronicles.
 - Confirm in Antigravity's Rules panel that `.agents/rules/read_project_docs.md` is active and set to always apply, and that the `@../../AGENTS.md` reference resolves. [unverified: based on third-party docs]
 
 ## Session log (newest first)
+
+### 2026-10-04 (latest): docs merge and git safety (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
+- Docs merged to `main` as `ab4f87d`. The GitHub PR for `docs/workflow` was not merged on GitHub; the branch was already merged locally (`b98648c`), so that merge was pushed directly. The PR may still show as open. [verified in code @ab4f87d]
+- Added `tools/git_report.py` (read-only git state report) and the git safety rules in `AGENTS.md` section 5. Replaced `docs/CODEMAP.md` with the updated version.
+- Data-loss incident (human-reported, not observed in this session): the Gen 6/7 chronicles were temporarily lost by a discard and were restored from the Windows Recycle Bin. The restore is not re-verified here. [unverified]
+- `ancestral_wisdom.json` may be missing the Gen 6 and Gen 7 lessons (see *Needs a human*). [unverified]
+- `tools/check_docs.py` passed with 6 warnings (tests-max marker, README "24-scenario" count, 3 hard-coded user paths, 3 `.dll` files in repo root). None were fixed.
+- Usage: this session's token/plan usage was **not measured**, so it cannot serve as a benchmark.
+- Untouched: `memory/` and `chronicles/` (two untracked `memory/runs/run_20261004_*.json` files remain uncommitted).
 
 ### 2026-10-04 (later): workflow setup (Claude, chat)
 - Human subscribed to the Claude Pro plan to run Claude Code in the repo. Added `CLAUDE.md` (imports `@AGENTS.md`), `docs/WORKFLOW.md`, `docs/CODEMAP.md`, `docs/tasks/TEMPLATE.md`, and first task cards `T-1.1` (energy guarantee) and `T-1.8` (Harmony self-check).
