@@ -61,7 +61,7 @@ To discriminate (do this on the next hang, **before restarting the game**):
 
 **Hygiene**
 20. Hard-coded user paths in `brain.py` and `AIBrainPart.cs`; `D:\QudAI` in docs vs `C:\Users\...` in code.
-21. `test_*.dll` and probe scripts in the repo root. README says 24 tests, history says 50.
+21. `test_*.dll` and probe scripts are still on disk in the repo root (no longer tracked or committable since 3e3c105, but `check_docs.py` still warns because it checks disk, not git). README/ARCHITECTURE test counts fixed (50) in 8dd3548 / c861489.
 22. `ENGINE_INTERNALS.md` is stale in places: says `isCycling` sets `isZoneFullyExplored = true` (code sets `false` + stuck flag), buffer size 10 (code 24),
     claims `Popup.Show`/`ShowOptionList` patches that do not exist, names `PlayerTurn.Prefix` and `bSuppressPopups` (code: `XRLCore.PlayerTurn`, `Popup.Suppress`).
     Section numbering repeats (11.4, 12.2).
@@ -84,10 +84,20 @@ To discriminate (do this on the next hang, **before restarting the game**):
 - Retrieve `Player.log` right after a level 5 hang. Check for `HarmonyException`, `Parameter`, `Ambiguous`, `[QudAI`.
 - Confirm which mod folder is loaded (the log said `QUDAITEST`; the repo calls it `QudAIBrain`). Check for duplicate copies in `...\CavesOfQud\Mods`.
 - Check whether a stale `death.json` is in the QudAI folder.
+- Decide what to do with the untracked-but-present `test_*.dll` files: move them into `scratch/` (silences the checker) or delete them. Not done because the task said to keep them on disk.
 - Check `ancestral_wisdom.json`: confirm it contains the Gen 6 and Gen 7 lessons. The Gen 6/7 chronicles were lost and restored from the Recycle Bin, and the wisdom file may have been written without them. Confirm the restored chronicles are complete and, if lessons are missing, regenerate them from the chronicles.
 - Confirm in Antigravity's Rules panel that `.agents/rules/read_project_docs.md` is active and set to always apply, and that the `@../../AGENTS.md` reference resolves. [unverified: based on third-party docs]
 
 ## Session log (newest first)
+
+### 2026-10-04 (hygiene commits): docs warnings cleanup (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
+- Three separate commits on `main`, staged by explicit path, **not pushed yet** at the time of writing:
+  - `3e3c105`: `.gitignore` now ignores `*.dll` and `*.exe`; `git rm --cached` on `test_compile.dll`, `test_edge.dll`, `test_smart_edge.dll`, `scratch/find_declaring.exe`. Files remain on disk. [verified in code @3e3c105]
+  - `c861489`: added `<!-- tests-max: 50 -->` to `docs/ARCHITECTURE.md`. `dry_run.py` has Tests 1-50 (contiguous; Tests 5 and 6 each appear twice). [verified in code @c861489]
+  - `8dd3548`: README "24-scenario" changed to "50-scenario".
+- `tools/check_docs.py`: 6 warnings down to 4. Remaining: hard-coded user path in `brain.py`, `twitch_bot.py`, `AIBrainPart.cs`; and "Build artifacts in repo root" for the three `test_*.dll` (the check looks at disk, so it keeps warning even though git no longer tracks them).
+- Also seen, not a warning: `actions: 24 in code, 28 documented`. Four documented commands are not matched in code by the checker. Not investigated. [unverified]
+- Not touched: `memory/`, `chronicles/`. Usage was not measured.
 
 ### 2026-10-04 (latest): docs merge and git safety (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
 - Docs merged to `main` as `ab4f87d`. The GitHub PR for `docs/workflow` was not merged on GitHub; the branch was already merged locally (`b98648c`), so that merge was pushed directly. The PR may still show as open. [verified in code @ab4f87d]
