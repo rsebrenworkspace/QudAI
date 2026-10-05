@@ -78,7 +78,7 @@ To discriminate (do this on the next hang, **before restarting the game**):
 
 ## Next steps (suggested order)
 
-1. Add the startup self-check: log every method in `Harmony.GetAllPatchedMethods()` and one `[QudAI] PlayerTurn patch ACTIVE` line. Expected: **10 patches** (see ARCHITECTURE section 4).
+1. ~~Startup self-check~~ done (T-1.8). Read it in `Player.log` (search `[QudAI]`): expect `PlayerTurn patch ACTIVE`, 10 `Patched:` lines, `Patch check: 10/10 applied`. Absence of the ACTIVE line means the `PlayerTurn` patch itself failed or the mod did not compile (check `build_log.txt`).
 2. Add a logging-only prefix on every `Popup` method while `active.flag` exists (name + stack trace) to catch unpatched modals.
 3. C# `Prefix`: on exception with the flag present, spend a turn and `return false`. (The central energy guarantee is done, T-1.1.)
 4. Atomic `action.json` (write temp, `os.replace`), tolerant parse in `ReadAction`, add a turn id, make C# timeout > LLM timeout.
@@ -99,6 +99,13 @@ To discriminate (do this on the next hang, **before restarting the game**):
 - Confirm in Antigravity's Rules panel that `.agents/rules/read_project_docs.md` is active and set to always apply, and that the `@../../AGENTS.md` reference resolves. [unverified: based on third-party docs]
 
 ## Session log (newest first)
+
+### 2026-10-04 (T-1.8): Harmony startup self-check (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
+- Branch `task/1.8-patch-self-check`. Added `RunPatchSelfCheck()` to `AIBrainPart.cs`, called once from `Prefix`. Expected patches come from reflection over `[HarmonyPatch]` classes; applied ones from `Harmony.GetPatchInfo`.
+- Verified in game 2026-10-04: mod compiled, log shows 10/10 patches applied, including `Popup.PickOption` and `Popup.ShowYesNo`. This weakens level 5 hypothesis 1 (patch never applied) for this launch; patches could still misbehave at runtime. [verified in game 2026-10-04]
+- **Unverified:** negative test skipped by the human; a broken patch reporting `PATCH MISSING` is unproven.
+- Noticed: `Mods\QudAI` (Sep 19) and `Mods\QudAIBrain` (Sep 28) both exist and both appear in the load order. Not investigated (still in *Needs a human*).
+- **Next:** hypothesis 2 (log-only prefix on all `Popup` methods, Next steps 2), then Next steps 3-4.
 
 ### 2026-10-04 (T-1.1): central energy guarantee (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
 - Branch `task/1.1-energy-guard` (from `main` @7bb06cc), code in `1e61a29`. Changed `Prefix` in `AIBrainPart.cs` only, plus the card's Result and this file. No Python, `memory/` or `chronicles/` touched. Merged into local `main`; not pushed.
