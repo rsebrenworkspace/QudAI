@@ -1651,12 +1651,7 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     surroundings = game_state.get("surroundings", {})
     companions = game_state.get("companions", [])
     enemies = filter_hostile_enemies(enemies, companions)
-    if companions and adj_threats:
-        comp_names = {c.get("name", "").lower() for c in companions if c.get("name")}
-        adj_threats = {
-            d: ename for d, ename in adj_threats.items()
-            if not any(cn in ename.lower() for cn in comp_names if len(cn) > 2)
-        }
+    adj_threats = drop_companion_cells(adj_threats, cur_pos, companions)
 
     closest_enemy = enemies[0] if enemies else None
     closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
