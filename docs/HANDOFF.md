@@ -57,7 +57,7 @@ To discriminate (do this on the next hang, **before restarting the game**):
 14. `detect_build()` re-runs every turn, so buying a mutation can switch archetype mid-run (priorities and doctrine change). Detect once and persist.
 15. `update_zone_records` is called twice per turn, so `ZONE_STEP_COUNT` advances twice (the "first 4 turns" border logic is ~2 turns).
 16. `is_peaceful_npc` uses substring matching; `"tam"` can match inside unrelated names, hiding real hostiles.
-17. **fixed in T-1.15 (branch `task/1.15-explored-flag`, not verified in game).** Original description: `zone_fully_explored` is overridden by Python in several places (see ARCHITECTURE 6b). Iterations 38 and 40 reverted each other.
+17. **fixed in T-1.15 (merged to `main` as `2d8dce0`; verified in game 2026-10-04, human-reported; the one exception is Joppa, a town, where the brain still leaves instead of exploring, and the human is fine with that).** Original description: `zone_fully_explored` is overridden by Python in several places (see ARCHITECTURE 6b). Iterations 38 and 40 reverted each other.
 18. Chronicler: lessons use only the last 6 action names (no state), only the last 4 are injected, LLM-timeout fallbacks are stored as wisdom,
     paths hard-coded to `D:\QudAI`.
 19. `SKILL_DATABASE` is a static copy of engine data. C# exports only *affordable* skills, which is why Python needs the copy.
@@ -120,7 +120,7 @@ To discriminate (do this on the next hang, **before restarting the game**):
 - Branch `task/1.15-explored-flag` (from `main` @8ca794c). `[verified in code]` Findings: Python had **five** writers into `EXPLORED_ZONE_SET` (zone-leave, decision block, stuck-forced, oscillation breaker, failed `NAVIGATE_TO_CELL` incl. food foraging); `stuck_autoexplore_zones` never expired, so "stuck once" meant "stuck forever"; the leave-zone code tested the *new* zone's flag. Reproduced on old code: stuck + no frontier + 1251 unexplored => "Zone fully explored", remembered permanently.
 - Fix: new `engine_confirms_explored` (engine flag, minus the surface >35-cells water rule); the set is written in exactly two places (top of `query_decision`, and on zone change from `ENGINE_EXPLORED_LAST`); a successful autoexplore step with no engine "stuck" clears the stuck mark; a fresh visit clears it too; the stuck give-up still leaves the zone but is labelled "Autoexplore stuck, leaving zone" (`zone_label`) and is not remembered. Tests: new Test 56 (incl. the real bug path), Scenario 25.4 and Test 11 fixtures isolated (they reused one zone ID with contradictory engine data). All 56 pass with the LLM forced offline.
 - `ENGINE_INTERNALS.md` corrected (`isCycling` sets `false` + stuck; meaning of `zone_fully_explored`).
-- **Unverified in game.** **Not changed:** the surface ">35 cells => not explored" rule, which deliberately overrides the engine for regions across water; `UNREACHABLE_SECTORS` (still session-persistent).
+- **Verified in game (human-reported):** works as intended; towns such as Joppa are still left rather than explored, by choice. **Not changed:** the surface ">35 cells => not explored" rule, which deliberately overrides the engine for regions across water; `UNREACHABLE_SECTORS` (still session-persistent).
 - **Next:** play and watch for the label "Autoexplore stuck, leaving zone": if it appears with a reachable frontier, send me the console lines.
 
 ### 2026-10-04 (T-1.14): food skills in the build templates (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
