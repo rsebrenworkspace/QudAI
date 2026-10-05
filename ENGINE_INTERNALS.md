@@ -503,6 +503,7 @@ To guarantee detection of arbitrary polygonal cycles:
        return; // Yield control to Python driver for frontier escape
    }
    ```
+   > **Correction (2026-10-04, `[verified in code @8ca794c]`):** the current code sets `isZoneFullyExplored = false` and `isAutoexploreStuck = true` when `isCycling`. `isZoneFullyExplored` becomes `true` only at the very end of `ExecuteAutoexplore`, when neither native autoexplore nor `AutoAct.TryFindPathStep` toward the nearest unexplored cell finds a step; any successful step resets it to `false`. So `zone_fully_explored` means "native autoexplore has nothing reachable left", **not** "every cell is revealed" (`unexplored_cells` can stay high behind water or rock), and `autoexplore_stuck` means "the last autoexplore step failed or cycled".
 
 ### 15.3 Cycle Centroid Steering Physics
 When an oscillation is detected, escaping cannot simply backtrack into recently traversed tiles:
