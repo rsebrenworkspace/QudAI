@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 52 -->
-`dry_run.py` currently holds Tests 1-52. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 55 -->
+`dry_run.py` currently holds Tests 1-55. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -54,7 +54,7 @@ emergency retreat to stairs up (underground, low HP), priority AP spend.
 
 **Phase A: safe mode** (`not is_in_combat`), in order:
 1. Autolevel (Twitch winner, else template doctrine)
-2. Sustenance (butcher/harvest, then hunger: cook, camp, eat)
+2. Sustenance: butcher/harvest adjacent sources (with a 3-in-a-row cool-down), then hunger: `EAT` if he has food (no camp/cook detour, no free meal), then 2C foraging: when hungry or carrying fewer than 3 food items, `choose_food_source` walks to the nearest `food_sources` corpse (needs Butchery) or plant (needs Harvestry) with `NAVIGATE_TO_CELL`, with a pursuit time-out and a blacklist for unreachable targets (T-1.13)
 3. Rest (HP < 75%, not swimming)
 4. Ammo top-off; 4B. companion recruitment
 5. Stairs/delving (surface needs level gate; underground is bold if HP >= 70%)
@@ -127,7 +127,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
   `nearest_unexplored_x/y/dist`, `reachable_edges` (string of N/S/E/W)
 - **Move feedback:** `last_move_failed`, `last_failed_dir` (a direction, or `PATH_BLOCKED`)
 - **Survival:** `hunger_level`, `is_hungry`, `is_famished`, `has_food`, `food_count`, `food_items`, `corpses_nearby`,
-  `harvestable_nearby`, `campfire_nearby`, `can_make_camp/cook/butcher/harvest`, `is_swimming`, `water_drams`
+  `harvestable_nearby`, `food_sources` (up to 8 butcherable corpses/harvestable plants within 15 tiles: `kind`, `name`, `tx`, `ty`, `dist`; a corpse is an object with a `Butcherable` part, never a living creature; empty while swimming), `campfire_nearby`, `can_make_camp/cook/butcher/harvest` (`can_make_camp` is false when a plant or fire is within 2 cells, T-1.12), `is_swimming`, `is_on_fire`, `water_drams`
 - **Combat:** `hostiles_nearby`, `hostiles_adjacent`, `effects`, `abilities`, `is_sprinting`, `has_missile_weapon`,
   `missile_ammo`, `missile_max_ammo`, `inventory_ammo`
 - **Identity:** `genotype`, `subtype`, `calling` (same as subtype), `equipped_summary`
@@ -135,7 +135,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
   `companions`, `has_companion`
 - **Vertical travel:** `standing_on_stairs_down/up`, `stairs_down`, `stairs_up`
 - **Surroundings:** 5x5 grid keyed `NW`, `N`, ..., `NW2`, `NNW`, ...; tags `[ENEMY:]`, `[COMPANION:]`, `[NPC:]`, `[BLOCKED:]`,
-  `[HAZARD:]`, `[SWIM:]`, `[STAIRS_DOWN:]`, `[STAIRS_UP:]`, `[ITEM:]`, `[ZONE_EXIT:]`
+  `[HAZARD:]` (acid, lava, magma, and anything the engine reports aflame: `[HAZARD: fire]`), `[SWIM:]`, `[STAIRS_DOWN:]`, `[STAIRS_UP:]`, `[ITEM:]`, `[ZONE_EXIT:]`
 
 ## 6b. State ownership (target; see AGENTS.md R2)
 

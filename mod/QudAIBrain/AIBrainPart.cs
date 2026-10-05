@@ -200,6 +200,73 @@ namespace QudAIBrain
             return list;
         }
 
+        // ---- Food (HANDOFF issue 34): only real butcherable corpse ITEMS count. Living creatures carry a `Corpse` part
+        // (it makes their corpse on death), so testing for `Corpse` flagged every adjacent animal and pet as a corpse.
+        // A charred corpse (killed by Fire/Light, e.g. Lase) has no Butcherable part and is correctly excluded.
+        private const int FoodSourceRadius = 15;
+
+        public static bool IsButcherableCorpse(GameObject o)
+        {
+            if (o == null || o.IsPlayer() || o.Brain != null || o.HasPart("Brain")) return false;
+            try { return o.HasPart("Butcherable"); }
+            catch { return false; }
+        }
+
+        // ---- Fire safety (engine data only; see docs/DECISIONS.md "campfire next to dogthorn trees" and HANDOFF issue 30) ----
+        private const int CampSafetyRadius = 2;
+
+        public static bool IsObjectAflame(GameObject obj, GameObject player)
+        {
+            if (obj == null || obj == player) return false;
+            try { return obj.IsAflame() || obj.HasEffect("Burning") || obj.HasPart("Campfire"); }
+            catch { return false; }
+        }
+
+        public static bool IsOnFire(GameObject player)
+        {
+            if (player == null) return false;
+            try { return player.IsAflame() || player.HasEffect("Burning"); }
+            catch { return false; }
+        }
+
+        // Plants burn (Physics.Category "Plants": trees, grass, vines). Creatures are never counted as terrain.
+        private static bool IsFlammableTerrainObject(GameObject obj)
+        {
+            if (obj == null || obj.IsPlayer() || obj.Brain != null || obj.HasPart("Brain")) return false;
+            try
+            {
+                var phys = obj.GetPart<Physics>();
+                return phys != null && string.Equals(phys.Category, "Plants", StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        // A campfire ignites flammable neighbors. Unsafe if anything within CampSafetyRadius is a plant or already burning.
+        public static bool IsCampSpotSafe(GameObject player)
+        {
+            try
+            {
+                Cell center = player?.CurrentCell;
+                Zone zone = center?.ParentZone;
+                if (zone == null) return true;
+                for (int dx = -CampSafetyRadius; dx <= CampSafetyRadius; dx++)
+                {
+                    for (int dy = -CampSafetyRadius; dy <= CampSafetyRadius; dy++)
+                    {
+                        Cell c = zone.GetCell(center.X + dx, center.Y + dy);
+                        if (c?.Objects == null) continue;
+                        foreach (GameObject o in c.Objects)
+                        {
+                            if (o == null) continue;
+                            if (IsObjectAflame(o, player) || IsFlammableTerrainObject(o)) return false;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return true;
+        }
+
         public static bool IsCompanion(GameObject obj, GameObject player)
         {
             if (obj == null || player == null || obj == player || obj.IsPlayer() || !obj.IsAlive) return false;
@@ -744,7 +811,7 @@ namespace QudAIBrain
                                 {
                                     campfireNearby = true;
                                 }
-                                if (o.HasPart("Corpse") || o.HasPart("Butcherable"))
+                                if (IsButcherableCorpse(o))
                                 {
                                     corpsesNearby++;
                                 }
@@ -774,11 +841,33 @@ namespace QudAIBrain
                     {
                         hasCampAbility = abilities.AbilityByGuid.Values.Any(a => a != null && a.Command == "CommandSurvivalCamp");
                     }
-                    canMakeCamp = !isSwimming && (hasCampAbility || player.HasSkill("Survival_Camp") || player.HasSkill("CookingAndGathering")) && !hostilesNearby && !(currentCell?.ParentZone?.IsWorldMap() ?? false);
+                    canMakeCamp = !isSwimming && (hasCampAbility || player.HasSkill("Survival_Camp") || player.HasSkill("CookingAndGathering")) && !hostilesNearby && !(currentCell?.ParentZone?.IsWorldMap() ?? false) && IsCampSpotSafe(player);
                 }
                 catch { }
 
                 bool canCook = !isSwimming && campfireNearby && (player.HasSkill("CookingAndGathering") || foodCount > 0);
+                var foodSourceEntries = new List<string>();
+                try
+                {
+                    Zone fsZone = currentCell?.ParentZone;
+                    if (fsZone != null && !isSwimming)
+                    {
+                        var fsFound = new List<Tuple<int, string>>();
+                        foreach (GameObject fsObj in GetSafeZoneObjects(fsZone))
+                        {
+                            if (fsObj == null || fsObj.IsPlayer() || fsObj.CurrentCell == null) continue;
+                            string fsKind = IsButcherableCorpse(fsObj) ? "corpse" : (fsObj.HasPart("Harvestable") ? "plant" : null);
+                            if (fsKind == null) continue;
+                            int fsDist = Math.Max(Math.Abs(fsObj.CurrentCell.X - currentCell.X), Math.Abs(fsObj.CurrentCell.Y - currentCell.Y));
+                            if (fsDist > FoodSourceRadius) continue;
+                            string fsName = EscapeJson(StripQudFormatting(fsObj.DisplayNameOnly ?? fsObj.Blueprint ?? ""));
+                            string fsEntry = "{\"kind\": \"" + fsKind + "\", \"name\": \"" + fsName + "\", \"tx\": " + fsObj.CurrentCell.X + ", \"ty\": " + fsObj.CurrentCell.Y + ", \"dist\": " + fsDist + "}";
+                            fsFound.Add(Tuple.Create((fsKind == "corpse" ? 0 : 1000) + fsDist, fsEntry));
+                        }
+                        foreach (var fsItem in fsFound.OrderBy(fsKey => fsKey.Item1).Take(8)) foodSourceEntries.Add(fsItem.Item2);
+                    }
+                }
+                catch { }
                 bool canButcher = !isSwimming && player.HasSkill("CookingAndGathering_Butchery") && corpsesNearby > 0;
                 bool canHarvest = !isSwimming && player.HasSkill("CookingAndGathering_Harvestry") && harvestableNearby > 0;
 
@@ -936,6 +1025,7 @@ namespace QudAIBrain
                 sb.Append($"\"food_count\": {foodCount},");
                 sb.Append($"\"food_items\": [{string.Join(",", foodItemNames)}],");
                 sb.Append($"\"corpses_nearby\": {corpsesNearby},");
+                sb.Append($"\"food_sources\": [{string.Join(",", foodSourceEntries)}],");
                 sb.Append($"\"harvestable_nearby\": {harvestableNearby},");
                 sb.Append($"\"campfire_nearby\": {(campfireNearby ? "true" : "false")},");
                 sb.Append($"\"can_make_camp\": {(canMakeCamp ? "true" : "false")},");
@@ -943,6 +1033,7 @@ namespace QudAIBrain
                 sb.Append($"\"can_butcher\": {(canButcher ? "true" : "false")},");
                 sb.Append($"\"can_harvest\": {(canHarvest ? "true" : "false")},");
                 sb.Append($"\"is_swimming\": {(isSwimming ? "true" : "false")},");
+                sb.Append($"\"is_on_fire\": {(IsOnFire(player) ? "true" : "false")},");
                 sb.Append($"\"effects\": [{string.Join(",", effectStrs)}],");
                 sb.Append($"\"abilities\": [{string.Join(",", abilityStrs)}],");
                 sb.Append($"\"has_missile_weapon\": {(hasMissileWeapon ? "true" : "false")},");
@@ -1392,6 +1483,11 @@ namespace QudAIBrain
                 }
 
                 string lower = cleanName.ToLower();
+                if (IsObjectAflame(obj, player))
+                {
+                    names.Insert(0, "[HAZARD: fire]");
+                    continue;
+                }
                 if (lower.Contains("acid") || lower.Contains("lava") || lower.Contains("magma") || lower.Contains("convalessence"))
                 {
                     names.Insert(0, $"[HAZARD: {cleanName}]");
@@ -1777,6 +1873,13 @@ namespace QudAIBrain
                         MessageQueue.AddPlayerMessage("{{R|You cannot make camp while swimming in deep water.}}");
                         return;
                     }
+                    if (!IsCampSpotSafe(player))
+                    {
+                        UnityEngine.Debug.Log("[QudAI MAKE_CAMP] Refused: flammable plants or fire within " + CampSafetyRadius + " cells");
+                        MessageQueue.AddPlayerMessage("{{R|It is too dangerous to light a campfire among flammable plants.}}");
+                        if (player.Energy != null) player.UseEnergy(1000, "MakeCamp");
+                        return;
+                    }
                     UnityEngine.Debug.Log("[QudAI MAKE_CAMP] Deploying campfire programmatically");
                     bool hasCampfireNearby = false;
                     if (player.CurrentCell != null)
@@ -1852,7 +1955,8 @@ namespace QudAIBrain
                     {
                         UnityEngine.Debug.Log($"[QudAI COOK_MEAL] Cooking at campfire '{campfireObj.DisplayNameOnly}' programmatically");
 
-                        // 1. Consume 1 ingredient or food item from player inventory if available
+                        // 1. Consume 1 ingredient or food item from player inventory. No ingredient = no meal (HANDOFF issue 34).
+                        bool ate = false;
                         var invObjects = player.GetInventory();
                         if (invObjects == null)
                         {
@@ -1864,6 +1968,7 @@ namespace QudAIBrain
                             var ingredient = invObjects.FirstOrDefault(o => o != null && (o.HasPart("PreparedCookingIngredient") || o.HasPart("Food")));
                             if (ingredient != null)
                             {
+                                ate = true;
                                 try
                                 {
                                     if (ingredient.Count > 1)
@@ -1877,6 +1982,14 @@ namespace QudAIBrain
                                 }
                                 catch { }
                             }
+                        }
+
+                        if (!ate)
+                        {
+                            UnityEngine.Debug.Log("[QudAI COOK_MEAL] No ingredient to cook; hunger unchanged");
+                            MessageQueue.AddPlayerMessage("{{R|You have nothing to cook.}}");
+                            if (player.Energy != null) player.UseEnergy(1000, "Cook");
+                            return;
                         }
 
                         // 2. Clear hunger and reset stomach cooking counter
@@ -1925,7 +2038,7 @@ namespace QudAIBrain
                         {
                             if (c?.Objects != null)
                             {
-                                corpseObj = c.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && (o.HasPart("Corpse") || o.HasPart("Butcherable")));
+                                corpseObj = c.Objects.FirstOrDefault(o => IsButcherableCorpse(o));
                                 if (corpseObj != null) break;
                             }
                         }

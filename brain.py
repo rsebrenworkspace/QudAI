@@ -92,6 +92,18 @@ PROSELYTIZE_EXCLUSIONS = {
 
 CHARMED_COMPANION_COORDS = set()
 
+# Food foraging (HANDOFF issue 34: "make him earn his dinner"). No free meals; he walks to corpses/plants and butchers/harvests.
+FOOD_BLACKLIST = {}            # (zone_id, tx, ty) -> FOOD_TURN value when the entry expires
+FOOD_PURSUIT = {"key": None, "turns": 0}
+FOOD_TURN = 0
+FOOD_PURSUIT_MAX_TURNS = 40    # give up on one target after this many pursuit turns
+FOOD_BLACKLIST_TURNS = 300
+FOOD_RESTOCK_THRESHOLD = 3     # forage when hungry or carrying fewer than this many food items
+BUTCHER_STREAK = 0             # consecutive BUTCHER actions; a silent failure must not repeat forever
+BUTCHER_TURN = 0               # Phase A sustenance calls (a clock for the cool-down below)
+BUTCHER_SUPPRESS_UNTIL = 0     # after 3 BUTCHERs in a row, stop trying for BUTCHER_COOLDOWN_TURNS
+BUTCHER_COOLDOWN_TURNS = 30
+
 KNOWN_STAIRS_DOWN = {}   # zone_id -> {"tx": tx, "ty": ty, "z": z, "name": name, "req_level": int}
 KNOWN_STAIRS_UP = {}     # zone_id -> {"tx": tx, "ty": ty, "z": z, "name": name}
 RETREAT_TARGET_LEVEL = None  # Level to attain before re-delving after an emergency retreat
@@ -995,6 +1007,53 @@ def filter_hostile_enemies(entities, companions=None):
             continue
         result.append(e)
     return result
+
+
+def choose_food_source(game_state, zone_id, learned_skills, last_act):
+    """Picks the nearest butcherable corpse / harvestable plant (exported by C# as `food_sources`) that the character
+    has the skill for, and returns a committed NAVIGATE_TO_CELL decision, or None.
+
+    Targets that the engine pathfinder cannot reach (`last_failed_dir == PATH_BLOCKED`) or that take too long are
+    blacklisted. Adjacent sources (dist <= 1) are left to the BUTCHER/HARVEST step."""
+    global FOOD_TURN
+    FOOD_TURN += 1
+    for k in [k for k, exp in FOOD_BLACKLIST.items() if exp <= FOOD_TURN]:
+        del FOOD_BLACKLIST[k]
+    cur_key = FOOD_PURSUIT["key"]
+    if (cur_key and game_state.get("last_move_failed") and game_state.get("last_failed_dir") == "PATH_BLOCKED"
+            and last_act and last_act.startswith("NAVIGATE_TO_CELL:")):
+        FOOD_BLACKLIST[cur_key] = FOOD_TURN + FOOD_BLACKLIST_TURNS
+        FOOD_PURSUIT.update({"key": None, "turns": 0})
+    allowed = set()
+    if "CookingAndGathering_Butchery" in learned_skills:
+        allowed.add("corpse")
+    if "CookingAndGathering_Harvestry" in learned_skills:
+        allowed.add("plant")
+    best = None
+    for s in game_state.get("food_sources", []) or []:
+        if s.get("kind") not in allowed or s.get("dist", 0) < 2:
+            continue
+        key = (zone_id, s.get("tx"), s.get("ty"))
+        if key in FOOD_BLACKLIST:
+            continue
+        rank = (0 if s.get("kind") == "corpse" else 1, s.get("dist", 999))
+        if best is None or rank < best[0]:
+            best = (rank, key, s)
+    if best is None:
+        FOOD_PURSUIT.update({"key": None, "turns": 0})
+        return None
+    _, key, s = best
+    if FOOD_PURSUIT["key"] == key:
+        FOOD_PURSUIT["turns"] += 1
+    else:
+        FOOD_PURSUIT.update({"key": key, "turns": 1})
+    if FOOD_PURSUIT["turns"] > FOOD_PURSUIT_MAX_TURNS:
+        FOOD_BLACKLIST[key] = FOOD_TURN + FOOD_BLACKLIST_TURNS
+        FOOD_PURSUIT.update({"key": None, "turns": 0})
+        return None
+    verb = "butcher" if s.get("kind") == "corpse" else "harvest"
+    return {"action": f"NAVIGATE_TO_CELL:{s.get('tx')},{s.get('ty')}",
+            "reason": f"Foraging: walking to {s.get('name', 'food')} ({s.get('dist')} tiles) to {verb} it for food"}
 
 
 def is_ability_ready(ab):
@@ -2342,21 +2401,28 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         can_harvest = not is_swimming and (game_state.get("can_harvest", False) or ("CookingAndGathering_Harvestry" in learned_skills and harvestable_nearby > 0))
 
         # 2A. Field harvesting & butchery: opportunistically butcher animal corpses and harvest plants when safe
-        if can_butcher:
+        global BUTCHER_STREAK, BUTCHER_TURN, BUTCHER_SUPPRESS_UNTIL
+        BUTCHER_TURN += 1
+        BUTCHER_STREAK = BUTCHER_STREAK + 1 if last_action == "BUTCHER" else 0
+        if BUTCHER_STREAK >= 3:
+            BUTCHER_SUPPRESS_UNTIL = BUTCHER_TURN + BUTCHER_COOLDOWN_TURNS
+        if can_butcher and BUTCHER_TURN >= BUTCHER_SUPPRESS_UNTIL:
             return {"action": "BUTCHER", "reason": "Survival: Butchering animal corpse for meat & cooking ingredients"}
         if can_harvest:
             return {"action": "HARVEST", "reason": "Survival: Harvesting wild plant for fresh cooking ingredients"}
 
         # 2B. Relief of hunger (Famished or Hungry)
+        # No free meals: camping/cooking no longer relieves hunger (COOK_MEAL needs an ingredient and gives nothing EAT
+        # does not). Hunger is relieved by eating real food; otherwise he forages (2C).
         if is_famished or is_hungry:
-            if campfire_nearby and not is_swimming:
-                return {"action": "COOK_MEAL", "reason": f"Survival ({hunger}): Cooking meal at adjacent campfire"}
-            if can_make_camp and (food_count > 0 or "CookingAndGathering" in learned_skills or corpses_nearby > 0):
-                return {"action": "MAKE_CAMP", "reason": f"Survival ({hunger}): Starting campfire to cook and preserve food"}
             if has_food:
                 return {"action": "EAT", "reason": f"Survival ({hunger}): Eating food from inventory to relieve hunger"}
-            if corpses_nearby > 0 and not is_swimming:
-                return {"action": "BUTCHER", "reason": f"Survival ({hunger}): Butchering nearby corpse to acquire food"}
+
+        # 2C. Earn dinner: walk to a butcherable corpse / harvestable plant when hungry or low on food
+        if (is_hungry or food_count < FOOD_RESTOCK_THRESHOLD) and not is_swimming:
+            forage = choose_food_source(game_state, zone_id, learned_skills, last_action)
+            if forage:
+                return forage
 
         # 3. Rest until healed if safe and damaged below threshold (default 75%)
         if hp_ratio < REST_HP_THRESHOLD and not took_damage and not is_swimming:
