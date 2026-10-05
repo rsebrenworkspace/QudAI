@@ -23,6 +23,10 @@ missile_api.txt
 twitch_config.json
 !twitch_config.example.json
 
+# Build artifacts and probes (AGENTS.md section 5)
+*.dll
+*.exe
+
 # IDE & Editor files
 .vscode/
 .idea/
