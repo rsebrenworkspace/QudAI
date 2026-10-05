@@ -91,7 +91,7 @@ To discriminate (do this on the next hang, **before restarting the game**):
 ## Session log (newest first)
 
 ### 2026-10-04 (hygiene commits): docs warnings cleanup (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
-- Three separate commits on `main`, staged by explicit path, **not pushed yet** at the time of writing:
+- Three separate commits on `main`, staged by explicit path, pushed to `origin/main` together with the HANDOFF update (`ff45a99`):
   - `3e3c105`: `.gitignore` now ignores `*.dll` and `*.exe`; `git rm --cached` on `test_compile.dll`, `test_edge.dll`, `test_smart_edge.dll`, `scratch/find_declaring.exe`. Files remain on disk. [verified in code @3e3c105]
   - `c861489`: added `<!-- tests-max: 50 -->` to `docs/ARCHITECTURE.md`. `dry_run.py` has Tests 1-50 (contiguous; Tests 5 and 6 each appear twice). [verified in code @c861489]
   - `8dd3548`: README "24-scenario" changed to "50-scenario".
