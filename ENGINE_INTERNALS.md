@@ -344,6 +344,12 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
 - **The Starvation Trap:** In vanilla Qud, resting while `Famished` prevents HP regeneration and accelerates starvation damage.
 - **The Solution:** Sustenance is placed at **Step 2 of Phase A** in `brain.py`, strictly ahead of resting at Step 3.
 
+### 12.1b Corpse drops and fire (verified from `Corpse.ProcessCorpseDrop` IL and blueprints, 2026-10-04)
+- `Corpse` part fields: `CorpseChance`, `BurntCorpseChance`, `VaporizedCorpseChance` (each with a `...Blueprint` and `...RequiresBodyPart`). `ProcessCorpseDrop` compares `Physics.LastDamagedByType` with the strings `"Fire"`, `"Light"` and `"Vaporized"` and rolls the matching chance (`in100`). `[verified in code]` that these three strings are compared; the exact branch mapping (Fire/Light -> burnt, Vaporized -> vaporized) is read from the call order and is `[unverified]`. Lase is light/laser damage, which matches the human-reported "enemies reduced to ashes".
+- Creatures drop a corpse only some of the time: Baboon `CorpseChance="40"`, Salthopper `8`; blueprint values seen range 0-25 and up. Not every kill leaves anything to butcher.
+- Burnt corpse = `Charred Corpse`: has a `Food` part ("It's charred.") but **no `Butcherable`**. A normal `Corpse` item has `Food Satiation="Meal" Gross="true" IllOnEat="true"` (edible but makes you ill).
+- `Butcherable` (on the creature's corpse blueprint, e.g. `Salthopper Corpse` has `OnSuccess="@Salthopper Corpse"`) is what `AttemptButcher` needs, and the player needs the `CookingAndGathering_Butchery` skill.
+
 ### 12.2 Engine Survival Mechanics
 - **Butchering:** Animal corpses possess `Butcherable`. Calling `AttemptButcher(player)` yields raw meat and cooking ingredients.
 - **Harvesting:** Wild plants possess `Harvestable`. Calling `AttemptHarvest(player)` harvests ingredients.
