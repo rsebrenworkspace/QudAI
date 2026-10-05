@@ -3074,3 +3074,44 @@ for turn in range(1, 5):
     print(f"  turn {turn}: {act} | {dec.get('reason', '')[:80]}")
     assert act != "REST" and not act.startswith("AUTOEXPLORE"), f"Turn {turn}: must not rest/explore with a hostile adjacent, got {act}"
 print("  [OK] Test 51 Passed: same-species hostile is a threat; no REST/AUTOEXPLORE over 4 turns.")
+
+
+# =====================================================================
+# TEST 52: Enemy behind a wall (no line of sight) must not trap the agent in combat mode (HANDOFF issue 28)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 52: Occluded enemy 3 tiles away behind a wall (multi-turn)")
+print("="*50)
+
+brain.CHARMED_COMPANION_COORDS.clear()
+brain.last_action = None
+def wall_state(has_los, hp=27):
+    return {
+        "hp": hp, "max_hp": 27, "x": 10, "y": 10, "z": 10, "level": 4,
+        "calling": "Apostle", "has_companion": False, "companions": [],
+        "zone_id": "JoppaWorld.11.19.0.1.10", "zone_fully_explored": False, "unexplored_cells": 500,
+        "hostiles_nearby": True, "hostiles_adjacent": False,
+        "surroundings": {"S": "[BLOCKED: impassable wall]", "N": "Clear", "E": "Clear", "W": "Clear",
+                         "NE": "Clear", "NW": "Clear", "SE": "[BLOCKED: impassable wall]", "SW": "[BLOCKED: impassable wall]"},
+        "abilities": [{"name": "Lase (4 charges)", "command": "CommandLase", "cooldown": 0, "usable": True, "active": False}],
+        "visible_entities": [
+            {"name": "snapjaw scavenger", "tx": 10, "ty": 13, "dist": 3, "dir": "S", "is_enemy": True, "is_companion": False,
+             "has_los": has_los, "difficulty": "Easy"},
+        ],
+    }
+occluded = wall_state(False)
+assert brain.get_close_threats(brain.filter_hostile_enemies(occluded["visible_entities"], []), occluded) == [], "Occluded enemy must not be a close threat"
+visible = wall_state(True)
+assert len(brain.get_close_threats(brain.filter_hostile_enemies(visible["visible_entities"], []), visible)) == 1, "Visible enemy must still be a close threat"
+adjacent = wall_state(False)
+adjacent["visible_entities"][0].update({"dist": 1, "ty": 11})
+assert len(brain.get_close_threats(brain.filter_hostile_enemies(adjacent["visible_entities"], []), adjacent)) == 1, "Adjacent enemy must always be a threat"
+for turn in range(1, 7):
+    st = wall_state(False)
+    dec = brain.query_decision(st, took_damage=False, enemies=st["visible_entities"])
+    reason = dec.get("reason", "")
+    print(f"  turn {turn}: {dec.get('action')} | {reason[:80]}")
+    assert "line of sight" not in reason.lower() and "Fallback" not in reason and "[LLM" not in reason, f"Turn {turn}: must not run combat logic for an occluded enemy, got {reason}"
+dec = brain.query_decision(wall_state(False), took_damage=True, enemies=wall_state(False)["visible_entities"])
+assert "Safe" not in dec.get("reason", ""), "Taking damage must still force combat/safety logic"
+print("  [OK] Test 52 Passed: occluded enemy ignored for 6 turns; visible, adjacent and damage cases still count.")

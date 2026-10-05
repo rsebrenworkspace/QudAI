@@ -2144,6 +2144,22 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     return {"action": "WAIT", "reason": f"[{template['name']} Fallback] Wait"}
 
 
+def get_close_threats(enemies, game_state):
+    """Enemies near enough to force combat mode.
+
+    A non-adjacent enemy the engine reports as having no line of sight (`has_los` is False, e.g. behind a wall or across
+    water) is not a threat yet: chasing line of sight to it kept the agent oscillating in a lake (2026-10-04, HANDOFF
+    issue 28). Adjacent enemies, damage taken (`took_damage` is handled by the caller) and enemies that regain line of
+    sight still force combat."""
+    hostiles_nearby = game_state.get("hostiles_nearby", False)
+    return [
+        e for e in enemies
+        if not is_ignorable_stationary_enemy(e)
+        and not (e.get("has_los") is False and e.get("dist", 999) >= 2)
+        and (e.get("dist", 999) <= 6 or (e.get("dist", 999) <= 10 and hostiles_nearby))
+    ]
+
+
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     global last_action, consecutive_kites, RETREAT_TARGET_LEVEL, CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS
 
@@ -2179,14 +2195,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
     enemies = filter_hostile_enemies(enemies, companions)
     adj_threats = get_adjacent_threats(surroundings, companions=companions, cur_pos=(game_state.get("x", 0), game_state.get("y", 0)))
-    close_threats = [
-        e for e in enemies
-        if not is_ignorable_stationary_enemy(e) and (
-            e.get("dist", 999) <= 6 or (
-                e.get("dist", 999) <= 10 and game_state.get("hostiles_nearby", False)
-            )
-        )
-    ]
+    close_threats = get_close_threats(enemies, game_state)
     engine_hostiles = (game_state.get("hostiles_adjacent", False) and bool(adj_threats)) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
     is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
 
@@ -2803,14 +2812,7 @@ def main():
                 surroundings = game_state.get("surroundings", {})
                 grid_display = render_5x5_grid(surroundings)
                 adj_threats = get_adjacent_threats(surroundings, companions=companions, cur_pos=(game_state.get("x", 0), game_state.get("y", 0)))
-                close_threats = [
-                    e for e in enemies
-                    if not is_ignorable_stationary_enemy(e) and (
-                        e.get("dist", 999) <= 6 or (
-                            e.get("dist", 999) <= 10 and game_state.get("hostiles_nearby", False)
-                        )
-                    )
-                ]
+                close_threats = get_close_threats(enemies, game_state)
                 engine_hostiles = (game_state.get("hostiles_adjacent", False) and bool(adj_threats)) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
                 is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
                 mode_str = "[COMBAT]" if is_in_combat else "[EXPLORE]"

@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 51 -->
-`dry_run.py` currently holds Tests 1-51. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 52 -->
+`dry_run.py` currently holds Tests 1-52. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -46,6 +46,8 @@ Known protocol weaknesses (see HANDOFF): non-atomic `action.json` write, no turn
    then the loop breakers, then write `action.json`.
 
 ### Decision pipeline (`query_decision`)
+
+Combat mode (`is_in_combat`) = damage taken, an adjacent threat, or `get_close_threats` (enemy within 6 tiles, or 10 with `hostiles_nearby`; a non-adjacent enemy with `has_los: false` does not count, T-1.11).
 
 Pre-checks: zone/stair records, stuck-autoexplore ingestion, template detection (every turn, see Known Issues),
 emergency retreat to stairs up (underground, low HP), priority AP spend.
