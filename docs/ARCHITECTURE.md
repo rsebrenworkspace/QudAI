@@ -20,6 +20,9 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
+<!-- tests-max: 50 -->
+`dry_run.py` currently holds Tests 1-50. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+
 ## 2. IPC protocol
 
 Exchange directory: `...\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI` (hard-coded in both files).
