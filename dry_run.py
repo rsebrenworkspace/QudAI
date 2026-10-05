@@ -962,7 +962,7 @@ dec_h = brain.query_decision(harvest_state, took_damage=False, enemies=[])
 print(f"Opportunistic harvest decision: {dec_h['action']} | Reason: {dec_h['reason']}")
 assert dec_h["action"] == "HARVEST", f"Expected HARVEST, got {dec_h['action']}"
 
-# Scenario 24.3: Adjacent Campfire Cooking when Hungry
+# Scenario 24.3: Hungry next to a campfire with food: just EAT (cooking gives nothing EAT does not; HANDOFF issue 34)
 cook_state = {
     "hp": 20, "max_hp": 20, "x": 10, "y": 10, "z": 10,
     "calling": "Warden",
@@ -978,9 +978,9 @@ cook_state = {
 }
 dec_c = brain.query_decision(cook_state, took_damage=False, enemies=[])
 print(f"Campfire cook decision: {dec_c['action']} | Reason: {dec_c['reason']}")
-assert dec_c["action"] == "COOK_MEAL", f"Expected COOK_MEAL at adjacent campfire, got {dec_c['action']}"
+assert dec_c["action"] == "EAT", f"Expected EAT (no cooking detour), got {dec_c['action']}"
 
-# Scenario 24.4: Starting a Campfire (Make Camp) when Famished with ingredients
+# Scenario 24.4: Famished with food and camp allowed: EAT, never a campfire detour (T-1.13)
 camp_state = {
     "hp": 20, "max_hp": 20, "x": 10, "y": 10, "z": 10,
     "calling": "Warden",
@@ -997,7 +997,7 @@ camp_state = {
 }
 dec_camp = brain.query_decision(camp_state, took_damage=False, enemies=[])
 print(f"Make camp decision: {dec_camp['action']} | Reason: {dec_camp['reason']}")
-assert dec_camp["action"] == "MAKE_CAMP", f"Expected MAKE_CAMP, got {dec_camp['action']}"
+assert dec_camp["action"] == "EAT", f"Expected EAT, not MAKE_CAMP, got {dec_camp['action']}"
 
 # Scenario 24.5: Eating Food from Inventory when Hungry
 eat_state = {
@@ -3147,3 +3147,101 @@ for turn in range(1, 4):
     assert dec.get("action") != "MAKE_CAMP", "Must not make camp when C# reports can_make_camp = False"
     assert dec.get("action") == "EAT", f"Hungry with food and an unsafe camp spot should EAT, got {dec.get('action')}"
 print("  [OK] Test 53 Passed: fire cells avoided; unsafe camp spot falls back to EAT.")
+
+
+# =====================================================================
+# TEST 54: Earn dinner: forage for corpses/plants, no free meals (HANDOFF issue 34)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 54: Foraging: walk to corpses/plants, blacklist unreachable ones, never loop on a failed butcher")
+print("="*50)
+
+def forage_reset():
+    brain.FOOD_BLACKLIST.clear()
+    brain.FOOD_PURSUIT.update({"key": None, "turns": 0})
+    brain.FOOD_TURN = 0
+    brain.BUTCHER_STREAK = 0
+    brain.BUTCHER_TURN = 0
+    brain.BUTCHER_SUPPRESS_UNTIL = 0
+    brain.last_action = None
+    brain.CHARMED_COMPANION_COORDS.clear()
+
+def forage_state(skills, sources, food_count=1, hungry=False, **extra):
+    st = {
+        "hp": 20, "max_hp": 20, "x": 10, "y": 10, "z": 10, "level": 4, "calling": "Warden",
+        "ap": 0, "sp": 0, "mp": 0, "skills": list(skills), "zone_id": "JoppaWorld.11.19.0.1.10",
+        "zone_fully_explored": False, "unexplored_cells": 500, "hostiles_nearby": False, "hostiles_adjacent": False,
+        "is_hungry": hungry, "hunger_level": "Hungry" if hungry else "Satisfied",
+        "has_food": food_count > 0, "food_count": food_count, "corpses_nearby": 0, "harvestable_nearby": 0,
+        "food_sources": sources, "campfire_nearby": False, "can_make_camp": False,
+        "surroundings": {"N": "Clear", "S": "Clear", "E": "Clear", "W": "Clear"}, "visible_entities": [],
+    }
+    st.update(extra)
+    return st
+
+BUTCHERY = ["CookingAndGathering", "CookingAndGathering_Butchery"]
+corpse_a = {"kind": "corpse", "name": "baboon corpse", "tx": 16, "ty": 10, "dist": 6}
+corpse_b = {"kind": "corpse", "name": "salthopper corpse", "tx": 10, "ty": 18, "dist": 8}
+plant_c = {"kind": "plant", "name": "witchwood tree", "tx": 12, "ty": 10, "dist": 2}
+
+# A. Low on food + Butchery skill + corpse 6 tiles away -> walk to it
+forage_reset()
+dec = brain.query_decision(forage_state(BUTCHERY, [corpse_a]), took_damage=False, enemies=[])
+assert dec["action"] == "NAVIGATE_TO_CELL:16,10", f"Expected to walk to the corpse, got {dec}"
+# B. No skill -> must not walk to it
+forage_reset()
+dec = brain.query_decision(forage_state([], [corpse_a]), took_damage=False, enemies=[])
+assert not dec["action"].startswith("NAVIGATE_TO_CELL:16"), f"No Butchery skill: must not forage a corpse, got {dec}"
+# C. Well stocked and not hungry -> no foraging
+forage_reset()
+dec = brain.query_decision(forage_state(BUTCHERY, [corpse_a], food_count=5), took_damage=False, enemies=[])
+assert not dec["action"].startswith("NAVIGATE_TO_CELL:16"), f"Well fed and stocked: must not forage, got {dec}"
+# D. Corpse preferred over a nearer plant; plant needs the Harvestry skill
+forage_reset()
+dec = brain.query_decision(forage_state(BUTCHERY + ["CookingAndGathering_Harvestry"], [plant_c, corpse_a]), took_damage=False, enemies=[])
+assert dec["action"] == "NAVIGATE_TO_CELL:16,10", f"Corpse should outrank a nearer plant, got {dec}"
+forage_reset()
+dec = brain.query_decision(forage_state(BUTCHERY, [plant_c]), took_damage=False, enemies=[])
+assert not dec["action"].startswith("NAVIGATE_TO_CELL:12"), f"Plant without Harvestry must be ignored, got {dec}"
+# E. Hungry with food: EAT, even with camp allowed and a campfire adjacent (no cooking detour)
+forage_reset()
+dec = brain.query_decision(forage_state(BUTCHERY, [], food_count=2, hungry=True, can_make_camp=True, campfire_nearby=True), took_damage=False, enemies=[])
+assert dec["action"] == "EAT", f"Hungry with food must EAT, got {dec}"
+# F. Hungry, no food, no sources: no free meal (no MAKE_CAMP/COOK_MEAL/EAT)
+forage_reset()
+dec = brain.query_decision(forage_state(BUTCHERY, [], food_count=0, hungry=True, can_make_camp=True, campfire_nearby=True), took_damage=False, enemies=[])
+assert dec["action"] not in ("MAKE_CAMP", "COOK_MEAL", "EAT"), f"No food: no free meal, got {dec}"
+
+# G. Multi-turn: unreachable corpse A is blacklisted after PATH_BLOCKED; he moves on to B and never retries A
+forage_reset()
+dec = brain.query_decision(forage_state(BUTCHERY, [corpse_a, corpse_b]), took_damage=False, enemies=[])
+assert dec["action"] == "NAVIGATE_TO_CELL:16,10"
+brain.last_action = dec["action"]
+picked = []
+for turn in range(6):
+    st = forage_state(BUTCHERY, [corpse_a, corpse_b], last_move_failed=True, last_failed_dir="PATH_BLOCKED")
+    dec = brain.query_decision(st, took_damage=False, enemies=[])
+    picked.append(dec["action"])
+    brain.last_action = dec["action"]
+assert "NAVIGATE_TO_CELL:16,10" not in picked, f"Blocked corpse must stay blacklisted, got {picked}"
+assert picked[0] == "NAVIGATE_TO_CELL:10,18", f"Should switch to the other corpse, got {picked}"
+
+# H. Pursuit time-out: same reachable-looking target forever -> gives up after FOOD_PURSUIT_MAX_TURNS
+forage_reset()
+acts = []
+for turn in range(brain.FOOD_PURSUIT_MAX_TURNS + 5):
+    dec = brain.query_decision(forage_state(BUTCHERY, [corpse_a]), took_damage=False, enemies=[])
+    acts.append(dec["action"])
+    brain.last_action = dec["action"]
+assert acts[0] == "NAVIGATE_TO_CELL:16,10" and acts[-1] != "NAVIGATE_TO_CELL:16,10", f"Must give up on a target after {brain.FOOD_PURSUIT_MAX_TURNS} turns, last was {acts[-1]}"
+
+# I. Adjacent corpse: BUTCHER, but a butcher that silently keeps failing is not repeated forever
+forage_reset()
+adj = forage_state(BUTCHERY, [], corpses_nearby=1, can_butcher=True)
+seen = []
+for turn in range(12):
+    dec = brain.query_decision(dict(adj), took_damage=False, enemies=[])
+    seen.append(dec["action"])
+    brain.last_action = dec["action"]
+assert seen[0] == "BUTCHER" and seen.count("BUTCHER") <= 3, f"BUTCHER must not repeat endlessly, got {seen}"
+print("  [OK] Test 54 Passed: forages with the skill, ignores without, blacklists blocked/slow targets, no free meal, no butcher loop.")
