@@ -162,7 +162,24 @@ ZONE_HOPPING_DETECTED = False
 ZONE_CYCLE_LENGTH = 0  # Length of detected cycle (2, 3, 4...)
 CURRENT_TRACKED_ZONE = None
 ZONE_STEP_COUNT = 0
-EXPLORED_ZONE_SET = set()  # Zones fully explored or stuck — persistent across transitions
+EXPLORED_ZONE_SET = set()  # Zones the ENGINE reported fully explored (C# `zone_fully_explored`). Never "stuck", never a guess (AGENTS R2).
+ENGINE_EXPLORED_LAST = {}  # zone_id -> last `zone_fully_explored` the engine reported while we were in that zone
+
+
+def engine_confirms_explored(game_state):
+    """True only when the ENGINE says the zone is done and no large unexplored region is still reachable by other means.
+
+    The engine's flag means "native autoexplore has nothing left". On the surface, more than 35 unrevealed cells with
+    autoexplore still working usually means regions across water (handled by macro-sector navigation), so that is not
+    "explored". Never derived from Python-side guesses such as stuck/oscillation/navigation failures (AGENTS R2)."""
+    unexp = game_state.get("unexplored_cells")
+    if unexp == 0:
+        return True
+    if not game_state.get("zone_fully_explored", False):
+        return False
+    if game_state.get("z", 10) > 10:
+        return True
+    return not (unexp is not None and unexp > 35 and not game_state.get("autoexplore_stuck", False))
 
 
 def update_zone_records(game_state):
@@ -182,10 +199,13 @@ def update_zone_records(game_state):
         return
 
     if CURRENT_TRACKED_ZONE is not None and zone_id != CURRENT_TRACKED_ZONE:
-        # Mark the zone we are LEAVING as explored if it was fully explored or stuck
+        # Remember the zone we are LEAVING as explored only if the engine said so while we were in it
+        # (game_state now describes the NEW zone, so its flag says nothing about the old one).
         leaving_zone = CURRENT_TRACKED_ZONE
-        if leaving_zone in stuck_autoexplore_zones or game_state.get("zone_fully_explored", False):
+        if ENGINE_EXPLORED_LAST.get(leaving_zone, False):
             EXPLORED_ZONE_SET.add(leaving_zone)
+        # A fresh visit gets a fresh autoexplore attempt: stale "stuck" marks must not carry over.
+        stuck_autoexplore_zones.discard(zone_id)
         CURRENT_ZONE_CHOSEN_EXIT = None
         CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 
@@ -2225,6 +2245,18 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     update_zone_records(game_state)
     update_stair_records(game_state)
 
+    # Self-heal: a successful autoexplore step with the engine not reporting "stuck" proves this zone is still explorable.
+    _zid_now = game_state.get("zone_id", "")
+    if _zid_now:
+        ENGINE_EXPLORED_LAST[_zid_now] = engine_confirms_explored(game_state)
+        if ENGINE_EXPLORED_LAST[_zid_now]:
+            EXPLORED_ZONE_SET.add(_zid_now)   # only the engine's own report is remembered across transitions
+        if (last_action == "AUTOEXPLORE" and not game_state.get("last_move_failed", False)
+                and not game_state.get("autoexplore_stuck", False)):
+            stuck_autoexplore_zones.discard(_zid_now)
+            if not game_state.get("zone_fully_explored", False) and (game_state.get("unexplored_cells", 0) or 0) > 35:
+                EXPLORED_ZONE_SET.discard(_zid_now)
+
     if game_state.get("autoexplore_stuck", False) or (last_action == "AUTOEXPLORE" and game_state.get("last_move_failed", False)):
         zid = game_state.get("zone_id", "")
         if zid:
@@ -2545,8 +2577,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 zone_fully_explored = False
             else:
                 zone_fully_explored = game_state.get("zone_fully_explored", False) or (unexp_cells == 0)
-        if zone_fully_explored and zone_id:
-            EXPLORED_ZONE_SET.add(zone_id)
+        zone_label = "Zone fully explored"
 
         # Determine if there is an unexplored sector (across water/obstacles)
         is_exiting_zone = bool(CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == zone_id)
@@ -2612,11 +2643,12 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 unvisited_local.sort(key=lambda m: (1 if is_swim_move(m, surroundings) else 0))
                 return {"action": unvisited_local[0], "reason": f"Scouting zone frontier {unvisited_local[0]}"}
 
-        # If autoexplore is stuck and there is no reachable local frontier, mark zone explored for transition!
+        # If autoexplore is stuck and there is no reachable local frontier, give up on this zone for now and leave.
+        # This is a local, one-turn decision: it is NOT recorded as "explored" (the engine did not say so) and the
+        # reason text says what really happened.
         if (is_stuck_explore or is_town) and not zone_fully_explored and not is_exiting_zone:
             zone_fully_explored = True
-            if zone_id:
-                EXPLORED_ZONE_SET.add(zone_id)
+            zone_label = "Town explored" if is_town else "Autoexplore stuck, leaving zone"
 
         # 10. Transition to adjacent zone via exit border (if standing directly on exit or adjacent to chosen border)
         exit_moves = [m for m in valid_moves if "[zone_exit" in surroundings.get(m[5:], "").lower() or "exit" in surroundings.get(m[5:], "").lower()]
@@ -2648,14 +2680,14 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 return {"action": chosen_m, "reason": f"Border Transition: Advancing {chosen_m} onto zone exit border"}
 
             # If not yet on or adjacent to border, navigate toward the chosen exit border via native engine pathfinder!
-            return {"action": f"NAVIGATE_ZONE_EXIT:{CURRENT_ZONE_CHOSEN_EXIT}", "reason": f"Zone fully explored: navigating via engine pathfinder toward {exit_tag}"}
+            return {"action": f"NAVIGATE_ZONE_EXIT:{CURRENT_ZONE_CHOSEN_EXIT}", "reason": f"{zone_label}: navigating via engine pathfinder toward {exit_tag}"}
 
         if exit_moves:
             forward_exits = [m for m in exit_moves if m != rev_exit]
 
             # Prioritize chosen exit if present in forward_exits
             if CURRENT_ZONE_CHOSEN_EXIT and f"MOVE_{CURRENT_ZONE_CHOSEN_EXIT}" in forward_exits:
-                return {"action": f"MOVE_{CURRENT_ZONE_CHOSEN_EXIT}", "reason": f"Zone fully explored: transitioning to adjacent zone via chosen exit MOVE_{CURRENT_ZONE_CHOSEN_EXIT}"}
+                return {"action": f"MOVE_{CURRENT_ZONE_CHOSEN_EXIT}", "reason": f"{zone_label}: transitioning to adjacent zone via chosen exit MOVE_{CURRENT_ZONE_CHOSEN_EXIT}"}
 
             # When zone hopping is detected, filter exits that lead back into cycle/explored zones
             if ZONE_HOPPING_DETECTED and zone_id and forward_exits:
@@ -2672,21 +2704,23 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     else:
                         novel_exits.append(m)  # Diagonal exits are rare; allow them
                 if novel_exits:
-                    return {"action": novel_exits[0], "reason": f"Zone fully explored: transitioning to novel zone via {novel_exits[0]} (avoiding {len(avoid_zones)} cycle/explored zones)"}
+                    return {"action": novel_exits[0], "reason": f"{zone_label}: transitioning to novel zone via {novel_exits[0]} (avoiding {len(avoid_zones)} cycle/explored zones)"}
                 # All exits lead to cycle zones — fall through to step 11 which uses smart exit target
 
             elif forward_exits:
-                return {"action": forward_exits[0], "reason": f"Zone fully explored: transitioning to adjacent zone via {forward_exits[0]}"}
+                return {"action": forward_exits[0], "reason": f"{zone_label}: transitioning to adjacent zone via {forward_exits[0]}"}
             elif not ZONE_HOPPING_DETECTED and (ZONE_STEP_COUNT > 6):
-                return {"action": exit_moves[0], "reason": f"Zone fully explored: backtracking to prior zone via {exit_moves[0]}"}
+                return {"action": exit_moves[0], "reason": f"{zone_label}: backtracking to prior zone via {exit_moves[0]}"}
             else:
                 print(f"[Zone Hopping Breaker] Suppressed immediate backtrack {exit_moves[0]} to avoid border ping-pong loop.")
 
         # 11. Navigate directly to forward zone exit border if zone is fully explored
         if zone_fully_explored or is_stuck_explore or (unexp_cells == 0):
+            if not game_state.get("zone_fully_explored", False) and unexp_cells != 0:
+                zone_label = "Town explored" if is_town else "Autoexplore stuck, leaving zone"
             exit_target_pos, exit_tag, exit_dir = get_zone_exit_target(cur_pos, game_state)
             if exit_dir and valid_moves:
-                return {"action": f"NAVIGATE_ZONE_EXIT:{exit_dir}", "reason": f"Zone fully explored: navigating via engine pathfinder toward {exit_tag}"}
+                return {"action": f"NAVIGATE_ZONE_EXIT:{exit_dir}", "reason": f"{zone_label}: navigating via engine pathfinder toward {exit_tag}"}
 
         # 12. Least-visited fallback
         if valid_moves:
@@ -2694,9 +2728,9 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],
                 1 if is_swim_move(m, surroundings) else 0
             ))
-            return {"action": ranked[0], "reason": f"Zone fully explored: scouting zone frontier {ranked[0]}"}
+            return {"action": ranked[0], "reason": f"{zone_label}: scouting zone frontier {ranked[0]}"}
 
-        return {"action": "WAIT", "reason": "Zone fully explored: no open moves"}
+        return {"action": "WAIT", "reason": f"{zone_label}: no open moves"}
 
     # ==========================================================
     # PHASE B: TACTICAL COMBAT (The Conversation Model)
@@ -2994,8 +3028,6 @@ def main():
                     cur_z = game_state.get("z", 10)
                     if action == "AUTOEXPLORE":
                         unexp_c = game_state.get("unexplored_cells", 0) or 0
-                        if current_zone_id and (unexp_c < 35 or game_state.get("zone_fully_explored", False)):
-                            EXPLORED_ZONE_SET.add(current_zone_id)
                         if current_zone_id:
                             stuck_autoexplore_zones.add(current_zone_id)
                         is_stuck_explore = True
@@ -3043,8 +3075,6 @@ def main():
                             coords = last_executed_action.split(":")[1].split(",")
                             unreach_t = (int(coords[0]), int(coords[1]))
                             UNREACHABLE_SECTORS.add((current_zone_id, unreach_t))
-                            if current_zone_id:
-                                EXPLORED_ZONE_SET.add(current_zone_id)
                         except Exception:
                             pass
 
@@ -3071,8 +3101,6 @@ def main():
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos}. Escaping cycle towards forward exit {exit_tag} via native engine pathfinder."
                         CURRENT_ZONE_CHOSEN_EXIT = exit_dir
                         CURRENT_ZONE_CHOSEN_EXIT_ZONE = current_zone_id
-                        if current_zone_id:
-                            EXPLORED_ZONE_SET.add(current_zone_id)
                     elif open_escapes:
                         open_escapes.sort(key=lambda m: (
                             visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],

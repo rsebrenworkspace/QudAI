@@ -279,6 +279,10 @@ dec_zone_done = brain.query_decision(fully_explored_state, took_damage=False, en
 print("\n--- Test 11: Zone Fully Explored -> Navigate to Stairs Down ---")
 print(f"Action: {dec_zone_done['action']} | Reason: {dec_zone_done['reason']}")
 assert dec_zone_done['action'] == "MOVE_N", f"Expected MOVE_N towards stairs down, got {dec_zone_done['action']}"
+# Test 11 told the brain (as the engine) that this zone ID is fully explored. Later scenarios reuse the ID as a fresh zone,
+# so forget what the engine said here (T-1.15: the brain now remembers the engine's explored flag across turns).
+brain.EXPLORED_ZONE_SET.clear()
+brain.ENGINE_EXPLORED_LAST.clear()
 
 # 12. Test Raytraced Line-of-Fire & Pet Friendly-Fire Protection
 print("\n--- Test 12: Raytraced Line-of-Fire & Pet Friendly-Fire Protection ---")
@@ -1122,6 +1126,9 @@ shore_zone = "JoppaWorld.10.19.1.0.10"
 brain.current_zone_id = shore_zone
 brain.CURRENT_TRACKED_ZONE = shore_zone
 brain.stuck_autoexplore_zones.add(shore_zone)
+brain.last_action = None  # no autoexplore progress this turn (otherwise the stuck mark is rightly cleared)
+brain.EXPLORED_ZONE_SET.discard(shore_zone)  # Test 11 reported this zone ID as engine-explored; this scenario is a different story
+brain.ENGINE_EXPLORED_LAST.pop(shore_zone, None)
 shore_explore_state = {
     "hp": 22, "max_hp": 22, "x": 20, "y": 21, "z": 10,
     "calling": "Marauder",
@@ -3286,3 +3293,92 @@ for _name, _tpl in _bt.BUILD_TEMPLATES.items():
     assert _rec == "Intelligence", f"{_name}: low-Int character is never steered to Intelligence (got {_rec})"
     print(f"  {_name}: Butchery is skill #{_bi + 1}, bought after {_spent_at_butchery} SP spent; Intelligence steering OK")
 print("  [OK] Test 55 Passed: all templates buy Butchery and Harvestry early and steer a low-Int character to Intelligence.")
+
+
+# =====================================================================
+# TEST 56: "Zone fully explored" is only ever the ENGINE's claim (HANDOFF issues 17 and 29)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 56: Stuck autoexplore never becomes a permanent 'zone explored'; only the engine's flag is remembered")
+print("="*50)
+
+def explored_reset():
+    brain.EXPLORED_ZONE_SET.clear()
+    brain.stuck_autoexplore_zones.clear()
+    brain.ENGINE_EXPLORED_LAST.clear()
+    brain.CURRENT_TRACKED_ZONE = None
+    brain.last_action = None
+    brain.CHARMED_COMPANION_COORDS.clear()
+
+def zone_state(zone, engine_explored=False, stuck=False, unexplored=1251, failed=False):
+    return {
+        "hp": 20, "max_hp": 20, "x": 10, "y": 10, "z": 10, "level": 4, "calling": "Warden",
+        "ap": 0, "sp": 0, "mp": 0, "skills": [], "zone_id": zone, "zone_name": "desert canyon, surface",
+        "zone_fully_explored": engine_explored, "autoexplore_stuck": stuck, "unexplored_cells": unexplored,
+        "nearest_unexplored_x": 13, "nearest_unexplored_y": 19, "nearest_unexplored_dist": 5,
+        "reachable_edges": "NSEW", "last_move_failed": failed, "last_failed_dir": "",
+        "hostiles_nearby": False, "hostiles_adjacent": False, "food_count": 5, "has_food": True, "food_sources": [],
+        "surroundings": {"N": "Clear", "S": "Clear", "E": "Clear", "W": "Clear", "NE": "Clear", "NW": "Clear", "SE": "Clear", "SW": "Clear"},
+        "visible_entities": [],
+    }
+
+ZA, ZB, ZC = "JoppaWorld.11.19.0.1.10", "JoppaWorld.11.19.0.2.10", "JoppaWorld.11.19.0.3.10"
+
+# (a) Engine says NOT explored (1251 cells left) but autoexplore is stuck: he may leave, but must not claim the zone is explored
+explored_reset()
+brain.last_action = "AUTOEXPLORE"
+dec = brain.query_decision(zone_state(ZA, stuck=True, failed=True), took_damage=False, enemies=[])
+print(f"  stuck turn: {dec['action']} | {dec['reason'][:90]}")
+assert "Zone fully explored" not in dec["reason"], f"Must not claim the zone is fully explored, got: {dec['reason']}"
+assert ZA not in brain.EXPLORED_ZONE_SET, "A stuck zone must not be recorded as explored"
+
+# (a2) The real bug path: stuck, no sector target, every neighbouring cell visited (no local frontier). Old code claimed
+# "Zone fully explored" here and remembered it forever, with 1251 cells still unexplored.
+explored_reset()
+st = zone_state(ZA, stuck=True, failed=True)
+for k in ("nearest_unexplored_x", "nearest_unexplored_y", "nearest_unexplored_dist"):
+    st.pop(k, None)
+for _dx in (-1, 0, 1):
+    for _dy in (-1, 0, 1):
+        brain.visit_counts[(10 + _dx, 10 + _dy)] += 3
+brain.last_action = "AUTOEXPLORE"
+dec = brain.query_decision(st, took_damage=False, enemies=[])
+print(f"  stuck, no frontier: {dec['action']} | {dec['reason'][:90]}")
+assert "Zone fully explored" not in dec["reason"], f"Must not claim the zone is fully explored, got: {dec['reason']}"
+assert ZA not in brain.EXPLORED_ZONE_SET, "A stuck zone with 1251 unexplored cells must not be remembered as explored"
+for _dx in (-1, 0, 1):
+    for _dy in (-1, 0, 1):
+        brain.visit_counts[(10 + _dx, 10 + _dy)] = 0
+
+# (b) Next turn: autoexplore made progress and the engine no longer says stuck -> he explores again, nothing is remembered
+brain.last_action = "AUTOEXPLORE"
+dec = brain.query_decision(zone_state(ZA, stuck=False, failed=False), took_damage=False, enemies=[])
+print(f"  progress turn: {dec['action']} | {dec['reason'][:90]}")
+assert ZA not in brain.stuck_autoexplore_zones, "Progress must clear the stale 'stuck' mark"
+assert dec["action"] == "AUTOEXPLORE", f"A zone with 1251 unexplored cells and a working autoexplore must keep exploring, got {dec}"
+
+# (c) Many turns of progress never flip to 'explored'
+for turn in range(8):
+    brain.last_action = "AUTOEXPLORE"
+    dec = brain.query_decision(zone_state(ZA), took_damage=False, enemies=[])
+    assert dec["action"] == "AUTOEXPLORE" and ZA not in brain.EXPLORED_ZONE_SET, f"Turn {turn}: got {dec}"
+
+# (d) Engine DOES say explored -> label is honest and the zone is remembered
+explored_reset()
+dec = brain.query_decision(zone_state(ZB, engine_explored=True, unexplored=0), took_damage=False, enemies=[])
+print(f"  engine-explored turn: {dec['action']} | {dec['reason'][:90]}")
+assert ZB in brain.EXPLORED_ZONE_SET, "The engine's own explored flag must be remembered"
+assert "Zone fully explored" in dec["reason"] or dec["action"].startswith(("NAVIGATE_ZONE_EXIT", "MOVE_")), f"Unexpected decision {dec}"
+
+# (e) Leaving a zone: the OLD zone's flag decides, not the new zone's (game_state describes the new zone after the hop)
+explored_reset()
+brain.query_decision(zone_state(ZA, engine_explored=False), took_damage=False, enemies=[])      # in A, engine: not explored
+brain.query_decision(zone_state(ZB, engine_explored=True, unexplored=0), took_damage=False, enemies=[])  # hop to B, engine: explored
+assert ZA not in brain.EXPLORED_ZONE_SET, "Zone A was never reported explored; it must not inherit B's flag"
+brain.query_decision(zone_state(ZC, engine_explored=False), took_damage=False, enemies=[])      # hop on to C
+assert ZB in brain.EXPLORED_ZONE_SET and ZA not in brain.EXPLORED_ZONE_SET, f"Expected only B remembered, got {brain.EXPLORED_ZONE_SET}"
+
+# (f) Pin the rule in source: exactly two places may add to EXPLORED_ZONE_SET, both engine-confirmed
+_src = open(brain.__file__, encoding="utf-8").read()
+assert _src.count("EXPLORED_ZONE_SET.add(") == 2, f"Only engine-confirmed code may add to EXPLORED_ZONE_SET, found {_src.count('EXPLORED_ZONE_SET.add(')}"
+print("  [OK] Test 56 Passed: stuck != explored; progress clears stuck; only the engine's flag is remembered; the old zone's flag is used on leave.")

@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 55 -->
-`dry_run.py` currently holds Tests 1-55. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 56 -->
+`dry_run.py` currently holds Tests 1-56. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -141,7 +141,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 
 | State | Owner today | Target owner |
 |---|---|---|
-| `zone_fully_explored` | **Both** (C# sets it, Python overrides it in several places) | C# only |
+| `zone_fully_explored` | C# sets it. Python reads it through `engine_confirms_explored` (the engine flag, minus the surface rule that >35 unrevealed cells with autoexplore still working means regions across water). Python only *remembers* engine-confirmed zones in `EXPLORED_ZONE_SET`; "stuck" never becomes "explored", and a stuck give-up is labelled "Autoexplore stuck, leaving zone" (T-1.15) | C# only |
 | Mutation/skill eligibility | Python mirrors engine rules | C# exports legal purchases |
 | Companion identity | C# `IsCompanion` (engine checks + ID cache). Python reads `is_companion` / `companions` and matches by coordinates only, never by name (T-1.10) | C# |
 | Build template | Python, re-detected every turn | Detected once, persisted |

@@ -57,7 +57,7 @@ To discriminate (do this on the next hang, **before restarting the game**):
 14. `detect_build()` re-runs every turn, so buying a mutation can switch archetype mid-run (priorities and doctrine change). Detect once and persist.
 15. `update_zone_records` is called twice per turn, so `ZONE_STEP_COUNT` advances twice (the "first 4 turns" border logic is ~2 turns).
 16. `is_peaceful_npc` uses substring matching; `"tam"` can match inside unrelated names, hiding real hostiles.
-17. `zone_fully_explored` is overridden by Python in several places (see ARCHITECTURE 6b). Iterations 38 and 40 reverted each other.
+17. **fixed in T-1.15 (branch `task/1.15-explored-flag`, not verified in game).** Original description: `zone_fully_explored` is overridden by Python in several places (see ARCHITECTURE 6b). Iterations 38 and 40 reverted each other.
 18. Chronicler: lessons use only the last 6 action names (no state), only the last 4 are injected, LLM-timeout fallbacks are stored as wisdom,
     paths hard-coded to `D:\QudAI`.
 19. `SKILL_DATABASE` is a static copy of engine data. C# exports only *affordable* skills, which is why Python needs the copy.
@@ -83,7 +83,7 @@ To discriminate (do this on the next hang, **before restarting the game**):
 27. **fixed in T-1.10 (branch `task/1.10-companion-name-cache`, not yet verified in game).** A name-based companion cache (C# `RegisteredCompanionNames`, Python `CHARMED_COMPANION_NAMES`, filled on every Proselytize *attempt*) made every baboon a "companion" after one recruit attempt. `last_state.json` showed 13 baboons with `is_companion: true`. Effects: hostile baboon had `is_enemy: false`, `is_in_combat` was false, Phase A chose `REST` at 6 and 2 HP with a baboon adjacent, offensive abilities aborted (`Lase (4 charges)` unused), the LLM only repositioned. Probably the cause of earlier "tried to disengage" runs. Also fixed in the same branch: issue 11 (`surroundings` unbound in all four fallbacks).
 
 28. **fixed in T-1.11 (branch `task/1.11-occluded-threats`, not yet verified in game).** Enemies 2-4 tiles away behind an impassable wall (no line of sight) forced combat mode; the LLM spent ~14 turns "maneuvering to establish line of sight" while swimming in a lake, and Phase A never ran. New `get_close_threats` ignores non-adjacent enemies with `has_los: false`. Risk `[unverified]`: an unseen creature approaching in the dark is ignored until it is visible, adjacent, or damages us.
-29. `[unverified]` Console shows "Zone fully explored: navigating ... exit S" while `unexplored_cells` was 1251 and `zone_fully_explored` false: Python overriding the engine flag (issue 17).
+29. **fixed in T-1.15.** Original: `[unverified]` Console shows "Zone fully explored: navigating ... exit S" while `unexplored_cells` was 1251 and `zone_fully_explored` false: Python overriding the engine flag (issue 17).
 
 **New (from the T-1.1 in-game run, 2026-10-04; human-reported, not yet traced in code)**
 23. Chronicler writes lessons from the last action only, and the Gen 7 lesson "Avoid moving SW..." is noise. Related to issue 18. `[unverified]`
@@ -115,6 +115,13 @@ To discriminate (do this on the next hang, **before restarting the game**):
 - Confirm in Antigravity's Rules panel that `.agents/rules/read_project_docs.md` is active and set to always apply, and that the `@../../AGENTS.md` reference resolves. [unverified: based on third-party docs]
 
 ## Session log (newest first)
+
+### 2026-10-04 (T-1.15): "zone fully explored" is only the engine's claim (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
+- Branch `task/1.15-explored-flag` (from `main` @8ca794c). `[verified in code]` Findings: Python had **five** writers into `EXPLORED_ZONE_SET` (zone-leave, decision block, stuck-forced, oscillation breaker, failed `NAVIGATE_TO_CELL` incl. food foraging); `stuck_autoexplore_zones` never expired, so "stuck once" meant "stuck forever"; the leave-zone code tested the *new* zone's flag. Reproduced on old code: stuck + no frontier + 1251 unexplored => "Zone fully explored", remembered permanently.
+- Fix: new `engine_confirms_explored` (engine flag, minus the surface >35-cells water rule); the set is written in exactly two places (top of `query_decision`, and on zone change from `ENGINE_EXPLORED_LAST`); a successful autoexplore step with no engine "stuck" clears the stuck mark; a fresh visit clears it too; the stuck give-up still leaves the zone but is labelled "Autoexplore stuck, leaving zone" (`zone_label`) and is not remembered. Tests: new Test 56 (incl. the real bug path), Scenario 25.4 and Test 11 fixtures isolated (they reused one zone ID with contradictory engine data). All 56 pass with the LLM forced offline.
+- `ENGINE_INTERNALS.md` corrected (`isCycling` sets `false` + stuck; meaning of `zone_fully_explored`).
+- **Unverified in game.** **Not changed:** the surface ">35 cells => not explored" rule, which deliberately overrides the engine for regions across water; `UNREACHABLE_SECTORS` (still session-persistent).
+- **Next:** play and watch for the label "Autoexplore stuck, leaving zone": if it appears with a reachable frontier, send me the console lines.
 
 ### 2026-10-04 (T-1.14): food skills in the build templates (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
 - Branch `task/1.14-food-skills` (from `task/1.13-earn-dinner`). `build_templates.py`: Cooking/Butchery/Harvestry/MealPreparation block at index `min(old, 3)` in all 14 templates (9 defined directly, 5 derived from them); Intelligence 15 target inserted third where absent. `dry_run.py`: Scenario 22.3 fixture now includes Harvestry (the new order buys it next); new Test 55 simulates every template buying skills as SP trickles in (Butchery position <= 6, Int steering for a low-Int character). All 55 pass with the LLM forced offline. [verified in code]
