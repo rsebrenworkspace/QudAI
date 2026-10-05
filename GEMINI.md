@@ -1,10 +1,9 @@
-# QudAI Project Rules & Operating Directives
+# QudAI: Gemini / Antigravity entry point
 
-## The Three-Strikes Rule: Engine Truth Over Heuristic Patches
-If an interaction, navigation, combat, or progression issue is not resolved cleanly after **two consecutive attempts** (on the 3rd iteration):
-1. **STOP** writing speculative Python heuristics, regex band-aids, or hardcoded state overrides.
-2. **GO DIRECTLY TO THE BINARY OR DOCUMENTATION**:
-   - Inspect `Assembly-CSharp.dll` using `dnfile` or reflection in `scratch/`.
-   - Read the exact method signatures, class hierarchies, and properties of the native engine systems (e.g., `XRL.World.Capabilities.AutoAct`, `XRL.World.AI.Pathfinding`, `XRL.World.SkillFactory`).
-   - Check the raw XML blueprints in `CoQ_Data/StreamingAssets/Base/ObjectBlueprints/`.
-3. **Integrate Native Engine APIs**: Delegate heavy lifting to Qud's native engine methods (such as `AutoAct.TryFindEdgeStep` and `AutoAct.TryFindPathStep`) rather than re-inventing pathfinding or mechanics from scratch.
+**Read `AGENTS.md` first. It is the single source of truth for rules in this repo.**
+Then read `docs/HANDOFF.md` before starting work.
+
+Do not add rules to this file. Add them to `AGENTS.md` so every tool sees them.
+
+Quick reminder of the rule that has paid off most: *the Three-Strikes Rule* (AGENTS.md R1). If a problem
+survives two fix attempts, stop patching heuristics and go to the engine (`Assembly-CSharp.dll` / blueprints).
