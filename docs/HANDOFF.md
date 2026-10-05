@@ -31,8 +31,9 @@ To discriminate (do this on the next hang, **before restarting the game**):
 ## Open issues (from the 2026-10-04 code review; all `[verified in code @c50b3c2]` unless noted, none reproduced in game)
 
 **C# (`AIBrainPart.cs`)**
-1. Some commands `return` without spending energy (FIRE_MISSILE refusals, swim guards in MAKE_CAMP/COOK_MEAL). Python's loop breaker exempts
-   combat actions, so a refused `FIRE_MISSILE` can repeat forever. Fix centrally in `Prefix` (see AGENTS.md R4).
+1. **fixed (pending in-game confirmation), branch `task/1.1-energy-guard`, not merged** (commit hash: see `git log task/1.1-energy-guard`).
+   Some commands `return` without spending energy (FIRE_MISSILE refusals, swim guards in MAKE_CAMP/COOK_MEAL). `Prefix` now spends a turn
+   and logs `[QudAI EnergyGuard]` when `ExecuteCommand` leaves energy unchanged (`ACTIVATE_SPRINT` exempt). Not compiled in game yet. `[unverified]`
 2. `Prefix` catch does `return true`, which runs the vanilla turn and waits for a keypress. The game looks frozen after any exception.
 3. `ReadAction` can throw (`Substring`) on a partially written `action.json`; only `IOException` is caught.
 4. C# waits 6000 ms for an action; Python's LLM timeout is also 6.0 s. A slow LLM makes C# pass a turn, and the late action
@@ -89,6 +90,11 @@ To discriminate (do this on the next hang, **before restarting the game**):
 - Confirm in Antigravity's Rules panel that `.agents/rules/read_project_docs.md` is active and set to always apply, and that the `@../../AGENTS.md` reference resolves. [unverified: based on third-party docs]
 
 ## Session log (newest first)
+
+### 2026-10-04 (T-1.1): central energy guarantee (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
+- Branch `task/1.1-energy-guard` (from `main` @7bb06cc). Changed `Prefix` in `AIBrainPart.cs` only, plus the card's Result and this file. No Python, `memory/` or `chronicles/` touched. Not merged, not pushed.
+- Verified: braces check, py_compile, `dry_run.py` (50/50), `check_docs.py` (4 pre-existing warnings), `sync_mod.py deploy` (file copy only). [verified in code @task/1.1-energy-guard]
+- **Unverified:** that the mod compiles in game; the in-game COOK_MEAL swimming check and ~10 min clean run (**needs the human**, steps are in the card); zone-change false positives. Usage not measured.
 
 ### 2026-10-04 (hygiene commits): docs warnings cleanup (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
 - Three separate commits on `main`, staged by explicit path, pushed to `origin/main` together with the HANDOFF update (`ff45a99`):

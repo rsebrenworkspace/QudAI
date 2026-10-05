@@ -462,7 +462,18 @@ namespace QudAIBrain
 
                 if (!UnityEngine.Application.isPlaying) return true;
 
+                // R4: every command costs a turn. If a command returned without spending energy,
+                // spend one here so the game does not re-export an identical state forever.
+                int energyBefore = player.Energy?.Value ?? 0;
                 ExecuteCommand(player, action);
+
+                // ACTIVATE_SPRINT is intentionally free when the sprint starts (it only spends energy on failure).
+                bool exempt = string.Equals(action?.Trim(), "ACTIVATE_SPRINT", StringComparison.OrdinalIgnoreCase);
+                if (!exempt && player.Energy != null && player.Energy.Value >= energyBefore)
+                {
+                    UnityEngine.Debug.LogWarning($"[QudAI EnergyGuard] '{action}' spent no energy; passing a turn.");
+                    player.UseEnergy(1000, "Pass");
+                }
 
                 try
                 {
