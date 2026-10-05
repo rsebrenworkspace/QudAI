@@ -1,0 +1,284 @@
+{
+  "telemetry": {
+    "player_name": "Yromoun",
+    "level": 1,
+    "turns": 499,
+    "zone": "desert canyon, surface",
+    "death_reason": "You were @@bitten to death by a snapjaw scavenger.",
+    "death_category": "bitten to death",
+    "timestamp": "2026-10-05T03:40:13.3718023Z"
+  },
+  "recent_actions": [
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        49,
+        10
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        49,
+        9
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        49,
+        8
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        49,
+        7
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        49,
+        6
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        49,
+        5
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        49,
+        4
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        49,
+        3
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        50,
+        2
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        50,
+        1
+      ],
+      "hp": 18
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "Zone fully explored: transitioning to adjacent zone via MOVE_NW",
+      "pos": [
+        49,
+        0
+      ],
+      "hp": 18
+    },
+    {
+      "action": "MOVE_N",
+      "reason": "Zone fully explored: transitioning to adjacent zone via MOVE_N",
+      "pos": [
+        49,
+        0
+      ],
+      "hp": 18
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "Border Navigation: Stepping inward MOVE_NE toward zone interior to establish stable foothold",
+      "pos": [
+        49,
+        24
+      ],
+      "hp": 18
+    },
+    {
+      "action": "AUTOEXPLORE",
+      "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder",
+      "pos": [
+        50,
+        23
+      ],
+      "hp": 18
+    },
+    {
+      "action": "USE_ABILITY:CommandStunningForce:N",
+      "reason": "[LLM in 3.14s] Opener CC: Stun closest enemy to disrupt advance and set up follow-up attacks.",
+      "pos": [
+        50,
+        23
+      ],
+      "hp": 18
+    },
+    {
+      "action": "MOVE_N",
+      "reason": "[LLM in 2.82s] Flank north to gain clear line-of-sight for ranged attacks while avoiding melee.",
+      "pos": [
+        50,
+        23
+      ],
+      "hp": 18
+    },
+    {
+      "action": "MOVE_N",
+      "reason": "[LLM in 2.78s] Establish clear LoS for Lase/Sunder Mind on closest threat.",
+      "pos": [
+        50,
+        22
+      ],
+      "hp": 18
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:N",
+      "reason": "[LLM in 2.96s] Target highest threat with Lase for sustained DPS while pet absorbs damage.",
+      "pos": [
+        50,
+        21
+      ],
+      "hp": 18
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:N",
+      "reason": "[LLM in 3.01s] Target high-threat enemy at dist 2 with Lase for sustained beam DPS.",
+      "pos": [
+        50,
+        21
+      ],
+      "hp": 18
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:N",
+      "reason": "[LLM in 3.00s] Target high-threat melee enemy with Lase for sustained DPS while pet absorbs damage.",
+      "pos": [
+        50,
+        21
+      ],
+      "hp": 18
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:N",
+      "reason": "[LLM in 3.11s] Lase delivers sustained DPS on melee threat at dist 1. Prioritize ranged elimination.",
+      "pos": [
+        50,
+        21
+      ],
+      "hp": 6
+    },
+    {
+      "action": "USE_ABILITY:CommandTeleportOther:N",
+      "reason": "[LLM in 3.41s] Banish immediate melee threat to preserve pet and enable ranged safety.",
+      "pos": [
+        50,
+        21
+      ],
+      "hp": 6
+    },
+    {
+      "action": "USE_ABILITY:CommandIntimidate",
+      "reason": "[LLM in 2.89s] Terrify immediate melee threat to buy time and reposition safely.",
+      "pos": [
+        50,
+        21
+      ],
+      "hp": 6
+    },
+    {
+      "action": "MOVE_N",
+      "reason": "[LLM in 2.89s] Advance to engage enemy at dist 2, use Proselytize or Stunning Force next turn.",
+      "pos": [
+        50,
+        21
+      ],
+      "hp": 6
+    },
+    {
+      "action": "MOVE_S",
+      "reason": "[LLM in 2.91s] Kite backpedal to maintain safe distance and clear line of sight for ranged attacks.",
+      "pos": [
+        50,
+        20
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_S",
+      "reason": "[LLM in 2.89s] Kite backpedal to maintain safe distance and clear line-of-sight for ranged attacks.",
+      "pos": [
+        50,
+        21
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_S",
+      "reason": "[LLM in 2.84s] Kite backpedal to maintain safe distance and clear line of sight for ranged attacks.",
+      "pos": [
+        50,
+        22
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_SW",
+      "reason": "[LLM in 2.90s] Kite backpedal SW to maintain safe distance and clear line-of-sight for ranged attacks.",
+      "pos": [
+        50,
+        23
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_E",
+      "reason": "[LLM in 2.82s] Retreat to clear space, avoid melee threat while repositioning for ranged attack.",
+      "pos": [
+        49,
+        24
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_W",
+      "reason": "[LLM in 2.88s] Retreat to clear space, avoid melee threat while repositioning for ranged attack.",
+      "pos": [
+        50,
+        24
+      ],
+      "hp": 2
+    }
+  ],
+  "archived_at": "2026-10-05T03:40:13.595879"
+}

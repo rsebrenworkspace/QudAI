@@ -1,0 +1,284 @@
+{
+  "telemetry": {
+    "player_name": "Yyshishur",
+    "level": 2,
+    "turns": 363,
+    "zone": "outskirts, Red Rock, surface",
+    "death_reason": "You were @@bitten to death by a baboon.",
+    "death_category": "bitten to death",
+    "timestamp": "2026-10-04T03:51:01.3329571Z"
+  },
+  "recent_actions": [
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        36,
+        9
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        35,
+        8
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        35,
+        7
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        35,
+        6
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        35,
+        5
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        36,
+        4
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        37,
+        3
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        37,
+        2
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        37,
+        1
+      ],
+      "hp": 18
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "Zone fully explored: transitioning to adjacent zone via MOVE_NW",
+      "pos": [
+        37,
+        0
+      ],
+      "hp": 18
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.86s] Establish clear LoS for Lase/Sunder Mind, avoid melee risk while positioning.",
+      "pos": [
+        36,
+        24
+      ],
+      "hp": 18
+    },
+    {
+      "action": "USE_ABILITY:CommandStunningForce:E",
+      "reason": "[LLM in 3.09s] Opener CC to stun elite threat, clear space for pet and ranged follow-up.",
+      "pos": [
+        37,
+        23
+      ],
+      "hp": 4
+    },
+    {
+      "action": "AUTOLEVEL_SKILL:Tactics",
+      "reason": "Class Progression (Esper-ited Away (The Clairvoyant Thrallmaster)): Unlocking priority skill Tactics (Cost: 50 SP)",
+      "pos": [
+        37,
+        23
+      ],
+      "hp": 8
+    },
+    {
+      "action": "NAVIGATE_TO_CELL:40,10",
+      "reason": "[Loop Breaker] Oscillation detected at (37, 23). Routing via native pathfinder to unexplored frontier at (40, 10) (738 unrevealed cells).",
+      "pos": [
+        37,
+        23
+      ],
+      "hp": 8
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:NE",
+      "reason": "[LLM in 3.08s] Target high-threat shrewd baboon with Lase for sustained DPS while pet holds front.",
+      "pos": [
+        38,
+        22
+      ],
+      "hp": 8
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:NE",
+      "reason": "[LLM in 3.08s] Target high-threat shrewd baboon with Lase for sustained DPS while pet holds front.",
+      "pos": [
+        38,
+        22
+      ],
+      "hp": 5
+    },
+    {
+      "action": "NAVIGATE_TO_CELL:39,10",
+      "reason": "[Loop Breaker] Oscillation detected at (38, 22). Routing via native pathfinder to unexplored frontier at (39, 10) (594 unrevealed cells).",
+      "pos": [
+        38,
+        22
+      ],
+      "hp": 5
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[LLM in 3.01s] Establish clear LoS on hulking baboon for Lase or Proselytize without risking pet.",
+      "pos": [
+        39,
+        21
+      ],
+      "hp": 5
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:NW",
+      "reason": "[LLM in 3.01s] Target high-threat baboon with Lase for sustained DPS while pet covers.",
+      "pos": [
+        38,
+        20
+      ],
+      "hp": 4
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:NW",
+      "reason": "[LLM in 3.03s] Target high-threat baboon with Lase for sustained DPS while pet holds front line.",
+      "pos": [
+        38,
+        20
+      ],
+      "hp": 4
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:NW",
+      "reason": "[LLM in 3.05s] Target high-threat baboon with Lase for sustained beam DPS while pet holds front.",
+      "pos": [
+        38,
+        20
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_N",
+      "reason": "[LLM in 2.96s] Advance N to close gap on hulking baboon, prioritize threat while keeping pet as shield.",
+      "pos": [
+        38,
+        20
+      ],
+      "hp": 4
+    },
+    {
+      "action": "USE_ABILITY:CommandIntimidate",
+      "reason": "[LLM in 2.95s] Terrify immediate melee threats to buy time and reposition safely.",
+      "pos": [
+        38,
+        19
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.90s] Flank NE to close distance safely, establish LOS for Lase or Proselytize.",
+      "pos": [
+        38,
+        19
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.85s] Advance NE to close range safely, position for Proselytize or ranged blast.",
+      "pos": [
+        39,
+        18
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 3.02s] Advance NE to engage shrewd baboon at dist 2, then use Lase or Sunder Mind.",
+      "pos": [
+        40,
+        17
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.97s] Advance NE to close range for Proselytize while maintaining safety and line-of-sight.",
+      "pos": [
+        41,
+        16
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[LLM in 2.85s] Advance to close range for Proselytize while keeping pet as shield.",
+      "pos": [
+        42,
+        15
+      ],
+      "hp": 4
+    },
+    {
+      "action": "MOVE_NE",
+      "reason": "[LLM in 2.89s] Kite NE to maintain distance, avoid melee threat while keeping pet alive.",
+      "pos": [
+        41,
+        14
+      ],
+      "hp": 2
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:W",
+      "reason": "[LLM in 3.02s] Target immediate melee threat with Lase for sustained DPS while pet holds front.",
+      "pos": [
+        42,
+        13
+      ],
+      "hp": 2
+    }
+  ],
+  "archived_at": "2026-10-04T03:51:01.389288"
+}

@@ -48,5 +48,25 @@
     "death_reason": "You were @@killed by an |eyeless crab## with a |crab claw##.",
     "lesson": "Never butcher near eyeless crabs\u2014clear the area first or risk clawed demise.",
     "timestamp": "2026-10-02T10:24:13.026341"
+  },
+  {
+    "generation": 6,
+    "name": "tarred Kamumet",
+    "level": 2,
+    "turns": 289,
+    "zone": "outskirts, Red Rock, surface",
+    "death_reason": "You were @@bitten to death by a shrewd baboon.",
+    "lesson": "Avoid caves with baboons\u2014especially if you\u2019re unarmed and low on health.",
+    "timestamp": "2026-10-05T03:36:20.471574"
+  },
+  {
+    "generation": 7,
+    "name": "Yromoun",
+    "level": 1,
+    "turns": 499,
+    "zone": "desert canyon, surface",
+    "death_reason": "You were @@bitten to death by a snapjaw scavenger.",
+    "lesson": "Avoid moving SW near unknown terrain\u2014snapjaws lurk in desert canyons and strike from shadows.",
+    "timestamp": "2026-10-05T03:40:16.219999"
   }
 ]

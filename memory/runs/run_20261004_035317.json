@@ -1,0 +1,284 @@
+{
+  "telemetry": {
+    "player_name": "Iyumuuun",
+    "level": 2,
+    "turns": 571,
+    "zone": "desert canyon, surface",
+    "death_reason": "You were @@bitten to death by a two-headed boar.",
+    "death_category": "bitten to death",
+    "timestamp": "2026-10-04T03:53:17.7717530Z"
+  },
+  "recent_actions": [
+    {
+      "action": "MOVE_NW",
+      "reason": "Border Navigation: Stepping inward MOVE_NW toward zone interior to establish stable foothold",
+      "pos": [
+        41,
+        24
+      ],
+      "hp": 21
+    },
+    {
+      "action": "USE_ABILITY:CommandStunningForce:NW",
+      "reason": "[LLM in 3.19s] Opener CC: Stun tough two-headed boar to disrupt and set up Lase or Proselytize.",
+      "pos": [
+        40,
+        23
+      ],
+      "hp": 21
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:NW",
+      "reason": "[LLM in 3.01s] Target high-threat boar with Lase for sustained DPS. Line of sight clear, no pet interference.",
+      "pos": [
+        40,
+        23
+      ],
+      "hp": 21
+    },
+    {
+      "action": "USE_ABILITY:CommandLase:N",
+      "reason": "[LLM in 2.90s] Target tough boar with Lase for sustained beam DPS while maintaining range.",
+      "pos": [
+        40,
+        23
+      ],
+      "hp": 21
+    },
+    {
+      "action": "MOVE_N",
+      "reason": "[LLM in 2.83s] Advance N to close range for Proselytize on boar, avoid melee until pet recruited.",
+      "pos": [
+        40,
+        23
+      ],
+      "hp": 21
+    },
+    {
+      "action": "USE_ABILITY:CommandProselytize:N",
+      "reason": "[LLM in 2.98s] Recruit frontline tank via Proselytize on adjacent beast at dist 1.",
+      "pos": [
+        40,
+        22
+      ],
+      "hp": 21
+    },
+    {
+      "action": "AUTOEXPLORE",
+      "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder",
+      "pos": [
+        40,
+        22
+      ],
+      "hp": 21
+    },
+    {
+      "action": "AUTOEXPLORE",
+      "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder",
+      "pos": [
+        39,
+        23
+      ],
+      "hp": 21
+    },
+    {
+      "action": "AUTOEXPLORE",
+      "reason": "Safe exploration: advancing via native Qud autoexplore pathfinder",
+      "pos": [
+        38,
+        23
+      ],
+      "hp": 21
+    },
+    {
+      "action": "MOVE_E",
+      "reason": "[LLM in 3.13s] Establish clear LoS for Lase, avoid melee risk while recharging.",
+      "pos": [
+        38,
+        23
+      ],
+      "hp": 17
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "[Loop Breaker] Oscillation detected at (39, 23). Escaping cycle towards forward exit East zone exit (novel) via native engine pathfinder.",
+      "pos": [
+        39,
+        23
+      ],
+      "hp": 17
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        38,
+        22
+      ],
+      "hp": 17
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        39,
+        21
+      ],
+      "hp": 17
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        40,
+        20
+      ],
+      "hp": 17
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        41,
+        19
+      ],
+      "hp": 17
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        42,
+        18
+      ],
+      "hp": 17
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        43,
+        17
+      ],
+      "hp": 17
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        44,
+        16
+      ],
+      "hp": 17
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        44,
+        15
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        44,
+        14
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        44,
+        13
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        44,
+        12
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        44,
+        11
+      ],
+      "hp": 18
+    },
+    {
+      "action": "NAVIGATE_ZONE_EXIT:E",
+      "reason": "Zone fully explored: navigating via engine pathfinder toward East zone exit",
+      "pos": [
+        44,
+        10
+      ],
+      "hp": 19
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 2.85s] Recharge Lase and maintain safety; no immediate threat within melee range.",
+      "pos": [
+        44,
+        9
+      ],
+      "hp": 18
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 2.89s] Recharge Lase and maintain safety; pet is frontline, no immediate threat to engage.",
+      "pos": [
+        44,
+        9
+      ],
+      "hp": 11
+    },
+    {
+      "action": "MOVE_NW",
+      "reason": "[Loop Breaker] Action repeated 2x at (44, 9). Forcing reposition MOVE_NW.",
+      "pos": [
+        44,
+        9
+      ],
+      "hp": 9
+    },
+    {
+      "action": "REST",
+      "reason": "Safe resting: HP at 42% (< 75%)",
+      "pos": [
+        44,
+        8
+      ],
+      "hp": 9
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 2.87s] Recharge Lase and maintain safety; pet absorbs threat while I prepare ranged strikes.",
+      "pos": [
+        44,
+        8
+      ],
+      "hp": 7
+    },
+    {
+      "action": "WAIT",
+      "reason": "[LLM in 2.90s] Recharge Lase and maintain safety; pet is frontline, no immediate threat to engage.",
+      "pos": [
+        44,
+        8
+      ],
+      "hp": 6
+    }
+  ],
+  "archived_at": "2026-10-04T03:53:17.992968"
+}
