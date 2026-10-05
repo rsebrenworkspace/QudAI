@@ -3421,3 +3421,56 @@ brain.EXIT_LOG_PATH = _os.path.join(_log, "no", "such", "dir", "x.jsonl")
 brain.log_exit_choice({"zone": "x"})
 brain.EXIT_LOG_PATH = _saved
 print("  [OK] Test 57 Passed: exit decisions are logged with their inputs; the log never breaks the brain.")
+
+
+# =====================================================================
+# TEST 58: The hopping flag must not stop him crossing a zone line (HANDOFF issue 39)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 58: Walking to a chosen exit with the hopping flag on: no turning around on the border cell")
+print("="*50)
+
+_BZ = "JoppaWorld.11.20.1.1.10"
+def border_setup(hopping, step_count, chosen="W"):
+    brain.EXPLORED_ZONE_SET.clear(); brain.stuck_autoexplore_zones.clear(); brain.visit_counts.clear()
+    brain.CURRENT_TRACKED_ZONE = _BZ; brain.last_action = None
+    brain.ZONE_HOPPING_DETECTED = hopping; brain.ZONE_CYCLE_LENGTH = 2 if hopping else 0
+    brain.ZONE_STEP_COUNT = step_count
+    brain.CURRENT_ZONE_CHOSEN_EXIT = chosen; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = _BZ
+    brain.LAST_ZONE_ENTRY = {"from_zone": "JoppaWorld.11.20.2.1.10", "to_zone": _BZ, "entry_pos": (40, 12), "reverse_dir": "E"}
+    brain.FAILED_ZONE_EXITS = set()
+
+def border_state(x, y):
+    s = {d: "Clear" for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]}
+    if x == 0:
+        for d in ["W", "NW", "SW"]:
+            s[d] = "[ZONE_EXIT: %s]" % d
+    return {"hp": 20, "max_hp": 20, "x": x, "y": y, "z": 10, "level": 4, "calling": "Warden", "ap": 0, "sp": 0, "mp": 0,
+            "skills": [], "zone_id": _BZ, "zone_name": "desert canyon", "zone_fully_explored": True, "autoexplore_stuck": False,
+            "unexplored_cells": 0, "reachable_edges": "NSEW", "last_move_failed": False, "last_failed_dir": "",
+            "hostiles_nearby": False, "hostiles_adjacent": False, "food_count": 5, "has_food": True, "food_sources": [],
+            "surroundings": s, "visible_entities": []}
+
+# (a) On the west border cell, West chosen, hopping flagged, long in the zone: cross, do not step inward
+border_setup(True, 30)
+with _ctx.redirect_stdout(_io.StringIO()):
+    _d = brain.query_decision(border_state(0, 12), took_damage=False, enemies=[])
+assert _d["action"] == "MOVE_W", f"Must step across the W border, got {_d}"
+# (b) Multi-step approach x = 6..0 with the flag on: never a move with an eastward component
+_acts = []
+for _x in range(6, -1, -1):
+    border_setup(True, 30)
+    with _ctx.redirect_stdout(_io.StringIO()):
+        _d = brain.query_decision(border_state(_x, 12), took_damage=False, enemies=[])
+    _acts.append(_d["action"])
+print("  approach actions:", _acts)
+assert not any(a in ("MOVE_E", "MOVE_NE", "MOVE_SE") for a in _acts), f"Turned around on the way to the zone line: {_acts}"
+assert _acts[-1] == "MOVE_W", f"Must cross on the border cell, got {_acts[-1]}"
+# (c) The arrival grace still works: just arrived on a border cell with the flag on -> step inward first
+border_setup(True, 1, chosen=None)
+brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+with _ctx.redirect_stdout(_io.StringIO()):
+    _d = brain.query_decision(border_state(0, 12), took_damage=False, enemies=[])
+assert "Stepping inward" in _d["reason"], f"Arrival grace must still step inward, got {_d}"
+brain.ZONE_HOPPING_DETECTED = False; brain.ZONE_CYCLE_LENGTH = 0
+print("  [OK] Test 58 Passed: the hopping flag no longer blocks crossing; the arrival grace still steps inward.")

@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 57 -->
-`dry_run.py` currently holds Tests 1-57. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 58 -->
+`dry_run.py` currently holds Tests 1-58. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -59,7 +59,7 @@ emergency retreat to stairs up (underground, low HP), priority AP spend.
 3. Rest (HP < 75%, not swimming)
 4. Ammo top-off; 4B. companion recruitment
 5. Stairs/delving (surface needs level gate; underground is bold if HP >= 70%)
-6. Inward border steer (first ~4 turns on a border tile)
+6. Inward border steer (arrival grace only: first ~4 `ZONE_STEP_COUNT` on a border tile; the zone-hopping flag no longer extends it, T-1.16)
 7. Native `AUTOEXPLORE` (unless stuck/explored/swimming)
 8. Macro-sector navigation across water/obstacles (not in towns)
 9. Local unvisited frontier

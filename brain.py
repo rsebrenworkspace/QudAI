@@ -2566,7 +2566,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         rev_exit = f"MOVE_{rev_dir}" if rev_dir else None
         is_on_border = (px in (0, 79) or py in (0, 24))
 
-        if is_on_border and (ZONE_STEP_COUNT <= 4 or ZONE_HOPPING_DETECTED):
+        # Arrival grace only. It must NOT also apply while ZONE_HOPPING_DETECTED stays true for the whole stay: crossing a
+        # border means standing on the border cell first, so that made every exit impossible (the "dance on the zone
+        # line", HANDOFF issue 39). The hopping flag steers exit CHOICE (get_zone_exit_target), not movement here.
+        if is_on_border and ZONE_STEP_COUNT <= 4:
             target_interior = (40, 12)
             inward_moves = []
             for vm in valid_moves:
