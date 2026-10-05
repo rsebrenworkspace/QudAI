@@ -95,7 +95,7 @@ Autolevel circuit breaker keyed on `(ap, sp, mp, len(skills))`.
 | `AIPickOptionPatch` | `Popup.PickOption` | Mutation/advancement/option picker. Uses `PreferredMutation`, then a hard-coded priority list. |
 <!-- patches:end -->
 
-Also set while AI is active: `Popup.Suppress = true`, `GameManager.runPlayerTurnOnUIThread = false`.
+Also set while AI is active: `Popup.Suppress = true`, `GameManager.runPlayerTurnOnUIThread = false`, `XRL.Core.Globals.HPWarningThreshold = 0` (kills the "Your health has dropped below N%!" press-space popup; the player's value is restored when paused).
 **[unverified]** that every patch actually applied at runtime. Harmony skips a patch silently if parameter names or
 overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 

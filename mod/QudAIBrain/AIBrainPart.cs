@@ -528,6 +528,33 @@ namespace QudAIBrain
             }
         }
 
+        // Low-health warning ("Your health has dropped below 40%!" press-space popup, XRLCore.PlayerTurn and
+        // TerrainTravel, gated by the static int XRL.Core.Globals.HPWarningThreshold, filled from the game option
+        // OptionDisplayHPWarning, default "40%"). It blocks automation, so the threshold is zeroed while the AI is
+        // engaged and the player's own value is restored when it is paused (HANDOFF issue 40).
+        private static int hpWarningOriginal = -1;
+
+        private static void SetHpWarningSuppressed(bool suppress)
+        {
+            try
+            {
+                if (suppress)
+                {
+                    if (XRL.Core.Globals.HPWarningThreshold != 0)
+                    {
+                        if (hpWarningOriginal < 0) hpWarningOriginal = XRL.Core.Globals.HPWarningThreshold;
+                        XRL.Core.Globals.HPWarningThreshold = 0;
+                    }
+                }
+                else if (hpWarningOriginal >= 0)
+                {
+                    XRL.Core.Globals.HPWarningThreshold = hpWarningOriginal;
+                    hpWarningOriginal = -1;
+                }
+            }
+            catch { }
+        }
+
         public static bool Prefix()
         {
             try
@@ -538,11 +565,13 @@ namespace QudAIBrain
                 if (!File.Exists(FlagFile) || !UnityEngine.Application.isPlaying)
                 {
                     try { Popup.Suppress = false; } catch { }
+                    SetHpWarningSuppressed(false);
                     return true;
                 }
 
                 // AI is active: suppress all blocking popups and ensure engine doesn't wait on UI thread
                 try { Popup.Suppress = true; } catch { }
+                SetHpWarningSuppressed(true);
                 try { GameManager.runPlayerTurnOnUIThread = false; } catch { }
 
                 GameObject player = The.Player;
