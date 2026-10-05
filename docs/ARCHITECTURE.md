@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 50 -->
-`dry_run.py` currently holds Tests 1-50. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 51 -->
+`dry_run.py` currently holds Tests 1-51. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -141,7 +141,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 |---|---|---|
 | `zone_fully_explored` | **Both** (C# sets it, Python overrides it in several places) | C# only |
 | Mutation/skill eligibility | Python mirrors engine rules | C# exports legal purchases |
-| Companion identity | Both (C# `IsCompanion`, Python name/coord sets) | C# |
+| Companion identity | C# `IsCompanion` (engine checks + ID cache). Python reads `is_companion` / `companions` and matches by coordinates only, never by name (T-1.10) | C# |
 | Build template | Python, re-detected every turn | Detected once, persisted |
 
 ## 7. Failure memory (Chronicler)

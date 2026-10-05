@@ -69,6 +69,9 @@ To discriminate (do this on the next hang, **before restarting the game**):
     claims `Popup.Show`/`ShowOptionList` patches that do not exist, names `PlayerTurn.Prefix` and `bSuppressPopups` (code: `XRLCore.PlayerTurn`, `Popup.Suppress`).
     Section numbering repeats (11.4, 12.2).
 
+**New (from the 2026-10-05 UTC baboon death, level 2; `[verified in code @T-1.10]`, in-game confirmation pending)**
+27. **fixed in T-1.10 (branch `task/1.10-companion-name-cache`, not yet verified in game).** A name-based companion cache (C# `RegisteredCompanionNames`, Python `CHARMED_COMPANION_NAMES`, filled on every Proselytize *attempt*) made every baboon a "companion" after one recruit attempt. `last_state.json` showed 13 baboons with `is_companion: true`. Effects: hostile baboon had `is_enemy: false`, `is_in_combat` was false, Phase A chose `REST` at 6 and 2 HP with a baboon adjacent, offensive abilities aborted (`Lase (4 charges)` unused), the LLM only repositioned. Probably the cause of earlier "tried to disengage" runs. Also fixed in the same branch: issue 11 (`surroundings` unbound in all four fallbacks).
+
 **New (from the T-1.1 in-game run, 2026-10-04; human-reported, not yet traced in code)**
 23. Chronicler writes lessons from the last action only, and the Gen 7 lesson "Avoid moving SW..." is noise. Related to issue 18. `[unverified]`
 24. Generation numbering collides after the wisdom file lost entries. Use `max(existing generation) + 1`, not a count. `[unverified]`
@@ -99,6 +102,14 @@ To discriminate (do this on the next hang, **before restarting the game**):
 - Confirm in Antigravity's Rules panel that `.agents/rules/read_project_docs.md` is active and set to always apply, and that the `@../../AGENTS.md` reference resolves. [unverified: based on third-party docs]
 
 ## Session log (newest first)
+
+### 2026-10-04 (T-1.10): companion name cache (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
+- Branch `task/1.10-companion-name-cache` (from `main` @1699d0f). C#: removed `RegisteredCompanionNames`, the name early-return in `IsCompanion`, and the registration on Proselytize attempts (IDs are now only cached after a real engine check). Python: removed `CHARMED_COMPANION_NAMES` and `is_companion_name`; companions are matched by `is_companion`, `[COMPANION:]` tags and coordinates (`drop_companion_cells`); removed instant registration after Proselytize/Beguile; `get_adjacent_threats` takes `cur_pos`. Initialized `surroundings` at the top of the four `fallback_*` functions (issue 11).
+- Tests: replaced Scenario 44.4 (asserted name memory) and the stale-tag part of Test 16; added Test 51 (multi-turn, hostile baboon adjacent, never REST/AUTOEXPLORE). Test 51 fails on the old code with the name cache poisoned and passes on the new code. [verified in code]
+- **Test caveat:** `dry_run.py` calls the live LLM when LM Studio is running, so some results (e.g. Test 45) vary by run. Deterministic run: point `brain.LM_STUDIO_URL` at a dead port (`python -c "import brain; brain.LM_STUDIO_URL='http://127.0.0.1:9/x'; exec(open('dry_run.py',encoding='utf-8').read())"`). All 51 pass that way. Before the issue 11 fix, `main` crashed in that mode (Test 44 area).
+- **Unverified:** behavior in game; only IDs after a real engine check are cached now, so a creature that stops being a companion stays flagged until restart. Python `[COMPANION:]` handling not exercised against a live engine.
+- The popup diagnostic is a separate WIP commit on `task/1.9-popup-diagnostics` (not merged). The deployed game copy now contains T-1.10 only; restart Qud to load it.
+- **Next:** run in game, check `last_state.json` that wild baboons are `is_companion: false` after a Proselytize; then merge T-1.9 diagnostics if the level-5 question is still open.
 
 ### 2026-10-04 (T-1.8): Harmony startup self-check (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
 - Branch `task/1.8-patch-self-check`. Added `RunPatchSelfCheck()` to `AIBrainPart.cs`, called once from `Prefix`. Expected patches come from reflection over `[HarmonyPatch]` classes; applied ones from `Harmony.GetPatchInfo`.

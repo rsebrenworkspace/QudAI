@@ -62,7 +62,6 @@ namespace QudAIBrain
         public static string PreferredMutation = "";
 
         public static HashSet<string> RegisteredCompanionIds = new HashSet<string>();
-        public static HashSet<string> RegisteredCompanionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         public static List<Cell> GetLineBetween(Cell from, Cell to)
         {
@@ -206,18 +205,15 @@ namespace QudAIBrain
             if (obj == null || player == null || obj == player || obj.IsPlayer() || !obj.IsAlive) return false;
             try
             {
-                // 0. Registered companion memory cache
+                // 0. Registered companion ID cache. IDs are only added after a real engine check below. Never cache by display
+                //    name: one recruited "baboon" would make every baboon a companion.
                 if (!string.IsNullOrEmpty(obj.ID) && RegisteredCompanionIds.Contains(obj.ID))
-                    return true;
-                string dName = StripQudFormatting(obj.DisplayNameOnly ?? obj.DisplayName ?? "");
-                if (!string.IsNullOrEmpty(dName) && RegisteredCompanionNames.Contains(dName))
                     return true;
 
                 // 1. Direct effect checks (Proselytize, Beguile, Rebuke, Love)
                 if (obj.HasEffect("Proselytized") || obj.HasEffect("Beguiled") || obj.HasEffect("Rebuked") || obj.HasEffect("Lovesick") || obj.HasEffect("LoveTonic"))
                 {
                     if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
-                    if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
                     return true;
                 }
 
@@ -225,7 +221,6 @@ namespace QudAIBrain
                 if (obj.HasPart("AllyProselytize") || obj.HasPart("AllyBeguile") || obj.HasPart("AllyRebuke") || obj.HasPart("AllyPet") || obj.HasPart("AllyClone"))
                 {
                     if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
-                    if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
                     return true;
                 }
 
@@ -236,13 +231,11 @@ namespace QudAIBrain
                     if (brain.PartyLeader == player)
                     {
                         if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
-                        if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
                         return true;
                     }
                     if (brain.PartyLeader != null && (brain.PartyLeader.IsPlayer() || brain.PartyLeader.ID == player.ID))
                     {
                         if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
-                        if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
                         return true;
                     }
                 }
@@ -251,7 +244,6 @@ namespace QudAIBrain
                 if (obj.IsLedBy(player))
                 {
                     if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
-                    if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
                     return true;
                 }
 
@@ -261,7 +253,6 @@ namespace QudAIBrain
                     if (comps != null && comps.Contains(obj))
                     {
                         if (!string.IsNullOrEmpty(obj.ID)) RegisteredCompanionIds.Add(obj.ID);
-                        if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
                         return true;
                     }
                 }
@@ -2197,15 +2188,6 @@ namespace QudAIBrain
                         targetObj = null;
                     }
                 }
-                else
-                {
-                    if (targetObj != null)
-                    {
-                        if (!string.IsNullOrEmpty(targetObj.ID)) RegisteredCompanionIds.Add(targetObj.ID);
-                        string dName = StripQudFormatting(targetObj.DisplayNameOnly ?? targetObj.DisplayName ?? "");
-                        if (!string.IsNullOrEmpty(dName)) RegisteredCompanionNames.Add(dName);
-                    }
-                }
 
                 if (targetObj != null && !isProselytize)
                 {
@@ -3496,7 +3478,6 @@ namespace QudAIBrain
 
                     AIPlayerTurnPatch.ExportDeath(__instance, deathReason, category);
                     AIPlayerTurnPatch.RegisteredCompanionIds.Clear();
-                    AIPlayerTurnPatch.RegisteredCompanionNames.Clear();
                 }
             }
             catch (Exception ex)

@@ -90,7 +90,6 @@ PROSELYTIZE_EXCLUSIONS = {
 }
 
 
-CHARMED_COMPANION_NAMES = set()
 CHARMED_COMPANION_COORDS = set()
 
 KNOWN_STAIRS_DOWN = {}   # zone_id -> {"tx": tx, "ty": ty, "z": z, "name": name, "req_level": int}
@@ -634,22 +633,6 @@ def update_stair_records(game_state):
                 }
 
 
-def is_companion_name(ename, comp_names):
-    """Checks if an entity name strictly matches a known companion name or full creature species."""
-    if not ename or not comp_names:
-        return False
-    elower = ename.strip().lower()
-    for cn in comp_names:
-        if not cn:
-            continue
-        cn_lower = cn.strip().lower()
-        if elower == cn_lower:
-            return True
-        if elower.endswith(" " + cn_lower) or cn_lower.endswith(" " + elower):
-            return True
-    return False
-
-
 DESTRUCTIBLE_OBSTACLE_KEYWORDS = [
     "plant matter", "plantwall", "plant wall", "mudroot", "tangled mudroot",
     "wood", "fence", "web", "fungus", "tree", "brush", "bramble", "vine", "wall"
@@ -690,16 +673,9 @@ def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False)
     return None, None
 
 
-def register_companion(name=None, coord=None):
-    """Registers an allied companion into memory for 0-latency friendly fire immunity."""
-    if name:
-        clean = name.strip().lower()
-        clean = re.sub(r'\{\{[^}]*\}\}', '', clean).strip()
-        # Strictly reject non-creatures, liquids, terrain, and plants
-        if any(bad in clean for bad in ["pool of", "puddle of", "dram", "drams", "ground", "wall", "watervine", "glowpad", "brinestalk", "rules"]):
-            return
-        if clean:
-            CHARMED_COMPANION_NAMES.add(clean)
+def register_companion(coord=None):
+    """Remembers an allied companion's cell. Never by name: one recruited baboon must not make every baboon an ally
+    (AGENTS.md R2/R3: the engine owns companion status, exported as `is_companion` / `companions`)."""
     if coord and coord[0] is not None and coord[1] is not None:
         CHARMED_COMPANION_COORDS.add((coord[0], coord[1]))
 
@@ -778,18 +754,12 @@ def is_proselytizable(entity, companions=None):
     if any(ex in combined for ex in PROSELYTIZE_EXCLUSIONS):
         return False
     etx, ety = entity.get("tx"), entity.get("ty")
-    if companions:
-        comp_coords = {(c.get("tx"), c.get("ty")) for c in companions if c.get("tx") is not None and c.get("ty") is not None}
-        if (etx, ety) in comp_coords:
-            return False
-        comp_names = {c.get("name", "").lower() for c in companions if c.get("name")}
-        if is_companion_name(ename, comp_names):
-            return False
-    else:
-        if (etx, ety) in CHARMED_COMPANION_COORDS:
-            return False
-        if is_companion_name(ename, CHARMED_COMPANION_NAMES):
-            return False
+    comp_coords = set(CHARMED_COMPANION_COORDS)
+    for c in (companions or []):
+        if c.get("tx") is not None and c.get("ty") is not None:
+            comp_coords.add((c.get("tx"), c.get("ty")))
+    if (etx, ety) in comp_coords:
+        return False
     return True
 
 
@@ -963,15 +933,9 @@ def render_5x5_grid(surroundings):
     return '\n'.join(rows)
 
 
-def get_adjacent_threats(surroundings, companions=None):
+def get_adjacent_threats(surroundings, companions=None, cur_pos=None):
     adj = {}
-    comp_names = set(CHARMED_COMPANION_NAMES)
-    if companions:
-        for c in companions:
-            cname = c.get("name", "").strip().lower()
-            if cname:
-                comp_names.add(cname)
-
+    # Companions are excluded by the engine's [COMPANION:] cell tag, never by name (same-species hostiles exist).
     for d in ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]:
         text = surroundings.get(d, "")
         if "[COMPANION:" in text or "[companion" in text.lower():
@@ -981,12 +945,26 @@ def get_adjacent_threats(surroundings, companions=None):
         if "[ENEMY:" in text:
             m = re.search(r"\[ENEMY:\s*([^\]]+)\]", text)
             ename = m.group(1).strip() if m else "Enemy"
-            if is_companion_name(ename, comp_names):
-                continue
             if is_peaceful_npc(ename):
                 continue
             adj[d] = ename
+    if cur_pos:
+        adj = drop_companion_cells(adj, cur_pos, companions)
     return adj
+
+
+def drop_companion_cells(adj_threats, cur_pos, companions):
+    """Removes adjacent 'threats' standing on a known companion cell. Matches by coordinates only, never by name."""
+    if not adj_threats:
+        return adj_threats
+    comp_coords = set(CHARMED_COMPANION_COORDS)
+    for c in (companions or []):
+        if c.get("tx") is not None and c.get("ty") is not None:
+            comp_coords.add((c.get("tx"), c.get("ty")))
+    return {
+        d: ename for d, ename in adj_threats.items()
+        if (cur_pos[0] + CARDINAL_OFFSETS[d][0], cur_pos[1] + CARDINAL_OFFSETS[d][1]) not in comp_coords
+    }
 
 
 def filter_hostile_enemies(entities, companions=None):
@@ -997,15 +975,11 @@ def filter_hostile_enemies(entities, companions=None):
     if not entities:
         return []
     comp_coords = set(CHARMED_COMPANION_COORDS)
-    comp_names = set(CHARMED_COMPANION_NAMES)
     if companions:
         for c in companions:
             cx, cy = c.get("tx"), c.get("ty")
             if cx is not None and cy is not None:
                 comp_coords.add((cx, cy))
-            cname = c.get("name", "").strip().lower()
-            if cname:
-                comp_names.add(cname)
 
     result = []
     for e in entities:
@@ -1017,8 +991,6 @@ def filter_hostile_enemies(entities, companions=None):
             continue
         ename = e.get("name", "")
         bp = e.get("blueprint", "")
-        if is_companion_name(ename, comp_names):
-            continue
         if is_peaceful_npc(ename, bp):
             continue
         result.append(e)
@@ -1210,7 +1182,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     is_caster_or_ranged = is_pure_caster_or_ranged(template)
     is_bleeding = any("bleed" in str(ef).lower() for ef in effects)
 
-    adj_threats = get_adjacent_threats(surroundings, companions=companions)
+    adj_threats = get_adjacent_threats(surroundings, companions=companions, cur_pos=(game_state.get("x", 0), game_state.get("y", 0)))
     grid_ascii = render_5x5_grid(surroundings)
 
     # Format threat list (including directly adjacent threats from 5x5 scan)
@@ -1293,7 +1265,6 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
             game_state.get("has_companion", False)
             or bool(companions)
             or any(e.get("is_companion") for e in raw_ents)
-            or bool(CHARMED_COMPANION_NAMES)
         )
         if not has_companion:
             for ab in abilities:
@@ -1677,6 +1648,7 @@ VALID ACTIONS:
 
 def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo):
     """Melee Bruiser & Tank Tactical Fallback (Axe Berserker / Praetorian)."""
+    surroundings = game_state.get("surroundings", {})
     companions = game_state.get("companions", [])
     enemies = filter_hostile_enemies(enemies, companions)
     if companions and adj_threats:
@@ -1778,16 +1750,12 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
 def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo):
     """Pure Mental Sorcerer Tactical Fallback (Esper Mindflayer)."""
+    surroundings = game_state.get("surroundings", {})
     companions = game_state.get("companions", [])
     raw_entities = game_state.get("visible_entities", [])
     has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_entities)
     enemies = filter_hostile_enemies(enemies, companions)
-    if (companions or CHARMED_COMPANION_NAMES) and adj_threats:
-        comp_names = {c.get("name", "").lower() for c in companions if c.get("name")} | CHARMED_COMPANION_NAMES
-        adj_threats = {
-            d: ename for d, ename in adj_threats.items()
-            if not any(cn in ename.lower() for cn in comp_names if len(cn) > 2)
-        }
+    adj_threats = drop_companion_cells(adj_threats, cur_pos, companions)
 
     closest_enemy = enemies[0] if enemies else None
     closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
@@ -1957,14 +1925,10 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
 def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo):
     """Rapid-Fire Pistol Gunslinger Tactical Fallback (Akimbo Gunslinger)."""
+    surroundings = game_state.get("surroundings", {})
     companions = game_state.get("companions", [])
     enemies = filter_hostile_enemies(enemies, companions)
-    if (companions or CHARMED_COMPANION_NAMES) and adj_threats:
-        comp_names = {c.get("name", "").lower() for c in companions if c.get("name")} | CHARMED_COMPANION_NAMES
-        adj_threats = {
-            d: ename for d, ename in adj_threats.items()
-            if not any(cn in ename.lower() for cn in comp_names if len(cn) > 2)
-        }
+    adj_threats = drop_companion_cells(adj_threats, cur_pos, companions)
 
     closest_enemy = enemies[0] if enemies else None
     closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
@@ -2068,14 +2032,10 @@ def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_move
 
 def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, abilities, template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo, is_sprinting):
     """Ranged Sniper & Kite Specialist Fallback (Rifle Nomad)."""
+    surroundings = game_state.get("surroundings", {})
     companions = game_state.get("companions", [])
     enemies = filter_hostile_enemies(enemies, companions)
-    if (companions or CHARMED_COMPANION_NAMES) and adj_threats:
-        comp_names = {c.get("name", "").lower() for c in companions if c.get("name")} | CHARMED_COMPANION_NAMES
-        adj_threats = {
-            d: ename for d, ename in adj_threats.items()
-            if not any(cn in ename.lower() for cn in comp_names if len(cn) > 2)
-        }
+    adj_threats = drop_companion_cells(adj_threats, cur_pos, companions)
 
     closest_enemy = enemies[0] if enemies else None
     closest_dist = closest_enemy.get("dist", 999) if closest_enemy else 999
@@ -2223,7 +2183,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     is_town = is_town_zone(game_state)
 
     enemies = filter_hostile_enemies(enemies, companions)
-    adj_threats = get_adjacent_threats(surroundings, companions=companions)
+    adj_threats = get_adjacent_threats(surroundings, companions=companions, cur_pos=(game_state.get("x", 0), game_state.get("y", 0)))
     close_threats = [
         e for e in enemies
         if not is_ignorable_stationary_enemy(e) and (
@@ -2739,7 +2699,6 @@ def main():
                     os.remove(DEATH_FILE)
                 except OSError:
                     pass
-                CHARMED_COMPANION_NAMES.clear()
                 CHARMED_COMPANION_COORDS.clear()
                 if death_data:
                     chronicler.process_death_event(death_data, list(recent_actions), active_model_id)
@@ -2793,36 +2752,23 @@ def main():
                 raw_entities = game_state.get("visible_entities", [])
 
                 current_comp_coords = set()
-                current_comp_names = set()
 
-                # 1. Update from raw_entities: check if any entity is already marked or matches a previously charmed companion
+                # 1. Update from raw_entities: trust only the engine-exported `is_companion` flag (never match by name)
                 for e in raw_entities:
-                    ename = e.get("name")
-                    clean = re.sub(r'\{\{[^}]*\}\}', '', ename).strip().lower() if ename else ""
-                    is_charmed = e.get("is_companion", False) or (clean and any(cname in clean or clean in cname for cname in CHARMED_COMPANION_NAMES))
-                    if is_charmed:
+                    if e.get("is_companion", False):
                         e["is_companion"] = True
                         e["is_enemy"] = False
                         ex, ey = e.get("tx"), e.get("ty")
                         if ex is not None and ey is not None:
                             current_comp_coords.add((ex, ey))
-                        if clean and not any(bad in clean for bad in ["pool of", "puddle of", "dram", "drams", "ground", "wall", "watervine", "glowpad", "brinestalk", "rules"]):
-                            current_comp_names.add(clean)
 
                 # 2. Ingest from engine companions list
                 for c in companions:
                     cx, cy = c.get("tx"), c.get("ty")
                     if cx is not None and cy is not None:
                         current_comp_coords.add((cx, cy))
-                    cname = c.get("name")
-                    if cname:
-                        clean = re.sub(r'\{\{[^}]*\}\}', '', cname).strip().lower()
-                        if clean and not any(bad in clean for bad in ["pool of", "puddle of", "dram", "drams", "ground", "wall", "watervine", "glowpad", "brinestalk", "rules"]):
-                            current_comp_names.add(clean)
 
                 # 3. Maintain persistent companion memory
-                if current_comp_names:
-                    CHARMED_COMPANION_NAMES.update(current_comp_names)
                 if current_comp_coords:
                     CHARMED_COMPANION_COORDS.clear()
                     CHARMED_COMPANION_COORDS.update(current_comp_coords)
@@ -2861,7 +2807,7 @@ def main():
 
                 surroundings = game_state.get("surroundings", {})
                 grid_display = render_5x5_grid(surroundings)
-                adj_threats = get_adjacent_threats(surroundings, companions=companions)
+                adj_threats = get_adjacent_threats(surroundings, companions=companions, cur_pos=(game_state.get("x", 0), game_state.get("y", 0)))
                 close_threats = [
                     e for e in enemies
                     if not is_ignorable_stationary_enemy(e) and (
@@ -2909,22 +2855,8 @@ def main():
                         autolevel_failed_attempts = 0
                         last_autolevel_points = cur_points
 
-                # If Proselytize or Beguile action chosen, immediately register target companion!
-                if "proselytize" in action.lower() or "beguile" in action.lower():
-                    parts = action.split(":")
-                    if len(parts) >= 3 and parts[2] in CARDINAL_OFFSETS:
-                        p_dir = parts[2]
-                        dx, dy = CARDINAL_OFFSETS[p_dir]
-                        tgt_coord = (px + dx, py + dy)
-                        tgt_name = None
-                        for e in raw_entities:
-                            if (e.get("tx"), e.get("ty")) == tgt_coord:
-                                if is_proselytizable(e):
-                                    tgt_name = e.get("name")
-                                break
-                        if tgt_name:
-                            register_companion(tgt_name, tgt_coord)
-                            print(f"[PET RECRUITED]: Instantly registered {tgt_name} at {tgt_coord} as allied companion!")
+                # No instant companion registration here: a Proselytize/Beguile attempt can fail, and the next
+                # state.json reports the real result (`is_companion`, `companions`). AGENTS.md R2.
 
                 # Enforce: Never execute ACTIVATE_SPRINT twice in a row
                 if action == "ACTIVATE_SPRINT" and last_executed_action == "ACTIVATE_SPRINT":

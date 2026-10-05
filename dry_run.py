@@ -407,11 +407,12 @@ adj_threats_pet = brain.get_adjacent_threats(post_charm_state["surroundings"], c
 print(f"Adjacent threats with companion: {adj_threats_pet}")
 assert len(adj_threats_pet) == 0, f"Expected no adjacent threats from companion, got {adj_threats_pet}"
 
-# Even if surroundings had legacy [ENEMY: goat] string, companion name filter must purge it:
+# Even if surroundings had a legacy [ENEMY: goat] tag on the companion's cell, the companion COORDINATES must purge it
+# (never the name: see Test 51):
 stale_surroundings = {"E": "[ENEMY: goat]", "N": "Clear", "S": "Clear", "W": "Clear"}
-adj_threats_stale = brain.get_adjacent_threats(stale_surroundings, companions=post_charm_state["companions"])
+adj_threats_stale = brain.get_adjacent_threats(stale_surroundings, companions=post_charm_state["companions"], cur_pos=(10, 10))
 print(f"Adjacent threats with stale [ENEMY: goat]: {adj_threats_stale}")
-assert len(adj_threats_stale) == 0, f"Expected stale enemy string to be purged by companion name, got {adj_threats_stale}"
+assert len(adj_threats_stale) == 0, f"Expected stale enemy tag on a companion cell to be purged by coordinates, got {adj_threats_stale}"
 
 # D. 5x5 ASCII grid must render companion as 'C'
 grid_text = brain.render_5x5_grid(post_charm_state["surroundings"])
@@ -1638,7 +1639,6 @@ assert dec_combat_dist2["action"] == "MOVE_E", f"Expected MOVE_E in combat to cl
 
 # Scenario 33.4: Post-Pet-Death Memory Leak Prevention
 # Simulate a previous pet died. Memory must NOT permanently bar that species from being proselytized again!
-brain.CHARMED_COMPANION_NAMES.clear()
 brain.CHARMED_COMPANION_COORDS.clear()
 new_candidate = {"name": "snapjaw scavenger", "blueprint": "Snapjaw", "dist": 1, "dir": "E", "tx": 11, "ty": 10, "can_proselytize": True}
 assert brain.is_proselytizable(new_candidate, companions=[]), "Candidate of same species must be proselytizable after previous companion died!"
@@ -2506,47 +2506,28 @@ dec = brain.query_decision(state_chameleon_fight, took_damage=False, enemies=sta
 assert "CommandLase" not in dec.get("action", ""), f"Lase should NOT be used through friendly pet! Action: {dec.get('action')}"
 print("  [OK] Scenario 44.3 Passed: Direct ray line of fire through friendly companion strictly aborted.")
 
-# Scenario 44.4: Companion Memory Persistence Across Turns
-brain.CHARMED_COMPANION_NAMES.clear()
+# Scenario 44.4: Companion cell memory tracks coordinates only (never names)
 brain.CHARMED_COMPANION_COORDS.clear()
-
-# Turn 1: Recruit pet via register_companion
-brain.register_companion("snapjaw hunter", (14, 10))
-assert "snapjaw hunter" in brain.CHARMED_COMPANION_NAMES
+brain.register_companion((14, 10))
 assert (14, 10) in brain.CHARMED_COMPANION_COORDS
 
-# Turn 2: Engine sends empty companions list, but snapjaw moved to (13, 9) in visible_entities
+# Turn 2: the engine flags the pet via is_companion; it moved to (13, 9). Another same-species creature is NOT flagged.
 turn2_entities = [
-    {"name": "snapjaw hunter", "tx": 13, "ty": 9, "dist": 2, "dir": "NW", "is_enemy": True}
+    {"name": "snapjaw hunter", "tx": 13, "ty": 9, "dist": 2, "dir": "NW", "is_enemy": False, "is_companion": True},
+    {"name": "snapjaw hunter", "tx": 20, "ty": 20, "dist": 12, "dir": "SE", "is_enemy": True, "is_companion": False},
 ]
-# Test our loop logic
 current_comp_coords = set()
-current_comp_names = set()
 for e in turn2_entities:
-    ename = e.get("name")
-    clean = brain.re.sub(r'\{\{[^}]*\}\}', '', ename).strip().lower() if ename else ""
-    is_charmed = e.get("is_companion", False) or (clean and any(cname in clean or clean in cname for cname in brain.CHARMED_COMPANION_NAMES))
-    if is_charmed:
-        e["is_companion"] = True
-        e["is_enemy"] = False
-        ex, ey = e.get("tx"), e.get("ty")
-        if ex is not None and ey is not None:
-            current_comp_coords.add((ex, ey))
-        current_comp_names.add(clean)
-
-assert turn2_entities[0]["is_companion"] is True
-assert turn2_entities[0]["is_enemy"] is False
-assert (13, 9) in current_comp_coords
-if current_comp_names:
-    brain.CHARMED_COMPANION_NAMES.update(current_comp_names)
-if current_comp_coords:
-    brain.CHARMED_COMPANION_COORDS.clear()
-    brain.CHARMED_COMPANION_COORDS.update(current_comp_coords)
-
-assert "snapjaw hunter" in brain.CHARMED_COMPANION_NAMES
+    if e.get("is_companion", False):
+        current_comp_coords.add((e.get("tx"), e.get("ty")))
+brain.CHARMED_COMPANION_COORDS.clear()
+brain.CHARMED_COMPANION_COORDS.update(current_comp_coords)
 assert (13, 9) in brain.CHARMED_COMPANION_COORDS
 assert (14, 10) not in brain.CHARMED_COMPANION_COORDS
-print("  [OK] Scenario 44.4 Passed: Companion memory persists across turns and coordinates track dynamically.")
+assert (20, 20) not in brain.CHARMED_COMPANION_COORDS
+kept = brain.filter_hostile_enemies(turn2_entities, [])
+assert [(k["tx"], k["ty"]) for k in kept] == [(20, 20)], f"Wild same-species creature must stay hostile, got {kept}"
+print("  [OK] Scenario 44.4 Passed: Companion memory tracks coordinates only; same-species hostile stays hostile.")
 
 # =====================================================================
 # TEST 45: Dungeon Progress, Eyeless Crab Combat Engagement & High-Priority Proselytize
@@ -2556,7 +2537,6 @@ print("TEST 45: Dungeon Progress, Eyeless Crab Combat Engagement & Proselytize P
 print("="*50)
 
 # Clear companion caches
-brain.CHARMED_COMPANION_NAMES.clear()
 brain.CHARMED_COMPANION_COORDS.clear()
 
 dungeon_zone = "JoppaWorld.11.19.0.2.11"
@@ -3056,12 +3036,41 @@ print("\n==================================================")
 print(">>> ALL 50 VERIFICATION TESTS PASSED SUCCESSFULLY! <<<")
 print("==================================================")
 
+# =====================================================================
+# TEST 51: Same-species hostile must not be treated as a companion (2026-10-04 baboon death, HANDOFF issue 27)
+# =====================================================================
+print("\n" + "="*50)
+print("TEST 51: Hostile baboon next to a recruited baboon (multi-turn, no REST while adjacent)")
+print("="*50)
 
-
-
-
-
-
-
-
-
+brain.CHARMED_COMPANION_COORDS.clear()
+brain.last_action = None
+baboon_state = {
+    "hp": 6, "max_hp": 20, "x": 10, "y": 10, "z": 10, "level": 2,
+    "calling": "Apostle",
+    "has_companion": True,
+    "companions": [{"name": "baboon", "tx": 20, "ty": 20, "hp": 5, "max_hp": 5, "dist": 14, "dir": "SE"}],
+    "zone_id": "JoppaWorld.11.20.1.0.10", "zone_fully_explored": False,
+    "hostiles_nearby": True, "hostiles_adjacent": True,
+    "surroundings": {"E": "[ENEMY: baboon]", "N": "Clear", "S": "Clear", "W": "Clear",
+                     "NE": "Clear", "NW": "Clear", "SE": "Clear", "SW": "Clear"},
+    "abilities": [
+        {"name": "Lase (4 charges)", "command": "CommandLase", "cooldown": 0, "usable": True, "active": False},
+    ],
+    "visible_entities": [
+        {"name": "baboon", "tx": 11, "ty": 10, "dist": 1, "dir": "E", "is_enemy": True, "is_companion": False, "has_los": True, "difficulty": "Tough"},
+        {"name": "baboon", "tx": 20, "ty": 20, "dist": 14, "dir": "SE", "is_enemy": False, "is_companion": True, "has_los": True, "difficulty": "Tough"},
+    ],
+}
+hostiles = brain.filter_hostile_enemies(baboon_state["visible_entities"], baboon_state["companions"])
+assert [(h["tx"], h["ty"]) for h in hostiles] == [(11, 10)], f"Hostile baboon must survive filtering, got {hostiles}"
+adj = brain.get_adjacent_threats(baboon_state["surroundings"], companions=baboon_state["companions"], cur_pos=(10, 10))
+assert adj == {"E": "baboon"}, f"Adjacent hostile baboon must be a threat, got {adj}"
+for turn in range(1, 5):
+    st = dict(baboon_state)
+    st["hp"] = max(1, 6 - turn)  # losing HP each turn, like the real run
+    dec = brain.query_decision(st, took_damage=(turn > 1), enemies=st["visible_entities"])
+    act = dec.get("action", "")
+    print(f"  turn {turn}: {act} | {dec.get('reason', '')[:80]}")
+    assert act != "REST" and not act.startswith("AUTOEXPLORE"), f"Turn {turn}: must not rest/explore with a hostile adjacent, got {act}"
+print("  [OK] Test 51 Passed: same-species hostile is a threat; no REST/AUTOEXPLORE over 4 turns.")
