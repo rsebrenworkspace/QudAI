@@ -348,7 +348,15 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
 - `Corpse` part fields: `CorpseChance`, `BurntCorpseChance`, `VaporizedCorpseChance` (each with a `...Blueprint` and `...RequiresBodyPart`). `ProcessCorpseDrop` compares `Physics.LastDamagedByType` with the strings `"Fire"`, `"Light"` and `"Vaporized"` and rolls the matching chance (`in100`). `[verified in code]` that these three strings are compared; the exact branch mapping (Fire/Light -> burnt, Vaporized -> vaporized) is read from the call order and is `[unverified]`. Lase is light/laser damage, which matches the human-reported "enemies reduced to ashes".
 - Creatures drop a corpse only some of the time: Baboon `CorpseChance="40"`, Salthopper `8`; blueprint values seen range 0-25 and up. Not every kill leaves anything to butcher.
 - Burnt corpse = `Charred Corpse`: has a `Food` part ("It's charred.") but **no `Butcherable`**. A normal `Corpse` item has `Food Satiation="Meal" Gross="true" IllOnEat="true"` (edible but makes you ill).
+- **Where the parts live:** the `Corpse` part is on the *living creature* (it spawns the corpse when the creature dies); `Butcherable` is on the dead *corpse item*. Testing `HasPart("Corpse")` therefore matches every live animal and pet, which made `corpses_nearby` wrong until T-1.13. `[verified in game blueprints]` Salthopper (creature) has `Corpse`; `Salthopper Corpse` has `Butcherable`.
 - `Butcherable` (on the creature's corpse blueprint, e.g. `Salthopper Corpse` has `OnSuccess="@Salthopper Corpse"`) is what `AttemptButcher` needs, and the player needs the `CookingAndGathering_Butchery` skill.
+
+### 12.1c Fire, flammability and campfires (verified from `Assembly-CSharp.dll` metadata and blueprint XML, 2026-10-04)
+- **"Is it burning right now":** `GameObject.IsAflame()` (public, no parameters) and `Physics.IsAflame`; creatures get the `Burning` effect (`XRL.World.Effects.Burning`, has `GetBurningAmount`). `[verified in code]` that the members exist. That `IsAflame()` is true for a lit `Campfire` object is `[unverified]`, so the mod also treats any object with a `Campfire` part as fire.
+- **Flammability data:** `Physics.FlameTemperature` (int field), `Physics.Temperature`, `Physics.WasAflame`, `Physics.InflamedBy`; `GameObject.MakeNonflammable()`, `GameObject.Temperature`, `TemperatureChange(...)`. Blueprint values seen: most things are `99999` (not flammable); flammable values include `250`, `350`, `600`, `1000`. The base `Physics` default is `[unverified]` (not set in the `Object`/`PhysicalObject` blueprints; read the `Physics` constructor if it matters).
+- **Plants burn:** `Dogthorn Tree` inherits `Tree` > `Plant` > `PhysicalObject`; `Plant` sets `Physics Category="Plants"`. The mod uses `Physics.Category == "Plants"` as its "flammable terrain" test (T-1.12). `BasePlantWall` has `FlameTemperature=350`; oil, asphalt, honey and acid puddles also have `350`.
+- **Campfire:** blueprint `Campfire` (`Inherits="Item"`): `Physics FlameTemperature="10000"`, `AnimatedMaterialFire`, `LightSource Lit Radius=3`, `Campfire ExtinguishBlueprint="Campfire Remains"`. `Campfire` has `CanExtinguish` and `FindExtinguishingPool`. A lit campfire next to plants set the area ablaze and killed a character (2026-10-04, human-reported).
+- **Open (needed for HANDOFF issue 32, reacting to being on fire):** how the player extinguishes `Burning` (entering water? what do `Burning.ApplyTo`/`Remove` check?). Not yet inspected; do not guess.
 
 ### 12.2 Engine Survival Mechanics
 - **Butchering:** Animal corpses possess `Butcherable`. Calling `AttemptButcher(player)` yields raw meat and cooking ingredients.
@@ -463,6 +471,12 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
   ```
 
 ---
+
+### 14.4 Tooling notes (2026-10-04)
+- **Reading IL string constants:** in `dnfile`, scan a method body for `0x72` (`ldstr`) with `raw[i+4] == 0x70`; the string offset is the token's low 24 bits (`int.from_bytes(raw[i+1:i+4], 'little')`); `pe.net.user_strings.get(offset).value` returned the string (in this `dnfile` version `get_us(...)` raised errors). Example: `scratch/inspect_corpse.py`. Field/method tokens: `0x7b/0x7c` (ldfld/ldsfld), `0x28/0x6f` (call/callvirt); table `4` = Field, `6` = MethodDef, `10` = MemberRef.
+- **Blueprint XML** lives in `CoQ_Data/StreamingAssets/Base/ObjectBlueprints/*.xml` (`Creatures.xml`, `Items.xml`, `Furniture.xml`, ...). Resolve `Inherits` chains by hand: many parts (e.g. `Physics Category`) are set on a base blueprint.
+- **Dead end:** compiling the mod locally with the game's Roslyn (`Microsoft.CodeAnalysis*.dll`) from Windows PowerShell fails (`Could not load type System.Span`; the assemblies target Unity's Mono) and no .NET SDK is installed. Verify C# by launching Qud and reading `build_log.txt` (`Success :)`).
+- **Mod folder note:** the loaded mod is listed as `QUDAITEST` (the `Title` in `workshop.json`); the compiled assembly is `ModAssemblies/QudAIBrain.dll`.
 
 ## 15. Oscillation Dynamics: 5-Tile Shoreline Loops, Spatial Entropy & Centroid Steering
 
