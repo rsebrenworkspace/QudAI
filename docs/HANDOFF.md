@@ -69,6 +69,12 @@ To discriminate (do this on the next hang, **before restarting the game**):
     claims `Popup.Show`/`ShowOptionList` patches that do not exist, names `PlayerTurn.Prefix` and `bSuppressPopups` (code: `XRLCore.PlayerTurn`, `Popup.Suppress`).
     Section numbering repeats (11.4, 12.2).
 
+**New (from the fire death, 2026-10-05 UTC; human-reported: hungry, made camp, walked into the fire, burned, died. The run record had not been archived when written, so the exact sequence is `[unverified]`)**
+30. **fixed in T-1.12 (branch `task/1.12-fire-safety`, not yet verified in game).** `MAKE_CAMP` had no check of its surroundings; a campfire among dogthorn trees ignites them. Now `can_make_camp` is false (and `MAKE_CAMP` is refused with a turn spent) when a plant (`Physics.Category == "Plants"`) or anything aflame is within 2 cells. Python then falls back to EAT.
+31. **fixed in T-1.12.** Fire was not a hazard: `[HAZARD:]` only matched acid/lava/magma/convalessence by name. Now any object where `IsAflame()` / `Burning` / a `Campfire` part is tagged `[HAZARD: fire]`; Python already refuses `[HAZARD` cells. Probable cause of the empty `reachable_edges` and the two-cell ping-pong seen while the fire burned (engine pathfinder routes around flames). `[unverified]`
+32. **open.** No reaction to being on fire. C# now exports `is_on_fire`, but Python does not use it. Needs: leave the flames, step into water if adjacent. Do not guess at Qud's extinguish rules; inspect first (`Campfire.FindExtinguishingPool` exists).
+33. `[unverified]` Plants-only flammability is a narrow rule; wooden furniture, grass-like objects with other categories, and oil/honey puddles (`FlameTemperature` 350) are not counted.
+
 **New (from the 2026-10-05 UTC baboon death, level 2; `[verified in code @T-1.10]`, in-game confirmation pending)**
 27. **fixed in T-1.10 (branch `task/1.10-companion-name-cache`, not yet verified in game).** A name-based companion cache (C# `RegisteredCompanionNames`, Python `CHARMED_COMPANION_NAMES`, filled on every Proselytize *attempt*) made every baboon a "companion" after one recruit attempt. `last_state.json` showed 13 baboons with `is_companion: true`. Effects: hostile baboon had `is_enemy: false`, `is_in_combat` was false, Phase A chose `REST` at 6 and 2 HP with a baboon adjacent, offensive abilities aborted (`Lase (4 charges)` unused), the LLM only repositioned. Probably the cause of earlier "tried to disengage" runs. Also fixed in the same branch: issue 11 (`surroundings` unbound in all four fallbacks).
 
@@ -105,6 +111,13 @@ To discriminate (do this on the next hang, **before restarting the game**):
 - Confirm in Antigravity's Rules panel that `.agents/rules/read_project_docs.md` is active and set to always apply, and that the `@../../AGENTS.md` reference resolves. [unverified: based on third-party docs]
 
 ## Session log (newest first)
+
+### 2026-10-04 (T-1.12): fire safety (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
+- Branch `task/1.12-fire-safety` (from `main` @7a32c8c, which now contains T-1.10 and T-1.11, merged and pushed). C#: `IsCampSpotSafe`, `IsObjectAflame`, `IsOnFire`; `[HAZARD: fire]` tag in `GetCellSummary`; `is_on_fire` in `state.json`; `MAKE_CAMP` refuses an unsafe spot. Engine facts from the game DLL and blueprints: `GameObject.IsAflame()`, `Physics.Category` / `FlameTemperature` exist; Dogthorn Tree inherits Tree > Plant (Category "Plants"); Campfire part has `FlameTemperature=10000`. [verified in code]
+- Python: no code change needed (it already refuses `[HAZARD` cells). Test 53 pins that contract and the EAT fallback; it would also pass on the old Python, so it does **not** prove the C# fix.
+- **Unverified (needs a game launch):** C# compile (check `build_log.txt` for "Success :)"), that burning trees and a lit campfire report `IsAflame()`/get the tag, that `Physics.Category` is "Plants" for dogthorn trees at runtime, and that unsafe camp spots are not too common (false refusals just mean he eats instead).
+- Dead end recorded: local Roslyn compile from PowerShell (see DECISIONS).
+- **Next:** launch the game, check `build_log.txt`, then an in-game camp near trees; then issue 32 (react to being on fire).
 
 ### 2026-10-04 (T-1.11): occluded threats (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
 - Branch `task/1.11-occluded-threats` (from `task/1.10-companion-name-cache`, so it contains T-1.10). Added `get_close_threats` in `brain.py`, used by `query_decision` and `main()` (the block was duplicated). Test 52 (6 turns, enemy behind a wall): fails on old code ("Maneuvering W ... to establish line of sight"), passes now. All 52 tests pass with the LLM forced offline. [verified in code]

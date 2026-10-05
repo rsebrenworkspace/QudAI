@@ -61,6 +61,7 @@ in a small context window.
 |---|---|---|
 | OS screen capture + OCR + simulated keypresses | OCR >600 ms/frame, misread tiles, modal popups stole focus, dropped keys | Iter 1 |
 | Targeting every visible entity as an "unexplored frontier" | Hundreds of harmless objects; character tried to step on all of them (800+ turns in one zone) | Iter 19 |
+| Compile-checking the mod locally with the game's Roslyn (`Microsoft.CodeAnalysis*.dll` in `CoQ_Data/Managed`) from Windows PowerShell 5.1 | Those assemblies target Unity's Mono; PowerShell throws `Could not load type System.Span` (and a StackOverflow without a resolve guard). No .NET SDK is installed. Verify C# by launching Qud and reading `build_log.txt` ("Success :)") plus the braces check. | T-1.12 |
 | Remembering companions **by display name** (C# `RegisteredCompanionNames`, Python `CHARMED_COMPANION_NAMES`) | One Proselytize on a baboon made every baboon a "companion": hostiles dropped out of `is_enemy`, threats and `is_in_combat`, the agent rested at 6 HP and 2 HP next to a biting baboon, and offensive abilities aborted. Use engine truth (`is_companion`, `[COMPANION:]` tags, coordinates, IDs after a real engine check). | 2026-10-04 run, T-1.10 |
 | 1-step Euclidean / Chebyshev movement toward a target | Ping-pongs along fences, walls, shorelines, canyon cliffs | Iter 10, 24, 25, 27, 39 |
 | Loop detection threshold `count >= 3` in a window of 10 | Mathematically unreachable for a 5-tile cycle; replaced by window 24 + unique-position entropy | Iter 15 |

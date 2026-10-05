@@ -200,6 +200,61 @@ namespace QudAIBrain
             return list;
         }
 
+        // ---- Fire safety (engine data only; see docs/DECISIONS.md "campfire next to dogthorn trees" and HANDOFF issue 30) ----
+        private const int CampSafetyRadius = 2;
+
+        public static bool IsObjectAflame(GameObject obj, GameObject player)
+        {
+            if (obj == null || obj == player) return false;
+            try { return obj.IsAflame() || obj.HasEffect("Burning") || obj.HasPart("Campfire"); }
+            catch { return false; }
+        }
+
+        public static bool IsOnFire(GameObject player)
+        {
+            if (player == null) return false;
+            try { return player.IsAflame() || player.HasEffect("Burning"); }
+            catch { return false; }
+        }
+
+        // Plants burn (Physics.Category "Plants": trees, grass, vines). Creatures are never counted as terrain.
+        private static bool IsFlammableTerrainObject(GameObject obj)
+        {
+            if (obj == null || obj.IsPlayer() || obj.Brain != null || obj.HasPart("Brain")) return false;
+            try
+            {
+                var phys = obj.GetPart<Physics>();
+                return phys != null && string.Equals(phys.Category, "Plants", StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        // A campfire ignites flammable neighbors. Unsafe if anything within CampSafetyRadius is a plant or already burning.
+        public static bool IsCampSpotSafe(GameObject player)
+        {
+            try
+            {
+                Cell center = player?.CurrentCell;
+                Zone zone = center?.ParentZone;
+                if (zone == null) return true;
+                for (int dx = -CampSafetyRadius; dx <= CampSafetyRadius; dx++)
+                {
+                    for (int dy = -CampSafetyRadius; dy <= CampSafetyRadius; dy++)
+                    {
+                        Cell c = zone.GetCell(center.X + dx, center.Y + dy);
+                        if (c?.Objects == null) continue;
+                        foreach (GameObject o in c.Objects)
+                        {
+                            if (o == null) continue;
+                            if (IsObjectAflame(o, player) || IsFlammableTerrainObject(o)) return false;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return true;
+        }
+
         public static bool IsCompanion(GameObject obj, GameObject player)
         {
             if (obj == null || player == null || obj == player || obj.IsPlayer() || !obj.IsAlive) return false;
@@ -774,7 +829,7 @@ namespace QudAIBrain
                     {
                         hasCampAbility = abilities.AbilityByGuid.Values.Any(a => a != null && a.Command == "CommandSurvivalCamp");
                     }
-                    canMakeCamp = !isSwimming && (hasCampAbility || player.HasSkill("Survival_Camp") || player.HasSkill("CookingAndGathering")) && !hostilesNearby && !(currentCell?.ParentZone?.IsWorldMap() ?? false);
+                    canMakeCamp = !isSwimming && (hasCampAbility || player.HasSkill("Survival_Camp") || player.HasSkill("CookingAndGathering")) && !hostilesNearby && !(currentCell?.ParentZone?.IsWorldMap() ?? false) && IsCampSpotSafe(player);
                 }
                 catch { }
 
@@ -943,6 +998,7 @@ namespace QudAIBrain
                 sb.Append($"\"can_butcher\": {(canButcher ? "true" : "false")},");
                 sb.Append($"\"can_harvest\": {(canHarvest ? "true" : "false")},");
                 sb.Append($"\"is_swimming\": {(isSwimming ? "true" : "false")},");
+                sb.Append($"\"is_on_fire\": {(IsOnFire(player) ? "true" : "false")},");
                 sb.Append($"\"effects\": [{string.Join(",", effectStrs)}],");
                 sb.Append($"\"abilities\": [{string.Join(",", abilityStrs)}],");
                 sb.Append($"\"has_missile_weapon\": {(hasMissileWeapon ? "true" : "false")},");
@@ -1392,6 +1448,11 @@ namespace QudAIBrain
                 }
 
                 string lower = cleanName.ToLower();
+                if (IsObjectAflame(obj, player))
+                {
+                    names.Insert(0, "[HAZARD: fire]");
+                    continue;
+                }
                 if (lower.Contains("acid") || lower.Contains("lava") || lower.Contains("magma") || lower.Contains("convalessence"))
                 {
                     names.Insert(0, $"[HAZARD: {cleanName}]");
@@ -1775,6 +1836,13 @@ namespace QudAIBrain
                     if (player.CurrentCell != null && (player.CurrentCell.HasSwimmingDepthLiquid() || player.HasEffect("Swimming") || player.HasEffect<XRL.World.Effects.Swimming>()))
                     {
                         MessageQueue.AddPlayerMessage("{{R|You cannot make camp while swimming in deep water.}}");
+                        return;
+                    }
+                    if (!IsCampSpotSafe(player))
+                    {
+                        UnityEngine.Debug.Log("[QudAI MAKE_CAMP] Refused: flammable plants or fire within " + CampSafetyRadius + " cells");
+                        MessageQueue.AddPlayerMessage("{{R|It is too dangerous to light a campfire among flammable plants.}}");
+                        if (player.Energy != null) player.UseEnergy(1000, "MakeCamp");
                         return;
                     }
                     UnityEngine.Debug.Log("[QudAI MAKE_CAMP] Deploying campfire programmatically");

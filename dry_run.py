@@ -3115,3 +3115,35 @@ for turn in range(1, 7):
 dec = brain.query_decision(wall_state(False), took_damage=True, enemies=wall_state(False)["visible_entities"])
 assert "Safe" not in dec.get("reason", ""), "Taking damage must still force combat/safety logic"
 print("  [OK] Test 52 Passed: occluded enemy ignored for 6 turns; visible, adjacent and damage cases still count.")
+
+
+# =====================================================================
+# TEST 53: Fire is a hazard; unsafe camp spot falls back to eating (HANDOFF issues 30-32, 2026-10-04 fire death)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 53: [HAZARD: fire] cells are never walked into; no MAKE_CAMP when C# says the spot is unsafe")
+print("="*50)
+
+fire_surroundings = {"N": "[HAZARD: fire]", "NE": "[HAZARD: fire]", "E": "Empty ground", "SE": "Empty ground",
+                     "S": "Empty ground", "SW": "Empty ground", "W": "[HAZARD: fire]", "NW": "[HAZARD: fire]"}
+fire_moves = brain.get_valid_moves(fire_surroundings, (10, 10), None, is_in_combat=False)
+assert "MOVE_N" not in fire_moves and "MOVE_NE" not in fire_moves and "MOVE_W" not in fire_moves and "MOVE_NW" not in fire_moves, f"Must not step into fire, got {fire_moves}"
+assert "MOVE_E" in fire_moves and "MOVE_S" in fire_moves, f"Safe cells must stay available, got {fire_moves}"
+
+brain.CHARMED_COMPANION_COORDS.clear()
+brain.last_action = None
+hungry_state = {
+    "hp": 20, "max_hp": 20, "x": 10, "y": 10, "z": 10, "level": 4, "calling": "Apostle",
+    "has_companion": False, "companions": [], "zone_id": "JoppaWorld.11.19.0.1.10",
+    "zone_fully_explored": False, "unexplored_cells": 500, "hostiles_nearby": False, "hostiles_adjacent": False,
+    "is_hungry": True, "is_famished": False, "hunger_level": "Hungry",
+    "has_food": True, "food_count": 2, "can_make_camp": False, "campfire_nearby": False, "is_on_fire": False,
+    "corpses_nearby": 0, "surroundings": {"N": "dogthorn tree", "S": "Empty ground", "E": "Empty ground", "W": "Empty ground"},
+    "abilities": [], "visible_entities": [],
+}
+for turn in range(1, 4):
+    dec = brain.query_decision(dict(hungry_state), took_damage=False, enemies=[])
+    print(f"  turn {turn}: {dec.get('action')} | {dec.get('reason', '')[:80]}")
+    assert dec.get("action") != "MAKE_CAMP", "Must not make camp when C# reports can_make_camp = False"
+    assert dec.get("action") == "EAT", f"Hungry with food and an unsafe camp spot should EAT, got {dec.get('action')}"
+print("  [OK] Test 53 Passed: fire cells avoided; unsafe camp spot falls back to EAT.")
