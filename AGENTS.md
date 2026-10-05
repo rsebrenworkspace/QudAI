@@ -81,6 +81,18 @@ python sync_mod.py deploy     # only if the C# changed
   multiple files. Known offenders are listed in `docs/HANDOFF.md`.
 - Seed `random` once per run and log the seed (also write it into death chronicles) so failures reproduce.
 
+### Git safety (applies to every tool; the human is still learning git)
+
+- **Never run a destructive git command without explicit confirmation in chat:** `git reset --hard`, `git clean`, `git checkout .`,
+  `git restore .`, `git stash drop`, `git branch -D`, `git push --force`, or a GitHub Desktop "Discard changes".
+- **Never discard or overwrite uncommitted files under `memory/` or `chronicles/`.** They are the agent's failure memory, and git cannot
+  recover untracked files.
+- **Stage by explicit path.** Do not use `git add -A` or `git add .`: game output lands in the repo and must not ride along in unrelated commits.
+- **Explain each git command before running it.**
+- **When git state is confusing, run `python tools/git_report.py`** (read-only) and show the output instead of guessing.
+- Close other tools (Antigravity, Claude Code, GitHub Desktop, File Explorer on the repo) before switching branches. Windows may refuse to delete
+  folders it holds open; answer `n` or press Ctrl+C. The "Deletion of directory failed" prompt is harmless.
+
 ## 6. When blocked
 
 If you cannot verify something (needs the running game, `Player.log`, or a human decision), say so in
