@@ -435,6 +435,20 @@ def check_exit_direction_failure(game_state, cur_pos, chosen_exit):
     return False
 
 
+EXIT_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "exit_choices.jsonl")
+
+
+def log_exit_choice(record):
+    """Appends one structured line per zone-exit decision (inputs and result) so exit bias can be diagnosed from data
+    instead of guessed (HANDOFF issue 38). Never raises."""
+    try:
+        record = dict(record, ts=round(time.time(), 1))
+        with open(EXIT_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + chr(10))
+    except Exception:
+        pass
+
+
 def get_zone_exit_target(cur_pos, game_state=None):
     """
     Returns (target_coord, exit_tag, exit_dir) of the zone border exit to transition to the next zone.
@@ -526,6 +540,14 @@ def get_zone_exit_target(cur_pos, game_state=None):
         if adj_zone and adj_zone not in avoid_zones:
             novel_candidates.append(d)
 
+    _log_base = {
+        "zone": cur_zone, "pos": [px, py], "reachable": reachable_val, "rev": rev_dir,
+        "failed_here": sorted(d for (zz, d) in FAILED_ZONE_EXITS if zz == cur_zone),
+        "explored_neighbors": sorted(d for d in ["N", "S", "E", "W"] if _compute_adjacent_zone_id(cur_zone, d) in EXPLORED_ZONE_SET),
+        "cycle_neighbors": sorted(d for d in ["N", "S", "E", "W"] if _compute_adjacent_zone_id(cur_zone, d) in cycle_zones),
+        "candidates": list(candidates), "novel": list(novel_candidates),
+    }
+
     # Prefer novel unvisited zones if available to foster organic world exploration
     if novel_candidates:
         prioritized_novel = [d for d in prioritized if d in novel_candidates]
@@ -534,6 +556,7 @@ def get_zone_exit_target(cur_pos, game_state=None):
         CURRENT_ZONE_CHOSEN_EXIT = chosen_dir
         CURRENT_ZONE_CHOSEN_EXIT_ZONE = cur_zone
         label = f"{tag} (novel)"
+        log_exit_choice(dict(_log_base, chosen=chosen_dir, mode="novel", hopping=bool(ZONE_HOPPING_DETECTED)))
         if ZONE_HOPPING_DETECTED:
             print(f"[ZONE HOPPING BREAKER] Organically picked novel exit {chosen_dir} ({label}) avoiding cycle: {avoid_zones}")
         else:
@@ -546,6 +569,7 @@ def get_zone_exit_target(cur_pos, game_state=None):
     pos, tag = _EXIT_TARGETS[chosen_dir](px, py)
     CURRENT_ZONE_CHOSEN_EXIT = chosen_dir
     CURRENT_ZONE_CHOSEN_EXIT_ZONE = cur_zone
+    log_exit_choice(dict(_log_base, chosen=chosen_dir, mode="any", hopping=bool(ZONE_HOPPING_DETECTED)))
     print(f"[ORGANIC EXPLORATION] Selected organic exit {chosen_dir} ({tag}) for zone {cur_zone}")
     return pos, tag, chosen_dir
 

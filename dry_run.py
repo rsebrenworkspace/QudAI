@@ -1,5 +1,9 @@
 import json
+import os
+import tempfile
 import brain
+# Never write test decisions into the real exit log (memory/exit_choices.jsonl).
+brain.EXIT_LOG_PATH = os.path.join(tempfile.mkdtemp(), "exit_choices_dry_run.jsonl")
 import build_templates
 import item_evaluator
 
@@ -3382,3 +3386,38 @@ assert ZB in brain.EXPLORED_ZONE_SET and ZA not in brain.EXPLORED_ZONE_SET, f"Ex
 _src = open(brain.__file__, encoding="utf-8").read()
 assert _src.count("EXPLORED_ZONE_SET.add(") == 2, f"Only engine-confirmed code may add to EXPLORED_ZONE_SET, found {_src.count('EXPLORED_ZONE_SET.add(')}"
 print("  [OK] Test 56 Passed: stuck != explored; progress clears stuck; only the engine's flag is remembered; the old zone's flag is used on leave.")
+
+
+# =====================================================================
+# TEST 57: Every zone-exit decision is logged with its inputs (HANDOFF issue 38)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 57: exit choice log records candidates, reachable edges and explored neighbours; logging never raises")
+print("="*50)
+
+import os as _os, json as _json, tempfile as _tempfile, io as _io, contextlib as _ctx
+_log = _os.path.join(_tempfile.mkdtemp(), "exit_choices.jsonl")
+_saved = brain.EXIT_LOG_PATH
+brain.EXIT_LOG_PATH = _log
+_Z = "JoppaWorld.11.20.1.1.10"
+brain.EXPLORED_ZONE_SET.clear(); brain.FAILED_ZONE_EXITS = set()
+brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+brain.LAST_ZONE_ENTRY = {"reverse_dir": "S"}
+brain.EXPLORED_ZONE_SET.add(brain._compute_adjacent_zone_id(_Z, "W"))   # the west neighbour was already explored
+with _ctx.redirect_stdout(_io.StringIO()):
+    _, _, _chosen = brain.get_zone_exit_target((40, 12), {"zone_id": _Z, "z": 10, "reachable_edges": "NSEW", "surroundings": {}})
+_lines = [_json.loads(l) for l in open(_log, encoding="utf-8")]
+assert len(_lines) == 1, f"One decision must log one line, got {len(_lines)}"
+_rec = _lines[0]
+assert _rec["zone"] == _Z and _rec["reachable"] == "NSEW" and _rec["rev"] == "S", _rec
+assert _rec["explored_neighbors"] == ["W"], f"The explored west neighbour must be recorded, got {_rec['explored_neighbors']}"
+assert sorted(_rec["candidates"]) == ["E", "N", "W"] and sorted(_rec["novel"]) == ["E", "N"], _rec
+assert _rec["chosen"] == _chosen and _chosen in _rec["novel"] and _rec["mode"] == "novel", _rec
+# A cached exit must not log again; an unwritable log path must never raise
+with _ctx.redirect_stdout(_io.StringIO()):
+    brain.get_zone_exit_target((40, 12), {"zone_id": _Z, "z": 10, "reachable_edges": "NSEW", "surroundings": {}})
+assert len(open(_log, encoding="utf-8").readlines()) == 1, "A cached exit choice must not be logged again"
+brain.EXIT_LOG_PATH = _os.path.join(_log, "no", "such", "dir", "x.jsonl")
+brain.log_exit_choice({"zone": "x"})
+brain.EXIT_LOG_PATH = _saved
+print("  [OK] Test 57 Passed: exit decisions are logged with their inputs; the log never breaks the brain.")

@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 56 -->
-`dry_run.py` currently holds Tests 1-56. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 57 -->
+`dry_run.py` currently holds Tests 1-57. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -35,6 +35,7 @@ Exchange directory: `...\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI` (hard
 | `death.json` | game -> Python | Written once on player death; consumed by the Chronicler. |
 | `last_state.json` | Python | Debug copy of the last state. |
 | `last_action_executed.txt` | C# | UTC timestamp + action. Useful to tell "hung" from "looping". |
+| `memory/exit_choices.jsonl` | Python | One JSON line per zone-exit decision (zone, position, `reachable_edges`, reverse direction, failed/explored/cycle neighbours, candidates, novel candidates, chosen, mode). Diagnostic and future training data; not committed. |
 
 Known protocol weaknesses (see HANDOFF): non-atomic `action.json` write, no turn id, timeouts that can race.
 
