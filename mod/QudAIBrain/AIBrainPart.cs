@@ -431,10 +431,50 @@ namespace QudAIBrain
             return false;
         }
 
+        private static bool patchCheckDone = false;
+
+        // Asks Harmony which of this assembly's [HarmonyPatch] classes actually have a prefix/postfix applied.
+        // Expected set = reflection over the assembly (single source of truth). Never throws, runs once.
+        // If PlayerTurn itself failed to patch, Prefix never runs and the "PlayerTurn patch ACTIVE" line is absent.
+        private static void RunPatchSelfCheck()
+        {
+            if (patchCheckDone) return;
+            patchCheckDone = true;
+            try
+            {
+                UnityEngine.Debug.Log("[QudAI] PlayerTurn patch ACTIVE");
+                var patchedMethods = Harmony.GetAllPatchedMethods()?.ToList() ?? new List<MethodBase>();
+                int applied = 0, expected = 0;
+                foreach (Type t in typeof(AIPlayerTurnPatch).Assembly.GetTypes())
+                {
+                    var attr = t.GetCustomAttributes(typeof(HarmonyPatch), false).Cast<HarmonyPatch>().FirstOrDefault();
+                    if (attr == null || attr.info == null) continue;
+                    expected++;
+                    string label = $"{attr.info.declaringType?.Name}.{attr.info.methodName}";
+                    bool found = false;
+                    foreach (MethodBase m in patchedMethods)
+                    {
+                        var info = Harmony.GetPatchInfo(m);
+                        if (info == null) continue;
+                        var all = info.Prefixes.Concat(info.Postfixes).Concat(info.Transpilers).Concat(info.Finalizers);
+                        if (all.Any(p => p.PatchMethod != null && p.PatchMethod.DeclaringType == t)) { found = true; break; }
+                    }
+                    if (found) { applied++; UnityEngine.Debug.Log($"[QudAI] Patched: {label}"); }
+                    else UnityEngine.Debug.Log($"[QudAI] PATCH MISSING: {label}");
+                }
+                UnityEngine.Debug.Log($"[QudAI] Patch check: {applied}/{expected} applied");
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.Log($"[QudAI] Patch check failed: {ex.Message}");
+            }
+        }
+
         public static bool Prefix()
         {
             try
             {
+                RunPatchSelfCheck();
                 UnityEngine.Application.runInBackground = true;
 
                 if (!File.Exists(FlagFile) || !UnityEngine.Application.isPlaying)
