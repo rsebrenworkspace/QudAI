@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 50 -->
-`dry_run.py` currently holds Tests 1-50. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 52 -->
+`dry_run.py` currently holds Tests 1-52. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -46,6 +46,8 @@ Known protocol weaknesses (see HANDOFF): non-atomic `action.json` write, no turn
    then the loop breakers, then write `action.json`.
 
 ### Decision pipeline (`query_decision`)
+
+Combat mode (`is_in_combat`) = damage taken, an adjacent threat, or `get_close_threats` (enemy within 6 tiles, or 10 with `hostiles_nearby`; a non-adjacent enemy with `has_los: false` does not count, T-1.11).
 
 Pre-checks: zone/stair records, stuck-autoexplore ingestion, template detection (every turn, see Known Issues),
 emergency retreat to stairs up (underground, low HP), priority AP spend.
@@ -141,7 +143,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 |---|---|---|
 | `zone_fully_explored` | **Both** (C# sets it, Python overrides it in several places) | C# only |
 | Mutation/skill eligibility | Python mirrors engine rules | C# exports legal purchases |
-| Companion identity | Both (C# `IsCompanion`, Python name/coord sets) | C# |
+| Companion identity | C# `IsCompanion` (engine checks + ID cache). Python reads `is_companion` / `companions` and matches by coordinates only, never by name (T-1.10) | C# |
 | Build template | Python, re-detected every turn | Detected once, persisted |
 
 ## 7. Failure memory (Chronicler)
