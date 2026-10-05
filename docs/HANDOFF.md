@@ -31,9 +31,11 @@ To discriminate (do this on the next hang, **before restarting the game**):
 ## Open issues (from the 2026-10-04 code review; all `[verified in code @c50b3c2]` unless noted, none reproduced in game)
 
 **C# (`AIBrainPart.cs`)**
-1. **fixed (pending in-game confirmation), branch `task/1.1-energy-guard`, not merged** (commit hash: see `git log task/1.1-energy-guard`).
+1. **fixed, verified in game 2026-10-04** (T-1.1, commit `1e61a29`, merged to `main`).
    Some commands `return` without spending energy (FIRE_MISSILE refusals, swim guards in MAKE_CAMP/COOK_MEAL). `Prefix` now spends a turn
-   and logs `[QudAI EnergyGuard]` when `ExecuteCommand` leaves energy unchanged (`ACTIVATE_SPRINT` exempt). Not compiled in game yet. `[unverified]`
+   and logs `[QudAI EnergyGuard]` when `ExecuteCommand` leaves energy unchanged (`ACTIVATE_SPRINT` exempt). Manual COOK_MEAL-while-swimming
+   test gave exactly one guard line; a 499-turn normal run (ended by character death) produced no new guard lines.
+   Border crossings and stairs were not individually verified. `[unverified]` Whether this was the cause of the level 5 hang is still unknown.
 2. `Prefix` catch does `return true`, which runs the vanilla turn and waits for a keypress. The game looks frozen after any exception.
 3. `ReadAction` can throw (`Substring`) on a partially written `action.json`; only `IOException` is caught.
 4. C# waits 6000 ms for an action; Python's LLM timeout is also 6.0 s. A slow LLM makes C# pass a turn, and the late action
@@ -67,11 +69,18 @@ To discriminate (do this on the next hang, **before restarting the game**):
     claims `Popup.Show`/`ShowOptionList` patches that do not exist, names `PlayerTurn.Prefix` and `bSuppressPopups` (code: `XRLCore.PlayerTurn`, `Popup.Suppress`).
     Section numbering repeats (11.4, 12.2).
 
+**New (from the T-1.1 in-game run, 2026-10-04; human-reported, not yet traced in code)**
+23. Chronicler writes lessons from the last action only, and the Gen 7 lesson "Avoid moving SW..." is noise. Related to issue 18. `[unverified]`
+24. Generation numbering collides after the wisdom file lost entries. Use `max(existing generation) + 1`, not a count. `[unverified]`
+25. Phase B (LLM) advances and kites at low HP in melee instead of retreating, healing or fighting on. Reproduced in the 499-turn run that ended in death. `[unverified]`
+26. Deploy note: the game logs the mod as `QUDAITEST` because that is the `Title` in `workshop.json`. The mod folder is `QudAIBrain`. This explains the
+    `QUDAITEST` seen in the 2026-09-19 log (see *Needs a human*, mod folder question). Not a duplicate copy. `[verified in code @1e61a29]` for the Title; `[unverified]` that no duplicate folder exists.
+
 ## Next steps (suggested order)
 
 1. Add the startup self-check: log every method in `Harmony.GetAllPatchedMethods()` and one `[QudAI] PlayerTurn patch ACTIVE` line. Expected: **10 patches** (see ARCHITECTURE section 4).
 2. Add a logging-only prefix on every `Popup` method while `active.flag` exists (name + stack trace) to catch unpatched modals.
-3. C# `Prefix`: central energy guarantee after `ExecuteCommand`; on exception with the flag present, spend a turn and `return false`.
+3. C# `Prefix`: on exception with the flag present, spend a turn and `return false`. (The central energy guarantee is done, T-1.1.)
 4. Atomic `action.json` (write temp, `os.replace`), tolerant parse in `ReadAction`, add a turn id, make C# timeout > LLM timeout.
 5. Initialize `surroundings` at the top of each fallback function; wrap the decision step so an action is always written.
 6. Treat damage-over-time separately from attacks for `is_in_combat`.
@@ -92,9 +101,12 @@ To discriminate (do this on the next hang, **before restarting the game**):
 ## Session log (newest first)
 
 ### 2026-10-04 (T-1.1): central energy guarantee (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
-- Branch `task/1.1-energy-guard` (from `main` @7bb06cc). Changed `Prefix` in `AIBrainPart.cs` only, plus the card's Result and this file. No Python, `memory/` or `chronicles/` touched. Not merged, not pushed.
-- Verified: braces check, py_compile, `dry_run.py` (50/50), `check_docs.py` (4 pre-existing warnings), `sync_mod.py deploy` (file copy only). [verified in code @task/1.1-energy-guard]
-- **Unverified:** that the mod compiles in game; the in-game COOK_MEAL swimming check and ~10 min clean run (**needs the human**, steps are in the card); zone-change false positives. Usage not measured.
+- Branch `task/1.1-energy-guard` (from `main` @7bb06cc), code in `1e61a29`. Changed `Prefix` in `AIBrainPart.cs` only, plus the card's Result and this file. No Python, `memory/` or `chronicles/` touched. Merged into local `main`; not pushed.
+- Verified: braces check, py_compile, `dry_run.py` (50/50), `check_docs.py` (4 pre-existing warnings), `sync_mod.py deploy` (file copy only). [verified in code @1e61a29]
+- Verified in game 2026-10-04 (human-reported): COOK_MEAL while swimming gave one `[QudAI EnergyGuard]` line; 499-turn normal run ended in character death with no new guard lines.
+- **Unverified:** border crossings and stairs individually. New issues 23-26 added from the run; none traced in code.
+- Usage (human-reported): about 4% hourly, under 1% weekly, Sonnet 5.5.
+- **Next:** T-1.8 (Harmony self-check), then Next steps 3-4.
 
 ### 2026-10-04 (hygiene commits): docs warnings cleanup (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
 - Three separate commits on `main`, staged by explicit path, pushed to `origin/main` together with the HANDOFF update (`ff45a99`):
