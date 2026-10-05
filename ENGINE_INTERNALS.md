@@ -358,6 +358,9 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
 - **Campfire:** blueprint `Campfire` (`Inherits="Item"`): `Physics FlameTemperature="10000"`, `AnimatedMaterialFire`, `LightSource Lit Radius=3`, `Campfire ExtinguishBlueprint="Campfire Remains"`. `Campfire` has `CanExtinguish` and `FindExtinguishingPool`. A lit campfire next to plants set the area ablaze and killed a character (2026-10-04, human-reported).
 - **Open (needed for HANDOFF issue 32, reacting to being on fire):** how the player extinguishes `Burning` (entering water? what do `Burning.ApplyTo`/`Remove` check?). Not yet inspected; do not guess.
 
+### 12.1d Food skill chain (from `skill_database.py`, a static copy of engine data; not re-verified against the DLL this session)
+- `CookingAndGathering` 100 SP (no attribute minimum); `CookingAndGathering_Butchery` 50 SP, Intelligence 15; `CookingAndGathering_Harvestry` 50 SP, Intelligence 15; `CookingAndGathering_MealPreparation` 0 SP, Intelligence 15. Butchery and Harvestry have parent `CookingAndGathering`. A character cannot butcher without Butchery. `Survival` is 100 SP and its child `Survival_Camp` ("Make Camp") is 0 SP, Intelligence 15. `Tactics` 50 SP, `Tactics_Hurdle` 0 SP. `[unverified]` against the engine; exporting real eligibility from C# is HANDOFF Next step 8.
+
 ### 12.2 Engine Survival Mechanics
 - **Butchering:** Animal corpses possess `Butcherable`. Calling `AttemptButcher(player)` yields raw meat and cooking ingredients.
 - **Harvesting:** Wild plants possess `Harvestable`. Calling `AttemptHarvest(player)` harvests ingredients.

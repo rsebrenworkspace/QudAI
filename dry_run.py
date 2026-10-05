@@ -790,7 +790,7 @@ apostle_state_gated = {
     "calling": "Apostle",
     "level": 3, "ap": 0, "sp": 150, "mp": 0,
     "attributes": {"Strength": 14, "Agility": 16, "Toughness": 18, "Intelligence": 17, "Willpower": 18, "Ego": 21},
-    "skills": ["Tactics", "Tactics_Hurdle", "CookingAndGathering", "CookingAndGathering_Butchery", "CookingAndGathering_MealPreparation", "Customs", "Customs_Tactful"],
+    "skills": ["Tactics", "Tactics_Hurdle", "CookingAndGathering", "CookingAndGathering_Butchery", "CookingAndGathering_Harvestry", "CookingAndGathering_MealPreparation", "Customs", "Customs_Tactful"],
     "zone_fully_explored": False,
     "hostiles_nearby": False, "hostiles_adjacent": False,
     "surroundings": {"C": "dirt", "N": "grass"},
@@ -3245,3 +3245,44 @@ for turn in range(12):
     brain.last_action = dec["action"]
 assert seen[0] == "BUTCHER" and seen.count("BUTCHER") <= 3, f"BUTCHER must not repeat endlessly, got {seen}"
 print("  [OK] Test 54 Passed: forages with the skill, ignores without, blacklists blocked/slow targets, no free meal, no butcher loop.")
+
+
+# =====================================================================
+# TEST 55: Every build learns the food skills early and can reach Intelligence 15 (HANDOFF issue 36)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 55: Butchery/Harvestry are bought early in every template; Int 15 is reachable (multi-step simulation)")
+print("="*50)
+
+import build_templates as _bt
+import skill_database as _sd
+for _name, _tpl in _bt.BUILD_TEMPLATES.items():
+    # (a) Simulate SP trickling in (50 per step) and buying whatever the doctrine picks, with Intelligence 17
+    _learned, _sp, _order, _spent, _spent_at_butchery = [], 0, [], 0, None
+    for _step in range(60):
+        _state = {"sp": _sp, "skills": list(_learned), "attributes": {"Intelligence": 17}}
+        _skill, _why, _saving = _sd.get_best_skill_to_learn(_state, _tpl)
+        if _skill:
+            _cost = (_sd.get_skill_info(_skill) or {}).get("cost", 0)
+            _sp -= _cost
+            _spent += _cost
+            _learned.append(_skill)
+            _order.append(_skill)
+            if _skill == "CookingAndGathering_Butchery":
+                _spent_at_butchery = _spent
+        else:
+            _sp += 50
+    assert "CookingAndGathering_Butchery" in _learned and "CookingAndGathering_Harvestry" in _learned, f"{_name}: never learns Butchery/Harvestry, order {_order}"
+    _bi = _order.index("CookingAndGathering_Butchery")
+    assert _bi <= 6, f"{_name}: Butchery bought too late (position {_bi + 1}): {_order}"
+    # (b) Intelligence 15 is reached by the stat doctrine for a low-Int character once the earlier targets are met
+    _attrs = {}
+    for _rule in _tpl["stat_priorities"]:
+        if _rule["stat"] == "Intelligence":
+            break
+        _attrs[_rule["stat"]] = max(_attrs.get(_rule["stat"], 10), _rule["target"])
+    _attrs["Intelligence"] = 10
+    _rec, _ = _bt.get_stat_allocation_recommendation(_tpl, _attrs)
+    assert _rec == "Intelligence", f"{_name}: low-Int character is never steered to Intelligence (got {_rec})"
+    print(f"  {_name}: Butchery is skill #{_bi + 1}, bought after {_spent_at_butchery} SP spent; Intelligence steering OK")
+print("  [OK] Test 55 Passed: all templates buy Butchery and Harvestry early and steer a low-Int character to Intelligence.")

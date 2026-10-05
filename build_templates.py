@@ -33,6 +33,7 @@ BUILD_TEMPLATES = {
         "stat_priorities": [
             {"stat": "Strength", "target": 22, "reason": "Melee penetration and Dismember chance"},
             {"stat": "Toughness", "target": 20, "reason": "Survivability floor against heavy hitters"},
+            {"stat": "Intelligence", "target": 15, "reason": "Butchery and Harvestry need Intelligence 15 (forage for food, HANDOFF issue 36)"},
             {"stat": "Agility", "target": 20, "reason": "Dodge value (DV) and accuracy"},
             {"stat": "Strength", "target": 26, "reason": "Decapitate and Cleave scaling"},
             {"stat": "Toughness", "target": 24, "reason": "Late game HP buffer"}
@@ -42,6 +43,7 @@ BUILD_TEMPLATES = {
             "Axe_Expertise",
             "CookingAndGathering",
             "CookingAndGathering_Butchery",
+            "CookingAndGathering_Harvestry",
             "CookingAndGathering_MealPreparation",
             "Tactics",
             "Tactics_Hurdle",
@@ -91,6 +93,7 @@ BUILD_TEMPLATES = {
         "stat_priorities": [
             {"stat": "Toughness", "target": 22, "reason": "Massive HP pool to synergize with heavy armor"},
             {"stat": "Strength", "target": 22, "reason": "Melee penetration and shield bash power"},
+            {"stat": "Intelligence", "target": 15, "reason": "Butchery and Harvestry need Intelligence 15 (forage for food, HANDOFF issue 36)"},
             {"stat": "Agility", "target": 20, "reason": "Rifle accuracy and Spry dodge value"},
             {"stat": "Strength", "target": 26, "reason": "End-game heavy weapons and shields"},
             {"stat": "Toughness", "target": 26, "reason": "Hazard and explosive resistance"}
@@ -99,12 +102,13 @@ BUILD_TEMPLATES = {
             "Rifles",
             "Rifle_SteadyHands",
             "Rifle_DrawABead",
+            "CookingAndGathering",
+            "CookingAndGathering_Butchery",
+            "CookingAndGathering_Harvestry",
+            "CookingAndGathering_MealPreparation",
             "Shield",
             "Shield_Block",
             "Shield_Slam",
-            "CookingAndGathering",
-            "CookingAndGathering_Butchery",
-            "CookingAndGathering_MealPreparation",
             "Rifle_SuppressiveFire",
             "Shield_DeftBlocking",
             "Endurance",
@@ -148,6 +152,7 @@ BUILD_TEMPLATES = {
         "stat_priorities": [
             {"stat": "Strength", "target": 22, "reason": "PV penetration and Dismember chance"},
             {"stat": "Toughness", "target": 22, "reason": "Base HP to absorb melee counterattacks"},
+            {"stat": "Intelligence", "target": 15, "reason": "Butchery and Harvestry need Intelligence 15 (forage for food, HANDOFF issue 36)"},
             {"stat": "Agility", "target": 20, "reason": "Multiweapon Fighting hit chance"},
             {"stat": "Strength", "target": 28, "reason": "Cleave and Decapitate requirements"}
         ],
@@ -155,10 +160,11 @@ BUILD_TEMPLATES = {
             "Multiweapon_Fighting",
             "Multiweapon_Flurry",
             "Axe",
-            "Axe_Expertise",
             "CookingAndGathering",
             "CookingAndGathering_Butchery",
+            "CookingAndGathering_Harvestry",
             "CookingAndGathering_MealPreparation",
+            "Axe_Expertise",
             "Multiweapon_Proficiency",
             "Tactics",
             "Tactics_Hurdle",
@@ -209,6 +215,7 @@ BUILD_TEMPLATES = {
         "stat_priorities": [
             {"stat": "Ego", "target": 24, "reason": "Mental mutation power, thrall persuasion, and penetration"},
             {"stat": "Willpower", "target": 24, "reason": "Massive cooldown reductions for mental abilities"},
+            {"stat": "Intelligence", "target": 15, "reason": "Butchery and Harvestry need Intelligence 15 (forage for food, HANDOFF issue 36)"},
             {"stat": "Toughness", "target": 18, "reason": "Health baseline to survive psychic backlash"},
             {"stat": "Ego", "target": 32, "reason": "Uncapped mutation level scaling"}
         ],
@@ -217,6 +224,7 @@ BUILD_TEMPLATES = {
             "Tactics_Hurdle",
             "CookingAndGathering",
             "CookingAndGathering_Butchery",
+            "CookingAndGathering_Harvestry",
             "CookingAndGathering_MealPreparation",
             "Discipline",
             "Discipline_Meditate",
@@ -271,6 +279,7 @@ BUILD_TEMPLATES = {
         "stat_priorities": [
             {"stat": "Willpower", "target": 22, "reason": "Rapid cooldown cycling for Ray and Electrical Generation"},
             {"stat": "Toughness", "target": 20, "reason": "Survivability buffer against ranged snipers"},
+            {"stat": "Intelligence", "target": 15, "reason": "Butchery and Harvestry need Intelligence 15 (forage for food, HANDOFF issue 36)"},
             {"stat": "Agility", "target": 18, "reason": "Dodge value and positioning"},
             {"stat": "Willpower", "target": 26, "reason": "Continuous elemental generation"}
         ],
@@ -279,6 +288,7 @@ BUILD_TEMPLATES = {
             "Tactics_Hurdle",
             "CookingAndGathering",
             "CookingAndGathering_Butchery",
+            "CookingAndGathering_Harvestry",
             "CookingAndGathering_MealPreparation",
             "Endurance",
             "Endurance_ShakeItOff",
@@ -327,6 +337,7 @@ BUILD_TEMPLATES = {
         "stat_priorities": [
             {"stat": "Agility", "target": 24, "reason": "Pistol hit rate, Akimbo efficiency, and DV"},
             {"stat": "Toughness", "target": 20, "reason": "Survivability buffer"},
+            {"stat": "Intelligence", "target": 15, "reason": "Butchery and Harvestry need Intelligence 15 (forage for food, HANDOFF issue 36)"},
             {"stat": "Agility", "target": 30, "reason": "Chain Fire and Faster Than My Shadow"},
             {"stat": "Willpower", "target": 20, "reason": "Phasing and Time Dilation cooldown speed"}
         ],
@@ -336,6 +347,7 @@ BUILD_TEMPLATES = {
             "Pistol_Akimbo",
             "CookingAndGathering",
             "CookingAndGathering_Butchery",
+            "CookingAndGathering_Harvestry",
             "CookingAndGathering_MealPreparation",
             "Pistol_WeakSpotter",
             "Tactics",
@@ -386,6 +398,7 @@ BUILD_TEMPLATES = {
         "stat_priorities": [
             {"stat": "Strength", "target": 24, "reason": "Unarmed penetration and Slam damage"},
             {"stat": "Toughness", "target": 22, "reason": "Melee HP pool to out-trade brutes"},
+            {"stat": "Intelligence", "target": 15, "reason": "Butchery and Harvestry need Intelligence 15 (forage for food, HANDOFF issue 36)"},
             {"stat": "Strength", "target": 30, "reason": "Uncapped fist scaling and Cudgel masteries"},
             {"stat": "Agility", "target": 20, "reason": "Hit accuracy and dodge"}
         ],
@@ -394,6 +407,7 @@ BUILD_TEMPLATES = {
             "Cudgel_Expertise",
             "CookingAndGathering",
             "CookingAndGathering_Butchery",
+            "CookingAndGathering_Harvestry",
             "CookingAndGathering_MealPreparation",
             "Tactics",
             "Tactics_Hurdle",
@@ -453,6 +467,7 @@ BUILD_TEMPLATES = {
             "Pistol_Akimbo",
             "CookingAndGathering",
             "CookingAndGathering_Butchery",
+            "CookingAndGathering_Harvestry",
             "CookingAndGathering_MealPreparation",
             "Pistol_WeakSpotter",
             "Pistol_SlingAndRun",
@@ -504,6 +519,7 @@ BUILD_TEMPLATES = {
         "stat_priorities": [
             {"stat": "Willpower", "target": 24, "reason": "Gas generation cooldown reduction"},
             {"stat": "Toughness", "target": 20, "reason": "Health baseline"},
+            {"stat": "Intelligence", "target": 15, "reason": "Butchery and Harvestry need Intelligence 15 (forage for food, HANDOFF issue 36)"},
             {"stat": "Willpower", "target": 28, "reason": "Continuous gas generation cycle threshold"},
             {"stat": "Agility", "target": 18, "reason": "Quickness and kite positioning"}
         ],
@@ -512,6 +528,7 @@ BUILD_TEMPLATES = {
             "Tactics_Hurdle",
             "CookingAndGathering",
             "CookingAndGathering_Butchery",
+            "CookingAndGathering_Harvestry",
             "CookingAndGathering_MealPreparation",
             "Endurance",
             "Endurance_ShakeItOff",
