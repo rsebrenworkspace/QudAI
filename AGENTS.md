@@ -48,6 +48,9 @@ No attacking walls, huts, owned objects, or peaceful NPCs; no looting owned item
 **R8. Never kill or shoot companions.**
 All beams, rays and missiles must pass the ray-trace check in both C# and Python.
 
+**R9. Backlog items need a human.**
+New ideas go in `docs/BACKLOG.md`; do not start a backlog item unless a human has promoted it.
+
 ## 3. Verification (required before any commit that touches code)
 
 ```
@@ -72,7 +75,6 @@ python sync_mod.py deploy     # only if the C# changed
   Never state an inference as fact.
 - **End every session by updating `docs/HANDOFF.md`** (what changed, what is unverified, what is broken, next step).
 - `PROJECT_HISTORY.md` is append-only history. Do not use it as the source of truth for current behavior.
-
 ## 5. Repo hygiene
 
 - Never commit: Twitch tokens or `twitch_config.json`, decompiled game source, game DLL copies, `Player.log`.
