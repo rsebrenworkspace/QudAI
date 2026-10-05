@@ -75,6 +75,7 @@ python sync_mod.py deploy     # only if the C# changed
   Never state an inference as fact.
 - **End every session by updating `docs/HANDOFF.md`** (what changed, what is unverified, what is broken, next step).
 - `PROJECT_HISTORY.md` is append-only history. Do not use it as the source of truth for current behavior.
+
 ## 5. Repo hygiene
 
 - Never commit: Twitch tokens or `twitch_config.json`, decompiled game source, game DLL copies, `Player.log`.
