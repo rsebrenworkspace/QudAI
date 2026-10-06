@@ -65,7 +65,7 @@ If streaming to Twitch:
 ---
 
 ## Verification & Testing
-Run the 65-scenario multi-class verification test suite to validate all archetypes, fallback matrices, line-of-fire raytracing, pet immunity, staircase delving, skill trees, border navigation, and survival routines:
+Run the 66-scenario multi-class verification test suite to validate all archetypes, fallback matrices, line-of-fire raytracing, pet immunity, staircase delving, skill trees, border navigation, and survival routines:
 ```powershell
 python dry_run.py
 ```
