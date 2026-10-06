@@ -4081,3 +4081,26 @@ assert brain.claws_toggle_action(_claw(True), False) is None, "Already on outsid
 assert brain.claws_toggle_action([], True) is None and brain.claws_toggle_action(_claw(True, usable=False), True) is None
 brain.TURN_CLOCK = 0; brain.CLAWS_LAST_TOGGLE["turn"] = -10_000
 print("  [OK] Test 71 Passed: claws off in towns, on elsewhere, with a flicker guard; no claws means no action.")
+
+# ---------------------------------------------------------------------------
+# Test 72: reacting to being on fire (HANDOFF issue 32), bounded so it can never loop
+# ---------------------------------------------------------------------------
+_sur = lambda **k: dict({d: "ground" for d in brain.CARDINAL_OFFSETS}, **k)
+_mv = lambda s: [f"MOVE_{d}" for d, t in s.items() if d in brain.CARDINAL_OFFSETS and "[hazard" not in t.lower()]
+brain.FIRE_REACTION["turns"] = 0
+_s = _sur(E="[SWIM: salty water]"); _st = {"is_on_fire": True}
+_d = brain.fire_reaction(_st, _s, _mv(_s))
+assert _d and _d["action"] == "MOVE_E" and "water" in _d["reason"], "Adjacent deep water must be preferred"
+brain.FIRE_REACTION["turns"] = 0
+_s = _sur(E="[HAZARD: fire] grass", NE="[HAZARD: fire] grass", SE="[HAZARD: fire] grass")
+_d = brain.fire_reaction(_st, _s, _mv(_s))
+assert _d and _d["action"] in ("MOVE_W", "MOVE_NW", "MOVE_SW"), f"Must flee away from fire on the east side, got {_d}"
+assert brain.fire_reaction({"is_on_fire": False}, _s, _mv(_s)) is None and brain.FIRE_REACTION["turns"] == 0
+assert brain.fire_reaction({"is_on_fire": True, "is_swimming": True}, _sur(E="[SWIM: x]"), ["MOVE_E"]) is None, "Already in water: nothing to do"
+assert brain.fire_reaction(_st, _sur(), _mv(_sur())) is None, "Burning with no fire or water nearby: let it burn out, no invented action"
+# multi-turn: never more than FIRE_REACTION_MAX consecutive reaction turns while the fire keeps burning
+brain.FIRE_REACTION["turns"] = 0
+_n = sum(1 for _ in range(40) if brain.fire_reaction(_st, _s, _mv(_s)))
+assert _n == brain.FIRE_REACTION_MAX, _n
+assert brain.fire_reaction({"is_on_fire": False}, _s, []) is None and brain.FIRE_REACTION["turns"] == 0, "Counter resets when the fire is out"
+print("  [OK] Test 72 Passed: water first, then away from flames, otherwise nothing; bounded at FIRE_REACTION_MAX turns.")

@@ -383,6 +383,40 @@ def sector_target_ok(zone_id, target, cur_pos, kind="centroid"):
     return True
 
 
+# Reacting to being on fire (HANDOFF issue 32). Engine facts [verified in code, ENGINE_INTERNALS 12.1g]: `Burning` deals damage every turn
+# and removes itself once the creature is no longer aflame; contact with liquid cools it (`LiquidVolume.ProcessExposure` /
+# `GetLiquidCooling`). So: step into deep water if it is adjacent; otherwise move away from burning cells; otherwise let it burn out.
+# Bounded (R6): after FIRE_REACTION_MAX consecutive reaction turns the normal logic takes over, so this can never become a loop.
+FIRE_REACTION = {"turns": 0}
+FIRE_REACTION_MAX = 10
+
+
+def fire_reaction(game_state, surroundings, valid_moves):
+    """Decision when the character is on fire, or None."""
+    if not game_state.get("is_on_fire"):
+        FIRE_REACTION["turns"] = 0
+        return None
+    if game_state.get("is_swimming") or FIRE_REACTION["turns"] >= FIRE_REACTION_MAX:
+        return None
+    swim = [m for m in valid_moves if is_swim_move(m, surroundings)]
+    if swim:
+        FIRE_REACTION["turns"] += 1
+        return {"action": swim[0], "reason": f"ON FIRE: stepping into the water {swim[0][5:]} to put it out"}
+    hazards = [CARDINAL_OFFSETS[d] for d in CARDINAL_OFFSETS if "[hazard: fire" in surroundings.get(d, "").lower()]
+    if not hazards:
+        return None
+    best = None
+    for m in valid_moves:
+        mx, my = CARDINAL_OFFSETS[m[5:]]
+        score = sum((mx - hx) ** 2 + (my - hy) ** 2 for hx, hy in hazards)
+        if best is None or score > best[0]:
+            best = (score, m)
+    if best is None:
+        return None
+    FIRE_REACTION["turns"] += 1
+    return {"action": best[1], "reason": f"ON FIRE: moving {best[1][5:]} away from the flames ({len(hazards)} burning cells adjacent)"}
+
+
 # Burrowing Claws policy (HANDOFF issue 54, BACKLOG B7 promoted by the human 2026-10-06). The toggle (`CommandToggleBurrowingClaws`) is the
 # "Digging" mode: with it on, the engine pathfinder (PathAsBurrower) and bumping walls dig through them [verified in code strings; the
 # mechanism of the bump is inferred from 94 stationary NAVIGATE turns]. That is good in procedural dungeons and forbidden in a settlement (R7).
@@ -2686,6 +2720,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         standing_on_sd = True
     if not standing_on_su and ("stairs_up" in center_tile or "[stairs_up" in center_tile or ("stair" in center_tile and "up" in center_tile)):
         standing_on_su = True
+
+    fire_decision = fire_reaction(game_state, surroundings, valid_moves)
+    if fire_decision:
+        return fire_decision
 
     # ==========================================================
     # EMERGENCY TACTICAL RETREAT TO STAIRS UP (Underground Defense)

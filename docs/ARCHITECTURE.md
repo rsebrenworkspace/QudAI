@@ -21,8 +21,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 71 -->
-`dry_run.py` currently holds Tests 1-71. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 72 -->
+`dry_run.py` currently holds Tests 1-72. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -128,6 +128,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
   `learnable_skills` (only affordable ones), `mutations` (`level`, `cap`, `can_level`)
 - **Position:** `x`, `y`, `z`, `zone_id`, `zone_name`, `is_settlement`, `zone_tier`
 - **Ability use:** `last_ability_use` (result of the last `USE_ABILITY`: `seq`, `command`, `dir`, `known`, `cd_before`, `cd_after`, `fired` = the cooldown rose, or the ability label changed ("Lase (5 charges)" count, toggle on/off), `refused` + `reason` when the C# pre-check found the ability disabled, unusable or on cooldown, or `null`). Python `note_ability_use` counts it per command in `memory/ability_stats.json` (`attempts`, `fired`, `refused`), kept across characters. Abilities are matched by exact engine command through `data/ability_families.json` (loader `ability_registry.py`); an ability in no wired family is never used automatically (T-1.25).
+- **On fire (T-1.27):** `fire_reaction` (before the stairs-retreat and Phase A) reads `is_on_fire`: step into adjacent deep water, else move away from `[HAZARD: fire]` cells, else do nothing (let it burn out); at most `FIRE_REACTION_MAX` (10) consecutive turns.
 - **Burrowing Claws (T-1.26):** `claws_toggle_action` (Phase A, before autolevel) switches `CommandToggleBurrowingClaws` OFF when `is_town_zone` (R7) and ON elsewhere, at most once per `CLAWS_TOGGLE_GAP` (25) turns. The claws are not in a wired family: the LLM and fallbacks never see the toggle. Water/sector traversal targets are committed intents: `sector_target_ok` writes a target off after `SECTOR_STALL_LIMIT` (14) turns without a new closest distance (the "nearest cell" chase is tracked per zone and ends in `SECTOR_GIVEUP`).
 - **Burrowing:** `last_burrow` (result of the last `ATTACK_WALL` swing: `seq`, `dir`, `name`, `x`, `y`, `has_hp`, `hp_before`, `hp_after`, `max_hp`, `destroyed`, or `null`). Python keeps swinging while the target loses HP, writes it off (400 turns) after 3 swings with no damage or at once if it has no HP, and `guard_blocked_burrow` swaps in another breakable obstacle, a free move, or a pass (T-1.19).
 - **Exploration:** `frontier_checked`, `frontier_cells`, `frontier_targets` (T-1.18: explored walkable cells touching unexplored cells that the engine pathfinder can route to, up to 3 per quadrant NW/NE/SW/SE, never cells the player already stood on; computed only while autoexplore is stuck or the zone is engine-explored: `q`, `x`, `y`, `ux`, `uy`, `dist`), `zone_fully_explored`, `autoexplore_stuck`, `unexplored_cells`, `unexplored_centroid_x/y`,
