@@ -3905,3 +3905,86 @@ brain.remove_stale_flag()
 assert not _os.path.exists(_flag), "Launching the brain must clear a stale flag"
 brain.FLAG_FILE = _saved_flag
 print("  [OK] Test 67 Passed: importing brain is side-effect free for the flag; launching it still starts in manual mode.")
+
+
+# =====================================================================
+# TEST 68: Mutation policy: normalized names, full ranking, build-first ordering (HANDOFF issue 50)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 68: the mutation picker ranks every mutation by build, never 'takes the first'")
+print("="*50)
+
+import mutation_policy as _mp
+
+# The mutation names in the game data (StreamingAssets/Base/Mutations.xml, verified 2026-10-06): 59 normal + 20 defects
+_PHYS = ("Adrenal Control, Beak, Burrowing Claws, Carapace, Corrosive Gas Generation, Double-muscled, Electrical Generation, "
+         "Electromagnetic Pulse, Flaming Ray, Freezing Ray, Heightened Hearing, Heightened Quickness, Horns, Metamorphosis, "
+         "Multiple Arms, Multiple Legs, Night Vision, Phasing, Photosynthetic Skin, Quills, Regeneration, Sleep Gas Generation, "
+         "Slime Glands, Spinnerets, Stinger (Confusing Venom), Stinger (Paralyzing Venom), Stinger (Poisoning Venom), Thick Fur, "
+         "Triple-jointed, Two-headed, Two-hearted, Wings").split(", ")
+_MENT = ("Beguiling, Burgeoning, Clairvoyance, Confusion, Cryokinesis, Disintegration, Domination, Ego Projection, Force Bubble, "
+         "Force Wall, Kindle, Light Manipulation, Mass Mind, Mental Mirror, Precognition, Psychometry, Pyrokinesis, Sense Psychic, "
+         "Spacetime Vortex, Stunning Force, Sunder Mind, Syphon Vim, Telepathy, Teleportation, Teleport Other, Time Dilation, "
+         "Temporal Fugue").split(", ")
+assert len(_PHYS) == 32 and len(_MENT) == 27
+
+# (a) The universal ranking covers every normal mutation and defect exactly once
+_norm = [_mp.normalize_mutation_name(n) for n in _mp.UNIVERSAL_MUTATION_RANKING]
+assert len(_norm) == len(set(_norm)), "A mutation appears twice in the universal ranking"
+assert {_mp.normalize_mutation_name(n) for n in _PHYS + _MENT} <= set(_norm), "Every normal mutation must be ranked"
+assert {_mp.normalize_mutation_name(n) for n in _mp.DEFECTS} <= set(_norm)
+# fire starters and gas clouds sit below every survival/control/physical mutation; defects are last
+_pos = {n: i for i, n in enumerate(_norm)}
+assert _pos["flamingray"] > _pos["burrowingclaws"] > _pos["heightenedquickness"], "Tier order wrong"
+assert all(_pos[_mp.normalize_mutation_name(d)] > _pos["electricalgeneration"] for d in _mp.DEFECTS), "Defects must rank last"
+
+# (b) Class names, display names and picker text all normalize to the same key
+assert _mp.normalize_mutation_name("LightManipulation") == _mp.normalize_mutation_name("Light Manipulation")
+assert _mp.normalize_mutation_name("DoubleMuscled") == _mp.normalize_mutation_name("Double-muscled")
+assert _mp.normalize_mutation_name("CorrosiveGasGeneration") == _mp.normalize_mutation_name("Corrosive Gas Generation")
+assert _mp.option_head("Burrowing Claws - You bear spade-like claws that can burrow ...") == "Burrowing Claws"
+assert _mp.option_head("Heightened Quickness (1)") == "Heightened Quickness"
+assert _mp.option_head("{{G|Regeneration}} - You heal quickly.") == "Regeneration"
+assert _mp.option_head("Stinger (Paralyzing Venom) - Your tail ...") == "Stinger (Paralyzing Venom)"
+
+# (c) Build first, then the universal order: the Esper template's own priorities lead the ranking
+_esper = build_templates.BUILD_TEMPLATES["esper_ited_away"]
+_rank = _mp.build_mutation_ranking(_esper)
+assert _rank[:6] == ["LightManipulation", "SunderMind", "Clairvoyance", "ForceWall", "ForceBubble", "Teleportation"], _rank[:6]
+assert len(_rank) == len({_mp.normalize_mutation_name(n) for n in _rank}), "Duplicates in a built ranking"
+assert {_mp.normalize_mutation_name(n) for n in _PHYS + _MENT} <= {_mp.normalize_mutation_name(n) for n in _rank}
+
+# (d) The level-5 situation from 2026-10-06: three options, none of them in the Esper list. The old code took the built-in
+#     list's Burrowing Claws (or the first entry when nothing matched); the ranking takes the survival mutation instead.
+_opts = ["Burrowing Claws - You bear spade-like claws that can burrow ...",
+         "Heightened Quickness - You are gifted with tremendous speed.",
+         "Flaming Ray - You emit a ray of fire."]
+_i, _why = _mp.choose_option(_opts, _rank)
+print("  (d) chose", _i, _mp.option_head(_opts[_i]), "|", _why)
+assert _mp.option_head(_opts[_i]) == "Heightened Quickness", f"Survival must beat claws and fire, got {_opts[_i]}"
+# a template mutation beats the universal order
+_i, _why = _mp.choose_option(["Heightened Quickness - x", "Sunder Mind - y", "Regeneration - z"], _rank)
+assert _mp.option_head(["Heightened Quickness - x", "Sunder Mind - y", "Regeneration - z"][_i]) == "Sunder Mind", "The build's own priority must win"
+# fire-starters only when nothing else is offered
+_i, _ = _mp.choose_option(["Flaming Ray - a", "Pyrokinesis - b", "Night Vision - c"], _rank)
+assert _i == 2, "A passive mutation beats fire-starters"
+# a request from the brain command wins, and class names match display text
+_i, _why = _mp.choose_option(["Heightened Quickness - x", "Light Manipulation - y"], _rank, preferred="Regeneration")
+assert _why != "requested by the brain", "A preferred mutation that is not offered must not be forced"
+_i, _why = _mp.choose_option(["Heightened Quickness - x", "Light Manipulation - y"], _rank, preferred="LightManipulation")
+assert (_i, _why) == (1, "requested by the brain"), "Class-name requests must match display text"
+# the old failure mode: nothing in the ranking at all -> default first entry, not a crash
+_i, _why = _mp.choose_option(["Totally Unknown - x", "Also Unknown - y"], _rank)
+assert (_i, _why) == (0, "default")
+
+# (e) Publishing: the file is written once per build, atomically, with comments and one name per line
+import tempfile as _tf
+_pdir = _tf.mkdtemp(); _pf = _os.path.join(_pdir, "mutation_ranking.txt")
+_mp._PUBLISHED.update({"name": None, "path": None})
+assert _mp.publish_mutation_ranking(_esper, _pf) is True
+assert _mp.publish_mutation_ranking(_esper, _pf) is False, "Must not rewrite for the same build"
+_lines = [l for l in open(_pf, encoding="utf-8").read().splitlines() if l and not l.startswith("#")]
+assert _lines[:3] == ["LightManipulation", "SunderMind", "Clairvoyance"] and len(_lines) == len(_rank)
+assert _mp.publish_mutation_ranking(build_templates.BUILD_TEMPLATES["gas_giant"], _pf) is True, "A new build rewrites the file"
+assert _mp.publish_mutation_ranking(_esper, _os.path.join(_pdir, "no", "such", "dir", "x.txt")) is False, "An unwritable path must never raise"
+print("  [OK] Test 68 Passed: every mutation ranked once, build first, survival over fire, class and display names match.")

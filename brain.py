@@ -9,6 +9,7 @@ from collections import deque, defaultdict
 import chronicler
 import twitch_bot
 import build_templates
+import mutation_policy
 
 # Paths
 # QUDAI_EXCHANGE_DIR overrides the folder (tests point it at a temp dir so they can never touch the real game files).
@@ -2532,6 +2533,8 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             stuck_autoexplore_zones.add(CURRENT_TRACKED_ZONE)
 
     template = build_templates.detect_build(game_state)
+    # Publish this build's mutation ranking for the mod's picker (rewritten only when the detected build changes).
+    mutation_policy.publish_mutation_ranking(template, os.path.join(EXCHANGE_DIR, "mutation_ranking.txt"))
 
     surroundings = game_state.get("surroundings", {})
     has_missile = game_state.get("has_missile_weapon", False)
