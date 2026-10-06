@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+os.environ["QUDAI_EXCHANGE_DIR"] = tempfile.mkdtemp(prefix="qudai_exchange_")   # never the real game folder
 import brain
 # Never write test decisions into the real exit log (memory/exit_choices.jsonl).
 brain.EXIT_LOG_PATH = os.path.join(tempfile.mkdtemp(), "exit_choices_dry_run.jsonl")
@@ -3880,3 +3881,27 @@ _d = stairs_decide(stairs_state(10, 4, on_down=True), [])
 assert _d["action"] == "USE_STAIRS_DOWN" and brain.RETREAT_TARGET_LEVEL is None, f"At level 4 the lockout must lift, got {_d}, target {brain.RETREAT_TARGET_LEVEL}"
 stairs_reset()
 print("  [OK] Test 66 Passed: one retreat, then no descent until the target level; the lockout then lifts.")
+
+
+# =====================================================================
+# TEST 67: Importing brain must never delete the live run's active.flag (HANDOFF issue 49)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 67: import brain leaves active.flag alone; only launching the brain (remove_stale_flag) clears it")
+print("="*50)
+
+import subprocess as _sp, sys as _sys
+assert "LocalLow" not in brain.EXCHANGE_DIR, f"The test suite must never use the real game folder: {brain.EXCHANGE_DIR}"
+_ex = _tempfile.mkdtemp(prefix="qudai_flagtest_")
+_flag = _os.path.join(_ex, "active.flag")
+open(_flag, "w").write("active")
+_here = _os.path.dirname(_os.path.abspath(brain.__file__))
+_sp.run([_sys.executable, "-c", "import brain"], cwd=_here, env=dict(_os.environ, QUDAI_EXCHANGE_DIR=_ex), capture_output=True)
+assert _os.path.exists(_flag), "`import brain` deleted the active flag: running tests during a live run would stop the game's export"
+# The launch path still starts in manual mode: it clears a stale flag
+_saved_flag = brain.FLAG_FILE
+brain.FLAG_FILE = _flag
+brain.remove_stale_flag()
+assert not _os.path.exists(_flag), "Launching the brain must clear a stale flag"
+brain.FLAG_FILE = _saved_flag
+print("  [OK] Test 67 Passed: importing brain is side-effect free for the flag; launching it still starts in manual mode.")

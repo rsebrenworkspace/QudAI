@@ -11,14 +11,16 @@ import twitch_bot
 import build_templates
 
 # Paths
-EXCHANGE_DIR = r"C:\Users\rsebr\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI"
+# QUDAI_EXCHANGE_DIR overrides the folder (tests point it at a temp dir so they can never touch the real game files).
+EXCHANGE_DIR = os.environ.get("QUDAI_EXCHANGE_DIR") or r"C:\Users\rsebr\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI"
 STATE_FILE = os.path.join(EXCHANGE_DIR, "state.json")
 ACTION_FILE = os.path.join(EXCHANGE_DIR, "action.json")
 FLAG_FILE = os.path.join(EXCHANGE_DIR, "active.flag")
 DEATH_FILE = os.path.join(EXCHANGE_DIR, "death.json")
 
 # LM Studio Config
-LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
+# QUDAI_LM_URL points the brain at another endpoint (tests use a dead port so they never call the live LLM).
+LM_STUDIO_URL = os.environ.get("QUDAI_LM_URL") or "http://localhost:1234/v1/chat/completions"
 LM_STUDIO_MODELS_URL = "http://localhost:1234/v1/models"
 
 # Pacing and Thresholds
@@ -29,11 +31,20 @@ REST_HP_THRESHOLD = 0.75   # Only rest when HP drops below 75% of max HP
 if not os.path.exists(EXCHANGE_DIR):
     os.makedirs(EXCHANGE_DIR)
 
-if os.path.exists(FLAG_FILE):
-    try:
-        os.remove(FLAG_FILE)
-    except OSError:
-        pass
+
+
+def remove_stale_flag():
+    """Starts every `python brain.py` in MANUAL mode by removing a leftover active.flag.
+
+    This must run only when the brain is LAUNCHED (in main()), never at import time: it used to run on `import brain`,
+    so running the test suite (or any tool that imports brain) deleted the flag of a live run, the game stopped
+    exporting state, and the brain still believed it was engaged (HANDOFF issue 49)."""
+    if os.path.exists(FLAG_FILE):
+        try:
+            os.remove(FLAG_FILE)
+        except OSError:
+            pass
+
 
 CARDINAL_OFFSETS = {
     "NW": (-1, -1), "N":  (0, -1), "NE": (1, -1),
@@ -3049,6 +3060,7 @@ def main():
     global action_repeat_count, last_executed_action, last_executed_pos, twitch_manager
     global CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS
 
+    remove_stale_flag()
     twitch_manager = twitch_bot.start_twitch_in_background()
 
     autolevel_failed_attempts = 0
