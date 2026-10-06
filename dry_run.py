@@ -4,6 +4,7 @@ import tempfile
 import brain
 # Never write test decisions into the real exit log (memory/exit_choices.jsonl).
 brain.EXIT_LOG_PATH = os.path.join(tempfile.mkdtemp(), "exit_choices_dry_run.jsonl")
+brain.DECISION_TRACE_PATH = os.path.join(tempfile.mkdtemp(), "decision_trace_dry_run.jsonl")
 import build_templates
 import item_evaluator
 
@@ -3573,3 +3574,27 @@ with _ctx.redirect_stdout(_io.StringIO()):
 assert not _d["action"].startswith("NAVIGATE_ZONE_EXIT"), f"Suppressed exits must not be navigated to, got {_d}"
 brain.EXIT_SUPPRESS_UNTIL.clear()
 print("  [OK] Test 60 Passed: blacklist survives a sealed corridor; failed exits are never re-picked; 4 failures suppress exit-hunting.")
+
+
+# =====================================================================
+# TEST 61: Per-turn decision trace (diagnostics for loops; HANDOFF issue 43)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 61: decision trace writes JSON lines, rotates at the size cap and never raises")
+print("="*50)
+
+_tdir = _tempfile.mkdtemp()
+_saved_tp, _saved_max = brain.DECISION_TRACE_PATH, brain.DECISION_TRACE_MAX_BYTES
+brain.DECISION_TRACE_PATH = _os.path.join(_tdir, "decision_trace.jsonl")
+brain.log_decision_trace({"t": 1, "pos": [27, 5], "action": "MOVE_S", "reason": "Water Traversal"})
+brain.log_decision_trace({"t": 2, "pos": [27, 4], "action": "WAIT", "reason": "x"})
+_rows = [_json.loads(l) for l in open(brain.DECISION_TRACE_PATH, encoding="utf-8")]
+assert [r["t"] for r in _rows] == [1, 2] and _rows[0]["action"] == "MOVE_S", _rows
+brain.DECISION_TRACE_MAX_BYTES = 10          # tiny cap: the next write rotates the old file to .1
+brain.log_decision_trace({"t": 3, "pos": [1, 1], "action": "PASS", "reason": "y"})
+assert _os.path.exists(brain.DECISION_TRACE_PATH + ".1"), "Rotation must keep a backup"
+assert [_json.loads(l)["t"] for l in open(brain.DECISION_TRACE_PATH, encoding="utf-8")] == [3], "New file starts after rotation"
+brain.DECISION_TRACE_PATH = _os.path.join(_tdir, "no", "such", "dir", "t.jsonl")
+brain.log_decision_trace({"t": 4})           # an unwritable path must never raise
+brain.DECISION_TRACE_PATH, brain.DECISION_TRACE_MAX_BYTES = _saved_tp, _saved_max
+print("  [OK] Test 61 Passed: decision trace is written, rotated and failure-proof.")

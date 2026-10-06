@@ -445,6 +445,22 @@ EXIT_FAILURE_LIMIT = 4
 EXIT_SUPPRESS_TURNS = 60
 
 
+DECISION_TRACE_PATH = os.path.join(chronicler.MEMORY_DIR, "decision_trace.jsonl")
+DECISION_TRACE_MAX_BYTES = 3_000_000
+
+
+def log_decision_trace(record):
+    """One JSON line per turn (action, reason, position and the flags behind the decision) so loops can be diagnosed from
+    the file instead of pasted console output. Keeps one rotated backup (.1). Never raises."""
+    try:
+        if os.path.exists(DECISION_TRACE_PATH) and os.path.getsize(DECISION_TRACE_PATH) > DECISION_TRACE_MAX_BYTES:
+            os.replace(DECISION_TRACE_PATH, DECISION_TRACE_PATH + ".1")
+        with open(DECISION_TRACE_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + chr(10))
+    except Exception:
+        pass
+
+
 def note_exit_failure(zone, direction):
     """Blacklists an exit direction for a zone and counts it. After EXIT_FAILURE_LIMIT failures, exit selection is
     suppressed for EXIT_SUPPRESS_TURNS turns so exploration (e.g. across water) can take over."""
@@ -3229,6 +3245,16 @@ def main():
                 if action.startswith("MOVE_"):
                     move_history.append(action)
                 recent_actions.append({"action": action, "reason": reason, "pos": cur_pos, "hp": hp})
+                log_decision_trace({
+                    "t": TURN_CLOCK, "ts": round(time.time(), 1), "zone": game_state.get("zone_id"), "pos": list(cur_pos),
+                    "z": game_state.get("z"), "hp": hp, "action": action, "reason": str(reason)[:160],
+                    "combat": bool(is_in_combat), "stuck": game_state.get("autoexplore_stuck"),
+                    "engine_explored": game_state.get("zone_fully_explored"), "unexp": game_state.get("unexplored_cells"),
+                    "nearest": [game_state.get("nearest_unexplored_x"), game_state.get("nearest_unexplored_y")],
+                    "reach": game_state.get("reachable_edges"), "chosen_exit": CURRENT_ZONE_CHOSEN_EXIT,
+                    "suppressed": EXIT_SUPPRESS_UNTIL.get(game_state.get("zone_id"), 0) > TURN_CLOCK,
+                    "move_failed": game_state.get("last_move_failed"),
+                })
 
                 dmg_flag = " [!HIT!]" if took_damage else ""
                 lvl = game_state.get("level", 1)
