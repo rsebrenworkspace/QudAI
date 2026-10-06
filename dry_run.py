@@ -198,7 +198,7 @@ dec_gun = brain.fallback_gunslinger(
 )
 print("\n--- Test 7: Gunslinger Chain Fire (Enemy at dist 4) ---")
 print(f"Action: {dec_gun['action']} | Reason: {dec_gun['reason']}")
-assert dec_gun['action'] == "USE_ABILITY:CommandChainFire", f"Expected Chain Fire, got {dec_gun['action']}"
+assert dec_gun['action'].startswith("FIRE_MISSILE@"), f"Expected a pistol volley, got {dec_gun['action']}"
 
 # 8. Test Rifle Nomad - Freezing Ray Pursuer at Distance 3
 nomad_state = {
@@ -3997,3 +3997,49 @@ assert _lines[:3] == ["LightManipulation", "SunderMind", "Clairvoyance"] and len
 assert _mp.publish_mutation_ranking(build_templates.BUILD_TEMPLATES["gas_giant"], _pf) is True, "A new build rewrites the file"
 assert _mp.publish_mutation_ranking(_esper, _os.path.join(_pdir, "no", "such", "dir", "x.txt")) is False, "An unwritable path must never raise"
 print("  [OK] Test 68 Passed: every mutation ranked once, build first, survival over fire, class and display names match.")
+
+# ---------------------------------------------------------------------------
+# Test 69: abilities are matched by exact engine command through the family table (HANDOFF issue 52)
+# ---------------------------------------------------------------------------
+import ability_registry as _ar
+_ab = lambda name, cmd, **k: dict({"name": name, "command": cmd, "usable": True, "cooldown": 0, "active": False}, **k)
+# the old bug: a Lase with charges contains the substring "charge" and an unrelated Discharge/Recharge matched too
+_lase = _ab("Lase (4 charges)", "CommandLase")
+assert brain.find_ready_ability([_lase], "melee_charge") is None, "Lase must not be mistaken for a melee charge"
+assert brain.find_ready_ability([_lase], "lase") is _lase
+for _c in ("CommandDischarge", "CommandRechargeObject", "CommandToggleProvideCharge"):
+    assert brain.find_ready_ability([_ab("Charge thing", _c)], "melee_charge") is None, _c
+assert brain.find_ready_ability([_ab("Charge", "CommandMeleeCharge")], "melee_charge") is not None
+# the toggle is not a strike; the burrowing toggle and Dig are never used automatically
+assert brain.find_ready_ability([_ab("Decapitate", "CommandToggleDecapitate")], "melee_strike") is None
+for _c in ("CommandToggleBurrowingClaws", "CommandDig"):
+    assert _ar.known(_c) and not _ar.is_wired(_ab("x", _c)) and _ar.unclassified(_c), _c
+# families that are documented but off stay off: Teleportation and the Phasing toggle
+assert brain.find_ready_ability([_ab("Teleport", "CommandTeleport")], "teleport_self", "phase_escape") is None
+assert brain.find_ready_ability([_ab("Phasing", "CommandPhaseIn")], "phase_escape") is not None
+# readiness rules are unchanged
+assert brain.find_ready_ability([_ab("Lase", "CommandLase", cooldown=5)], "lase") is None
+assert brain.find_ready_ability([_ab("Lase (0 charges)", "CommandLase")], "lase") is None
+# every command in the table exists in the registry; no family lists a command the game does not have
+for _f, _cmds in _ar.FAMILY_COMMANDS.items():
+    for _c in _cmds:
+        assert _ar.known(_c), f"{_f} lists unknown command {_c}"
+# the live level-5 character's 11 abilities all resolve in the registry
+for _c in ("CommandToggleRunning", "CommandSurvivalCamp", "CommandIntimidate", "CommandProselytize", "CommandLase",
+           "CommandStunningForce", "CommandTeleportOther", "CommandClairvoyance", "CommandAmbientLight",
+           "CommandToggleBurrowingClaws", "CommandDig"):
+    assert _ar.known(_c), _c
+# note_ability_use: counted once per seq, refusal and no-cooldown-change are distinguished, file written atomically
+import tempfile as _tf2
+_old_stats = brain.ABILITY_STATS_PATH; brain.ABILITY_STATS_PATH = _os.path.join(_tf2.mkdtemp(), "ability_stats.json")
+brain.ABILITY_LAST_SEQ["seq"] = 0
+_use = lambda seq, **k: {"last_ability_use": dict({"seq": seq, "command": "CommandLase", "known": True, "cd_before": 0, "cd_after": 0, "fired": False, "refused": False, "reason": ""}, **k)}
+brain.note_ability_use(_use(1, cd_after=12, fired=True))
+brain.note_ability_use(_use(1, cd_after=12, fired=True))      # same seq: not counted twice
+brain.note_ability_use(_use(2))                                # cooldown unchanged
+brain.note_ability_use(_use(3, refused=True, reason="on cooldown (5)", cd_before=5, cd_after=5))
+brain.note_ability_use({})                                     # no report: no crash
+_st = json.load(open(brain.ABILITY_STATS_PATH, encoding="utf-8"))["CommandLase"]
+assert (_st["attempts"], _st["fired"], _st["refused"]) == (3, 1, 1), _st
+brain.ABILITY_STATS_PATH = _old_stats
+print("  [OK] Test 69 Passed: abilities match by exact command; Lase is not a charge; unclassified abilities are never auto-used.")

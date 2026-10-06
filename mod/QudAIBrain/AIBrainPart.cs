@@ -213,6 +213,44 @@ namespace QudAIBrain
 
         private static string LastBurrowJson() { return "\"last_burrow\": " + lastBurrowJson + ","; }
 
+        // ---- Ability use log (HANDOFF issue 52): what the last USE_ABILITY did to the ability's cooldown, so "it works" is
+        // measured instead of assumed. Python (note_ability_use) turns it into memory/ability_stats.json.
+        private static int abilityUseSeq = 0;
+        private static string lastAbilityUseJson = "null";
+
+        private static string LastAbilityUseJson() { return "\"last_ability_use\": " + lastAbilityUseJson + ","; }
+
+        // Reads the live state of the player's ability with this engine command. found=false when the player has no such ability.
+        private static void ReadAbilityState(GameObject player, string cmd, out bool found, out bool enabled, out bool usable, out int cooldown)
+        {
+            found = false; enabled = false; usable = false; cooldown = 0;
+            try
+            {
+                var abilities = player.GetPart<ActivatedAbilities>();
+                if (abilities == null || abilities.AbilityByGuid == null) return;
+                foreach (var kvp in abilities.AbilityByGuid)
+                {
+                    var ab = kvp.Value;
+                    if (ab == null || !string.Equals(ab.Command ?? "", cmd, StringComparison.OrdinalIgnoreCase)) continue;
+                    found = true;
+                    enabled = ab.Enabled;
+                    usable = ab.IsUsable;
+                    cooldown = ab.CooldownRounds > 0 ? ab.CooldownRounds : ab.Cooldown;
+                    return;
+                }
+            }
+            catch { }
+        }
+
+        private static void RecordAbilityUse(string cmd, string dir, bool found, int cdBefore, int cdAfter, bool refused, string reason)
+        {
+            abilityUseSeq++;
+            lastAbilityUseJson = "{\"seq\": " + abilityUseSeq + ", \"command\": \"" + EscapeJson(cmd) + "\", \"dir\": \"" + EscapeJson(dir ?? "") +
+                "\", \"known\": " + (found ? "true" : "false") + ", \"cd_before\": " + cdBefore + ", \"cd_after\": " + cdAfter +
+                ", \"fired\": " + ((!refused && cdAfter > cdBefore) ? "true" : "false") + ", \"refused\": " + (refused ? "true" : "false") +
+                ", \"reason\": \"" + EscapeJson(reason ?? "") + "\"}";
+        }
+
         // ---- Obstacles on an engine-planned path (HANDOFF issue 47) ----
         // The engine pathfinder routes THROUGH trees and plant walls (it expects the walker to hack through), but a step into an
         // occluding cell used to be refused here, so such a path always failed. If the blocker is a solid, ownerless, non-creature
@@ -1257,6 +1295,7 @@ namespace QudAIBrain
                 sb.Append($"\"nearest_unexplored_dist\": {(minUnexpDist != int.MaxValue ? minUnexpDist : -1)},");
                 sb.Append(BuildFrontierJson(player, currentCell, isAutoexploreStuck || isZoneFullyExplored));
                 sb.Append(LastBurrowJson());
+                sb.Append(LastAbilityUseJson());
 
                 string reachableEdges = "";
                 try
@@ -2364,6 +2403,20 @@ namespace QudAIBrain
                     return;
                 }
 
+                // Usability pre-check (HANDOFF issue 52): do not fire into a cooldown or a disabled ability and call it a use.
+                // The turn is still spent (R4: a command that spends no energy re-exports the same state and loops).
+                bool abFound, abEnabled, abUsable; int cdBefore;
+                ReadAbilityState(player, cmd, out abFound, out abEnabled, out abUsable, out cdBefore);
+                if (abFound && (!abEnabled || !abUsable || cdBefore > 0))
+                {
+                    string why = !abEnabled ? "disabled" : (!abUsable ? "not usable" : "on cooldown (" + cdBefore + ")");
+                    UnityEngine.Debug.LogWarning($"[QudAI USE_ABILITY] Refused {cmd}: {why}");
+                    RecordAbilityUse(cmd, PreferredDirection, true, cdBefore, cdBefore, true, why);
+                    PreferredDirection = "";
+                    player.UseEnergy(1000, "Ability");
+                    return;
+                }
+
                 bool isProselytize = cmd.IndexOf("proselytize", StringComparison.OrdinalIgnoreCase) >= 0 || cmd.IndexOf("beguile", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool isTouchOrDirect = isProselytize || cmd.IndexOf("teleportother", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool isDirectRay = cmd.IndexOf("lase", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -2519,6 +2572,12 @@ namespace QudAIBrain
                     Sidebar.Update();
                 }
                 catch { }
+
+                {
+                    bool f2, e2, u2; int cdAfter;
+                    ReadAbilityState(player, cmd, out f2, out e2, out u2, out cdAfter);
+                    RecordAbilityUse(cmd, PreferredDirection, abFound, cdBefore, cdAfter, false, "");
+                }
 
                 PreferredDirection = "";
                 PreferredTargetCell = null;
