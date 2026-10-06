@@ -437,6 +437,28 @@ def check_exit_direction_failure(game_state, cur_pos, chosen_exit):
 
 EXIT_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "exit_choices.jsonl")
 
+# Exit thrash circuit breaker (HANDOFF issue 42): repeated exit failures in one zone mean "stop hunting exits and explore".
+TURN_CLOCK = 0                 # incremented once per query_decision call
+EXIT_FAILURES = {}             # zone_id -> failures since the last suppression
+EXIT_SUPPRESS_UNTIL = {}       # zone_id -> TURN_CLOCK value until which exit selection is switched off
+EXIT_FAILURE_LIMIT = 4
+EXIT_SUPPRESS_TURNS = 60
+
+
+def note_exit_failure(zone, direction):
+    """Blacklists an exit direction for a zone and counts it. After EXIT_FAILURE_LIMIT failures, exit selection is
+    suppressed for EXIT_SUPPRESS_TURNS turns so exploration (e.g. across water) can take over."""
+    global CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE
+    FAILED_ZONE_EXITS.add((zone, direction))
+    EXIT_FAILURES[zone] = EXIT_FAILURES.get(zone, 0) + 1
+    if EXIT_FAILURES[zone] >= EXIT_FAILURE_LIMIT:
+        EXIT_SUPPRESS_UNTIL[zone] = TURN_CLOCK + EXIT_SUPPRESS_TURNS
+        EXIT_FAILURES[zone] = 0
+        if CURRENT_ZONE_CHOSEN_EXIT_ZONE == zone:
+            CURRENT_ZONE_CHOSEN_EXIT = None
+            CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+        print(f"[EXIT THRASH BREAKER] {EXIT_FAILURE_LIMIT} exit failures in {zone}: exploring instead of hunting exits for {EXIT_SUPPRESS_TURNS} turns.")
+
 
 def log_exit_choice(record):
     """Appends one structured line per zone-exit decision (inputs and result) so exit bias can be diagnosed from data
@@ -462,11 +484,16 @@ def get_zone_exit_target(cur_pos, game_state=None):
     px, py = cur_pos
     cur_zone = (game_state.get("zone_id") if game_state else None) or current_zone_id or ""
 
+    if EXIT_SUPPRESS_UNTIL.get(cur_zone, 0) > TURN_CLOCK:
+        CURRENT_ZONE_CHOSEN_EXIT = None
+        CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+        return (px, py), "Exits suppressed after repeated failures", None
+
     # Check if current chosen exit has dead-ended or failed
     if CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == cur_zone:
         if game_state and check_exit_direction_failure(game_state, cur_pos, CURRENT_ZONE_CHOSEN_EXIT):
             print(f"[ZONE EXIT FAILED]: Exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {cur_zone} is blocked by impassable dead-end terrain at {cur_pos}. Blacklisting and re-routing.")
-            FAILED_ZONE_EXITS.add((cur_zone, CURRENT_ZONE_CHOSEN_EXIT))
+            note_exit_failure(cur_zone, CURRENT_ZONE_CHOSEN_EXIT)
             CURRENT_ZONE_CHOSEN_EXIT = None
             CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 
@@ -478,7 +505,7 @@ def get_zone_exit_target(cur_pos, game_state=None):
     if CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == cur_zone:
         if reachable_telemetry_present and (reachable_set is None or CURRENT_ZONE_CHOSEN_EXIT not in reachable_set):
             print(f"[ZONE EXIT INVALIDATED]: Previously chosen exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {cur_zone} is not in reachable edges '{reachable_val}'. Blacklisting.")
-            FAILED_ZONE_EXITS.add((cur_zone, CURRENT_ZONE_CHOSEN_EXIT))
+            note_exit_failure(cur_zone, CURRENT_ZONE_CHOSEN_EXIT)
             CURRENT_ZONE_CHOSEN_EXIT = None
             CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
         elif (cur_zone, CURRENT_ZONE_CHOSEN_EXIT) not in FAILED_ZONE_EXITS:
@@ -486,6 +513,12 @@ def get_zone_exit_target(cur_pos, game_state=None):
             return pos, tag, CURRENT_ZONE_CHOSEN_EXIT
 
     rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
+
+    # The engine reports NO reachable edges (e.g. a companion is sealing a one-tile corridor). That is transient: do not
+    # pick anything and above all do not run the "all failed" reset below, which wiped every blacklisted exit and let
+    # the same two failing exits be re-picked forever (HANDOFF issue 42).
+    if reachable_telemetry_present and not reachable_set:
+        return (px, py), "No Reachable Exit", None
 
     # Determine candidate directions: prioritize reachable edges if telemetry provides them,
     # and strictly exclude directions known to have failed/dead-ended in this zone
@@ -2292,7 +2325,8 @@ def get_close_threats(enemies, game_state):
 
 
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
-    global last_action, consecutive_kites, RETREAT_TARGET_LEVEL, CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS
+    global last_action, consecutive_kites, RETREAT_TARGET_LEVEL, CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS, TURN_CLOCK
+    TURN_CLOCK += 1
 
     update_zone_records(game_state)
     update_stair_records(game_state)
@@ -3099,7 +3133,7 @@ def main():
                     if CURRENT_ZONE_CHOSEN_EXIT:
                         if not is_near_border and (pos_frequency >= 3 or is_oscillating or game_state.get("last_move_failed", False)):
                             print(f"[ZONE EXIT RECOVERY] Loop breaker detected oscillation while navigating to exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {current_zone_id}. Blacklisting.")
-                            FAILED_ZONE_EXITS.add((current_zone_id, CURRENT_ZONE_CHOSEN_EXIT))
+                            note_exit_failure(current_zone_id, CURRENT_ZONE_CHOSEN_EXIT)
                             CURRENT_ZONE_CHOSEN_EXIT = None
                             CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 

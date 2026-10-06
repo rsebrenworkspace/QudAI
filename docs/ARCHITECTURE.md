@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 59 -->
-`dry_run.py` currently holds Tests 1-59. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 60 -->
+`dry_run.py` currently holds Tests 1-60. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -74,7 +74,7 @@ VALID ACTIONS list, ancestral wisdom prepended to the system prompt.
 
 ### Loop breakers (`main()`)
 
-Companion-block guard (`guard_companion_blocked_burrow`, applied to the final action in `main()`): a burrow (`ATTACK_WALL`) is replaced by swap, swap, wait cycles when the only exit is occupied by a companion (T-1.17). Stationary-repeat breaker; oscillation breaker (positions window of 24, entropy rule: >=10 samples with <=5 unique);
+Exit-thrash breaker (`note_exit_failure`, T-1.17): every exit failure is blacklisted and counted; 4 failures in a zone suppress exit selection for 60 turns (`TURN_CLOCK`) so Phase A explores instead; an empty `reachable_edges` never wipes the blacklist. Companion-block guard (`guard_companion_blocked_burrow`, applied to the final action in `main()`): a burrow (`ATTACK_WALL`) is replaced by swap, swap, wait cycles when the only exit is occupied by a companion (T-1.17). Stationary-repeat breaker; oscillation breaker (positions window of 24, entropy rule: >=10 samples with <=5 unique);
 combat actions are exempt. Zone-hopping breaker (2-, 3-, 4-cycles) in `update_zone_records`.
 Autolevel circuit breaker keyed on `(ap, sp, mp, len(skills))`.
 

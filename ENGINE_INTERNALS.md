@@ -360,6 +360,7 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
 
 ### 12.1f Swapping places with companions (verified from `Assembly-CSharp.dll` IL and blueprints, 2026-10-05)
 - Moving into an ally is gated by `GameObject.CanBePositionSwapped()`. It returns false for the player; for objects with the `Noswap` property/tag; for immobile objects (`IsMobile`); under a restraining effect (an `Effect` type check); for a creature whose `Brain` is `MovingTo` a goal, or `IsFleeing`; and in some combat-object cases. `GameObject.ProcessMoveEvent` honours a `ForceSwap` parameter. `[verified in code]` that these checks exist; the exact boolean logic is `[unverified]`.
+- **Observed in game (2026-10-05, human console): swapping with a recruited `horned chameleon and hired guard` works** (`MOVE_S` swapped places every time). My first guess that the swap was being refused was wrong; the hallway loop had another cause (HANDOFF issue 42). `[verified in game]`
 - Only 12 blueprints carry `Noswap` (BaseUrchin, Jilted Lover, Prickler, Qudzu, Sprouting Orb, Livid Creeper, FungusPuffer, Irritable Palm, Red Death Dacca, Tongue Tyrant, TinkerTurret, Haddas). `Horned Chameleon` does **not**, so a recruited chameleon refusing to swap is due to its state (moving to a goal, an effect), not its blueprint. `[verified in game blueprints]`
 - `GameObject` also has `DirectMoveTo`, `SystemMoveTo`, `TeleportTo`, `CellTeleport` (signatures not yet inspected).
 

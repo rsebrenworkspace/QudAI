@@ -3509,3 +3509,67 @@ _a, _ = brain.guard_companion_blocked_burrow("ATTACK_WALL:N", "x", _dead_end, (2
 assert _a == "MOVE_S" and brain.COMPANION_BLOCK["tries"] == 1, f"Counter must reset on a new position, got {_a}, {brain.COMPANION_BLOCK}"
 brain.COMPANION_BLOCK.update({"pos": None, "tries": 0})
 print("  [OK] Test 59 Passed: swap, swap, wait cycles; real pockets and other actions are untouched.")
+
+
+# =====================================================================
+# TEST 60: Exit thrash circuit breaker (HANDOFF issue 42): the hallway N/W loop
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 60: A sealed corridor must not wipe the exit blacklist; repeated exit failures switch to exploring")
+print("="*50)
+
+_HZ = "JoppaWorld.11.21.1.2.11"
+def hall_reset():
+    brain.FAILED_ZONE_EXITS = set(); brain.EXIT_FAILURES.clear(); brain.EXIT_SUPPRESS_UNTIL.clear()
+    brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+    brain.EXPLORED_ZONE_SET.clear(); brain.LAST_ZONE_ENTRY = None; brain.TURN_CLOCK = 0
+    brain.ZONE_HOPPING_DETECTED = False
+
+def hall_pick(x, y, reach):
+    st = {"zone_id": _HZ, "z": 11, "reachable_edges": reach, "surroundings": {}, "x": x, "y": y}
+    with _ctx.redirect_stdout(_io.StringIO()):
+        return brain.get_zone_exit_target((x, y), st)[2]
+
+# (a) The engine reports NO edges (pet sealing the corridor): the blacklist survives and nothing is picked
+hall_reset()
+brain.FAILED_ZONE_EXITS = {(_HZ, "N"), (_HZ, "W")}
+assert hall_pick(27, 4, "") is None, "No reachable edges: must not pick an exit"
+assert brain.FAILED_ZONE_EXITS == {(_HZ, "N"), (_HZ, "W")}, f"The blacklist must survive an empty reachable list, got {brain.FAILED_ZONE_EXITS}"
+
+# (b) Replay the console loop: at (27,5) all four reachable, N then W fail, at (27,4) nothing is reachable
+hall_reset()
+picks = []
+for cycle in range(brain.EXIT_FAILURE_LIMIT + 1):
+    brain.TURN_CLOCK += 1
+    d = hall_pick(27, 5, "NSEW")
+    picks.append(d)
+    if d is None:
+        break
+    brain.CURRENT_ZONE_CHOSEN_EXIT, brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = d, _HZ
+    with _ctx.redirect_stdout(_io.StringIO()):
+        brain.note_exit_failure(_HZ, d)          # oscillation / dead end: this exit failed
+    brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+    hall_pick(27, 4, "")                          # sealed in: engine reports nothing reachable
+print("  exits picked in the replay:", picks)
+assert len(set(p for p in picks if p)) == len([p for p in picks if p]), f"An exit that failed must never be picked again: {picks}"
+assert picks[-1] is None, f"After {brain.EXIT_FAILURE_LIMIT} failures the picker must stand down, got {picks}"
+
+# (c) While suppressed: no exit even with everything reachable; after the window it works again
+assert hall_pick(27, 5, "NSEW") is None, "Exit selection must stay suppressed"
+brain.TURN_CLOCK += brain.EXIT_SUPPRESS_TURNS + 1
+assert hall_pick(27, 5, "NSEW") is not None, "Exit selection must resume after the suppression window"
+
+# (d) Phase A honours the suppression: a fully explored zone with reachable exits does not navigate to an exit
+hall_reset()
+brain.EXIT_SUPPRESS_UNTIL[_HZ] = 10**9
+brain.CURRENT_TRACKED_ZONE = _HZ; brain.last_action = None
+_st = {"hp": 20, "max_hp": 20, "x": 27, "y": 5, "z": 11, "level": 5, "calling": "Warden", "ap": 0, "sp": 0, "mp": 0, "skills": [],
+       "zone_id": _HZ, "zone_name": "subterranean", "zone_fully_explored": True, "autoexplore_stuck": False, "unexplored_cells": 0,
+       "reachable_edges": "NSEW", "last_move_failed": False, "last_failed_dir": "", "hostiles_nearby": False, "hostiles_adjacent": False,
+       "food_count": 5, "has_food": True, "food_sources": [], "visible_entities": [],
+       "surroundings": {"N": "Clear", "S": "Clear", "E": "Clear", "W": "Clear", "NE": "Clear", "NW": "Clear", "SE": "Clear", "SW": "Clear"}}
+with _ctx.redirect_stdout(_io.StringIO()):
+    _d = brain.query_decision(_st, took_damage=False, enemies=[])
+assert not _d["action"].startswith("NAVIGATE_ZONE_EXIT"), f"Suppressed exits must not be navigated to, got {_d}"
+brain.EXIT_SUPPRESS_UNTIL.clear()
+print("  [OK] Test 60 Passed: blacklist survives a sealed corridor; failed exits are never re-picked; 4 failures suppress exit-hunting.")
