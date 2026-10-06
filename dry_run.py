@@ -3611,6 +3611,7 @@ _FZ = "JoppaWorld.11.21.1.2.11"
 def fr_reset():
     brain.EXPLORED_ZONE_SET.clear(); brain.stuck_autoexplore_zones.clear(); brain.ENGINE_EXPLORED_LAST.clear()
     brain.UNREACHABLE_SECTORS.clear(); brain.FRONTIER_COMMIT.update({"zone": None, "target": None})
+    brain.FRONTIER_FAILS.clear(); brain.FRONTIER_BAD.clear(); brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
     brain.CURRENT_TRACKED_ZONE = _FZ; brain.last_action = None; brain.visit_counts.clear()
     brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
     brain.EXIT_SUPPRESS_UNTIL.clear(); brain.EXIT_FAILURES.clear(); brain.FAILED_ZONE_EXITS = set()
@@ -3741,3 +3742,53 @@ with _ctx.redirect_stdout(_io.StringIO()):
     assert _a == "MOVE_S", "Other actions are untouched"
     burrow_reset()
 print("  [OK] Test 63 Passed: burrowing continues while HP drops, stops on stalled/HP-less targets, picks alternatives, expires.")
+
+
+# =====================================================================
+# TEST 64: A frontier target that keeps failing is written off, with its neighbours (HANDOFF issue 46)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 64: engine says reachable, every step fails (stuck door): give up after 3 failures, skip neighbours, go elsewhere")
+print("="*50)
+
+def fr_fail_state(x, y, targets, failed):
+    s = fr_state(x, y, targets)
+    s["last_move_failed"] = failed
+    return s
+
+_stuck = {"q": "NW", "x": 11, "y": 7, "ux": 10, "uy": 6, "dist": 3}
+_nbr = {"q": "NW", "x": 11, "y": 8, "ux": 10, "uy": 9, "dist": 4}      # beside the failing target: same door
+_far = {"q": "SW", "x": 12, "y": 20, "ux": 11, "uy": 21, "dist": 15}   # the real unexplored SW area
+
+# (a) The replay: NAVIGATE_TO_CELL:11,7 fails again and again (as in the 2026-10-05 trace, turns 783-812)
+fr_reset()
+_acts = []
+for _turn in range(7):
+    brain.last_action = _acts[-1] if _acts else None
+    _failing = bool(_acts) and _acts[-1] == "NAVIGATE_TO_CELL:11,7"          # only the stuck target fails; others walk fine
+    _d = fr_decide(fr_fail_state(12, 8, [_stuck, _nbr, _far], failed=_failing))
+    _acts.append(_d["action"])
+print("  decisions:", _acts)
+assert _acts[0] == "NAVIGATE_TO_CELL:11,7", _acts
+assert _acts.count("NAVIGATE_TO_CELL:11,7") <= brain.FRONTIER_FAIL_LIMIT, f"Must give up on the failing target after {brain.FRONTIER_FAIL_LIMIT} failures, got {_acts}"
+assert _acts[-1] == "NAVIGATE_TO_CELL:12,20", f"After writing it off he must head for the SW area, got {_acts}"
+assert "NAVIGATE_TO_CELL:11,8" not in _acts, f"A neighbour of a written-off target shares its blockage and must be skipped: {_acts}"
+assert (_FZ, (11, 7)) in brain.UNREACHABLE_SECTORS
+
+# (b) Pursuit cap: a target he can walk toward but never reaches is written off after FRONTIER_PURSUIT_MAX turns
+fr_reset()
+brain.FRONTIER_FAILS.clear(); brain.FRONTIER_BAD.clear(); brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
+_seen = []
+for _turn in range(brain.FRONTIER_PURSUIT_MAX + 6):
+    brain.last_action = "MOVE_E"                     # moves fine, never arrives (ping-pongs)
+    _seen.append(fr_decide(fr_fail_state(30, 11, [_stuck, _far], failed=False))["action"])
+assert _seen[0] == "NAVIGATE_TO_CELL:11,7" and _seen[-1] == "NAVIGATE_TO_CELL:12,20", f"Must give up after the pursuit cap, got first {_seen[0]} last {_seen[-1]}"
+
+# (c) A few failures that are followed by success do not poison a good target
+fr_reset()
+brain.FRONTIER_FAILS.clear(); brain.FRONTIER_BAD.clear(); brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
+for _i, _failed in enumerate([False, True, True, False]):
+    brain.last_action = "NAVIGATE_TO_CELL:12,20" if _i else None
+    _d = fr_decide(fr_fail_state(20, 15, [_far], failed=_failed))
+assert _d["action"] == "NAVIGATE_TO_CELL:12,20", "Two failures below the limit must not write a target off"
+print("  [OK] Test 64 Passed: failing/never-arriving frontier targets are written off with their neighbours; good targets survive.")

@@ -272,18 +272,45 @@ def update_zone_records(game_state):
 
 
 FRONTIER_COMMIT = {"zone": None, "target": None}
+# Failure feedback for frontier targets (HANDOFF issue 46): the engine pathfinder can list a target as reachable while the
+# actual step keeps failing (a stuck or locked door, an obstacle it does not model). Never stay committed to such a target.
+FRONTIER_FAILS = {}             # (zone_id, x, y) -> failed approach count
+FRONTIER_PURSUIT = {"key": None, "turns": 0}
+FRONTIER_BAD = {}               # zone_id -> [(x, y)] centres of written-off targets (their neighbours are skipped too)
+FRONTIER_FAIL_LIMIT = 3         # failed NAVIGATE_TO_CELL steps toward one target
+FRONTIER_PURSUIT_MAX = 60       # turns on one target without arriving
+FRONTIER_FAIL_RADIUS = 2        # neighbours within this Chebyshev distance share the blockage
 
 
-def pick_frontier_target(game_state, cur_pos, zone_id):
+def _frontier_write_off(zone_id, xy, why):
+    UNREACHABLE_SECTORS.add((zone_id, xy))
+    FRONTIER_BAD.setdefault(zone_id, []).append(xy)
+    FRONTIER_COMMIT.update({"zone": None, "target": None})
+    FRONTIER_PURSUIT.update({"key": None, "turns": 0})
+    print(f"[FRONTIER] Writing off target {xy} in {zone_id}: {why}.")
+
+
+def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
     """Chooses an engine-reachable frontier target from C#'s `frontier_targets` (explored walkable cells that touch
     unexplored cells and that AutoAct.TryFindPathStep can route to, never ones the player already stood on).
 
     Commits to one target until it disappears from the list, is reached, or is blacklisted, so he stops flip-flopping.
     Returns ((x, y), reason) or (None, None). Only meaningful when `frontier_checked` is true."""
+    # Learn from the last step: a failed approach counts against the committed target.
+    if FRONTIER_COMMIT["zone"] == zone_id and FRONTIER_COMMIT["target"] is not None and last_act:
+        ck = FRONTIER_COMMIT["target"]
+        if last_act == f"NAVIGATE_TO_CELL:{ck[0]},{ck[1]}" and game_state.get("last_move_failed"):
+            fk = (zone_id, ck[0], ck[1])
+            FRONTIER_FAILS[fk] = FRONTIER_FAILS.get(fk, 0) + 1
+            if FRONTIER_FAILS[fk] >= FRONTIER_FAIL_LIMIT:
+                _frontier_write_off(zone_id, ck, f"{FRONTIER_FAIL_LIMIT} failed approaches although the engine lists it as reachable")
+    bad_centres = FRONTIER_BAD.get(zone_id, [])
     targets = []
     for tg in game_state.get("frontier_targets", []) or []:
         x, y = tg.get("x"), tg.get("y")
         if x is None or y is None or (x, y) == tuple(cur_pos) or (zone_id, (x, y)) in UNREACHABLE_SECTORS:
+            continue
+        if any(max(abs(x - bx), abs(y - by)) <= FRONTIER_FAIL_RADIUS for bx, by in bad_centres):
             continue
         targets.append(tg)
     if not targets:
@@ -295,6 +322,14 @@ def pick_frontier_target(game_state, cur_pos, zone_id):
     if chosen is None:
         chosen = min(targets, key=lambda tg: (tg.get("dist", 999), tg.get("q", "")))
         FRONTIER_COMMIT.update({"zone": zone_id, "target": (chosen["x"], chosen["y"])})
+    ckey = (zone_id, chosen["x"], chosen["y"])
+    if FRONTIER_PURSUIT["key"] == ckey:
+        FRONTIER_PURSUIT["turns"] += 1
+    else:
+        FRONTIER_PURSUIT.update({"key": ckey, "turns": 1})
+    if FRONTIER_PURSUIT["turns"] > FRONTIER_PURSUIT_MAX:
+        _frontier_write_off(zone_id, (chosen["x"], chosen["y"]), f"{FRONTIER_PURSUIT_MAX} turns without arriving")
+        return pick_frontier_target(game_state, cur_pos, zone_id, None)
     return (chosen["x"], chosen["y"]), (
         f"Frontier: engine-reachable unexplored area in the {chosen.get('q', '?')} quadrant at ({chosen['x']}, {chosen['y']}), "
         f"{chosen.get('dist', '?')} tiles away"
@@ -2796,7 +2831,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         sector_is_frontier = False
         frontier_checked = bool(game_state.get("frontier_checked"))
         if has_unexplored_sector and frontier_checked:
-            sector_target, sector_reason = pick_frontier_target(game_state, cur_pos, zone_id)
+            sector_target, sector_reason = pick_frontier_target(game_state, cur_pos, zone_id, last_action)
             sector_is_frontier = sector_target is not None
             if sector_target is None and game_state.get("reachable_edges"):
                 # The engine pathfinder finds no reachable unexplored area: what is left is rock. Leave, and say so.
