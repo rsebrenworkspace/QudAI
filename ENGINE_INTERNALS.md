@@ -510,7 +510,7 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
 - `BurrowingClaws` registers `CommandToggleBurrowingClaws`, `CommandDigUp`, `CommandDigDown`. The toggle's state is read with `IsMyActivatedAbilityToggledOn` and drives a `Digging` event (the digging mode that lets the claws destroy walls). Level text: walls are destroyed "after N penetrating hits".
 - `CommandDigDown`/`CommandDigUp` ("Excavate down/up") create `StairsDown`/`StairsUp` objects ("a passage up"). Refused with hostiles nearby ("You can't excavate with hostiles nearby.") and under the sky ("You can't excavate the sky!").
 - The `Burrowed` effect ("Traveling underground", `CommandEndBurrowing`, move-speed shift, "You cannot travel long distances while burrowed.") is a separate state. The live character had the toggle ON and travelled normally, so the toggle is not that effect. `[verified in game state 2026-10-06]`
-- Observed: with the toggle on, `NAVIGATE_TO_CELL` turns that leave the position unchanged for 2-3 turns (94 in one run) while no `ATTACK_WALL` was issued: consistent with the engine digging on its route (`PathAsBurrower`). `[inferred]`
+- Observed: with the toggle on, `NAVIGATE_TO_CELL` turns that leave the position unchanged for 2-3 turns (94 in one run) while no `ATTACK_WALL` was issued, i.e. the engine digging on its route (`PathAsBurrower`). `[verified in game 2026-10-06]` by the message log: nine consecutive "You hit (x1/x2) for 50 damage with your claw!" lines, then "The shale is destroyed!". One wall took about 9 hits at claws level 3.
 - Whether the engine refuses to dig owned or settlement walls is `[unknown]`; the policy therefore turns the claws off in towns (R7).
 
 ### 14.4 Tooling notes (2026-10-04)
