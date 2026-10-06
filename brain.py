@@ -1009,6 +1009,34 @@ def get_adjacent_threats(surroundings, companions=None, cur_pos=None):
     return adj
 
 
+COMPANION_BLOCK = {"pos": None, "tries": 0}   # where a companion has been blocking the only exit, and how many tries
+
+
+def guard_companion_blocked_burrow(action, reason, surroundings, cur_pos):
+    """Returns (action, reason). Replaces a burrow (ATTACK_WALL) with swap/wait when the only exit is a companion.
+
+    In a one-tile dead-end corridor a recruited pet can stand in the only way out. The engine pathfinder treats it as a
+    wall, autoexplore reports "stuck", and the loop breakers then chew on solid rock forever (HANDOFF issue 41). Burrowing
+    cannot help there, so try to swap with the companion (MOVE into it), and every third try wait a turn so it can move.
+    """
+    if not action.startswith("ATTACK_WALL"):
+        return action, reason
+    comp_dirs = [d for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"] if "[companion" in surroundings.get(d, "").lower()]
+    if not comp_dirs:
+        return action, reason
+    open_noncomp = [m for m in get_valid_moves(surroundings, cur_pos, None, is_in_combat=False)
+                    if "[companion" not in surroundings.get(m[5:], "").lower()]
+    if open_noncomp:
+        return action, reason
+    st = COMPANION_BLOCK
+    if st["pos"] != cur_pos:
+        st["pos"], st["tries"] = cur_pos, 0
+    st["tries"] += 1
+    if st["tries"] % 3 == 0:
+        return "WAIT", f"[Companion Block] Only exit {comp_dirs[0]} is occupied by a companion; waiting a turn for it to move instead of burrowing."
+    return f"MOVE_{comp_dirs[0]}", f"[Companion Block] Only exit {comp_dirs[0]} is occupied by a companion; trying to swap places instead of burrowing."
+
+
 def drop_companion_cells(adj_threats, cur_pos, companions):
     """Removes adjacent 'threats' standing on a known companion cell. Matches by coordinates only, never by name."""
     if not adj_threats:
@@ -3158,6 +3186,8 @@ def main():
                     action_repeat_count = 0
                 else:
                     action_repeat_count = 0
+
+                action, reason = guard_companion_blocked_burrow(action, reason, surroundings, cur_pos)
 
                 last_executed_action = action
                 last_executed_pos = cur_pos

@@ -3474,3 +3474,38 @@ with _ctx.redirect_stdout(_io.StringIO()):
 assert "Stepping inward" in _d["reason"], f"Arrival grace must still step inward, got {_d}"
 brain.ZONE_HOPPING_DETECTED = False; brain.ZONE_CYCLE_LENGTH = 0
 print("  [OK] Test 58 Passed: the hopping flag no longer blocks crossing; the arrival grace still steps inward.")
+
+
+# =====================================================================
+# TEST 59: A companion blocking the only exit must not trigger endless burrowing (HANDOFF issue 41)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 59: Dead-end corridor with the pet in the only exit: swap/wait, never burrow (multi-turn)")
+print("="*50)
+
+_ROCK = "[BLOCKED: impassable terrain], [BLOCKED: shale]"
+_dead_end = {"N": _ROCK, "NE": _ROCK, "NW": _ROCK, "E": _ROCK, "W": _ROCK,
+             "SE": _ROCK, "SW": _ROCK, "S": "[COMPANION: wet horned chameleon and hired guard [wading]]"}
+brain.COMPANION_BLOCK.update({"pos": None, "tries": 0})
+_acts = []
+for _turn in range(9):
+    _a, _r = brain.guard_companion_blocked_burrow("ATTACK_WALL:N", "[Loop Breaker] burrow", _dead_end, (27, 4))
+    _acts.append(_a)
+print("  replacement actions at the dead end:", _acts)
+assert not any(a.startswith("ATTACK_WALL") for a in _acts), f"Must never burrow while a companion blocks the exit: {_acts}"
+assert _acts == ["MOVE_S", "MOVE_S", "WAIT"] * 3, f"Expected swap, swap, wait cycles, got {_acts}"
+# Not a companion-caused pocket: an open non-companion move exists, so the burrow decision is left alone
+_open_exit = dict(_dead_end, E="Clear")
+_a, _r = brain.guard_companion_blocked_burrow("ATTACK_WALL:N", "x", _open_exit, (27, 4))
+assert _a == "ATTACK_WALL:N", f"Burrow decisions in real pockets must be untouched, got {_a}"
+# No companion adjacent: untouched
+_a, _r = brain.guard_companion_blocked_burrow("ATTACK_WALL:N", "x", dict(_dead_end, S=_ROCK), (27, 4))
+assert _a == "ATTACK_WALL:N", f"No companion: burrow untouched, got {_a}"
+# Other actions are never altered
+_a, _r = brain.guard_companion_blocked_burrow("MOVE_S", "x", _dead_end, (27, 4))
+assert _a == "MOVE_S", f"Non-burrow actions untouched, got {_a}"
+# A successful swap changes position: the try counter resets for the new cell
+_a, _ = brain.guard_companion_blocked_burrow("ATTACK_WALL:N", "x", _dead_end, (27, 5))
+assert _a == "MOVE_S" and brain.COMPANION_BLOCK["tries"] == 1, f"Counter must reset on a new position, got {_a}, {brain.COMPANION_BLOCK}"
+brain.COMPANION_BLOCK.update({"pos": None, "tries": 0})
+print("  [OK] Test 59 Passed: swap, swap, wait cycles; real pockets and other actions are untouched.")
