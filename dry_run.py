@@ -3834,3 +3834,49 @@ with _ctx.redirect_stdout(_io.StringIO()):
 assert (_FZ, (19, 17)) not in brain.UNREACHABLE_SECTORS and brain.FRONTIER_COMMIT["target"] == (19, 17), "A breakable tree must not cost him the target"
 brain.BURROW_BLOCKED.clear(); brain.BURROW_PROGRESS.clear(); brain.BURROW_LAST_SEQ["seq"] = 0
 print("  [OK] Test 65 Passed: frontier walks exempt from the oscillation breaker; unbreakable blockers write targets off; breakable ones do not.")
+
+
+# =====================================================================
+# TEST 66: Retreat lockout holds at full health: no stairs ping-pong (HANDOFF issue 48)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 66: Impossible creature at the bottom of the stairs: retreat once, then stay up until the level warrants it")
+print("="*50)
+
+_SZ10, _SZ11 = "JoppaWorld.12.21.0.0.10", "JoppaWorld.12.21.0.0.11"
+def stairs_state(z, level, on_down=False, on_up=False, hostile=None):
+    s = {d: "Clear" for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]}
+    st = {"hp": 27, "max_hp": 27, "x": 7, "y": 17, "z": z, "level": level, "calling": "Warden", "ap": 0, "sp": 0, "mp": 0, "skills": [],
+          "zone_id": _SZ10 if z == 10 else _SZ11, "zone_name": "x", "zone_fully_explored": False, "autoexplore_stuck": False,
+          "unexplored_cells": 500, "reachable_edges": "NSEW", "last_move_failed": False, "last_failed_dir": "",
+          "hostiles_nearby": bool(hostile), "hostiles_adjacent": False, "food_count": 5, "has_food": True, "food_sources": [],
+          "standing_on_stairs_down": on_down, "standing_on_stairs_up": on_up, "surroundings": s, "visible_entities": hostile or []}
+    return st
+
+def stairs_reset():
+    brain.RETREAT_TARGET_LEVEL = None; brain.last_action = None; brain.visit_counts.clear()
+    brain.EXPLORED_ZONE_SET.clear(); brain.stuck_autoexplore_zones.clear(); brain.CURRENT_TRACKED_ZONE = None
+    brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None; brain.ZONE_STEP_COUNT = 30
+
+_boss = [{"name": "Lucunann", "blueprint": "Lucunann", "tx": 12, "ty": 17, "dist": 5, "dir": "E", "is_enemy": True,
+          "is_companion": False, "has_los": True, "difficulty": "Impossible", "level": 40}]
+def stairs_decide(st, enemies):
+    with _ctx.redirect_stdout(_io.StringIO()):
+        return brain.query_decision(st, took_damage=False, enemies=enemies)
+
+# (a) Level 3 with full HP at the top of the stairs: he descends (the intended delve)
+stairs_reset()
+_d = stairs_decide(stairs_state(10, 3, on_down=True), [])
+assert _d["action"] == "USE_STAIRS_DOWN", f"Level 3 meets the stratum-1 requirement, got {_d}"
+# (b) At the bottom an Impossible creature is in view: retreat up, set the level goal (even at full HP)
+_d = stairs_decide(stairs_state(11, 3, on_up=True, hostile=_boss), _boss)
+assert _d["action"] == "USE_STAIRS_UP" and brain.RETREAT_TARGET_LEVEL == 4, f"Expected a retreat with target level 4, got {_d}, target {brain.RETREAT_TARGET_LEVEL}"
+# (c) Back at the top, still level 3, full HP: the lockout must hold for many turns (this was the endless ping-pong)
+_acts = [stairs_decide(stairs_state(10, 3, on_down=True), [])["action"] for _ in range(8)]
+print("  at the top after the retreat:", _acts)
+assert "USE_STAIRS_DOWN" not in _acts, f"Must not re-descend before level 4, got {_acts}"
+# (d) Once the goal level is reached, he may descend again and the goal clears
+_d = stairs_decide(stairs_state(10, 4, on_down=True), [])
+assert _d["action"] == "USE_STAIRS_DOWN" and brain.RETREAT_TARGET_LEVEL is None, f"At level 4 the lockout must lift, got {_d}, target {brain.RETREAT_TARGET_LEVEL}"
+stairs_reset()
+print("  [OK] Test 66 Passed: one retreat, then no descent until the target level; the lockout then lifts.")

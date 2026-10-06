@@ -2754,7 +2754,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         hp_ratio = hp / max(1, max_hp)
         is_healthy = (hp_ratio >= 0.70)
         is_subterranean = (cur_z > 10)
-        is_retreating = (RETREAT_TARGET_LEVEL is not None and cur_lvl < RETREAT_TARGET_LEVEL and hp_ratio < 0.85)
+        # The retreat goal is a LEVEL goal: no further descent until the level warrants it, whatever his HP is. It used to
+        # require hp_ratio < 0.85, so a retreat at full health (e.g. from an "Impossible" legendary creature) was forgotten
+        # at once and he re-descended: an endless stairs ping-pong (HANDOFF issue 48).
+        is_retreating = (RETREAT_TARGET_LEVEL is not None and cur_lvl < RETREAT_TARGET_LEVEL)
 
         is_stuck_explore = (bool(zone_id and zone_id in stuck_autoexplore_zones) or (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones))
         is_zone_cleared = game_state.get("zone_fully_explored", False) or is_stuck_explore or (game_state.get("unexplored_cells", 999) == 0)

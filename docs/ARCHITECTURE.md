@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 65 -->
-`dry_run.py` currently holds Tests 1-65. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 66 -->
+`dry_run.py` currently holds Tests 1-66. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -59,7 +59,7 @@ emergency retreat to stairs up (underground, low HP), priority AP spend.
 2. Sustenance: butcher/harvest adjacent sources (with a 3-in-a-row cool-down), then hunger: `EAT` if he has food (no camp/cook detour, no free meal), then 2C foraging: when hungry or carrying fewer than 3 food items, `choose_food_source` walks to the nearest `food_sources` corpse (needs Butchery) or plant (needs Harvestry) with `NAVIGATE_TO_CELL`, with a pursuit time-out and a blacklist for unreachable targets (T-1.13)
 3. Rest (HP < 75%, not swimming)
 4. Ammo top-off; 4B. companion recruitment
-5. Stairs/delving (surface needs level gate; underground is bold if HP >= 70%)
+5. Stairs/delving (surface needs level gate; underground is bold if HP >= 70%). After an emergency retreat from underground (low HP, or an "Impossible" creature in view even at full HP) `RETREAT_TARGET_LEVEL = level + 1` locks out further descent until that level is reached, regardless of HP (T-1.22)
 6. Inward border steer (arrival grace only: first ~4 `ZONE_STEP_COUNT` on a border tile; the zone-hopping flag no longer extends it, T-1.16)
 7. Native `AUTOEXPLORE` (unless stuck/explored/swimming). When autoexplore is stuck and C# reports `frontier_checked`, step 8 navigates (`NAVIGATE_TO_CELL`, committed via `FRONTIER_COMMIT`) to the nearest engine-reachable `frontier_targets` entry instead of the centroid of all unrevealed cells; none reachable with exits reachable means the engine says only rock is left (zone remembered as explored). A frontier target is written off (with neighbours within 2 tiles) after 3 failed approaches or 60 turns without arriving (`FRONTIER_FAILS`, `FRONTIER_PURSUIT`, `FRONTIER_BAD`, T-1.20), because the engine can list a target as reachable while the real step keeps failing
 8. Macro-sector navigation across water/obstacles (not in towns)
