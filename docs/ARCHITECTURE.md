@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 62 -->
-`dry_run.py` currently holds Tests 1-62. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 65 -->
+`dry_run.py` currently holds Tests 1-65. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -61,7 +61,7 @@ emergency retreat to stairs up (underground, low HP), priority AP spend.
 4. Ammo top-off; 4B. companion recruitment
 5. Stairs/delving (surface needs level gate; underground is bold if HP >= 70%)
 6. Inward border steer (arrival grace only: first ~4 `ZONE_STEP_COUNT` on a border tile; the zone-hopping flag no longer extends it, T-1.16)
-7. Native `AUTOEXPLORE` (unless stuck/explored/swimming). When autoexplore is stuck and C# reports `frontier_checked`, step 8 navigates (`NAVIGATE_TO_CELL`, committed via `FRONTIER_COMMIT`) to the nearest engine-reachable `frontier_targets` entry instead of the centroid of all unrevealed cells; none reachable with exits reachable means the engine says only rock is left (zone remembered as explored)
+7. Native `AUTOEXPLORE` (unless stuck/explored/swimming). When autoexplore is stuck and C# reports `frontier_checked`, step 8 navigates (`NAVIGATE_TO_CELL`, committed via `FRONTIER_COMMIT`) to the nearest engine-reachable `frontier_targets` entry instead of the centroid of all unrevealed cells; none reachable with exits reachable means the engine says only rock is left (zone remembered as explored). A frontier target is written off (with neighbours within 2 tiles) after 3 failed approaches or 60 turns without arriving (`FRONTIER_FAILS`, `FRONTIER_PURSUIT`, `FRONTIER_BAD`, T-1.20), because the engine can list a target as reachable while the real step keeps failing
 8. Macro-sector navigation across water/obstacles (not in towns)
 9. Local unvisited frontier
 10. Zone-exit transition (committed exit)
@@ -75,7 +75,7 @@ VALID ACTIONS list, ancestral wisdom prepended to the system prompt.
 
 ### Loop breakers (`main()`)
 
-Exit-thrash breaker (`note_exit_failure`, T-1.17): every exit failure is blacklisted and counted; 4 failures in a zone suppress exit selection for 60 turns (`TURN_CLOCK`) so Phase A explores instead; an empty `reachable_edges` never wipes the blacklist. Companion-block guard (`guard_companion_blocked_burrow`, applied to the final action in `main()`): a burrow (`ATTACK_WALL`) is replaced by swap, swap, wait cycles when the only exit is occupied by a companion (T-1.17). Stationary-repeat breaker; oscillation breaker (positions window of 24, entropy rule: >=10 samples with <=5 unique);
+Exit-thrash breaker (`note_exit_failure`, T-1.17): every exit failure is blacklisted and counted; 4 failures in a zone suppress exit selection for 60 turns (`TURN_CLOCK`) so Phase A explores instead; an empty `reachable_edges` never wipes the blacklist. A committed frontier walk (`is_frontier_walk`: `NAVIGATE_TO_CELL` with a "Frontier:" reason) is exempt from the oscillation breaker (T-1.21). Companion-block guard (`guard_companion_blocked_burrow`, applied to the final action in `main()`): a burrow (`ATTACK_WALL`) is replaced by swap, swap, wait cycles when the only exit is occupied by a companion (T-1.17). Stationary-repeat breaker; oscillation breaker (positions window of 24, entropy rule: >=10 samples with <=5 unique);
 combat actions are exempt. Zone-hopping breaker (2-, 3-, 4-cycles) in `update_zone_records`.
 Autolevel circuit breaker keyed on `(ap, sp, mp, len(skills))`.
 
@@ -115,7 +115,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 - `REST`, `PASS`
 - `USE_ABILITY:<command>[:<dir>]`: alias-resolved against the player's ActivatedAbilities
 - `ACTIVATE_SPRINT`, `SPRINT_<dir>`
-- `NAVIGATE_TO_CELL:x,y`: engine A* (`AutoAct.TryFindPathStep`)
+- `NAVIGATE_TO_CELL:x,y`: engine A* (`AutoAct.TryFindPathStep`); if the next step is blocked by a solid, ownerless, non-creature object with hit points (a tree, a plant wall) it is attacked (`TryBreakPathObstacle`, reported in `last_burrow`), because the engine routes through such obstacles
 - `NAVIGATE_ZONE_EXIT:<N|S|E|W>`: engine edge pathfinding (`AutoAct.TryFindEdgeStep`)
 - `MOVE_<dir>`
 <!-- actions:end -->
@@ -125,6 +125,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 - **Vitals/progress:** `hp`, `max_hp`, `level`, `xp`, `ap`, `sp`, `mp`, `attributes`, `skills` (class and display name),
   `learnable_skills` (only affordable ones), `mutations` (`level`, `cap`, `can_level`)
 - **Position:** `x`, `y`, `z`, `zone_id`, `zone_name`, `is_settlement`, `zone_tier`
+- **Burrowing:** `last_burrow` (result of the last `ATTACK_WALL` swing: `seq`, `dir`, `name`, `x`, `y`, `has_hp`, `hp_before`, `hp_after`, `max_hp`, `destroyed`, or `null`). Python keeps swinging while the target loses HP, writes it off (400 turns) after 3 swings with no damage or at once if it has no HP, and `guard_blocked_burrow` swaps in another breakable obstacle, a free move, or a pass (T-1.19).
 - **Exploration:** `frontier_checked`, `frontier_cells`, `frontier_targets` (T-1.18: explored walkable cells touching unexplored cells that the engine pathfinder can route to, up to 3 per quadrant NW/NE/SW/SE, never cells the player already stood on; computed only while autoexplore is stuck or the zone is engine-explored: `q`, `x`, `y`, `ux`, `uy`, `dist`), `zone_fully_explored`, `autoexplore_stuck`, `unexplored_cells`, `unexplored_centroid_x/y`,
   `nearest_unexplored_x/y/dist`, `reachable_edges` (string of N/S/E/W)
 - **Move feedback:** `last_move_failed`, `last_failed_dir` (a direction, or `PATH_BLOCKED`)

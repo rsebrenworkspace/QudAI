@@ -3611,6 +3611,7 @@ _FZ = "JoppaWorld.11.21.1.2.11"
 def fr_reset():
     brain.EXPLORED_ZONE_SET.clear(); brain.stuck_autoexplore_zones.clear(); brain.ENGINE_EXPLORED_LAST.clear()
     brain.UNREACHABLE_SECTORS.clear(); brain.FRONTIER_COMMIT.update({"zone": None, "target": None})
+    brain.FRONTIER_FAILS.clear(); brain.FRONTIER_BAD.clear(); brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
     brain.CURRENT_TRACKED_ZONE = _FZ; brain.last_action = None; brain.visit_counts.clear()
     brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
     brain.EXIT_SUPPRESS_UNTIL.clear(); brain.EXIT_FAILURES.clear(); brain.FAILED_ZONE_EXITS = set()
@@ -3670,3 +3671,166 @@ fr_reset()
 _d = fr_decide(fr_state(27, 4, [], reach=""))
 assert _FZ not in brain.EXPLORED_ZONE_SET, "A pet-sealed corridor must not be recorded as an explored zone"
 print("  [OK] Test 62 Passed: reachable frontier targets, commitment, blacklist, honest 'nothing reachable', sealed corridor not remembered.")
+
+
+# =====================================================================
+# TEST 63: Burrow progress from the engine's report (HANDOFF issue 45)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 63: keep swinging while the target loses HP; write off targets that take no damage or have no HP")
+print("="*50)
+
+_BZ2 = "JoppaWorld.11.21.1.2.11"
+def burrow_reset():
+    brain.BURROW_BLOCKED.clear(); brain.BURROW_PROGRESS.clear(); brain.BURROW_LAST_SEQ["seq"] = 0; brain.TURN_CLOCK = 0
+
+def lb(seq, hp_before, hp_after, x=13, y=11, d="N", has_hp=True, destroyed=False, name="shimscale mangrove tree", max_hp=25):
+    return {"zone_id": _BZ2, "last_burrow": {"seq": seq, "dir": d, "name": name, "x": x, "y": y, "has_hp": has_hp,
+            "hp_before": hp_before, "hp_after": hp_after, "max_hp": max_hp, "destroyed": destroyed}}
+
+_ROCKY = "[BLOCKED: shimscale mangrove tree]"
+_surr = {"N": _ROCKY, "NE": "Clear", "NW": "Clear", "E": "Clear", "W": "Clear", "S": "Clear", "SE": "Clear", "SW": "Clear"}
+
+with _ctx.redirect_stdout(_io.StringIO()):
+    # (a) A tree that keeps losing HP is never written off, however many swings it takes
+    burrow_reset()
+    for _i in range(1, 15):
+        brain.note_burrow_progress(lb(_i, 25 - _i + 1, 25 - _i))
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12)), "A target that is losing HP must keep being attacked"
+    # (b) Three swings with no damage write it off; one damaging swing in between resets the count
+    burrow_reset()
+    brain.note_burrow_progress(lb(1, 25, 25)); brain.note_burrow_progress(lb(2, 25, 25))
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12))
+    brain.note_burrow_progress(lb(3, 25, 24))
+    brain.note_burrow_progress(lb(4, 24, 24)); brain.note_burrow_progress(lb(5, 24, 24))
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12)), "A damaging swing must reset the stall count"
+    brain.note_burrow_progress(lb(6, 24, 24))
+    assert brain.blocked_burrow_dirs(_BZ2, (13, 12)) == {"N"}, "Three stalled swings must write the target off"
+    # (c) No hit points at all: written off after one swing
+    burrow_reset()
+    brain.note_burrow_progress(lb(1, 0, 0, has_hp=False, name="boulder", max_hp=0))
+    assert brain.blocked_burrow_dirs(_BZ2, (13, 12)) == {"N"}
+    # (d) Destroyed clears everything; a repeated report (same seq) is ignored
+    burrow_reset()
+    brain.note_burrow_progress(lb(1, 25, 25)); brain.note_burrow_progress(lb(2, 25, 25)); brain.note_burrow_progress(lb(3, 25, 25))
+    assert brain.blocked_burrow_dirs(_BZ2, (13, 12)) == {"N"}
+    brain.note_burrow_progress(lb(4, 3, 0, destroyed=True))
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12)), "A destroyed obstacle must clear its write-off"
+    brain.note_burrow_progress(lb(4, 25, 25)); brain.note_burrow_progress(lb(4, 25, 25))
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12)), "A repeated (old) sequence number must be ignored"
+    # (e) Write-offs expire
+    burrow_reset()
+    brain.note_burrow_progress(lb(1, 0, 0, has_hp=False))
+    brain.TURN_CLOCK += brain.BURROW_BLOCK_TURNS + 1
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12)), "Write-offs must expire"
+
+    # (f) The guard: a burrow aimed at a written-off obstacle becomes another breakable obstacle, else a free move, else PASS
+    burrow_reset()
+    brain.note_burrow_progress(lb(1, 0, 0, has_hp=False))
+    _two = dict(_surr, E="[BLOCKED: witchwood tree]")
+    _a, _r = brain.guard_blocked_burrow("ATTACK_WALL:N", "x", _two, (13, 12), _BZ2)
+    assert _a == "ATTACK_WALL:E", f"Should pick the other breakable obstacle, got {_a}"
+    _a, _r = brain.guard_blocked_burrow("ATTACK_WALL:N", "x", _surr, (13, 12), _BZ2)
+    assert not _a.startswith("ATTACK_WALL") and (_a.startswith("MOVE_") or _a == "PASS"), f"No alternative: must not burrow the written-off tree, got {_a}"
+    _walled = {d: "[BLOCKED: impassable terrain], [BLOCKED: shale]" for d in ["N", "NE", "NW", "E", "W", "S", "SE", "SW"]}
+    brain.BURROW_BLOCKED[(_BZ2, 13, 11)] = brain.TURN_CLOCK + 100
+    _a, _r = brain.guard_blocked_burrow("ATTACK_WALL:N", "x", _walled, (13, 12), _BZ2)
+    assert _a != "ATTACK_WALL:N", f"A written-off target must never be attacked again, got {_a}"
+    _a, _r = brain.guard_blocked_burrow("ATTACK_WALL:E", "x", _two, (13, 12), _BZ2)
+    assert _a == "ATTACK_WALL:E", "Burrows at healthy targets are untouched"
+    _a, _r = brain.guard_blocked_burrow("MOVE_S", "x", _surr, (13, 12), _BZ2)
+    assert _a == "MOVE_S", "Other actions are untouched"
+    burrow_reset()
+print("  [OK] Test 63 Passed: burrowing continues while HP drops, stops on stalled/HP-less targets, picks alternatives, expires.")
+
+
+# =====================================================================
+# TEST 64: A frontier target that keeps failing is written off, with its neighbours (HANDOFF issue 46)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 64: engine says reachable, every step fails (stuck door): give up after 3 failures, skip neighbours, go elsewhere")
+print("="*50)
+
+def fr_fail_state(x, y, targets, failed):
+    s = fr_state(x, y, targets)
+    s["last_move_failed"] = failed
+    return s
+
+_stuck = {"q": "NW", "x": 11, "y": 7, "ux": 10, "uy": 6, "dist": 3}
+_nbr = {"q": "NW", "x": 11, "y": 8, "ux": 10, "uy": 9, "dist": 4}      # beside the failing target: same door
+_far = {"q": "SW", "x": 12, "y": 20, "ux": 11, "uy": 21, "dist": 15}   # the real unexplored SW area
+
+# (a) The replay: NAVIGATE_TO_CELL:11,7 fails again and again (as in the 2026-10-05 trace, turns 783-812)
+fr_reset()
+_acts = []
+for _turn in range(7):
+    brain.last_action = _acts[-1] if _acts else None
+    _failing = bool(_acts) and _acts[-1] == "NAVIGATE_TO_CELL:11,7"          # only the stuck target fails; others walk fine
+    _d = fr_decide(fr_fail_state(12, 8, [_stuck, _nbr, _far], failed=_failing))
+    _acts.append(_d["action"])
+print("  decisions:", _acts)
+assert _acts[0] == "NAVIGATE_TO_CELL:11,7", _acts
+assert _acts.count("NAVIGATE_TO_CELL:11,7") <= brain.FRONTIER_FAIL_LIMIT, f"Must give up on the failing target after {brain.FRONTIER_FAIL_LIMIT} failures, got {_acts}"
+assert _acts[-1] == "NAVIGATE_TO_CELL:12,20", f"After writing it off he must head for the SW area, got {_acts}"
+assert "NAVIGATE_TO_CELL:11,8" not in _acts, f"A neighbour of a written-off target shares its blockage and must be skipped: {_acts}"
+assert (_FZ, (11, 7)) in brain.UNREACHABLE_SECTORS
+
+# (b) Pursuit cap: a target he can walk toward but never reaches is written off after FRONTIER_PURSUIT_MAX turns
+fr_reset()
+brain.FRONTIER_FAILS.clear(); brain.FRONTIER_BAD.clear(); brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
+_seen = []
+for _turn in range(brain.FRONTIER_PURSUIT_MAX + 6):
+    brain.last_action = "MOVE_E"                     # moves fine, never arrives (ping-pongs)
+    _seen.append(fr_decide(fr_fail_state(30, 11, [_stuck, _far], failed=False))["action"])
+assert _seen[0] == "NAVIGATE_TO_CELL:11,7" and _seen[-1] == "NAVIGATE_TO_CELL:12,20", f"Must give up after the pursuit cap, got first {_seen[0]} last {_seen[-1]}"
+
+# (c) A few failures that are followed by success do not poison a good target
+fr_reset()
+brain.FRONTIER_FAILS.clear(); brain.FRONTIER_BAD.clear(); brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
+for _i, _failed in enumerate([False, True, True, False]):
+    brain.last_action = "NAVIGATE_TO_CELL:12,20" if _i else None
+    _d = fr_decide(fr_fail_state(20, 15, [_far], failed=_failed))
+assert _d["action"] == "NAVIGATE_TO_CELL:12,20", "Two failures below the limit must not write a target off"
+print("  [OK] Test 64 Passed: failing/never-arriving frontier targets are written off with their neighbours; good targets survive.")
+
+
+# =====================================================================
+# TEST 65: Frontier walks and trees (HANDOFF issue 47)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 65: frontier walks are exempt from the oscillation breaker; an unbreakable path obstacle writes the target off")
+print("="*50)
+
+# (a) The exemption applies only to real frontier walks
+assert brain.is_frontier_walk("NAVIGATE_TO_CELL:19,17", "Frontier: engine-reachable unexplored area in the SW quadrant at (19, 17), 4 tiles away")
+assert not brain.is_frontier_walk("NAVIGATE_TO_CELL:40,11", "Water Traversal: Navigating across water toward unexplored sector at (40, 11)")
+assert not brain.is_frontier_walk("MOVE_S", "Frontier: whatever")
+assert not brain.is_frontier_walk("NAVIGATE_ZONE_EXIT:E", "Zone fully explored: navigating")
+
+# (b) An obstacle with no HP on the committed frontier path writes the frontier target off too
+fr_reset()
+_t = {"q": "SW", "x": 19, "y": 17, "ux": 18, "uy": 18, "dist": 4}
+_other = {"q": "SW", "x": 30, "y": 22, "ux": 31, "uy": 23, "dist": 15}
+_d = fr_decide(fr_state(15, 16, [_t, _other]))
+assert _d["action"] == "NAVIGATE_TO_CELL:19,17", _d
+with _ctx.redirect_stdout(_io.StringIO()):
+    brain.BURROW_LAST_SEQ["seq"] = 0
+    brain.note_burrow_progress({"zone_id": _FZ, "last_burrow": {"seq": 1, "dir": "W", "name": "boulder", "x": 17, "y": 17,
+                                "has_hp": False, "hp_before": 0, "hp_after": 0, "max_hp": 0, "destroyed": False}})
+assert (_FZ, (19, 17)) in brain.UNREACHABLE_SECTORS and brain.FRONTIER_COMMIT["target"] is None, "The target behind an unbreakable obstacle must be written off"
+_d = fr_decide(fr_state(15, 16, [_t, _other]))
+assert _d["action"] == "NAVIGATE_TO_CELL:30,22", f"He must move on to the next frontier, got {_d}"
+
+# (c) A tree that is losing HP does NOT write the target off; destroying it keeps the target
+fr_reset(); brain.BURROW_BLOCKED.clear(); brain.BURROW_PROGRESS.clear(); brain.BURROW_LAST_SEQ["seq"] = 0
+_d = fr_decide(fr_state(15, 16, [_t, _other]))
+assert _d["action"] == "NAVIGATE_TO_CELL:19,17"
+with _ctx.redirect_stdout(_io.StringIO()):
+    for _i, (_a, _b) in enumerate([(25, 24), (24, 22), (22, 20)], start=1):
+        brain.note_burrow_progress({"zone_id": _FZ, "last_burrow": {"seq": _i, "dir": "W", "name": "shimscale mangrove tree", "x": 17, "y": 17,
+                                    "has_hp": True, "hp_before": _a, "hp_after": _b, "max_hp": 25, "destroyed": False}})
+    brain.note_burrow_progress({"zone_id": _FZ, "last_burrow": {"seq": 4, "dir": "W", "name": "shimscale mangrove tree", "x": 17, "y": 17,
+                                "has_hp": True, "hp_before": 2, "hp_after": 0, "max_hp": 25, "destroyed": True}})
+assert (_FZ, (19, 17)) not in brain.UNREACHABLE_SECTORS and brain.FRONTIER_COMMIT["target"] == (19, 17), "A breakable tree must not cost him the target"
+brain.BURROW_BLOCKED.clear(); brain.BURROW_PROGRESS.clear(); brain.BURROW_LAST_SEQ["seq"] = 0
+print("  [OK] Test 65 Passed: frontier walks exempt from the oscillation breaker; unbreakable blockers write targets off; breakable ones do not.")

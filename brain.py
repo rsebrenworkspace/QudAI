@@ -272,18 +272,50 @@ def update_zone_records(game_state):
 
 
 FRONTIER_COMMIT = {"zone": None, "target": None}
+# Failure feedback for frontier targets (HANDOFF issue 46): the engine pathfinder can list a target as reachable while the
+# actual step keeps failing (a stuck or locked door, an obstacle it does not model). Never stay committed to such a target.
+FRONTIER_FAILS = {}             # (zone_id, x, y) -> failed approach count
+FRONTIER_PURSUIT = {"key": None, "turns": 0}
+FRONTIER_BAD = {}               # zone_id -> [(x, y)] centres of written-off targets (their neighbours are skipped too)
+FRONTIER_FAIL_LIMIT = 3         # failed NAVIGATE_TO_CELL steps toward one target
+FRONTIER_PURSUIT_MAX = 60       # turns on one target without arriving
+FRONTIER_FAIL_RADIUS = 2        # neighbours within this Chebyshev distance share the blockage
 
 
-def pick_frontier_target(game_state, cur_pos, zone_id):
+def _frontier_write_off(zone_id, xy, why):
+    UNREACHABLE_SECTORS.add((zone_id, xy))
+    FRONTIER_BAD.setdefault(zone_id, []).append(xy)
+    FRONTIER_COMMIT.update({"zone": None, "target": None})
+    FRONTIER_PURSUIT.update({"key": None, "turns": 0})
+    print(f"[FRONTIER] Writing off target {xy} in {zone_id}: {why}.")
+
+
+def is_frontier_walk(action, reason):
+    """True for a committed engine-reachable frontier walk (exempt from the oscillation breaker)."""
+    return str(action).startswith("NAVIGATE_TO_CELL:") and str(reason).startswith("Frontier:")
+
+
+def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
     """Chooses an engine-reachable frontier target from C#'s `frontier_targets` (explored walkable cells that touch
     unexplored cells and that AutoAct.TryFindPathStep can route to, never ones the player already stood on).
 
     Commits to one target until it disappears from the list, is reached, or is blacklisted, so he stops flip-flopping.
     Returns ((x, y), reason) or (None, None). Only meaningful when `frontier_checked` is true."""
+    # Learn from the last step: a failed approach counts against the committed target.
+    if FRONTIER_COMMIT["zone"] == zone_id and FRONTIER_COMMIT["target"] is not None and last_act:
+        ck = FRONTIER_COMMIT["target"]
+        if last_act == f"NAVIGATE_TO_CELL:{ck[0]},{ck[1]}" and game_state.get("last_move_failed"):
+            fk = (zone_id, ck[0], ck[1])
+            FRONTIER_FAILS[fk] = FRONTIER_FAILS.get(fk, 0) + 1
+            if FRONTIER_FAILS[fk] >= FRONTIER_FAIL_LIMIT:
+                _frontier_write_off(zone_id, ck, f"{FRONTIER_FAIL_LIMIT} failed approaches although the engine lists it as reachable")
+    bad_centres = FRONTIER_BAD.get(zone_id, [])
     targets = []
     for tg in game_state.get("frontier_targets", []) or []:
         x, y = tg.get("x"), tg.get("y")
         if x is None or y is None or (x, y) == tuple(cur_pos) or (zone_id, (x, y)) in UNREACHABLE_SECTORS:
+            continue
+        if any(max(abs(x - bx), abs(y - by)) <= FRONTIER_FAIL_RADIUS for bx, by in bad_centres):
             continue
         targets.append(tg)
     if not targets:
@@ -295,6 +327,14 @@ def pick_frontier_target(game_state, cur_pos, zone_id):
     if chosen is None:
         chosen = min(targets, key=lambda tg: (tg.get("dist", 999), tg.get("q", "")))
         FRONTIER_COMMIT.update({"zone": zone_id, "target": (chosen["x"], chosen["y"])})
+    ckey = (zone_id, chosen["x"], chosen["y"])
+    if FRONTIER_PURSUIT["key"] == ckey:
+        FRONTIER_PURSUIT["turns"] += 1
+    else:
+        FRONTIER_PURSUIT.update({"key": ckey, "turns": 1})
+    if FRONTIER_PURSUIT["turns"] > FRONTIER_PURSUIT_MAX:
+        _frontier_write_off(zone_id, (chosen["x"], chosen["y"]), f"{FRONTIER_PURSUIT_MAX} turns without arriving")
+        return pick_frontier_target(game_state, cur_pos, zone_id, None)
     return (chosen["x"], chosen["y"]), (
         f"Frontier: engine-reachable unexplored area in the {chosen.get('q', '?')} quadrant at ({chosen['x']}, {chosen['y']}), "
         f"{chosen.get('dist', '?')} tiles away"
@@ -777,7 +817,7 @@ DESTRUCTIBLE_OBSTACLE_KEYWORDS = [
 ]
 
 
-def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False):
+def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False, exclude=None):
     """
     Finds the best adjacent destructible obstacle (e.g. plant matter, tangled mudroot)
     to attack/burrow through when the agent is trapped in an enclosed pocket.
@@ -792,6 +832,8 @@ def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False)
     tx, ty = target_pos if target_pos else (px, py)
 
     for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]:
+        if exclude and d in exclude:
+            continue
         info = surroundings.get(d, "").lower()
         if "[blocked:" in info or "impassable" in info or "wall" in info:
             if any(k in info for k in DESTRUCTIBLE_OBSTACLE_KEYWORDS):
@@ -1089,6 +1131,85 @@ def get_adjacent_threats(surroundings, companions=None, cur_pos=None):
     if cur_pos:
         adj = drop_companion_cells(adj, cur_pos, companions)
     return adj
+
+
+# Burrow progress (HANDOFF issue 45): C# reports each ATTACK_WALL swing in `last_burrow` (target HP before/after, destroyed).
+BURROW_STALL_LIMIT = 3          # swings that did no damage before the target is written off
+BURROW_BLOCK_TURNS = 400
+BURROW_BLOCKED = {}             # (zone_id, x, y) -> TURN_CLOCK value until which this obstacle is not burrowed
+BURROW_PROGRESS = {}            # (zone_id, x, y) -> {"stalled": int}
+BURROW_LAST_SEQ = {"seq": 0}
+
+
+def note_burrow_progress(game_state):
+    """Reads the engine's report of the last burrow swing. Keep swinging while the target loses hit points; write it off
+    when it has no hit points, or three swings in a row did no damage; forget it when it is destroyed."""
+    lb = game_state.get("last_burrow")
+    if not lb or lb.get("seq", 0) <= BURROW_LAST_SEQ["seq"]:
+        return
+    BURROW_LAST_SEQ["seq"] = lb.get("seq", 0)
+    key = (game_state.get("zone_id"), lb.get("x"), lb.get("y"))
+    name = lb.get("name", "obstacle")
+    if lb.get("destroyed"):
+        BURROW_PROGRESS.pop(key, None)
+        BURROW_BLOCKED.pop(key, None)
+        print(f"[BURROW] {name} destroyed.")
+        return
+    if not lb.get("has_hp"):
+        BURROW_BLOCKED[key] = TURN_CLOCK + BURROW_BLOCK_TURNS
+        print(f"[BURROW] {name} has no hit points: it cannot be broken. Writing it off.")
+        _written_off_obstacle_blocks_frontier(game_state)
+        return
+    prog = BURROW_PROGRESS.setdefault(key, {"stalled": 0})
+    if lb.get("hp_after", 0) >= lb.get("hp_before", 0):
+        prog["stalled"] += 1
+        if prog["stalled"] >= BURROW_STALL_LIMIT:
+            BURROW_BLOCKED[key] = TURN_CLOCK + BURROW_BLOCK_TURNS
+            print(f"[BURROW] {name} took no damage in {BURROW_STALL_LIMIT} swings (HP {lb.get('hp_after')}/{lb.get('max_hp')}). Writing it off.")
+            _written_off_obstacle_blocks_frontier(game_state)
+    else:
+        prog["stalled"] = 0
+        print(f"[BURROW] {name}: HP {lb.get('hp_after')}/{lb.get('max_hp')}.")
+
+
+def _written_off_obstacle_blocks_frontier(game_state):
+    """The path to the committed frontier target runs through an obstacle that cannot be broken: write the target off too
+    (otherwise the engine keeps listing it as reachable and the walk starts the same swings again)."""
+    zone_id = game_state.get("zone_id")
+    if FRONTIER_COMMIT["zone"] == zone_id and FRONTIER_COMMIT["target"] is not None:
+        _frontier_write_off(zone_id, FRONTIER_COMMIT["target"], "its path runs through an obstacle that cannot be broken")
+
+
+def blocked_burrow_dirs(zone_id, cur_pos):
+    """Directions whose adjacent cell holds an obstacle already written off as unbreakable."""
+    out = set()
+    for d, (dx, dy) in CARDINAL_OFFSETS.items():
+        exp = BURROW_BLOCKED.get((zone_id, cur_pos[0] + dx, cur_pos[1] + dy))
+        if exp is not None and exp > TURN_CLOCK:
+            out.add(d)
+    return out
+
+
+def guard_blocked_burrow(action, reason, surroundings, cur_pos, zone_id, is_town=False):
+    """Replaces a burrow (ATTACK_WALL) aimed at an obstacle written off as unbreakable: another breakable obstacle if one
+    exists, otherwise a free move, otherwise a passed turn. Returns (action, reason)."""
+    if not action.startswith("ATTACK_WALL"):
+        return action, reason
+    parts = action.split(":")
+    if len(parts) < 2:
+        return action, reason
+    bad = blocked_burrow_dirs(zone_id, cur_pos)
+    if parts[1].strip().upper() not in bad:
+        return action, reason
+    alt, info = find_burrow_direction(surroundings, cur_pos, None, is_town=is_town, exclude=bad)
+    if alt:
+        return f"ATTACK_WALL:{alt}", f"[Burrow] {parts[1]} is unbreakable; trying {info} ({alt}) instead."
+    moves = [m for m in get_valid_moves(surroundings, cur_pos, None, is_in_combat=False)
+             if "[companion" not in surroundings.get(m[5:], "").lower()]
+    if moves:
+        moves.sort(key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+        return moves[0], f"[Burrow] {parts[1]} is unbreakable and nothing else is breakable; taking the least-visited free move."
+    return "PASS", f"[Burrow] {parts[1]} is unbreakable and nothing else is breakable; passing the turn."
 
 
 COMPANION_BLOCK = {"pos": None, "tries": 0}   # where a companion has been blocking the only exit, and how many tries
@@ -2725,7 +2846,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         sector_is_frontier = False
         frontier_checked = bool(game_state.get("frontier_checked"))
         if has_unexplored_sector and frontier_checked:
-            sector_target, sector_reason = pick_frontier_target(game_state, cur_pos, zone_id)
+            sector_target, sector_reason = pick_frontier_target(game_state, cur_pos, zone_id, last_action)
             sector_is_frontier = sector_target is not None
             if sector_target is None and game_state.get("reachable_edges"):
                 # The engine pathfinder finds no reachable unexplored area: what is left is rock. Leave, and say so.
@@ -2987,6 +3108,7 @@ def main():
                     consecutive_kites = 0
 
                 update_zone_records(game_state)
+                note_burrow_progress(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
 
@@ -3122,7 +3244,12 @@ def main():
                 is_attacking = action.startswith("MOVE_") and (action[5:] in adj_threats)
                 is_combat_action = action.startswith("USE_ABILITY") or action.startswith("FIRE_MISSILE") or is_attacking
                 is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_combat_action)
-                is_oscillating = not is_in_combat and not is_combat_action and (
+                # A committed engine-reachable frontier walk is exempt from the oscillation breaker: its own failure and
+                # pursuit limits (FRONTIER_FAIL_LIMIT / FRONTIER_PURSUIT_MAX) write a bad target off. Without this exemption
+                # the breaker overrode the walk with "move away from the cycle centroid" and he ping-ponged forever
+                # (HANDOFF issue 47).
+                is_frontier_nav = is_frontier_walk(action, reason)
+                is_oscillating = not is_in_combat and not is_combat_action and not is_frontier_nav and (
                     (pos_frequency >= 3) or
                     (len(recent_positions) >= 10 and unique_positions <= 5)
                 )
@@ -3280,6 +3407,7 @@ def main():
                 else:
                     action_repeat_count = 0
 
+                action, reason = guard_blocked_burrow(action, reason, surroundings, cur_pos, current_zone_id, is_town_zone(game_state))
                 action, reason = guard_companion_blocked_burrow(action, reason, surroundings, cur_pos)
 
                 last_executed_action = action
