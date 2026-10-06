@@ -55,7 +55,7 @@ New ideas go in `docs/BACKLOG.md`; do not start a backlog item unless a human ha
 
 ```
 python -m py_compile brain.py build_templates.py chronicler.py skill_database.py
-python dry_run.py
+python dry_run.py        # deterministic, offline: QUDAI_LM_URL=http://127.0.0.1:9/x python dry_run.py (uses a temp exchange dir, never the live game files)
 python tools/check_docs.py
 python -c "t=open(r'mod/QudAIBrain/AIBrainPart.cs',encoding='utf-8').read(); assert t.count('{')==t.count('}'), 'Braces unbalanced'"
 python sync_mod.py deploy     # only if the C# changed

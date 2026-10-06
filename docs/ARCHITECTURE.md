@@ -20,12 +20,12 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 66 -->
-`dry_run.py` currently holds Tests 1-66. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 67 -->
+`dry_run.py` currently holds Tests 1-67. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
-Exchange directory: `...\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI` (hard-coded in both files).
+Exchange directory: `...\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI` (hard-coded in both files). `brain.py` and `twitch_bot.py` honor the environment variable `QUDAI_EXCHANGE_DIR` instead (the test suite points it at a temp folder so tests can never touch the real game files), and `QUDAI_LM_URL` replaces the LM Studio endpoint (tests use a dead port for deterministic, offline runs). `active.flag` is removed only when the brain is **launched** (`remove_stale_flag()` in `main()`), never at import.
 
 | File | Direction | Notes |
 |---|---|---|

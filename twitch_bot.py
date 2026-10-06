@@ -9,7 +9,7 @@ import threading
 from collections import Counter
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "twitch_config.json")
-EXCHANGE_DIR = r"C:\Users\rsebr\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI"
+EXCHANGE_DIR = os.environ.get("QUDAI_EXCHANGE_DIR") or r"C:\Users\rsebr\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI"
 VOTES_FILE = os.path.join(EXCHANGE_DIR, "twitch_votes.json")
 LAST_STATE_FILE = os.path.join(EXCHANGE_DIR, "last_state.json")
 
