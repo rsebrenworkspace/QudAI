@@ -777,7 +777,7 @@ DESTRUCTIBLE_OBSTACLE_KEYWORDS = [
 ]
 
 
-def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False):
+def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False, exclude=None):
     """
     Finds the best adjacent destructible obstacle (e.g. plant matter, tangled mudroot)
     to attack/burrow through when the agent is trapped in an enclosed pocket.
@@ -792,6 +792,8 @@ def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False)
     tx, ty = target_pos if target_pos else (px, py)
 
     for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]:
+        if exclude and d in exclude:
+            continue
         info = surroundings.get(d, "").lower()
         if "[blocked:" in info or "impassable" in info or "wall" in info:
             if any(k in info for k in DESTRUCTIBLE_OBSTACLE_KEYWORDS):
@@ -1089,6 +1091,75 @@ def get_adjacent_threats(surroundings, companions=None, cur_pos=None):
     if cur_pos:
         adj = drop_companion_cells(adj, cur_pos, companions)
     return adj
+
+
+# Burrow progress (HANDOFF issue 45): C# reports each ATTACK_WALL swing in `last_burrow` (target HP before/after, destroyed).
+BURROW_STALL_LIMIT = 3          # swings that did no damage before the target is written off
+BURROW_BLOCK_TURNS = 400
+BURROW_BLOCKED = {}             # (zone_id, x, y) -> TURN_CLOCK value until which this obstacle is not burrowed
+BURROW_PROGRESS = {}            # (zone_id, x, y) -> {"stalled": int}
+BURROW_LAST_SEQ = {"seq": 0}
+
+
+def note_burrow_progress(game_state):
+    """Reads the engine's report of the last burrow swing. Keep swinging while the target loses hit points; write it off
+    when it has no hit points, or three swings in a row did no damage; forget it when it is destroyed."""
+    lb = game_state.get("last_burrow")
+    if not lb or lb.get("seq", 0) <= BURROW_LAST_SEQ["seq"]:
+        return
+    BURROW_LAST_SEQ["seq"] = lb.get("seq", 0)
+    key = (game_state.get("zone_id"), lb.get("x"), lb.get("y"))
+    name = lb.get("name", "obstacle")
+    if lb.get("destroyed"):
+        BURROW_PROGRESS.pop(key, None)
+        BURROW_BLOCKED.pop(key, None)
+        print(f"[BURROW] {name} destroyed.")
+        return
+    if not lb.get("has_hp"):
+        BURROW_BLOCKED[key] = TURN_CLOCK + BURROW_BLOCK_TURNS
+        print(f"[BURROW] {name} has no hit points: it cannot be broken. Writing it off.")
+        return
+    prog = BURROW_PROGRESS.setdefault(key, {"stalled": 0})
+    if lb.get("hp_after", 0) >= lb.get("hp_before", 0):
+        prog["stalled"] += 1
+        if prog["stalled"] >= BURROW_STALL_LIMIT:
+            BURROW_BLOCKED[key] = TURN_CLOCK + BURROW_BLOCK_TURNS
+            print(f"[BURROW] {name} took no damage in {BURROW_STALL_LIMIT} swings (HP {lb.get('hp_after')}/{lb.get('max_hp')}). Writing it off.")
+    else:
+        prog["stalled"] = 0
+        print(f"[BURROW] {name}: HP {lb.get('hp_after')}/{lb.get('max_hp')}.")
+
+
+def blocked_burrow_dirs(zone_id, cur_pos):
+    """Directions whose adjacent cell holds an obstacle already written off as unbreakable."""
+    out = set()
+    for d, (dx, dy) in CARDINAL_OFFSETS.items():
+        exp = BURROW_BLOCKED.get((zone_id, cur_pos[0] + dx, cur_pos[1] + dy))
+        if exp is not None and exp > TURN_CLOCK:
+            out.add(d)
+    return out
+
+
+def guard_blocked_burrow(action, reason, surroundings, cur_pos, zone_id, is_town=False):
+    """Replaces a burrow (ATTACK_WALL) aimed at an obstacle written off as unbreakable: another breakable obstacle if one
+    exists, otherwise a free move, otherwise a passed turn. Returns (action, reason)."""
+    if not action.startswith("ATTACK_WALL"):
+        return action, reason
+    parts = action.split(":")
+    if len(parts) < 2:
+        return action, reason
+    bad = blocked_burrow_dirs(zone_id, cur_pos)
+    if parts[1].strip().upper() not in bad:
+        return action, reason
+    alt, info = find_burrow_direction(surroundings, cur_pos, None, is_town=is_town, exclude=bad)
+    if alt:
+        return f"ATTACK_WALL:{alt}", f"[Burrow] {parts[1]} is unbreakable; trying {info} ({alt}) instead."
+    moves = [m for m in get_valid_moves(surroundings, cur_pos, None, is_in_combat=False)
+             if "[companion" not in surroundings.get(m[5:], "").lower()]
+    if moves:
+        moves.sort(key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+        return moves[0], f"[Burrow] {parts[1]} is unbreakable and nothing else is breakable; taking the least-visited free move."
+    return "PASS", f"[Burrow] {parts[1]} is unbreakable and nothing else is breakable; passing the turn."
 
 
 COMPANION_BLOCK = {"pos": None, "tries": 0}   # where a companion has been blocking the only exit, and how many tries
@@ -2987,6 +3058,7 @@ def main():
                     consecutive_kites = 0
 
                 update_zone_records(game_state)
+                note_burrow_progress(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
 
@@ -3280,6 +3352,7 @@ def main():
                 else:
                     action_repeat_count = 0
 
+                action, reason = guard_blocked_burrow(action, reason, surroundings, cur_pos, current_zone_id, is_town_zone(game_state))
                 action, reason = guard_companion_blocked_burrow(action, reason, surroundings, cur_pos)
 
                 last_executed_action = action

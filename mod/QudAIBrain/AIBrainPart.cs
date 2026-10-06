@@ -205,6 +205,13 @@ namespace QudAIBrain
         // including solid rock that can never be revealed, so Python chased the centroid of rock. A frontier is an explored,
         // walkable "access" cell that touches an unexplored cell. We export, per quadrant, the nearest access cells the ENGINE
         // pathfinder (AutoAct.TryFindPathStep) can actually route to, skipping cells the player has already stood on.
+        // ---- Burrow progress (HANDOFF issue 45): the result of the last ATTACK_WALL swing, so Python can tell a tree that is
+        // losing hit points from one that never will (no hit points, or damage that does nothing).
+        private static int burrowSeq = 0;
+        private static string lastBurrowJson = "null";
+
+        private static string LastBurrowJson() { return "\"last_burrow\": " + lastBurrowJson + ","; }
+
         private const int FrontierPerQuadrant = 3;
         private const int FrontierPathChecksPerQuadrant = 6;
         private static readonly HashSet<string> frontierVisited = new HashSet<string>();
@@ -1202,6 +1209,7 @@ namespace QudAIBrain
                 sb.Append($"\"nearest_unexplored_y\": {nearestUnexpY},");
                 sb.Append($"\"nearest_unexplored_dist\": {(minUnexpDist != int.MaxValue ? minUnexpDist : -1)},");
                 sb.Append(BuildFrontierJson(player, currentCell, isAutoexploreStuck || isZoneFullyExplored));
+                sb.Append(LastBurrowJson());
 
                 string reachableEdges = "";
                 try
@@ -1841,6 +1849,9 @@ namespace QudAIBrain
                     {
                         int energyBefore = player.Energy?.Value ?? 0;
                         UnityEngine.Debug.Log($"[QudAI ATTACK_WALL] Burrowing through wall/obstacle {targetWall.DisplayNameOnly} ({dir}) at ({targetCell.X}, {targetCell.Y})");
+                        bool burrowHasHp = false;
+                        int burrowHpBefore = 0, burrowMaxHp = 0;
+                        try { burrowHasHp = targetWall.HasStat("Hitpoints"); burrowHpBefore = targetWall.hitpoints; burrowMaxHp = targetWall.baseHitpoints; } catch { }
                         try
                         {
                             player.PerformMeleeAttack(targetWall);
@@ -1849,6 +1860,20 @@ namespace QudAIBrain
                         {
                             UnityEngine.Debug.LogError("[QudAI ATTACK_WALL Error] " + ex.ToString());
                         }
+                        try
+                        {
+                            int burrowHpAfter = burrowHpBefore;
+                            bool burrowDestroyed = false;
+                            try { burrowHpAfter = targetWall.hitpoints; } catch { }
+                            try { burrowDestroyed = (burrowHasHp && burrowHpAfter <= 0) || (targetCell.Objects != null && !targetCell.Objects.Contains(targetWall)); } catch { }
+                            burrowSeq++;
+                            lastBurrowJson = "{\"seq\": " + burrowSeq + ", \"dir\": \"" + dir + "\", \"name\": \"" + EscapeJson(StripQudFormatting(targetWall.DisplayNameOnly ?? "")) +
+                                "\", \"x\": " + targetCell.X + ", \"y\": " + targetCell.Y + ", \"has_hp\": " + (burrowHasHp ? "true" : "false") +
+                                ", \"hp_before\": " + burrowHpBefore + ", \"hp_after\": " + burrowHpAfter + ", \"max_hp\": " + burrowMaxHp +
+                                ", \"destroyed\": " + (burrowDestroyed ? "true" : "false") + "}";
+                            UnityEngine.Debug.Log($"[QudAI ATTACK_WALL] {targetWall.DisplayNameOnly}: HP {burrowHpBefore} -> {burrowHpAfter}/{burrowMaxHp}{(burrowDestroyed ? " (destroyed)" : "")}");
+                        }
+                        catch { }
 
                         if (player.Energy != null && player.Energy.Value >= energyBefore)
                         {

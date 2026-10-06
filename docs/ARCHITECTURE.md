@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 62 -->
-`dry_run.py` currently holds Tests 1-62. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 63 -->
+`dry_run.py` currently holds Tests 1-63. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -125,6 +125,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 - **Vitals/progress:** `hp`, `max_hp`, `level`, `xp`, `ap`, `sp`, `mp`, `attributes`, `skills` (class and display name),
   `learnable_skills` (only affordable ones), `mutations` (`level`, `cap`, `can_level`)
 - **Position:** `x`, `y`, `z`, `zone_id`, `zone_name`, `is_settlement`, `zone_tier`
+- **Burrowing:** `last_burrow` (result of the last `ATTACK_WALL` swing: `seq`, `dir`, `name`, `x`, `y`, `has_hp`, `hp_before`, `hp_after`, `max_hp`, `destroyed`, or `null`). Python keeps swinging while the target loses HP, writes it off (400 turns) after 3 swings with no damage or at once if it has no HP, and `guard_blocked_burrow` swaps in another breakable obstacle, a free move, or a pass (T-1.19).
 - **Exploration:** `frontier_checked`, `frontier_cells`, `frontier_targets` (T-1.18: explored walkable cells touching unexplored cells that the engine pathfinder can route to, up to 3 per quadrant NW/NE/SW/SE, never cells the player already stood on; computed only while autoexplore is stuck or the zone is engine-explored: `q`, `x`, `y`, `ux`, `uy`, `dist`), `zone_fully_explored`, `autoexplore_stuck`, `unexplored_cells`, `unexplored_centroid_x/y`,
   `nearest_unexplored_x/y/dist`, `reachable_edges` (string of N/S/E/W)
 - **Move feedback:** `last_move_failed`, `last_failed_dir` (a direction, or `PATH_BLOCKED`)

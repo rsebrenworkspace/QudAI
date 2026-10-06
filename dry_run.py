@@ -3670,3 +3670,74 @@ fr_reset()
 _d = fr_decide(fr_state(27, 4, [], reach=""))
 assert _FZ not in brain.EXPLORED_ZONE_SET, "A pet-sealed corridor must not be recorded as an explored zone"
 print("  [OK] Test 62 Passed: reachable frontier targets, commitment, blacklist, honest 'nothing reachable', sealed corridor not remembered.")
+
+
+# =====================================================================
+# TEST 63: Burrow progress from the engine's report (HANDOFF issue 45)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 63: keep swinging while the target loses HP; write off targets that take no damage or have no HP")
+print("="*50)
+
+_BZ2 = "JoppaWorld.11.21.1.2.11"
+def burrow_reset():
+    brain.BURROW_BLOCKED.clear(); brain.BURROW_PROGRESS.clear(); brain.BURROW_LAST_SEQ["seq"] = 0; brain.TURN_CLOCK = 0
+
+def lb(seq, hp_before, hp_after, x=13, y=11, d="N", has_hp=True, destroyed=False, name="shimscale mangrove tree", max_hp=25):
+    return {"zone_id": _BZ2, "last_burrow": {"seq": seq, "dir": d, "name": name, "x": x, "y": y, "has_hp": has_hp,
+            "hp_before": hp_before, "hp_after": hp_after, "max_hp": max_hp, "destroyed": destroyed}}
+
+_ROCKY = "[BLOCKED: shimscale mangrove tree]"
+_surr = {"N": _ROCKY, "NE": "Clear", "NW": "Clear", "E": "Clear", "W": "Clear", "S": "Clear", "SE": "Clear", "SW": "Clear"}
+
+with _ctx.redirect_stdout(_io.StringIO()):
+    # (a) A tree that keeps losing HP is never written off, however many swings it takes
+    burrow_reset()
+    for _i in range(1, 15):
+        brain.note_burrow_progress(lb(_i, 25 - _i + 1, 25 - _i))
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12)), "A target that is losing HP must keep being attacked"
+    # (b) Three swings with no damage write it off; one damaging swing in between resets the count
+    burrow_reset()
+    brain.note_burrow_progress(lb(1, 25, 25)); brain.note_burrow_progress(lb(2, 25, 25))
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12))
+    brain.note_burrow_progress(lb(3, 25, 24))
+    brain.note_burrow_progress(lb(4, 24, 24)); brain.note_burrow_progress(lb(5, 24, 24))
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12)), "A damaging swing must reset the stall count"
+    brain.note_burrow_progress(lb(6, 24, 24))
+    assert brain.blocked_burrow_dirs(_BZ2, (13, 12)) == {"N"}, "Three stalled swings must write the target off"
+    # (c) No hit points at all: written off after one swing
+    burrow_reset()
+    brain.note_burrow_progress(lb(1, 0, 0, has_hp=False, name="boulder", max_hp=0))
+    assert brain.blocked_burrow_dirs(_BZ2, (13, 12)) == {"N"}
+    # (d) Destroyed clears everything; a repeated report (same seq) is ignored
+    burrow_reset()
+    brain.note_burrow_progress(lb(1, 25, 25)); brain.note_burrow_progress(lb(2, 25, 25)); brain.note_burrow_progress(lb(3, 25, 25))
+    assert brain.blocked_burrow_dirs(_BZ2, (13, 12)) == {"N"}
+    brain.note_burrow_progress(lb(4, 3, 0, destroyed=True))
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12)), "A destroyed obstacle must clear its write-off"
+    brain.note_burrow_progress(lb(4, 25, 25)); brain.note_burrow_progress(lb(4, 25, 25))
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12)), "A repeated (old) sequence number must be ignored"
+    # (e) Write-offs expire
+    burrow_reset()
+    brain.note_burrow_progress(lb(1, 0, 0, has_hp=False))
+    brain.TURN_CLOCK += brain.BURROW_BLOCK_TURNS + 1
+    assert not brain.blocked_burrow_dirs(_BZ2, (13, 12)), "Write-offs must expire"
+
+    # (f) The guard: a burrow aimed at a written-off obstacle becomes another breakable obstacle, else a free move, else PASS
+    burrow_reset()
+    brain.note_burrow_progress(lb(1, 0, 0, has_hp=False))
+    _two = dict(_surr, E="[BLOCKED: witchwood tree]")
+    _a, _r = brain.guard_blocked_burrow("ATTACK_WALL:N", "x", _two, (13, 12), _BZ2)
+    assert _a == "ATTACK_WALL:E", f"Should pick the other breakable obstacle, got {_a}"
+    _a, _r = brain.guard_blocked_burrow("ATTACK_WALL:N", "x", _surr, (13, 12), _BZ2)
+    assert not _a.startswith("ATTACK_WALL") and (_a.startswith("MOVE_") or _a == "PASS"), f"No alternative: must not burrow the written-off tree, got {_a}"
+    _walled = {d: "[BLOCKED: impassable terrain], [BLOCKED: shale]" for d in ["N", "NE", "NW", "E", "W", "S", "SE", "SW"]}
+    brain.BURROW_BLOCKED[(_BZ2, 13, 11)] = brain.TURN_CLOCK + 100
+    _a, _r = brain.guard_blocked_burrow("ATTACK_WALL:N", "x", _walled, (13, 12), _BZ2)
+    assert _a != "ATTACK_WALL:N", f"A written-off target must never be attacked again, got {_a}"
+    _a, _r = brain.guard_blocked_burrow("ATTACK_WALL:E", "x", _two, (13, 12), _BZ2)
+    assert _a == "ATTACK_WALL:E", "Burrows at healthy targets are untouched"
+    _a, _r = brain.guard_blocked_burrow("MOVE_S", "x", _surr, (13, 12), _BZ2)
+    assert _a == "MOVE_S", "Other actions are untouched"
+    burrow_reset()
+print("  [OK] Test 63 Passed: burrowing continues while HP drops, stops on stalled/HP-less targets, picks alternatives, expires.")
