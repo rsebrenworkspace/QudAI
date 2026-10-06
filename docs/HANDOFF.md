@@ -1,6 +1,6 @@
 # QudAI: Handoff
 
-<!-- handoff-updated: 2026-10-05 -->
+<!-- handoff-updated: 2026-10-06 -->
 
 > Read this first, update it last. Newest session on top. Keep *Current state*, *Open issues*, and *Next steps* true;
 > move finished items into the session log. Tag confidence: `[verified in game DATE]`, `[verified in code @commit]`, `[unverified]`.
@@ -125,6 +125,11 @@ To discriminate (do this on the next hang, **before restarting the game**):
 - Confirm in Antigravity's Rules panel that `.agents/rules/read_project_docs.md` is active and set to always apply, and that the `@../../AGENTS.md` reference resolves. [unverified: based on third-party docs]
 
 ## Session log (newest first)
+
+### 2026-10-06: T-1.19..1.21 merged to `main` (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
+- Merged `task/1.19-burrow-hp`, `task/1.20-frontier-failure`, `task/1.21-frontier-trees` (one merge, pushed) at the human's request after a test run. `[verified in game, human-reported + logs]`: the build compiled ("Success :)", `Patch check: 10/10`); the engine-reachable frontier logic ended its run with "No reachable unexplored area: navigating toward the East zone exit", matching the human's manual finding that the dungeon was a dead end; no pacing or ping-pong at the end. The human then took over, fought denzins, and the character died (Gen 11, level 6, 2809 turns, killed by a segmented mirthworm; a manual death, not an AI decision).
+- **Not exercised in that run (compiled and unit-tested only):** `TryBreakPathObstacle` / `[QudAI PATH_OBSTACLE]`, the per-swing `last_burrow` HP report, `note_burrow_progress` write-offs. No tree was hacked on this run. Watch for them next time.
+- The decision trace and exit log keep growing under `memory/` (rotation at 3 MB for the trace); neither is committed.
 
 ### 2026-10-05 (T-1.21): frontier walks vs the breaker, and trees (Claude Code, Sonnet 5.5 `claude-sonnet-5-5`)
 - Branch `task/1.21-frontier-trees` (from `task/1.20-frontier-failure`; T-1.19/1.20 are also unmerged). Python: `is_frontier_walk` exempts frontier walks from the oscillation breaker; an unbreakable obstacle (`note_burrow_progress`) writes off the committed frontier target. C#: `TryBreakPathObstacle` in `NAVIGATE_TO_CELL`. Test 65. All 65 pass with the LLM forced offline. [verified in code]
