@@ -1,6 +1,6 @@
 # QudAI: Handoff
 
-<!-- handoff-updated: 2026-10-04 -->
+<!-- handoff-updated: 2026-10-05 -->
 
 > Read this first, update it last. Newest session on top. Keep *Current state*, *Open issues*, and *Next steps* true;
 > move finished items into the session log. Tag confidence: `[verified in game DATE]`, `[verified in code @commit]`, `[unverified]`.
