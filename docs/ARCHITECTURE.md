@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 61 -->
-`dry_run.py` currently holds Tests 1-61. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 62 -->
+`dry_run.py` currently holds Tests 1-62. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -61,7 +61,7 @@ emergency retreat to stairs up (underground, low HP), priority AP spend.
 4. Ammo top-off; 4B. companion recruitment
 5. Stairs/delving (surface needs level gate; underground is bold if HP >= 70%)
 6. Inward border steer (arrival grace only: first ~4 `ZONE_STEP_COUNT` on a border tile; the zone-hopping flag no longer extends it, T-1.16)
-7. Native `AUTOEXPLORE` (unless stuck/explored/swimming)
+7. Native `AUTOEXPLORE` (unless stuck/explored/swimming). When autoexplore is stuck and C# reports `frontier_checked`, step 8 navigates (`NAVIGATE_TO_CELL`, committed via `FRONTIER_COMMIT`) to the nearest engine-reachable `frontier_targets` entry instead of the centroid of all unrevealed cells; none reachable with exits reachable means the engine says only rock is left (zone remembered as explored)
 8. Macro-sector navigation across water/obstacles (not in towns)
 9. Local unvisited frontier
 10. Zone-exit transition (committed exit)
@@ -125,7 +125,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 - **Vitals/progress:** `hp`, `max_hp`, `level`, `xp`, `ap`, `sp`, `mp`, `attributes`, `skills` (class and display name),
   `learnable_skills` (only affordable ones), `mutations` (`level`, `cap`, `can_level`)
 - **Position:** `x`, `y`, `z`, `zone_id`, `zone_name`, `is_settlement`, `zone_tier`
-- **Exploration:** `zone_fully_explored`, `autoexplore_stuck`, `unexplored_cells`, `unexplored_centroid_x/y`,
+- **Exploration:** `frontier_checked`, `frontier_cells`, `frontier_targets` (T-1.18: explored walkable cells touching unexplored cells that the engine pathfinder can route to, up to 3 per quadrant NW/NE/SW/SE, never cells the player already stood on; computed only while autoexplore is stuck or the zone is engine-explored: `q`, `x`, `y`, `ux`, `uy`, `dist`), `zone_fully_explored`, `autoexplore_stuck`, `unexplored_cells`, `unexplored_centroid_x/y`,
   `nearest_unexplored_x/y/dist`, `reachable_edges` (string of N/S/E/W)
 - **Move feedback:** `last_move_failed`, `last_failed_dir` (a direction, or `PATH_BLOCKED`)
 - **Survival:** `hunger_level`, `is_hungry`, `is_famished`, `has_food`, `food_count`, `food_items`, `corpses_nearby`,

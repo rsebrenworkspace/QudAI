@@ -3598,3 +3598,75 @@ brain.DECISION_TRACE_PATH = _os.path.join(_tdir, "no", "such", "dir", "t.jsonl")
 brain.log_decision_trace({"t": 4})           # an unwritable path must never raise
 brain.DECISION_TRACE_PATH, brain.DECISION_TRACE_MAX_BYTES = _saved_tp, _saved_max
 print("  [OK] Test 61 Passed: decision trace is written, rotated and failure-proof.")
+
+
+# =====================================================================
+# TEST 62: Engine-reachable frontier targets replace the rock centroid (HANDOFF issue 44)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 62: Navigate to a reachable frontier (e.g. the unexplored SW corner), committed, never to the rock centroid")
+print("="*50)
+
+_FZ = "JoppaWorld.11.21.1.2.11"
+def fr_reset():
+    brain.EXPLORED_ZONE_SET.clear(); brain.stuck_autoexplore_zones.clear(); brain.ENGINE_EXPLORED_LAST.clear()
+    brain.UNREACHABLE_SECTORS.clear(); brain.FRONTIER_COMMIT.update({"zone": None, "target": None})
+    brain.CURRENT_TRACKED_ZONE = _FZ; brain.last_action = None; brain.visit_counts.clear()
+    brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+    brain.EXIT_SUPPRESS_UNTIL.clear(); brain.EXIT_FAILURES.clear(); brain.FAILED_ZONE_EXITS = set()
+    brain.ZONE_HOPPING_DETECTED = False; brain.ZONE_STEP_COUNT = 30; brain.LAST_ZONE_ENTRY = None
+
+def fr_state(x, y, targets, checked=True, reach="NSEW"):
+    s = {d: "Clear" for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]}
+    return {"hp": 35, "max_hp": 35, "x": x, "y": y, "z": 11, "level": 5, "calling": "Warden", "ap": 0, "sp": 0, "mp": 0, "skills": [],
+            "zone_id": _FZ, "zone_name": "subterranean salt marsh", "zone_fully_explored": False, "autoexplore_stuck": True,
+            "unexplored_cells": 1704, "unexplored_centroid_x": 40, "unexplored_centroid_y": 11,
+            "nearest_unexplored_x": 25, "nearest_unexplored_y": 2, "nearest_unexplored_dist": 3,
+            "reachable_edges": reach, "last_move_failed": False, "last_failed_dir": "", "hostiles_nearby": False, "hostiles_adjacent": False,
+            "food_count": 5, "has_food": True, "food_sources": [], "visible_entities": [], "surroundings": s,
+            "frontier_checked": checked, "frontier_cells": len(targets), "frontier_targets": targets}
+
+_sw = {"q": "SW", "x": 12, "y": 20, "ux": 11, "uy": 21, "dist": 20}
+_ne = {"q": "NE", "x": 60, "y": 3, "ux": 61, "uy": 2, "dist": 33}
+def fr_decide(st):
+    with _ctx.redirect_stdout(_io.StringIO()):
+        return brain.query_decision(st, took_damage=False, enemies=[])
+
+# (a) A reachable SW frontier is chosen, with the engine pathfinder; the rock centroid (40,11) is ignored
+fr_reset()
+_d = fr_decide(fr_state(30, 11, [_sw, _ne]))
+print("  (a)", _d["action"], "|", _d["reason"][:90])
+assert _d["action"] == "NAVIGATE_TO_CELL:12,20", f"Expected the nearest reachable frontier, got {_d}"
+assert _d["reason"].startswith("Frontier:"), _d
+
+# (b) Commitment: a nearer target appearing mid-walk does not flip him; once reached he picks the next one
+fr_reset()
+_picked = []
+_new_near = {"q": "SE", "x": 33, "y": 14, "ux": 34, "uy": 15, "dist": 4}
+for _step, _pos in enumerate([(30, 11), (28, 13), (26, 15), (22, 17), (18, 19)]):
+    _targets = [_sw, _ne] + ([_new_near] if _step >= 2 else [])
+    _picked.append(fr_decide(fr_state(_pos[0], _pos[1], _targets))["action"])
+print("  (b)", _picked)
+assert set(_picked) == {"NAVIGATE_TO_CELL:12,20"}, f"Must stay committed to the first target: {_picked}"
+_d = fr_decide(fr_state(12, 20, [_ne, _new_near]))        # reached it (C# no longer lists visited cells)
+assert _d["action"] in ("NAVIGATE_TO_CELL:33,14", "NAVIGATE_TO_CELL:60,3"), f"After arriving he must pick the next frontier, got {_d}"
+
+# (c) A blacklisted (unreachable-at-runtime) target is skipped
+fr_reset()
+brain.UNREACHABLE_SECTORS.add((_FZ, (12, 20)))
+_d = fr_decide(fr_state(30, 11, [_sw, _ne]))
+assert _d["action"] == "NAVIGATE_TO_CELL:60,3", f"Blacklisted target must be skipped, got {_d}"
+
+# (d) Nothing reachable and exits are reachable: the engine says the rest is rock. Say so; remember it; do not chase the centroid
+fr_reset()
+_d = fr_decide(fr_state(30, 11, []))
+print("  (d)", _d["action"], "|", _d["reason"][:90])
+assert _d["action"] != "NAVIGATE_TO_CELL:40,11", f"Must not chase the rock centroid, got {_d}"
+assert _d["action"].startswith("NAVIGATE_ZONE_EXIT"), f"With nothing reachable left he should leave the zone, got {_d}"
+assert _FZ in brain.EXPLORED_ZONE_SET, "Engine-confirmed: no reachable frontier and exits reachable"
+
+# (e) Sealed in (the pet blocks the corridor: no reachable edges AND no frontier): transient, must NOT be remembered as explored
+fr_reset()
+_d = fr_decide(fr_state(27, 4, [], reach=""))
+assert _FZ not in brain.EXPLORED_ZONE_SET, "A pet-sealed corridor must not be recorded as an explored zone"
+print("  [OK] Test 62 Passed: reachable frontier targets, commitment, blacklist, honest 'nothing reachable', sealed corridor not remembered.")

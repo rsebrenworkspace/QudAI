@@ -175,6 +175,9 @@ def engine_confirms_explored(game_state):
     unexp = game_state.get("unexplored_cells")
     if unexp == 0:
         return True
+    if (game_state.get("frontier_checked") and not game_state.get("frontier_targets")
+            and game_state.get("reachable_edges")):
+        return True   # the engine pathfinder finds nothing left to explore (and exits are reachable, so he is not merely sealed in)
     if not game_state.get("zone_fully_explored", False):
         return False
     if game_state.get("z", 10) > 10:
@@ -266,6 +269,36 @@ def update_zone_records(game_state):
     CURRENT_TRACKED_ZONE = zone_id
     current_zone_id = zone_id
     ZONE_STEP_COUNT += 1
+
+
+FRONTIER_COMMIT = {"zone": None, "target": None}
+
+
+def pick_frontier_target(game_state, cur_pos, zone_id):
+    """Chooses an engine-reachable frontier target from C#'s `frontier_targets` (explored walkable cells that touch
+    unexplored cells and that AutoAct.TryFindPathStep can route to, never ones the player already stood on).
+
+    Commits to one target until it disappears from the list, is reached, or is blacklisted, so he stops flip-flopping.
+    Returns ((x, y), reason) or (None, None). Only meaningful when `frontier_checked` is true."""
+    targets = []
+    for tg in game_state.get("frontier_targets", []) or []:
+        x, y = tg.get("x"), tg.get("y")
+        if x is None or y is None or (x, y) == tuple(cur_pos) or (zone_id, (x, y)) in UNREACHABLE_SECTORS:
+            continue
+        targets.append(tg)
+    if not targets:
+        FRONTIER_COMMIT.update({"zone": None, "target": None})
+        return None, None
+    chosen = None
+    if FRONTIER_COMMIT["zone"] == zone_id and FRONTIER_COMMIT["target"] is not None:
+        chosen = next((tg for tg in targets if (tg["x"], tg["y"]) == FRONTIER_COMMIT["target"]), None)
+    if chosen is None:
+        chosen = min(targets, key=lambda tg: (tg.get("dist", 999), tg.get("q", "")))
+        FRONTIER_COMMIT.update({"zone": zone_id, "target": (chosen["x"], chosen["y"])})
+    return (chosen["x"], chosen["y"]), (
+        f"Frontier: engine-reachable unexplored area in the {chosen.get('q', '?')} quadrant at ({chosen['x']}, {chosen['y']}), "
+        f"{chosen.get('dist', '?')} tiles away"
+    )
 
 
 def find_zone_unexplored_frontier(game_state, cur_pos, visit_counts):
@@ -2689,7 +2722,17 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         has_unexplored_sector = (not is_town) and (not zone_fully_explored) and (not is_exiting_zone) and (unexp_cells is not None and unexp_cells > 0)
         sector_target = None
         sector_reason = ""
-        if has_unexplored_sector:
+        sector_is_frontier = False
+        frontier_checked = bool(game_state.get("frontier_checked"))
+        if has_unexplored_sector and frontier_checked:
+            sector_target, sector_reason = pick_frontier_target(game_state, cur_pos, zone_id)
+            sector_is_frontier = sector_target is not None
+            if sector_target is None and game_state.get("reachable_edges"):
+                # The engine pathfinder finds no reachable unexplored area: what is left is rock. Leave, and say so.
+                zone_fully_explored = True
+                zone_label = "No reachable unexplored area"
+                has_unexplored_sector = False
+        elif has_unexplored_sector:
             cx = game_state.get("unexplored_centroid_x", -1)
             cy = game_state.get("unexplored_centroid_y", -1)
             nx = game_state.get("nearest_unexplored_x", -1)
@@ -2707,7 +2750,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 sector_target, sector_reason = cand_target, cand_reason
 
         best_sector_m = None
-        if sector_target and valid_moves:
+        if sector_target and valid_moves and not sector_is_frontier:
             best_sector_m = get_best_move_towards(cur_pos, sector_target, valid_moves, surroundings)
 
         is_swimming_now = game_state.get("is_swimming", False) or any("swim" in ef.lower() for ef in game_state.get("effects", []))
@@ -2722,7 +2765,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             # Check if trapped in an enclosed pocket (visited multiple times with all moves leading to visited tiles)
             all_moves_visited = (not valid_moves) or all(visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) >= 1 for m in valid_moves)
             # In towns/settlements, NEVER attack walls or whack huts!
-            if not is_town and (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited:
+            if not is_town and not sector_is_frontier and (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited:
                 burrow_d, burrow_info = find_burrow_direction(surroundings, cur_pos, sector_target, is_town=is_town)
                 if burrow_d:
                     return {
@@ -2731,7 +2774,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     }
 
             # If stuck in an enclosed pocket with no burrow and all moves already visited, don't force moves toward unreachable sector!
-            is_stuck_in_visited_pocket = (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited
+            is_stuck_in_visited_pocket = (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited and not sector_is_frontier
             if not is_stuck_in_visited_pocket:
                 if best_sector_m:
                     return {"action": best_sector_m, "reason": sector_reason}
@@ -3213,7 +3256,7 @@ def main():
                         ))
                         action = open_escapes[0]
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}). Escaping cycle towards unvisited frontier {action}."
-                    elif companion_escapes and (not valid_m or all(visit_counts.get((px + CARDINAL_OFFSETS[m[5:]][0], py + CARDINAL_OFFSETS[m[5:]][1]), 0) >= 2 for m in valid_m)):
+                    elif companion_escapes and not valid_m:
                         action = companion_escapes[0]
                         reason = f"[Loop Breaker] Corridor blocked by companion: swapping places via {action} to break bottleneck."
                     else:

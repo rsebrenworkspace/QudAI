@@ -200,6 +200,81 @@ namespace QudAIBrain
             return list;
         }
 
+        // ---- Reachable frontier (HANDOFF issue 43/44; AGENTS R2: the engine owns "what can I still explore?") ----
+        // `unexplored_cells`, `nearest_unexplored_*` and `unexplored_centroid_*` count EVERY cell never marked explored,
+        // including solid rock that can never be revealed, so Python chased the centroid of rock. A frontier is an explored,
+        // walkable "access" cell that touches an unexplored cell. We export, per quadrant, the nearest access cells the ENGINE
+        // pathfinder (AutoAct.TryFindPathStep) can actually route to, skipping cells the player has already stood on.
+        private const int FrontierPerQuadrant = 3;
+        private const int FrontierPathChecksPerQuadrant = 6;
+        private static readonly HashSet<string> frontierVisited = new HashSet<string>();
+
+        private static string BuildFrontierJson(GameObject player, Cell currentCell, bool compute)
+        {
+            var entries = new List<string>();
+            int frontierCells = 0;
+            bool checkedFlag = false;
+            try
+            {
+                Zone zone = currentCell?.ParentZone;
+                if (zone != null && player != null)
+                {
+                    string zid = zone.ZoneID ?? "";
+                    frontierVisited.Add(zid + ":" + currentCell.X + "," + currentCell.Y);
+                    if (compute && !zone.IsWorldMap())
+                    {
+                        checkedFlag = true;
+                        int px = currentCell.X, py = currentCell.Y;
+                        var access = new Dictionary<int, Tuple<Cell, Cell>>();
+                        for (int x = 0; x < zone.Width; x++)
+                        {
+                            for (int y = 0; y < zone.Height; y++)
+                            {
+                                Cell u = zone.GetCell(x, y);
+                                if (u == null || u.Explored) continue;
+                                for (int dx = -1; dx <= 1; dx++)
+                                {
+                                    for (int dy = -1; dy <= 1; dy++)
+                                    {
+                                        if (dx == 0 && dy == 0) continue;
+                                        Cell a = zone.GetCell(x + dx, y + dy);
+                                        if (a == null || !a.Explored || !a.IsPassable(player, false)) continue;
+                                        if (frontierVisited.Contains(zid + ":" + a.X + "," + a.Y)) continue;
+                                        int key = a.Y * 100 + a.X;
+                                        if (!access.ContainsKey(key)) access[key] = Tuple.Create(a, u);
+                                    }
+                                }
+                            }
+                        }
+                        frontierCells = access.Count;
+                        var ordered = access.Values
+                            .OrderBy(tp => Math.Max(Math.Abs(tp.Item1.X - px), Math.Abs(tp.Item1.Y - py)))
+                            .ToList();
+                        var perQuad = new Dictionary<string, int>();
+                        var checksQuad = new Dictionary<string, int>();
+                        foreach (var tp in ordered)
+                        {
+                            Cell a = tp.Item1;
+                            string quad = (a.Y < zone.Height / 2 ? "N" : "S") + (a.X < zone.Width / 2 ? "W" : "E");
+                            int have; perQuad.TryGetValue(quad, out have);
+                            int tried; checksQuad.TryGetValue(quad, out tried);
+                            if (have >= FrontierPerQuadrant || tried >= FrontierPathChecksPerQuadrant) continue;
+                            checksQuad[quad] = tried + 1;
+                            string step = null;
+                            bool ok = false;
+                            try { ok = AutoAct.TryFindPathStep(a, out step) && !string.IsNullOrEmpty(step) && step != "."; } catch { }
+                            if (!ok) continue;
+                            perQuad[quad] = have + 1;
+                            int fdist = Math.Max(Math.Abs(a.X - px), Math.Abs(a.Y - py));
+                            entries.Add("{\"q\": \"" + quad + "\", \"x\": " + a.X + ", \"y\": " + a.Y + ", \"ux\": " + tp.Item2.X + ", \"uy\": " + tp.Item2.Y + ", \"dist\": " + fdist + "}");
+                        }
+                    }
+                }
+            }
+            catch { }
+            return "\"frontier_checked\": " + (checkedFlag ? "true" : "false") + ", \"frontier_cells\": " + frontierCells + ", \"frontier_targets\": [" + string.Join(",", entries) + "],";
+        }
+
         // ---- Food (HANDOFF issue 34): only real butcherable corpse ITEMS count. Living creatures carry a `Corpse` part
         // (it makes their corpse on death), so testing for `Corpse` flagged every adjacent animal and pet as a corpse.
         // A charred corpse (killed by Fire/Light, e.g. Lase) has no Butcherable part and is correctly excluded.
@@ -1126,6 +1201,7 @@ namespace QudAIBrain
                 sb.Append($"\"nearest_unexplored_x\": {nearestUnexpX},");
                 sb.Append($"\"nearest_unexplored_y\": {nearestUnexpY},");
                 sb.Append($"\"nearest_unexplored_dist\": {(minUnexpDist != int.MaxValue ? minUnexpDist : -1)},");
+                sb.Append(BuildFrontierJson(player, currentCell, isAutoexploreStuck || isZoneFullyExplored));
 
                 string reachableEdges = "";
                 try
