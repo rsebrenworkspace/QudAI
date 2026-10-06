@@ -4043,3 +4043,41 @@ _st = json.load(open(brain.ABILITY_STATS_PATH, encoding="utf-8"))["CommandLase"]
 assert (_st["attempts"], _st["fired"], _st["refused"]) == (3, 1, 1), _st
 brain.ABILITY_STATS_PATH = _old_stats
 print("  [OK] Test 69 Passed: abilities match by exact command; Lase is not a charge; unclassified abilities are never auto-used.")
+
+# ---------------------------------------------------------------------------
+# Test 70: a water/sector target that never gets closer is written off (HANDOFF issue 53), multi-turn
+# ---------------------------------------------------------------------------
+brain.UNREACHABLE_SECTORS.clear(); brain.SECTOR_GIVEUP.clear(); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+_z = "TestWaterZone.1"; _tgt = (37, 11)
+_flip = [(45, 13), (45, 14)]
+_alive = [brain.sector_target_ok(_z, _tgt, _flip[i % 2]) for i in range(brain.SECTOR_STALL_LIMIT + 3)]
+assert _alive[0] and not all(_alive), "A target that is never approached must be written off"
+assert (_z, _tgt) in brain.UNREACHABLE_SECTORS
+# real progress keeps the target alive indefinitely
+brain.UNREACHABLE_SECTORS.clear(); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+assert all(brain.sector_target_ok(_z, _tgt, (60 - i, 11)) for i in range(23)), "Steady progress must never be written off"
+# the moving 'nearest cell' chase stalls per zone, not per cell
+brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+_n = [brain.sector_target_ok(_z, (43, 12 + i % 2), _flip[i % 2], "nearest") for i in range(brain.SECTOR_STALL_LIMIT + 3)]
+assert not all(_n) and _z in brain.SECTOR_GIVEUP
+brain.UNREACHABLE_SECTORS.clear(); brain.SECTOR_GIVEUP.clear(); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+print("  [OK] Test 70 Passed: a sector target with no progress is written off; steady progress is never cut off.")
+
+# ---------------------------------------------------------------------------
+# Test 71: Burrowing Claws are off in settlements (R7) and on elsewhere, without flicker (HANDOFF issue 54)
+# ---------------------------------------------------------------------------
+_claw = lambda active, **k: [dict({"name": "Burrowing Claws", "command": "CommandToggleBurrowingClaws", "cooldown": 0, "usable": True, "active": active}, **k)]
+brain.TURN_CLOCK = 1000; brain.CLAWS_LAST_TOGGLE["turn"] = -10_000
+_d = brain.claws_toggle_action(_claw(True), True)
+assert _d and _d["action"] == "USE_ABILITY:CommandToggleBurrowingClaws" and "OFF" in _d["reason"], "Claws on in a town must be switched off"
+assert brain.claws_toggle_action(_claw(False), True) is None, "Already off in a town: leave it"
+brain.TURN_CLOCK = 1010
+assert brain.claws_toggle_action(_claw(False), False) is None, "No toggling again within the gap (flicker guard)"
+brain.TURN_CLOCK = 1000 + brain.CLAWS_TOGGLE_GAP
+_d = brain.claws_toggle_action(_claw(False), False)
+assert _d and "ON" in _d["reason"], "Claws off outside a town must be switched on after the gap"
+brain.TURN_CLOCK = 5000
+assert brain.claws_toggle_action(_claw(True), False) is None, "Already on outside a town: leave it"
+assert brain.claws_toggle_action([], True) is None and brain.claws_toggle_action(_claw(True, usable=False), True) is None
+brain.TURN_CLOCK = 0; brain.CLAWS_LAST_TOGGLE["turn"] = -10_000
+print("  [OK] Test 71 Passed: claws off in towns, on elsewhere, with a flicker guard; no claws means no action.")

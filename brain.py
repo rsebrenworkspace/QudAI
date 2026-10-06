@@ -354,6 +354,59 @@ def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
     )
 
 
+# Water/sector traversal progress (HANDOFF issue 53): the greedy step toward a far "unexplored sector" can sit in a local minimum
+# (a bank or wall between the player and the target) and flip N/S forever. A sector target is a committed intent: if the distance
+# to it sets no new minimum for SECTOR_STALL_LIMIT turns, it is written off like any other unreachable target.
+SECTOR_STALL_LIMIT = 14
+SECTOR_PROGRESS = {"key": None, "best": None, "stall": 0}
+SECTOR_GIVEUP = set()       # zone ids where even the nearest-unexplored-cell chase stalled: stop the water traversal there
+
+
+def sector_target_ok(zone_id, target, cur_pos, kind="centroid"):
+    """Records this turn's distance to the committed sector target. False (and blacklisted) once progress has stalled."""
+    key = (zone_id, tuple(target)) if kind == "centroid" else (zone_id, kind)   # the nearest cell moves every step
+    dist = max(abs(target[0] - cur_pos[0]), abs(target[1] - cur_pos[1]))
+    if SECTOR_PROGRESS["key"] != key:
+        SECTOR_PROGRESS.update({"key": key, "best": dist, "stall": 0})
+        return True
+    if dist < SECTOR_PROGRESS["best"]:
+        SECTOR_PROGRESS.update({"best": dist, "stall": 0})
+        return True
+    SECTOR_PROGRESS["stall"] += 1
+    if SECTOR_PROGRESS["stall"] >= SECTOR_STALL_LIMIT:
+        UNREACHABLE_SECTORS.add((zone_id, tuple(target)))
+        if kind != "centroid":
+            SECTOR_GIVEUP.add(zone_id)
+        SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+        print(f"[SECTOR] No progress toward {tuple(target)} in {SECTOR_STALL_LIMIT} turns (closest {dist}). Writing it off.")
+        return False
+    return True
+
+
+# Burrowing Claws policy (HANDOFF issue 54, BACKLOG B7 promoted by the human 2026-10-06). The toggle (`CommandToggleBurrowingClaws`) is the
+# "Digging" mode: with it on, the engine pathfinder (PathAsBurrower) and bumping walls dig through them [verified in code strings; the
+# mechanism of the bump is inferred from 94 stationary NAVIGATE turns]. That is good in procedural dungeons and forbidden in a settlement (R7).
+# So: off in towns, on everywhere else. A gap between toggles stops flicker when a peaceful NPC walks in and out of view.
+CLAWS_COMMAND = "CommandToggleBurrowingClaws"
+CLAWS_TOGGLE_GAP = 25
+CLAWS_LAST_TOGGLE = {"turn": -10_000}
+
+
+def claws_toggle_action(abilities, is_town):
+    """USE_ABILITY decision that puts the claws toggle in the wanted state (off in towns, on elsewhere), or None."""
+    ab = next((a for a in abilities or [] if str(a.get("command", "")).lower() == CLAWS_COMMAND.lower()), None)
+    if not ab or not ab.get("usable", True) or ab.get("cooldown", 0) > 0:
+        return None
+    want_on = not is_town
+    if bool(ab.get("active", False)) == want_on:
+        return None
+    if TURN_CLOCK - CLAWS_LAST_TOGGLE["turn"] < CLAWS_TOGGLE_GAP:
+        return None
+    CLAWS_LAST_TOGGLE["turn"] = TURN_CLOCK
+    why = "settlements are off limits (R7): no digging through walls here" if is_town else "outside a settlement the claws dig through trees and walls on the engine's route"
+    return {"action": f"USE_ABILITY:{CLAWS_COMMAND}", "reason": f"Burrowing Claws {'ON' if want_on else 'OFF'}: {why}"}
+
+
 def find_zone_unexplored_frontier(game_state, cur_pos, visit_counts):
     """
     Finds a macro-level unexplored frontier in the current zone when local autoexplore stalls
@@ -2674,6 +2727,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             print(f"[TACTICAL COMEBACK]: Attained target Level {cur_lvl} after retreat! Ready to re-delve deeper.")
             RETREAT_TARGET_LEVEL = None
 
+        claws_decision = claws_toggle_action(abilities, is_town)
+        if claws_decision:
+            return claws_decision
+
         # 1. Autolevel unspent character points according to class doctrine
         ap = game_state.get("ap", 0)
         sp = game_state.get("sp", 0)
@@ -2920,10 +2977,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             cy = game_state.get("unexplored_centroid_y", -1)
             nx = game_state.get("nearest_unexplored_x", -1)
             ny = game_state.get("nearest_unexplored_y", -1)
-            if 0 <= cx < 80 and 0 <= cy < 25 and (cx != px or cy != py) and (zone_id, (cx, cy)) not in UNREACHABLE_SECTORS:
+            if 0 <= cx < 80 and 0 <= cy < 25 and (cx != px or cy != py) and (zone_id, (cx, cy)) not in UNREACHABLE_SECTORS and sector_target_ok(zone_id, (cx, cy), cur_pos):
                 sector_target = (cx, cy)
                 sector_reason = f"Water Traversal: Navigating across water toward unexplored sector at {sector_target} ({unexp_cells} unrevealed cells)"
-            elif 0 <= nx < 80 and 0 <= ny < 25 and (nx != px or ny != py) and (zone_id, (nx, ny)) not in UNREACHABLE_SECTORS:
+            elif 0 <= nx < 80 and 0 <= ny < 25 and (nx != px or ny != py) and (zone_id, (nx, ny)) not in UNREACHABLE_SECTORS and zone_id not in SECTOR_GIVEUP and sector_target_ok(zone_id, (nx, ny), cur_pos, "nearest"):
                 sector_target = (nx, ny)
                 sector_reason = f"Water Traversal: Navigating toward nearest unexplored cell at {sector_target} ({unexp_cells} unrevealed cells)"
         elif unexp_cells is None and not is_town and not zone_fully_explored and not is_exiting_zone:
