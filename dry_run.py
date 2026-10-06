@@ -1,5 +1,10 @@
 import json
+import os
+import tempfile
 import brain
+# Never write test decisions into the real exit log (memory/exit_choices.jsonl).
+brain.EXIT_LOG_PATH = os.path.join(tempfile.mkdtemp(), "exit_choices_dry_run.jsonl")
+brain.DECISION_TRACE_PATH = os.path.join(tempfile.mkdtemp(), "decision_trace_dry_run.jsonl")
 import build_templates
 import item_evaluator
 
@@ -3382,3 +3387,286 @@ assert ZB in brain.EXPLORED_ZONE_SET and ZA not in brain.EXPLORED_ZONE_SET, f"Ex
 _src = open(brain.__file__, encoding="utf-8").read()
 assert _src.count("EXPLORED_ZONE_SET.add(") == 2, f"Only engine-confirmed code may add to EXPLORED_ZONE_SET, found {_src.count('EXPLORED_ZONE_SET.add(')}"
 print("  [OK] Test 56 Passed: stuck != explored; progress clears stuck; only the engine's flag is remembered; the old zone's flag is used on leave.")
+
+
+# =====================================================================
+# TEST 57: Every zone-exit decision is logged with its inputs (HANDOFF issue 38)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 57: exit choice log records candidates, reachable edges and explored neighbours; logging never raises")
+print("="*50)
+
+import os as _os, json as _json, tempfile as _tempfile, io as _io, contextlib as _ctx
+_log = _os.path.join(_tempfile.mkdtemp(), "exit_choices.jsonl")
+_saved = brain.EXIT_LOG_PATH
+brain.EXIT_LOG_PATH = _log
+_Z = "JoppaWorld.11.20.1.1.10"
+brain.EXPLORED_ZONE_SET.clear(); brain.FAILED_ZONE_EXITS = set()
+brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+brain.LAST_ZONE_ENTRY = {"reverse_dir": "S"}
+brain.EXPLORED_ZONE_SET.add(brain._compute_adjacent_zone_id(_Z, "W"))   # the west neighbour was already explored
+with _ctx.redirect_stdout(_io.StringIO()):
+    _, _, _chosen = brain.get_zone_exit_target((40, 12), {"zone_id": _Z, "z": 10, "reachable_edges": "NSEW", "surroundings": {}})
+_lines = [_json.loads(l) for l in open(_log, encoding="utf-8")]
+assert len(_lines) == 1, f"One decision must log one line, got {len(_lines)}"
+_rec = _lines[0]
+assert _rec["zone"] == _Z and _rec["reachable"] == "NSEW" and _rec["rev"] == "S", _rec
+assert _rec["explored_neighbors"] == ["W"], f"The explored west neighbour must be recorded, got {_rec['explored_neighbors']}"
+assert sorted(_rec["candidates"]) == ["E", "N", "W"] and sorted(_rec["novel"]) == ["E", "N"], _rec
+assert _rec["chosen"] == _chosen and _chosen in _rec["novel"] and _rec["mode"] == "novel", _rec
+# A cached exit must not log again; an unwritable log path must never raise
+with _ctx.redirect_stdout(_io.StringIO()):
+    brain.get_zone_exit_target((40, 12), {"zone_id": _Z, "z": 10, "reachable_edges": "NSEW", "surroundings": {}})
+assert len(open(_log, encoding="utf-8").readlines()) == 1, "A cached exit choice must not be logged again"
+brain.EXIT_LOG_PATH = _os.path.join(_log, "no", "such", "dir", "x.jsonl")
+brain.log_exit_choice({"zone": "x"})
+brain.EXIT_LOG_PATH = _saved
+print("  [OK] Test 57 Passed: exit decisions are logged with their inputs; the log never breaks the brain.")
+
+
+# =====================================================================
+# TEST 58: The hopping flag must not stop him crossing a zone line (HANDOFF issue 39)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 58: Walking to a chosen exit with the hopping flag on: no turning around on the border cell")
+print("="*50)
+
+_BZ = "JoppaWorld.11.20.1.1.10"
+def border_setup(hopping, step_count, chosen="W"):
+    brain.EXPLORED_ZONE_SET.clear(); brain.stuck_autoexplore_zones.clear(); brain.visit_counts.clear()
+    brain.CURRENT_TRACKED_ZONE = _BZ; brain.last_action = None
+    brain.ZONE_HOPPING_DETECTED = hopping; brain.ZONE_CYCLE_LENGTH = 2 if hopping else 0
+    brain.ZONE_STEP_COUNT = step_count
+    brain.CURRENT_ZONE_CHOSEN_EXIT = chosen; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = _BZ
+    brain.LAST_ZONE_ENTRY = {"from_zone": "JoppaWorld.11.20.2.1.10", "to_zone": _BZ, "entry_pos": (40, 12), "reverse_dir": "E"}
+    brain.FAILED_ZONE_EXITS = set()
+
+def border_state(x, y):
+    s = {d: "Clear" for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]}
+    if x == 0:
+        for d in ["W", "NW", "SW"]:
+            s[d] = "[ZONE_EXIT: %s]" % d
+    return {"hp": 20, "max_hp": 20, "x": x, "y": y, "z": 10, "level": 4, "calling": "Warden", "ap": 0, "sp": 0, "mp": 0,
+            "skills": [], "zone_id": _BZ, "zone_name": "desert canyon", "zone_fully_explored": True, "autoexplore_stuck": False,
+            "unexplored_cells": 0, "reachable_edges": "NSEW", "last_move_failed": False, "last_failed_dir": "",
+            "hostiles_nearby": False, "hostiles_adjacent": False, "food_count": 5, "has_food": True, "food_sources": [],
+            "surroundings": s, "visible_entities": []}
+
+# (a) On the west border cell, West chosen, hopping flagged, long in the zone: cross, do not step inward
+border_setup(True, 30)
+with _ctx.redirect_stdout(_io.StringIO()):
+    _d = brain.query_decision(border_state(0, 12), took_damage=False, enemies=[])
+assert _d["action"] == "MOVE_W", f"Must step across the W border, got {_d}"
+# (b) Multi-step approach x = 6..0 with the flag on: never a move with an eastward component
+_acts = []
+for _x in range(6, -1, -1):
+    border_setup(True, 30)
+    with _ctx.redirect_stdout(_io.StringIO()):
+        _d = brain.query_decision(border_state(_x, 12), took_damage=False, enemies=[])
+    _acts.append(_d["action"])
+print("  approach actions:", _acts)
+assert not any(a in ("MOVE_E", "MOVE_NE", "MOVE_SE") for a in _acts), f"Turned around on the way to the zone line: {_acts}"
+assert _acts[-1] == "MOVE_W", f"Must cross on the border cell, got {_acts[-1]}"
+# (c) The arrival grace still works: just arrived on a border cell with the flag on -> step inward first
+border_setup(True, 1, chosen=None)
+brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+with _ctx.redirect_stdout(_io.StringIO()):
+    _d = brain.query_decision(border_state(0, 12), took_damage=False, enemies=[])
+assert "Stepping inward" in _d["reason"], f"Arrival grace must still step inward, got {_d}"
+brain.ZONE_HOPPING_DETECTED = False; brain.ZONE_CYCLE_LENGTH = 0
+print("  [OK] Test 58 Passed: the hopping flag no longer blocks crossing; the arrival grace still steps inward.")
+
+
+# =====================================================================
+# TEST 59: A companion blocking the only exit must not trigger endless burrowing (HANDOFF issue 41)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 59: Dead-end corridor with the pet in the only exit: swap/wait, never burrow (multi-turn)")
+print("="*50)
+
+_ROCK = "[BLOCKED: impassable terrain], [BLOCKED: shale]"
+_dead_end = {"N": _ROCK, "NE": _ROCK, "NW": _ROCK, "E": _ROCK, "W": _ROCK,
+             "SE": _ROCK, "SW": _ROCK, "S": "[COMPANION: wet horned chameleon and hired guard [wading]]"}
+brain.COMPANION_BLOCK.update({"pos": None, "tries": 0})
+_acts = []
+for _turn in range(9):
+    _a, _r = brain.guard_companion_blocked_burrow("ATTACK_WALL:N", "[Loop Breaker] burrow", _dead_end, (27, 4))
+    _acts.append(_a)
+print("  replacement actions at the dead end:", _acts)
+assert not any(a.startswith("ATTACK_WALL") for a in _acts), f"Must never burrow while a companion blocks the exit: {_acts}"
+assert _acts == ["MOVE_S", "MOVE_S", "WAIT"] * 3, f"Expected swap, swap, wait cycles, got {_acts}"
+# Not a companion-caused pocket: an open non-companion move exists, so the burrow decision is left alone
+_open_exit = dict(_dead_end, E="Clear")
+_a, _r = brain.guard_companion_blocked_burrow("ATTACK_WALL:N", "x", _open_exit, (27, 4))
+assert _a == "ATTACK_WALL:N", f"Burrow decisions in real pockets must be untouched, got {_a}"
+# No companion adjacent: untouched
+_a, _r = brain.guard_companion_blocked_burrow("ATTACK_WALL:N", "x", dict(_dead_end, S=_ROCK), (27, 4))
+assert _a == "ATTACK_WALL:N", f"No companion: burrow untouched, got {_a}"
+# Other actions are never altered
+_a, _r = brain.guard_companion_blocked_burrow("MOVE_S", "x", _dead_end, (27, 4))
+assert _a == "MOVE_S", f"Non-burrow actions untouched, got {_a}"
+# A successful swap changes position: the try counter resets for the new cell
+_a, _ = brain.guard_companion_blocked_burrow("ATTACK_WALL:N", "x", _dead_end, (27, 5))
+assert _a == "MOVE_S" and brain.COMPANION_BLOCK["tries"] == 1, f"Counter must reset on a new position, got {_a}, {brain.COMPANION_BLOCK}"
+brain.COMPANION_BLOCK.update({"pos": None, "tries": 0})
+print("  [OK] Test 59 Passed: swap, swap, wait cycles; real pockets and other actions are untouched.")
+
+
+# =====================================================================
+# TEST 60: Exit thrash circuit breaker (HANDOFF issue 42): the hallway N/W loop
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 60: A sealed corridor must not wipe the exit blacklist; repeated exit failures switch to exploring")
+print("="*50)
+
+_HZ = "JoppaWorld.11.21.1.2.11"
+def hall_reset():
+    brain.FAILED_ZONE_EXITS = set(); brain.EXIT_FAILURES.clear(); brain.EXIT_SUPPRESS_UNTIL.clear()
+    brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+    brain.EXPLORED_ZONE_SET.clear(); brain.LAST_ZONE_ENTRY = None; brain.TURN_CLOCK = 0
+    brain.ZONE_HOPPING_DETECTED = False
+
+def hall_pick(x, y, reach):
+    st = {"zone_id": _HZ, "z": 11, "reachable_edges": reach, "surroundings": {}, "x": x, "y": y}
+    with _ctx.redirect_stdout(_io.StringIO()):
+        return brain.get_zone_exit_target((x, y), st)[2]
+
+# (a) The engine reports NO edges (pet sealing the corridor): the blacklist survives and nothing is picked
+hall_reset()
+brain.FAILED_ZONE_EXITS = {(_HZ, "N"), (_HZ, "W")}
+assert hall_pick(27, 4, "") is None, "No reachable edges: must not pick an exit"
+assert brain.FAILED_ZONE_EXITS == {(_HZ, "N"), (_HZ, "W")}, f"The blacklist must survive an empty reachable list, got {brain.FAILED_ZONE_EXITS}"
+
+# (b) Replay the console loop: at (27,5) all four reachable, N then W fail, at (27,4) nothing is reachable
+hall_reset()
+picks = []
+for cycle in range(brain.EXIT_FAILURE_LIMIT + 1):
+    brain.TURN_CLOCK += 1
+    d = hall_pick(27, 5, "NSEW")
+    picks.append(d)
+    if d is None:
+        break
+    brain.CURRENT_ZONE_CHOSEN_EXIT, brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = d, _HZ
+    with _ctx.redirect_stdout(_io.StringIO()):
+        brain.note_exit_failure(_HZ, d)          # oscillation / dead end: this exit failed
+    brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+    hall_pick(27, 4, "")                          # sealed in: engine reports nothing reachable
+print("  exits picked in the replay:", picks)
+assert len(set(p for p in picks if p)) == len([p for p in picks if p]), f"An exit that failed must never be picked again: {picks}"
+assert picks[-1] is None, f"After {brain.EXIT_FAILURE_LIMIT} failures the picker must stand down, got {picks}"
+
+# (c) While suppressed: no exit even with everything reachable; after the window it works again
+assert hall_pick(27, 5, "NSEW") is None, "Exit selection must stay suppressed"
+brain.TURN_CLOCK += brain.EXIT_SUPPRESS_TURNS + 1
+assert hall_pick(27, 5, "NSEW") is not None, "Exit selection must resume after the suppression window"
+
+# (d) Phase A honours the suppression: a fully explored zone with reachable exits does not navigate to an exit
+hall_reset()
+brain.EXIT_SUPPRESS_UNTIL[_HZ] = 10**9
+brain.CURRENT_TRACKED_ZONE = _HZ; brain.last_action = None
+_st = {"hp": 20, "max_hp": 20, "x": 27, "y": 5, "z": 11, "level": 5, "calling": "Warden", "ap": 0, "sp": 0, "mp": 0, "skills": [],
+       "zone_id": _HZ, "zone_name": "subterranean", "zone_fully_explored": True, "autoexplore_stuck": False, "unexplored_cells": 0,
+       "reachable_edges": "NSEW", "last_move_failed": False, "last_failed_dir": "", "hostiles_nearby": False, "hostiles_adjacent": False,
+       "food_count": 5, "has_food": True, "food_sources": [], "visible_entities": [],
+       "surroundings": {"N": "Clear", "S": "Clear", "E": "Clear", "W": "Clear", "NE": "Clear", "NW": "Clear", "SE": "Clear", "SW": "Clear"}}
+with _ctx.redirect_stdout(_io.StringIO()):
+    _d = brain.query_decision(_st, took_damage=False, enemies=[])
+assert not _d["action"].startswith("NAVIGATE_ZONE_EXIT"), f"Suppressed exits must not be navigated to, got {_d}"
+brain.EXIT_SUPPRESS_UNTIL.clear()
+print("  [OK] Test 60 Passed: blacklist survives a sealed corridor; failed exits are never re-picked; 4 failures suppress exit-hunting.")
+
+
+# =====================================================================
+# TEST 61: Per-turn decision trace (diagnostics for loops; HANDOFF issue 43)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 61: decision trace writes JSON lines, rotates at the size cap and never raises")
+print("="*50)
+
+_tdir = _tempfile.mkdtemp()
+_saved_tp, _saved_max = brain.DECISION_TRACE_PATH, brain.DECISION_TRACE_MAX_BYTES
+brain.DECISION_TRACE_PATH = _os.path.join(_tdir, "decision_trace.jsonl")
+brain.log_decision_trace({"t": 1, "pos": [27, 5], "action": "MOVE_S", "reason": "Water Traversal"})
+brain.log_decision_trace({"t": 2, "pos": [27, 4], "action": "WAIT", "reason": "x"})
+_rows = [_json.loads(l) for l in open(brain.DECISION_TRACE_PATH, encoding="utf-8")]
+assert [r["t"] for r in _rows] == [1, 2] and _rows[0]["action"] == "MOVE_S", _rows
+brain.DECISION_TRACE_MAX_BYTES = 10          # tiny cap: the next write rotates the old file to .1
+brain.log_decision_trace({"t": 3, "pos": [1, 1], "action": "PASS", "reason": "y"})
+assert _os.path.exists(brain.DECISION_TRACE_PATH + ".1"), "Rotation must keep a backup"
+assert [_json.loads(l)["t"] for l in open(brain.DECISION_TRACE_PATH, encoding="utf-8")] == [3], "New file starts after rotation"
+brain.DECISION_TRACE_PATH = _os.path.join(_tdir, "no", "such", "dir", "t.jsonl")
+brain.log_decision_trace({"t": 4})           # an unwritable path must never raise
+brain.DECISION_TRACE_PATH, brain.DECISION_TRACE_MAX_BYTES = _saved_tp, _saved_max
+print("  [OK] Test 61 Passed: decision trace is written, rotated and failure-proof.")
+
+
+# =====================================================================
+# TEST 62: Engine-reachable frontier targets replace the rock centroid (HANDOFF issue 44)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 62: Navigate to a reachable frontier (e.g. the unexplored SW corner), committed, never to the rock centroid")
+print("="*50)
+
+_FZ = "JoppaWorld.11.21.1.2.11"
+def fr_reset():
+    brain.EXPLORED_ZONE_SET.clear(); brain.stuck_autoexplore_zones.clear(); brain.ENGINE_EXPLORED_LAST.clear()
+    brain.UNREACHABLE_SECTORS.clear(); brain.FRONTIER_COMMIT.update({"zone": None, "target": None})
+    brain.CURRENT_TRACKED_ZONE = _FZ; brain.last_action = None; brain.visit_counts.clear()
+    brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+    brain.EXIT_SUPPRESS_UNTIL.clear(); brain.EXIT_FAILURES.clear(); brain.FAILED_ZONE_EXITS = set()
+    brain.ZONE_HOPPING_DETECTED = False; brain.ZONE_STEP_COUNT = 30; brain.LAST_ZONE_ENTRY = None
+
+def fr_state(x, y, targets, checked=True, reach="NSEW"):
+    s = {d: "Clear" for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]}
+    return {"hp": 35, "max_hp": 35, "x": x, "y": y, "z": 11, "level": 5, "calling": "Warden", "ap": 0, "sp": 0, "mp": 0, "skills": [],
+            "zone_id": _FZ, "zone_name": "subterranean salt marsh", "zone_fully_explored": False, "autoexplore_stuck": True,
+            "unexplored_cells": 1704, "unexplored_centroid_x": 40, "unexplored_centroid_y": 11,
+            "nearest_unexplored_x": 25, "nearest_unexplored_y": 2, "nearest_unexplored_dist": 3,
+            "reachable_edges": reach, "last_move_failed": False, "last_failed_dir": "", "hostiles_nearby": False, "hostiles_adjacent": False,
+            "food_count": 5, "has_food": True, "food_sources": [], "visible_entities": [], "surroundings": s,
+            "frontier_checked": checked, "frontier_cells": len(targets), "frontier_targets": targets}
+
+_sw = {"q": "SW", "x": 12, "y": 20, "ux": 11, "uy": 21, "dist": 20}
+_ne = {"q": "NE", "x": 60, "y": 3, "ux": 61, "uy": 2, "dist": 33}
+def fr_decide(st):
+    with _ctx.redirect_stdout(_io.StringIO()):
+        return brain.query_decision(st, took_damage=False, enemies=[])
+
+# (a) A reachable SW frontier is chosen, with the engine pathfinder; the rock centroid (40,11) is ignored
+fr_reset()
+_d = fr_decide(fr_state(30, 11, [_sw, _ne]))
+print("  (a)", _d["action"], "|", _d["reason"][:90])
+assert _d["action"] == "NAVIGATE_TO_CELL:12,20", f"Expected the nearest reachable frontier, got {_d}"
+assert _d["reason"].startswith("Frontier:"), _d
+
+# (b) Commitment: a nearer target appearing mid-walk does not flip him; once reached he picks the next one
+fr_reset()
+_picked = []
+_new_near = {"q": "SE", "x": 33, "y": 14, "ux": 34, "uy": 15, "dist": 4}
+for _step, _pos in enumerate([(30, 11), (28, 13), (26, 15), (22, 17), (18, 19)]):
+    _targets = [_sw, _ne] + ([_new_near] if _step >= 2 else [])
+    _picked.append(fr_decide(fr_state(_pos[0], _pos[1], _targets))["action"])
+print("  (b)", _picked)
+assert set(_picked) == {"NAVIGATE_TO_CELL:12,20"}, f"Must stay committed to the first target: {_picked}"
+_d = fr_decide(fr_state(12, 20, [_ne, _new_near]))        # reached it (C# no longer lists visited cells)
+assert _d["action"] in ("NAVIGATE_TO_CELL:33,14", "NAVIGATE_TO_CELL:60,3"), f"After arriving he must pick the next frontier, got {_d}"
+
+# (c) A blacklisted (unreachable-at-runtime) target is skipped
+fr_reset()
+brain.UNREACHABLE_SECTORS.add((_FZ, (12, 20)))
+_d = fr_decide(fr_state(30, 11, [_sw, _ne]))
+assert _d["action"] == "NAVIGATE_TO_CELL:60,3", f"Blacklisted target must be skipped, got {_d}"
+
+# (d) Nothing reachable and exits are reachable: the engine says the rest is rock. Say so; remember it; do not chase the centroid
+fr_reset()
+_d = fr_decide(fr_state(30, 11, []))
+print("  (d)", _d["action"], "|", _d["reason"][:90])
+assert _d["action"] != "NAVIGATE_TO_CELL:40,11", f"Must not chase the rock centroid, got {_d}"
+assert _d["action"].startswith("NAVIGATE_ZONE_EXIT"), f"With nothing reachable left he should leave the zone, got {_d}"
+assert _FZ in brain.EXPLORED_ZONE_SET, "Engine-confirmed: no reachable frontier and exits reachable"
+
+# (e) Sealed in (the pet blocks the corridor: no reachable edges AND no frontier): transient, must NOT be remembered as explored
+fr_reset()
+_d = fr_decide(fr_state(27, 4, [], reach=""))
+assert _FZ not in brain.EXPLORED_ZONE_SET, "A pet-sealed corridor must not be recorded as an explored zone"
+print("  [OK] Test 62 Passed: reachable frontier targets, commitment, blacklist, honest 'nothing reachable', sealed corridor not remembered.")

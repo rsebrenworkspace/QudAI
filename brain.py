@@ -175,6 +175,9 @@ def engine_confirms_explored(game_state):
     unexp = game_state.get("unexplored_cells")
     if unexp == 0:
         return True
+    if (game_state.get("frontier_checked") and not game_state.get("frontier_targets")
+            and game_state.get("reachable_edges")):
+        return True   # the engine pathfinder finds nothing left to explore (and exits are reachable, so he is not merely sealed in)
     if not game_state.get("zone_fully_explored", False):
         return False
     if game_state.get("z", 10) > 10:
@@ -266,6 +269,36 @@ def update_zone_records(game_state):
     CURRENT_TRACKED_ZONE = zone_id
     current_zone_id = zone_id
     ZONE_STEP_COUNT += 1
+
+
+FRONTIER_COMMIT = {"zone": None, "target": None}
+
+
+def pick_frontier_target(game_state, cur_pos, zone_id):
+    """Chooses an engine-reachable frontier target from C#'s `frontier_targets` (explored walkable cells that touch
+    unexplored cells and that AutoAct.TryFindPathStep can route to, never ones the player already stood on).
+
+    Commits to one target until it disappears from the list, is reached, or is blacklisted, so he stops flip-flopping.
+    Returns ((x, y), reason) or (None, None). Only meaningful when `frontier_checked` is true."""
+    targets = []
+    for tg in game_state.get("frontier_targets", []) or []:
+        x, y = tg.get("x"), tg.get("y")
+        if x is None or y is None or (x, y) == tuple(cur_pos) or (zone_id, (x, y)) in UNREACHABLE_SECTORS:
+            continue
+        targets.append(tg)
+    if not targets:
+        FRONTIER_COMMIT.update({"zone": None, "target": None})
+        return None, None
+    chosen = None
+    if FRONTIER_COMMIT["zone"] == zone_id and FRONTIER_COMMIT["target"] is not None:
+        chosen = next((tg for tg in targets if (tg["x"], tg["y"]) == FRONTIER_COMMIT["target"]), None)
+    if chosen is None:
+        chosen = min(targets, key=lambda tg: (tg.get("dist", 999), tg.get("q", "")))
+        FRONTIER_COMMIT.update({"zone": zone_id, "target": (chosen["x"], chosen["y"])})
+    return (chosen["x"], chosen["y"]), (
+        f"Frontier: engine-reachable unexplored area in the {chosen.get('q', '?')} quadrant at ({chosen['x']}, {chosen['y']}), "
+        f"{chosen.get('dist', '?')} tiles away"
+    )
 
 
 def find_zone_unexplored_frontier(game_state, cur_pos, visit_counts):
@@ -435,6 +468,58 @@ def check_exit_direction_failure(game_state, cur_pos, chosen_exit):
     return False
 
 
+EXIT_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "exit_choices.jsonl")
+
+# Exit thrash circuit breaker (HANDOFF issue 42): repeated exit failures in one zone mean "stop hunting exits and explore".
+TURN_CLOCK = 0                 # incremented once per query_decision call
+EXIT_FAILURES = {}             # zone_id -> failures since the last suppression
+EXIT_SUPPRESS_UNTIL = {}       # zone_id -> TURN_CLOCK value until which exit selection is switched off
+EXIT_FAILURE_LIMIT = 4
+EXIT_SUPPRESS_TURNS = 60
+
+
+DECISION_TRACE_PATH = os.path.join(chronicler.MEMORY_DIR, "decision_trace.jsonl")
+DECISION_TRACE_MAX_BYTES = 3_000_000
+
+
+def log_decision_trace(record):
+    """One JSON line per turn (action, reason, position and the flags behind the decision) so loops can be diagnosed from
+    the file instead of pasted console output. Keeps one rotated backup (.1). Never raises."""
+    try:
+        if os.path.exists(DECISION_TRACE_PATH) and os.path.getsize(DECISION_TRACE_PATH) > DECISION_TRACE_MAX_BYTES:
+            os.replace(DECISION_TRACE_PATH, DECISION_TRACE_PATH + ".1")
+        with open(DECISION_TRACE_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + chr(10))
+    except Exception:
+        pass
+
+
+def note_exit_failure(zone, direction):
+    """Blacklists an exit direction for a zone and counts it. After EXIT_FAILURE_LIMIT failures, exit selection is
+    suppressed for EXIT_SUPPRESS_TURNS turns so exploration (e.g. across water) can take over."""
+    global CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE
+    FAILED_ZONE_EXITS.add((zone, direction))
+    EXIT_FAILURES[zone] = EXIT_FAILURES.get(zone, 0) + 1
+    if EXIT_FAILURES[zone] >= EXIT_FAILURE_LIMIT:
+        EXIT_SUPPRESS_UNTIL[zone] = TURN_CLOCK + EXIT_SUPPRESS_TURNS
+        EXIT_FAILURES[zone] = 0
+        if CURRENT_ZONE_CHOSEN_EXIT_ZONE == zone:
+            CURRENT_ZONE_CHOSEN_EXIT = None
+            CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+        print(f"[EXIT THRASH BREAKER] {EXIT_FAILURE_LIMIT} exit failures in {zone}: exploring instead of hunting exits for {EXIT_SUPPRESS_TURNS} turns.")
+
+
+def log_exit_choice(record):
+    """Appends one structured line per zone-exit decision (inputs and result) so exit bias can be diagnosed from data
+    instead of guessed (HANDOFF issue 38). Never raises."""
+    try:
+        record = dict(record, ts=round(time.time(), 1))
+        with open(EXIT_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + chr(10))
+    except Exception:
+        pass
+
+
 def get_zone_exit_target(cur_pos, game_state=None):
     """
     Returns (target_coord, exit_tag, exit_dir) of the zone border exit to transition to the next zone.
@@ -448,11 +533,16 @@ def get_zone_exit_target(cur_pos, game_state=None):
     px, py = cur_pos
     cur_zone = (game_state.get("zone_id") if game_state else None) or current_zone_id or ""
 
+    if EXIT_SUPPRESS_UNTIL.get(cur_zone, 0) > TURN_CLOCK:
+        CURRENT_ZONE_CHOSEN_EXIT = None
+        CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+        return (px, py), "Exits suppressed after repeated failures", None
+
     # Check if current chosen exit has dead-ended or failed
     if CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == cur_zone:
         if game_state and check_exit_direction_failure(game_state, cur_pos, CURRENT_ZONE_CHOSEN_EXIT):
             print(f"[ZONE EXIT FAILED]: Exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {cur_zone} is blocked by impassable dead-end terrain at {cur_pos}. Blacklisting and re-routing.")
-            FAILED_ZONE_EXITS.add((cur_zone, CURRENT_ZONE_CHOSEN_EXIT))
+            note_exit_failure(cur_zone, CURRENT_ZONE_CHOSEN_EXIT)
             CURRENT_ZONE_CHOSEN_EXIT = None
             CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 
@@ -464,7 +554,7 @@ def get_zone_exit_target(cur_pos, game_state=None):
     if CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == cur_zone:
         if reachable_telemetry_present and (reachable_set is None or CURRENT_ZONE_CHOSEN_EXIT not in reachable_set):
             print(f"[ZONE EXIT INVALIDATED]: Previously chosen exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {cur_zone} is not in reachable edges '{reachable_val}'. Blacklisting.")
-            FAILED_ZONE_EXITS.add((cur_zone, CURRENT_ZONE_CHOSEN_EXIT))
+            note_exit_failure(cur_zone, CURRENT_ZONE_CHOSEN_EXIT)
             CURRENT_ZONE_CHOSEN_EXIT = None
             CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
         elif (cur_zone, CURRENT_ZONE_CHOSEN_EXIT) not in FAILED_ZONE_EXITS:
@@ -472,6 +562,12 @@ def get_zone_exit_target(cur_pos, game_state=None):
             return pos, tag, CURRENT_ZONE_CHOSEN_EXIT
 
     rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
+
+    # The engine reports NO reachable edges (e.g. a companion is sealing a one-tile corridor). That is transient: do not
+    # pick anything and above all do not run the "all failed" reset below, which wiped every blacklisted exit and let
+    # the same two failing exits be re-picked forever (HANDOFF issue 42).
+    if reachable_telemetry_present and not reachable_set:
+        return (px, py), "No Reachable Exit", None
 
     # Determine candidate directions: prioritize reachable edges if telemetry provides them,
     # and strictly exclude directions known to have failed/dead-ended in this zone
@@ -526,6 +622,14 @@ def get_zone_exit_target(cur_pos, game_state=None):
         if adj_zone and adj_zone not in avoid_zones:
             novel_candidates.append(d)
 
+    _log_base = {
+        "zone": cur_zone, "pos": [px, py], "reachable": reachable_val, "rev": rev_dir,
+        "failed_here": sorted(d for (zz, d) in FAILED_ZONE_EXITS if zz == cur_zone),
+        "explored_neighbors": sorted(d for d in ["N", "S", "E", "W"] if _compute_adjacent_zone_id(cur_zone, d) in EXPLORED_ZONE_SET),
+        "cycle_neighbors": sorted(d for d in ["N", "S", "E", "W"] if _compute_adjacent_zone_id(cur_zone, d) in cycle_zones),
+        "candidates": list(candidates), "novel": list(novel_candidates),
+    }
+
     # Prefer novel unvisited zones if available to foster organic world exploration
     if novel_candidates:
         prioritized_novel = [d for d in prioritized if d in novel_candidates]
@@ -534,6 +638,7 @@ def get_zone_exit_target(cur_pos, game_state=None):
         CURRENT_ZONE_CHOSEN_EXIT = chosen_dir
         CURRENT_ZONE_CHOSEN_EXIT_ZONE = cur_zone
         label = f"{tag} (novel)"
+        log_exit_choice(dict(_log_base, chosen=chosen_dir, mode="novel", hopping=bool(ZONE_HOPPING_DETECTED)))
         if ZONE_HOPPING_DETECTED:
             print(f"[ZONE HOPPING BREAKER] Organically picked novel exit {chosen_dir} ({label}) avoiding cycle: {avoid_zones}")
         else:
@@ -546,6 +651,7 @@ def get_zone_exit_target(cur_pos, game_state=None):
     pos, tag = _EXIT_TARGETS[chosen_dir](px, py)
     CURRENT_ZONE_CHOSEN_EXIT = chosen_dir
     CURRENT_ZONE_CHOSEN_EXIT_ZONE = cur_zone
+    log_exit_choice(dict(_log_base, chosen=chosen_dir, mode="any", hopping=bool(ZONE_HOPPING_DETECTED)))
     print(f"[ORGANIC EXPLORATION] Selected organic exit {chosen_dir} ({tag}) for zone {cur_zone}")
     return pos, tag, chosen_dir
 
@@ -983,6 +1089,34 @@ def get_adjacent_threats(surroundings, companions=None, cur_pos=None):
     if cur_pos:
         adj = drop_companion_cells(adj, cur_pos, companions)
     return adj
+
+
+COMPANION_BLOCK = {"pos": None, "tries": 0}   # where a companion has been blocking the only exit, and how many tries
+
+
+def guard_companion_blocked_burrow(action, reason, surroundings, cur_pos):
+    """Returns (action, reason). Replaces a burrow (ATTACK_WALL) with swap/wait when the only exit is a companion.
+
+    In a one-tile dead-end corridor a recruited pet can stand in the only way out. The engine pathfinder treats it as a
+    wall, autoexplore reports "stuck", and the loop breakers then chew on solid rock forever (HANDOFF issue 41). Burrowing
+    cannot help there, so try to swap with the companion (MOVE into it), and every third try wait a turn so it can move.
+    """
+    if not action.startswith("ATTACK_WALL"):
+        return action, reason
+    comp_dirs = [d for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"] if "[companion" in surroundings.get(d, "").lower()]
+    if not comp_dirs:
+        return action, reason
+    open_noncomp = [m for m in get_valid_moves(surroundings, cur_pos, None, is_in_combat=False)
+                    if "[companion" not in surroundings.get(m[5:], "").lower()]
+    if open_noncomp:
+        return action, reason
+    st = COMPANION_BLOCK
+    if st["pos"] != cur_pos:
+        st["pos"], st["tries"] = cur_pos, 0
+    st["tries"] += 1
+    if st["tries"] % 3 == 0:
+        return "WAIT", f"[Companion Block] Only exit {comp_dirs[0]} is occupied by a companion; waiting a turn for it to move instead of burrowing."
+    return f"MOVE_{comp_dirs[0]}", f"[Companion Block] Only exit {comp_dirs[0]} is occupied by a companion; trying to swap places instead of burrowing."
 
 
 def drop_companion_cells(adj_threats, cur_pos, companions):
@@ -2240,7 +2374,8 @@ def get_close_threats(enemies, game_state):
 
 
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
-    global last_action, consecutive_kites, RETREAT_TARGET_LEVEL, CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS
+    global last_action, consecutive_kites, RETREAT_TARGET_LEVEL, CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS, TURN_CLOCK
+    TURN_CLOCK += 1
 
     update_zone_records(game_state)
     update_stair_records(game_state)
@@ -2542,7 +2677,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         rev_exit = f"MOVE_{rev_dir}" if rev_dir else None
         is_on_border = (px in (0, 79) or py in (0, 24))
 
-        if is_on_border and (ZONE_STEP_COUNT <= 4 or ZONE_HOPPING_DETECTED):
+        # Arrival grace only. It must NOT also apply while ZONE_HOPPING_DETECTED stays true for the whole stay: crossing a
+        # border means standing on the border cell first, so that made every exit impossible (the "dance on the zone
+        # line", HANDOFF issue 39). The hopping flag steers exit CHOICE (get_zone_exit_target), not movement here.
+        if is_on_border and ZONE_STEP_COUNT <= 4:
             target_interior = (40, 12)
             inward_moves = []
             for vm in valid_moves:
@@ -2584,7 +2722,17 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         has_unexplored_sector = (not is_town) and (not zone_fully_explored) and (not is_exiting_zone) and (unexp_cells is not None and unexp_cells > 0)
         sector_target = None
         sector_reason = ""
-        if has_unexplored_sector:
+        sector_is_frontier = False
+        frontier_checked = bool(game_state.get("frontier_checked"))
+        if has_unexplored_sector and frontier_checked:
+            sector_target, sector_reason = pick_frontier_target(game_state, cur_pos, zone_id)
+            sector_is_frontier = sector_target is not None
+            if sector_target is None and game_state.get("reachable_edges"):
+                # The engine pathfinder finds no reachable unexplored area: what is left is rock. Leave, and say so.
+                zone_fully_explored = True
+                zone_label = "No reachable unexplored area"
+                has_unexplored_sector = False
+        elif has_unexplored_sector:
             cx = game_state.get("unexplored_centroid_x", -1)
             cy = game_state.get("unexplored_centroid_y", -1)
             nx = game_state.get("nearest_unexplored_x", -1)
@@ -2602,7 +2750,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 sector_target, sector_reason = cand_target, cand_reason
 
         best_sector_m = None
-        if sector_target and valid_moves:
+        if sector_target and valid_moves and not sector_is_frontier:
             best_sector_m = get_best_move_towards(cur_pos, sector_target, valid_moves, surroundings)
 
         is_swimming_now = game_state.get("is_swimming", False) or any("swim" in ef.lower() for ef in game_state.get("effects", []))
@@ -2617,7 +2765,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             # Check if trapped in an enclosed pocket (visited multiple times with all moves leading to visited tiles)
             all_moves_visited = (not valid_moves) or all(visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) >= 1 for m in valid_moves)
             # In towns/settlements, NEVER attack walls or whack huts!
-            if not is_town and (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited:
+            if not is_town and not sector_is_frontier and (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited:
                 burrow_d, burrow_info = find_burrow_direction(surroundings, cur_pos, sector_target, is_town=is_town)
                 if burrow_d:
                     return {
@@ -2626,7 +2774,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     }
 
             # If stuck in an enclosed pocket with no burrow and all moves already visited, don't force moves toward unreachable sector!
-            is_stuck_in_visited_pocket = (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited
+            is_stuck_in_visited_pocket = (is_stuck_explore or visit_counts[cur_pos] >= 2) and all_moves_visited and not sector_is_frontier
             if not is_stuck_in_visited_pocket:
                 if best_sector_m:
                     return {"action": best_sector_m, "reason": sector_reason}
@@ -3044,7 +3192,7 @@ def main():
                     if CURRENT_ZONE_CHOSEN_EXIT:
                         if not is_near_border and (pos_frequency >= 3 or is_oscillating or game_state.get("last_move_failed", False)):
                             print(f"[ZONE EXIT RECOVERY] Loop breaker detected oscillation while navigating to exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {current_zone_id}. Blacklisting.")
-                            FAILED_ZONE_EXITS.add((current_zone_id, CURRENT_ZONE_CHOSEN_EXIT))
+                            note_exit_failure(current_zone_id, CURRENT_ZONE_CHOSEN_EXIT)
                             CURRENT_ZONE_CHOSEN_EXIT = None
                             CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 
@@ -3108,7 +3256,7 @@ def main():
                         ))
                         action = open_escapes[0]
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}). Escaping cycle towards unvisited frontier {action}."
-                    elif companion_escapes and (not valid_m or all(visit_counts.get((px + CARDINAL_OFFSETS[m[5:]][0], py + CARDINAL_OFFSETS[m[5:]][1]), 0) >= 2 for m in valid_m)):
+                    elif companion_escapes and not valid_m:
                         action = companion_escapes[0]
                         reason = f"[Loop Breaker] Corridor blocked by companion: swapping places via {action} to break bottleneck."
                     else:
@@ -3132,12 +3280,24 @@ def main():
                 else:
                     action_repeat_count = 0
 
+                action, reason = guard_companion_blocked_burrow(action, reason, surroundings, cur_pos)
+
                 last_executed_action = action
                 last_executed_pos = cur_pos
                 last_action = action
                 if action.startswith("MOVE_"):
                     move_history.append(action)
                 recent_actions.append({"action": action, "reason": reason, "pos": cur_pos, "hp": hp})
+                log_decision_trace({
+                    "t": TURN_CLOCK, "ts": round(time.time(), 1), "zone": game_state.get("zone_id"), "pos": list(cur_pos),
+                    "z": game_state.get("z"), "hp": hp, "action": action, "reason": str(reason)[:160],
+                    "combat": bool(is_in_combat), "stuck": game_state.get("autoexplore_stuck"),
+                    "engine_explored": game_state.get("zone_fully_explored"), "unexp": game_state.get("unexplored_cells"),
+                    "nearest": [game_state.get("nearest_unexplored_x"), game_state.get("nearest_unexplored_y")],
+                    "reach": game_state.get("reachable_edges"), "chosen_exit": CURRENT_ZONE_CHOSEN_EXIT,
+                    "suppressed": EXIT_SUPPRESS_UNTIL.get(game_state.get("zone_id"), 0) > TURN_CLOCK,
+                    "move_failed": game_state.get("last_move_failed"),
+                })
 
                 dmg_flag = " [!HIT!]" if took_damage else ""
                 lvl = game_state.get("level", 1)

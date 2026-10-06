@@ -358,6 +358,17 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
 - **Campfire:** blueprint `Campfire` (`Inherits="Item"`): `Physics FlameTemperature="10000"`, `AnimatedMaterialFire`, `LightSource Lit Radius=3`, `Campfire ExtinguishBlueprint="Campfire Remains"`. `Campfire` has `CanExtinguish` and `FindExtinguishingPool`. A lit campfire next to plants set the area ablaze and killed a character (2026-10-04, human-reported).
 - **Open (needed for HANDOFF issue 32, reacting to being on fire):** how the player extinguishes `Burning` (entering water? what do `Burning.ApplyTo`/`Remove` check?). Not yet inspected; do not guess.
 
+### 12.1f Swapping places with companions (verified from `Assembly-CSharp.dll` IL and blueprints, 2026-10-05)
+- Moving into an ally is gated by `GameObject.CanBePositionSwapped()`. It returns false for the player; for objects with the `Noswap` property/tag; for immobile objects (`IsMobile`); under a restraining effect (an `Effect` type check); for a creature whose `Brain` is `MovingTo` a goal, or `IsFleeing`; and in some combat-object cases. `GameObject.ProcessMoveEvent` honours a `ForceSwap` parameter. `[verified in code]` that these checks exist; the exact boolean logic is `[unverified]`.
+- **Observed in game (2026-10-05, human console): swapping with a recruited `horned chameleon and hired guard` works** (`MOVE_S` swapped places every time). My first guess that the swap was being refused was wrong; the hallway loop had another cause (HANDOFF issue 42). `[verified in game]`
+- Only 12 blueprints carry `Noswap` (BaseUrchin, Jilted Lover, Prickler, Qudzu, Sprouting Orb, Livid Creeper, FungusPuffer, Irritable Palm, Red Death Dacca, Tongue Tyrant, TinkerTurret, Haddas). `Horned Chameleon` does **not**, so a recruited chameleon refusing to swap is due to its state (moving to a goal, an effect), not its blueprint. `[verified in game blueprints]`
+- `GameObject` also has `DirectMoveTo`, `SystemMoveTo`, `TeleportTo`, `CellTeleport` (signatures not yet inspected).
+
+### 12.1e Low-health warning popup (verified from `Assembly-CSharp.dll` IL, 2026-10-05)
+- `XRLCore.PlayerTurn` shows a blocking "press space" popup, `Popup.ShowSpace("{{R|Your health has dropped below {{C|<N>%}}!}}", "Sounds/UI/ui_notification")`, when HP falls below a percentage threshold; `TerrainTravel.HandleLeavingCell` (world-map travel) uses the same string. The popup is **not** covered by `Popup.Suppress` in practice (the human saw it with the AI engaged), and the mod has no `ShowSpace` patch. `[verified in code]` for the call; the exact comparison is `[unverified]`.
+- The threshold is the **static public int `XRL.Core.Globals.HPWarningThreshold`**. `Options.UpdateFlags` fills it from the game option `OptionDisplayHPWarning` (default string `"40%"`): `GetOption(...).TrimEnd('%')` then `Int32.TryParse`. `XRLCore.HPWarning` is a public instance **bool** ("warning shown" state), not the threshold. `[verified in code]`
+- Mod fix (T-1.17): zero `Globals.HPWarningThreshold` every turn while `active.flag` exists (`UpdateFlags` would otherwise reset it to 40), restore the player's own value when the AI is paused. The in-game option `Display HP warning` is a manual alternative.
+
 ### 12.1d Food skill chain (from `skill_database.py`, a static copy of engine data; not re-verified against the DLL this session)
 - `CookingAndGathering` 100 SP (no attribute minimum); `CookingAndGathering_Butchery` 50 SP, Intelligence 15; `CookingAndGathering_Harvestry` 50 SP, Intelligence 15; `CookingAndGathering_MealPreparation` 0 SP, Intelligence 15. Butchery and Harvestry have parent `CookingAndGathering`. A character cannot butcher without Butchery. `Survival` is 100 SP and its child `Survival_Camp` ("Make Camp") is 0 SP, Intelligence 15. `Tactics` 50 SP, `Tactics_Hurdle` 0 SP. `[unverified]` against the engine; exporting real eligibility from C# is HANDOFF Next step 8.
 
@@ -474,6 +485,10 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
   ```
 
 ---
+
+### 14.5 "Unexplored" is not "explorable" (verified in code and live state, 2026-10-05)
+- In `state.json`, `unexplored_cells`, `nearest_unexplored_*` and `unexplored_centroid_*` are computed over every cell with `Cell.Explored == false`. In caves and dungeons most of those are solid rock behind revealed walls and can never be revealed (the level-5 hallway had 1704 of them; from (27,4) the "nearest unexplored" cell was (25,2), behind rock; the centroid (40,11) lay inside rock). They say nothing about reachability. Use `frontier_targets` (T-1.18), which filters explored walkable cells that border unexplored cells through `AutoAct.TryFindPathStep`.
+- `Cell.Explored` (property), `Cell.IsPassable(GameObject, bool)`, `Zone.ZoneID` (property) and `Zone.Width/Height` (fields) exist in `Assembly-CSharp.dll`. `[verified in code]`. Whether `TryFindPathStep` routes through deep water (swimming) is `[unverified]`; the lake episode suggests `TryFindEdgeStep` does.
 
 ### 14.4 Tooling notes (2026-10-04)
 - **Reading IL string constants:** in `dnfile`, scan a method body for `0x72` (`ldstr`) with `raw[i+4] == 0x70`; the string offset is the token's low 24 bits (`int.from_bytes(raw[i+1:i+4], 'little')`); `pe.net.user_strings.get(offset).value` returned the string (in this `dnfile` version `get_us(...)` raised errors). Example: `scratch/inspect_corpse.py`. Field/method tokens: `0x7b/0x7c` (ldfld/ldsfld), `0x28/0x6f` (call/callvirt); table `4` = Field, `6` = MethodDef, `10` = MemberRef.

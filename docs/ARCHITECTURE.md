@@ -20,8 +20,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 56 -->
-`dry_run.py` currently holds Tests 1-56. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 62 -->
+`dry_run.py` currently holds Tests 1-62. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -35,6 +35,8 @@ Exchange directory: `...\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI` (hard
 | `death.json` | game -> Python | Written once on player death; consumed by the Chronicler. |
 | `last_state.json` | Python | Debug copy of the last state. |
 | `last_action_executed.txt` | C# | UTC timestamp + action. Useful to tell "hung" from "looping". |
+| `memory/decision_trace.jsonl` | Python | One JSON line per turn: turn clock, zone, position, action, reason (160 chars), combat flag, engine flags (`autoexplore_stuck`, `zone_fully_explored`, `unexplored_cells`, nearest unexplored, `reachable_edges`), chosen exit, whether exits are suppressed, last-move-failed. Rotates at 3 MB to `.1`. For diagnosing loops without pasted console output; not committed. |
+| `memory/exit_choices.jsonl` | Python | One JSON line per zone-exit decision (zone, position, `reachable_edges`, reverse direction, failed/explored/cycle neighbours, candidates, novel candidates, chosen, mode). Diagnostic and future training data; not committed. |
 
 Known protocol weaknesses (see HANDOFF): non-atomic `action.json` write, no turn id, timeouts that can race.
 
@@ -58,8 +60,8 @@ emergency retreat to stairs up (underground, low HP), priority AP spend.
 3. Rest (HP < 75%, not swimming)
 4. Ammo top-off; 4B. companion recruitment
 5. Stairs/delving (surface needs level gate; underground is bold if HP >= 70%)
-6. Inward border steer (first ~4 turns on a border tile)
-7. Native `AUTOEXPLORE` (unless stuck/explored/swimming)
+6. Inward border steer (arrival grace only: first ~4 `ZONE_STEP_COUNT` on a border tile; the zone-hopping flag no longer extends it, T-1.16)
+7. Native `AUTOEXPLORE` (unless stuck/explored/swimming). When autoexplore is stuck and C# reports `frontier_checked`, step 8 navigates (`NAVIGATE_TO_CELL`, committed via `FRONTIER_COMMIT`) to the nearest engine-reachable `frontier_targets` entry instead of the centroid of all unrevealed cells; none reachable with exits reachable means the engine says only rock is left (zone remembered as explored)
 8. Macro-sector navigation across water/obstacles (not in towns)
 9. Local unvisited frontier
 10. Zone-exit transition (committed exit)
@@ -73,7 +75,7 @@ VALID ACTIONS list, ancestral wisdom prepended to the system prompt.
 
 ### Loop breakers (`main()`)
 
-Stationary-repeat breaker; oscillation breaker (positions window of 24, entropy rule: >=10 samples with <=5 unique);
+Exit-thrash breaker (`note_exit_failure`, T-1.17): every exit failure is blacklisted and counted; 4 failures in a zone suppress exit selection for 60 turns (`TURN_CLOCK`) so Phase A explores instead; an empty `reachable_edges` never wipes the blacklist. Companion-block guard (`guard_companion_blocked_burrow`, applied to the final action in `main()`): a burrow (`ATTACK_WALL`) is replaced by swap, swap, wait cycles when the only exit is occupied by a companion (T-1.17). Stationary-repeat breaker; oscillation breaker (positions window of 24, entropy rule: >=10 samples with <=5 unique);
 combat actions are exempt. Zone-hopping breaker (2-, 3-, 4-cycles) in `update_zone_records`.
 Autolevel circuit breaker keyed on `(ap, sp, mp, len(skills))`.
 
@@ -94,7 +96,7 @@ Autolevel circuit breaker keyed on `(ap, sp, mp, len(skills))`.
 | `AIPickOptionPatch` | `Popup.PickOption` | Mutation/advancement/option picker. Uses `PreferredMutation`, then a hard-coded priority list. |
 <!-- patches:end -->
 
-Also set while AI is active: `Popup.Suppress = true`, `GameManager.runPlayerTurnOnUIThread = false`.
+Also set while AI is active: `Popup.Suppress = true`, `GameManager.runPlayerTurnOnUIThread = false`, `XRL.Core.Globals.HPWarningThreshold = 0` (kills the "Your health has dropped below N%!" press-space popup; the player's value is restored when paused).
 **[unverified]** that every patch actually applied at runtime. Harmony skips a patch silently if parameter names or
 overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 
@@ -123,7 +125,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 - **Vitals/progress:** `hp`, `max_hp`, `level`, `xp`, `ap`, `sp`, `mp`, `attributes`, `skills` (class and display name),
   `learnable_skills` (only affordable ones), `mutations` (`level`, `cap`, `can_level`)
 - **Position:** `x`, `y`, `z`, `zone_id`, `zone_name`, `is_settlement`, `zone_tier`
-- **Exploration:** `zone_fully_explored`, `autoexplore_stuck`, `unexplored_cells`, `unexplored_centroid_x/y`,
+- **Exploration:** `frontier_checked`, `frontier_cells`, `frontier_targets` (T-1.18: explored walkable cells touching unexplored cells that the engine pathfinder can route to, up to 3 per quadrant NW/NE/SW/SE, never cells the player already stood on; computed only while autoexplore is stuck or the zone is engine-explored: `q`, `x`, `y`, `ux`, `uy`, `dist`), `zone_fully_explored`, `autoexplore_stuck`, `unexplored_cells`, `unexplored_centroid_x/y`,
   `nearest_unexplored_x/y/dist`, `reachable_edges` (string of N/S/E/W)
 - **Move feedback:** `last_move_failed`, `last_failed_dir` (a direction, or `PATH_BLOCKED`)
 - **Survival:** `hunger_level`, `is_hungry`, `is_famished`, `has_food`, `food_count`, `food_items`, `corpses_nearby`,
