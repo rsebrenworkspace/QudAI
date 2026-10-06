@@ -4104,3 +4104,31 @@ _n = sum(1 for _ in range(40) if brain.fire_reaction(_st, _s, _mv(_s)))
 assert _n == brain.FIRE_REACTION_MAX, _n
 assert brain.fire_reaction({"is_on_fire": False}, _s, []) is None and brain.FIRE_REACTION["turns"] == 0, "Counter resets when the fire is out"
 print("  [OK] Test 72 Passed: water first, then away from flames, otherwise nothing; bounded at FIRE_REACTION_MAX turns.")
+
+# ---------------------------------------------------------------------------
+# Test 73: Lase is withheld when food is at stake and the fight is safe (HANDOFF issue 34 part C)
+# ---------------------------------------------------------------------------
+_bab = {"name": "baboon", "tx": 18, "ty": 10, "dist": 8, "dir": "E", "is_enemy": True, "difficulty": "Average", "corpse_chance": 40}
+_abl = [{"name": "Lase (4 charges)", "command": "CommandLase", "cooldown": 0, "usable": True},
+        {"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 0, "usable": True}]
+_need = {"can_butcher": True, "is_hungry": True, "food_count": 1}
+brain.LASE_POLICY_STATE["withheld"] = False
+_f = brain.filter_corpse_burners(_need, _abl, [_bab], 0.9)
+assert [a["command"] for a in _f] == ["CommandStunningForce"], "Lase must be withheld from a hungry butcher facing a corpse-yielding animal"
+_tmpl = build_templates.BUILD_TEMPLATES["esper_ited_away"]
+_dec = brain.fallback_esper(_need, [_bab], {}, ["MOVE_W"], ["MOVE_W"], _f, _tmpl, (10, 10), 10, 10, 18, 18, False, False, 0, 0, 0)
+assert "CommandLase" not in _dec["action"], f"Fallback must not use Lase while it is withheld: {_dec['action']}"
+# each reason to keep Lase
+assert brain.filter_corpse_burners({"can_butcher": False, "is_hungry": True}, _abl, [_bab], 0.9) == _abl, "Cannot butcher: burning costs nothing"
+assert brain.filter_corpse_burners({"can_butcher": True, "food_count": 6}, _abl, [_bab], 0.9) == _abl, "Well fed: no need"
+assert brain.filter_corpse_burners(_need, _abl, [_bab], 0.4) == _abl, "Low HP: survive first"
+assert brain.filter_corpse_burners(_need, _abl, [dict(_bab, difficulty="Tough")], 0.9) == _abl, "A tough enemy: survive first"
+assert brain.filter_corpse_burners(_need, _abl, [_bab] * 3, 0.9) == _abl, "Three hostiles: survive first"
+assert brain.filter_corpse_burners(_need, _abl, [dict(_bab, corpse_chance=0)], 0.9) == _abl, "No corpse at stake: Lase freely"
+_nokey = dict(_bab); del _nokey["corpse_chance"]
+assert brain.filter_corpse_burners(_need, _abl, [_nokey], 0.9) == _abl, "Unknown corpse data (older mod): never withhold"
+# with Lase available the old behaviour is unchanged
+_dec = brain.fallback_esper(_need, [dict(_bab, corpse_chance=0)], {}, ["MOVE_W"], ["MOVE_W"], _abl[:1], _tmpl, (10, 10), 10, 10, 18, 18, False, False, 0, 0, 0)
+assert _dec["action"].startswith("USE_ABILITY:CommandLase"), _dec["action"]
+brain.LASE_POLICY_STATE["withheld"] = False
+print("  [OK] Test 73 Passed: Lase withheld only for a hungry butcher in a safe fight against a corpse-yielding animal.")

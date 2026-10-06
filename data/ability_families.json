@@ -24,6 +24,8 @@
 
     "disarming_shot": {"commands": [], "targeting": "adjacent", "role": "offensive", "auto_use": false, "note": "No such activated ability exists in the game data; the old keyword never matched anything."},
     "chain_fire":     {"commands": [], "targeting": "ray", "role": "offensive", "auto_use": false, "note": "No such activated ability exists in the game data; the old keyword never matched anything."},
+    "corpse_burners": {"commands": ["CommandLase", "CommandFlamingRay", "CommandPyrokinesis"], "targeting": "ray", "role": "policy", "auto_use": true,
+                       "note": "Not a use family: the abilities whose Fire or Light damage turns a corpse into a burnt, non-butcherable one (ENGINE_INTERNALS 12.1b). Used by withhold_corpse_burners (T-1.28)."},
     "teleport_self":  {"commands": ["CommandTeleport"], "targeting": "target_cell", "role": "movement", "auto_use": false,
                        "note": "The Teleportation mutation. The old code looked for 'teleportation' and never matched it, so it was never used. Wiring it needs the cell picker path tested in game first."},
     "phase_toggle":   {"commands": ["CommandTogglePhase"], "targeting": "self", "role": "movement", "toggle": true, "auto_use": false,

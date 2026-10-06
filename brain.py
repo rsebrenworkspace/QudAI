@@ -383,6 +383,42 @@ def sector_target_ok(zone_id, target, cur_pos, kind="centroid"):
     return True
 
 
+# Lase and food (HANDOFF issue 34 part C, design decision 2026-10-04: "make him earn his dinner"). Fire and Light damage turn a corpse into
+# a burnt, non-butcherable one [verified in code, ENGINE_INTERNALS 12.1b]. When he can butcher and needs food, and the fight is safe, the
+# corpse-burning abilities are taken off the table for this decision so melee and the clean abilities (Stunning Force, Sunder Mind) are used.
+# C# exports `corpse_chance` per creature (the engine's own number); a creature with 0 or no number is never protected.
+CORPSE_BURNER_FAMILY = "corpse_burners"
+LASE_POLICY_STATE = {"withheld": False}
+
+
+def withhold_corpse_burners(game_state, hostiles, hp_ratio):
+    """(True, reason) when Lase-like abilities should be withheld this turn."""
+    if not game_state.get("can_butcher"):
+        return False, ""
+    needs_food = game_state.get("is_hungry") or game_state.get("is_famished") or game_state.get("food_count", 0) < FOOD_RESTOCK_THRESHOLD
+    if not needs_food:
+        return False, ""
+    if hp_ratio < 0.5 or len(hostiles) >= 3:
+        return False, ""
+    if any(e.get("difficulty") in ("Tough", "Very Tough", "Impossible") for e in hostiles):
+        return False, ""
+    nearest = min(hostiles, key=lambda e: e.get("dist", 999), default=None)
+    if not nearest or not (nearest.get("corpse_chance") or 0) > 0:
+        return False, ""
+    return True, f"{nearest.get('name', 'the target')} may leave a corpse ({nearest.get('corpse_chance')}%) and he needs food"
+
+
+def filter_corpse_burners(game_state, abilities, hostiles, hp_ratio):
+    """The ability list without the corpse-burning abilities when the policy withholds them (logged on change only)."""
+    withhold, why = withhold_corpse_burners(game_state, hostiles, hp_ratio)
+    if withhold != LASE_POLICY_STATE["withheld"]:
+        LASE_POLICY_STATE["withheld"] = withhold
+        print(f"[FOOD POLICY] {'Withholding Lase/fire abilities: ' + why if withhold else 'Lase and fire abilities available again.'}")
+    if not withhold:
+        return abilities
+    return [a for a in abilities if not ability_registry.in_family(a, CORPSE_BURNER_FAMILY)]
+
+
 # Reacting to being on fire (HANDOFF issue 32). Engine facts [verified in code, ENGINE_INTERNALS 12.1g]: `Burning` deals damage every turn
 # and removes itself once the creature is no longer aflame; contact with liquid cools it (`LiquidVolume.ProcessExposure` /
 # `GetLiquidCooling`). So: step into deep water if it is adjacent; otherwise move away from burning cells; otherwise let it burn out.
@@ -2689,6 +2725,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     enemies = filter_hostile_enemies(enemies, companions)
     adj_threats = get_adjacent_threats(surroundings, companions=companions, cur_pos=(game_state.get("x", 0), game_state.get("y", 0)))
     close_threats = get_close_threats(enemies, game_state)
+    abilities = filter_corpse_burners(game_state, abilities, enemies, hp_ratio)
     engine_hostiles = (game_state.get("hostiles_adjacent", False) and bool(adj_threats)) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
     is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
 
