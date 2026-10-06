@@ -12,7 +12,7 @@
   Cause not yet identified. See *Level 5 investigation*.
 - The latest `Player.log` supplied for review (launch 2026-09-19) contained **no `[QudAI ...]` lines** and listed the
   enabled mod as `QUDAITEST`. That log is not from the level 5 hang. It shows a death by bleeding.
-- Repo was made public temporarily for review. Set it back to private when finished.
+- Repo visibility: **public, by the human's decision (2026-10-06).** It was first opened temporarily for review; the human chose to leave it public so anyone may take the code. A history scan found no credentials (`[verified in code]`, pattern-based, not exhaustive). No `LICENSE` file exists, so reuse rights are unstated. Do not flip it private unless asked.
 
 ## Level 5 investigation (open)
 
