@@ -3936,6 +3936,8 @@ assert {_mp.normalize_mutation_name(n) for n in _mp.DEFECTS} <= set(_norm)
 # fire starters and gas clouds sit below every survival/control/physical mutation; defects are last
 _pos = {n: i for i, n in enumerate(_norm)}
 assert _pos["flamingray"] > _pos["burrowingclaws"] > _pos["heightenedquickness"], "Tier order wrong"
+# tier order (human-approved 2026-10-06): survival, control, traversal, physical, situational, hazardous, defects
+assert _pos["heightenedquickness"] < _pos["freezingray"] < _pos["burrowingclaws"] < _pos["wings"] < _pos["doublemuscled"] < _pos["nightvision"] < _pos["flamingray"], "Tiers must run survival, control, traversal, physical, situational, hazardous"
 assert all(_pos[_mp.normalize_mutation_name(d)] > _pos["electricalgeneration"] for d in _mp.DEFECTS), "Defects must rank last"
 
 # (b) Class names, display names and picker text all normalize to the same key
@@ -3965,6 +3967,13 @@ assert _mp.option_head(_opts[_i]) == "Heightened Quickness", f"Survival must bea
 # a template mutation beats the universal order
 _i, _why = _mp.choose_option(["Heightened Quickness - x", "Sunder Mind - y", "Regeneration - z"], _rank)
 assert _mp.option_head(["Heightened Quickness - x", "Sunder Mind - y", "Regeneration - z"][_i]) == "Sunder Mind", "The build's own priority must win"
+# traversal beats physical but loses to control and survival
+_o = ["Double-muscled - x", "Burrowing Claws - y", "Quills - z"]
+assert _mp.option_head(_o[_mp.choose_option(_o, _rank)[0]]) == "Burrowing Claws", "Traversal must beat a plain physical mutation"
+_o = ["Burrowing Claws - y", "Freezing Ray - x", "Wings - w"]
+assert _mp.option_head(_o[_mp.choose_option(_o, _rank)[0]]) == "Freezing Ray", "Control must beat traversal"
+_o = ["Wings - w", "Regeneration - r", "Burrowing Claws - y"]
+assert _mp.option_head(_o[_mp.choose_option(_o, _rank)[0]]) == "Regeneration", "Survival must beat traversal"
 # fire-starters only when nothing else is offered
 _i, _ = _mp.choose_option(["Flaming Ray - a", "Pyrokinesis - b", "Night Vision - c"], _rank)
 assert _i == 2, "A passive mutation beats fire-starters"

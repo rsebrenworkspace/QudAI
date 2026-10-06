@@ -12,7 +12,7 @@
 |---|---|---|
 | C# Harmony mod | `mod/QudAIBrain/AIBrainPart.cs` | Runs inside Qud. Exports state, executes actions headlessly, suppresses UI modals. |
 | Python driver | `brain.py` | Reads state, decides an action, writes it back. Phases A/B/C below. |
-| Mutation policy | `mutation_policy.py` | Ranking of all 59 mutations (survival, control, physical, situational, hazardous, defects) plus the build's own priorities; published to `mutation_ranking.txt` for the mod's picker; copy of the picker rule for tests. Policy, not engine rules. |
+| Mutation policy | `mutation_policy.py` | Ranking of all 59 mutations in the human-approved tier order: survival, safe control/ranged, traversal (Burrowing Claws, Wings), physical, situational, hazardous, defects plus the build's own priorities; published to `mutation_ranking.txt` for the mod's picker; copy of the picker rule for tests. Policy, not engine rules. |
 | Build templates | `build_templates.py` | 9 archetypes: detection, stat/skill/mutation priorities, combat doctrine. |
 | Skill data | `skill_database.py` | Static copy of skill costs/requirements. Engine telemetry takes priority. See Known Issues. |
 | Chronicler | `chronicler.py` | Post-mortem on death; stores aphorisms in `memory/ancestral_wisdom.json`. |

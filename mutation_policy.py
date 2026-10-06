@@ -22,10 +22,15 @@ TIER_CONTROL = [           # safe ranged damage and control, good with pets (Thr
     "Light Manipulation", "Precognition", "Syphon Vim", "Mental Mirror", "Confusion", "Teleport Other", "Clairvoyance",
     "Spacetime Vortex", "Ego Projection", "Mass Mind", "Telepathy", "Temporal Fugue",
 ]
+TIER_TRAVERSAL = [         # get through procedural terrain: trees, walls, water, dead ends (human decision, 2026-10-06).
+    # The engine has pathing flags PathAsBurrower and PathAsIfFlying, a "burrowed" state and a Flying effect that is "not
+    # affected by terrain" [verified in code strings]. Phasing and Teleportation also help, but sit in TIER_SURVIVAL as escapes.
+    "Burrowing Claws", "Wings",
+]
 TIER_PHYSICAL = [          # melee and body mutations
     "Double-muscled", "Multiple Arms", "Multiple Legs", "Triple-jointed", "Two-headed", "Horns",
-    "Stinger (Paralyzing Venom)", "Stinger (Confusing Venom)", "Thick Fur", "Wings", "Quills", "Spinnerets",
-    "Burrowing Claws", "Beak", "Electromagnetic Pulse",
+    "Stinger (Paralyzing Venom)", "Stinger (Confusing Venom)", "Thick Fur", "Quills", "Spinnerets",
+    "Beak", "Electromagnetic Pulse",
 ]
 TIER_SITUATIONAL = [       # passive or niche
     "Night Vision", "Heightened Hearing", "Photosynthetic Skin", "Sense Psychic", "Psychometry", "Burgeoning",
@@ -41,7 +46,7 @@ DEFECTS = [                # should never be offered by the picker; ranked last 
     "Socially Repugnant",
 ]
 
-UNIVERSAL_MUTATION_RANKING = (TIER_SURVIVAL + TIER_CONTROL + TIER_PHYSICAL + TIER_SITUATIONAL + TIER_HAZARDOUS + DEFECTS)
+UNIVERSAL_MUTATION_RANKING = (TIER_SURVIVAL + TIER_CONTROL + TIER_TRAVERSAL + TIER_PHYSICAL + TIER_SITUATIONAL + TIER_HAZARDOUS + DEFECTS)
 
 
 def normalize_mutation_name(name):
