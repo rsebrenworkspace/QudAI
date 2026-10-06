@@ -221,9 +221,9 @@ namespace QudAIBrain
         private static string LastAbilityUseJson() { return "\"last_ability_use\": " + lastAbilityUseJson + ","; }
 
         // Reads the live state of the player's ability with this engine command. found=false when the player has no such ability.
-        private static void ReadAbilityState(GameObject player, string cmd, out bool found, out bool enabled, out bool usable, out int cooldown)
+        private static void ReadAbilityState(GameObject player, string cmd, out bool found, out bool enabled, out bool usable, out int cooldown, out string label)
         {
-            found = false; enabled = false; usable = false; cooldown = 0;
+            found = false; enabled = false; usable = false; cooldown = 0; label = "";
             try
             {
                 var abilities = player.GetPart<ActivatedAbilities>();
@@ -236,18 +236,19 @@ namespace QudAIBrain
                     enabled = ab.Enabled;
                     usable = ab.IsUsable;
                     cooldown = ab.CooldownRounds > 0 ? ab.CooldownRounds : ab.Cooldown;
+                    label = StripQudFormatting(ab.DisplayName ?? "") + (ab.ToggleState ? "|on" : "|off");   // "Lase (5 charges)" changes for charge abilities, the toggle state for toggles; neither moves the cooldown
                     return;
                 }
             }
             catch { }
         }
 
-        private static void RecordAbilityUse(string cmd, string dir, bool found, int cdBefore, int cdAfter, bool refused, string reason)
+        private static void RecordAbilityUse(string cmd, string dir, bool found, int cdBefore, int cdAfter, string labelBefore, string labelAfter, bool refused, string reason)
         {
             abilityUseSeq++;
             lastAbilityUseJson = "{\"seq\": " + abilityUseSeq + ", \"command\": \"" + EscapeJson(cmd) + "\", \"dir\": \"" + EscapeJson(dir ?? "") +
                 "\", \"known\": " + (found ? "true" : "false") + ", \"cd_before\": " + cdBefore + ", \"cd_after\": " + cdAfter +
-                ", \"fired\": " + ((!refused && cdAfter > cdBefore) ? "true" : "false") + ", \"refused\": " + (refused ? "true" : "false") +
+                ", \"fired\": " + ((!refused && (cdAfter > cdBefore || labelAfter != labelBefore)) ? "true" : "false") + ", \"refused\": " + (refused ? "true" : "false") +
                 ", \"reason\": \"" + EscapeJson(reason ?? "") + "\"}";
         }
 
@@ -2405,13 +2406,13 @@ namespace QudAIBrain
 
                 // Usability pre-check (HANDOFF issue 52): do not fire into a cooldown or a disabled ability and call it a use.
                 // The turn is still spent (R4: a command that spends no energy re-exports the same state and loops).
-                bool abFound, abEnabled, abUsable; int cdBefore;
-                ReadAbilityState(player, cmd, out abFound, out abEnabled, out abUsable, out cdBefore);
+                bool abFound, abEnabled, abUsable; int cdBefore; string labelBefore;
+                ReadAbilityState(player, cmd, out abFound, out abEnabled, out abUsable, out cdBefore, out labelBefore);
                 if (abFound && (!abEnabled || !abUsable || cdBefore > 0))
                 {
                     string why = !abEnabled ? "disabled" : (!abUsable ? "not usable" : "on cooldown (" + cdBefore + ")");
                     UnityEngine.Debug.LogWarning($"[QudAI USE_ABILITY] Refused {cmd}: {why}");
-                    RecordAbilityUse(cmd, PreferredDirection, true, cdBefore, cdBefore, true, why);
+                    RecordAbilityUse(cmd, PreferredDirection, true, cdBefore, cdBefore, labelBefore, labelBefore, true, why);
                     PreferredDirection = "";
                     player.UseEnergy(1000, "Ability");
                     return;
@@ -2574,9 +2575,9 @@ namespace QudAIBrain
                 catch { }
 
                 {
-                    bool f2, e2, u2; int cdAfter;
-                    ReadAbilityState(player, cmd, out f2, out e2, out u2, out cdAfter);
-                    RecordAbilityUse(cmd, PreferredDirection, abFound, cdBefore, cdAfter, false, "");
+                    bool f2, e2, u2; int cdAfter; string labelAfter;
+                    ReadAbilityState(player, cmd, out f2, out e2, out u2, out cdAfter, out labelAfter);
+                    RecordAbilityUse(cmd, PreferredDirection, abFound, cdBefore, cdAfter, labelBefore, labelAfter, false, "");
                 }
 
                 PreferredDirection = "";

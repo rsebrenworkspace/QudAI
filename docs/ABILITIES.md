@@ -59,6 +59,10 @@ Proselytize/Beguile, Sunder Mind, Stunning Force, Lase (Light Manipulation), Fre
 - C# usability pre-check and `last_ability_use`; Python stats in `memory/ability_stats.json`.
 - Section 5 items 2 and 3 are fixed; item 5 was wrong (the LLM list was a blacklist) and is now a whitelist.
 
+## 6b. T-1.26 additions
+- `fired` counts a change of the ability label (charges, toggle state), not only the cooldown. Lase showed 14 attempts and 0 fired before this. `[verified in memory/ability_stats.json]`
+- Burrowing Claws are handled by `claws_toggle_action` (off in settlements, on elsewhere), not by a family.
+
 ## 7. Still open
 
 
