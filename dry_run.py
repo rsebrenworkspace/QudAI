@@ -3792,3 +3792,45 @@ for _i, _failed in enumerate([False, True, True, False]):
     _d = fr_decide(fr_fail_state(20, 15, [_far], failed=_failed))
 assert _d["action"] == "NAVIGATE_TO_CELL:12,20", "Two failures below the limit must not write a target off"
 print("  [OK] Test 64 Passed: failing/never-arriving frontier targets are written off with their neighbours; good targets survive.")
+
+
+# =====================================================================
+# TEST 65: Frontier walks and trees (HANDOFF issue 47)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 65: frontier walks are exempt from the oscillation breaker; an unbreakable path obstacle writes the target off")
+print("="*50)
+
+# (a) The exemption applies only to real frontier walks
+assert brain.is_frontier_walk("NAVIGATE_TO_CELL:19,17", "Frontier: engine-reachable unexplored area in the SW quadrant at (19, 17), 4 tiles away")
+assert not brain.is_frontier_walk("NAVIGATE_TO_CELL:40,11", "Water Traversal: Navigating across water toward unexplored sector at (40, 11)")
+assert not brain.is_frontier_walk("MOVE_S", "Frontier: whatever")
+assert not brain.is_frontier_walk("NAVIGATE_ZONE_EXIT:E", "Zone fully explored: navigating")
+
+# (b) An obstacle with no HP on the committed frontier path writes the frontier target off too
+fr_reset()
+_t = {"q": "SW", "x": 19, "y": 17, "ux": 18, "uy": 18, "dist": 4}
+_other = {"q": "SW", "x": 30, "y": 22, "ux": 31, "uy": 23, "dist": 15}
+_d = fr_decide(fr_state(15, 16, [_t, _other]))
+assert _d["action"] == "NAVIGATE_TO_CELL:19,17", _d
+with _ctx.redirect_stdout(_io.StringIO()):
+    brain.BURROW_LAST_SEQ["seq"] = 0
+    brain.note_burrow_progress({"zone_id": _FZ, "last_burrow": {"seq": 1, "dir": "W", "name": "boulder", "x": 17, "y": 17,
+                                "has_hp": False, "hp_before": 0, "hp_after": 0, "max_hp": 0, "destroyed": False}})
+assert (_FZ, (19, 17)) in brain.UNREACHABLE_SECTORS and brain.FRONTIER_COMMIT["target"] is None, "The target behind an unbreakable obstacle must be written off"
+_d = fr_decide(fr_state(15, 16, [_t, _other]))
+assert _d["action"] == "NAVIGATE_TO_CELL:30,22", f"He must move on to the next frontier, got {_d}"
+
+# (c) A tree that is losing HP does NOT write the target off; destroying it keeps the target
+fr_reset(); brain.BURROW_BLOCKED.clear(); brain.BURROW_PROGRESS.clear(); brain.BURROW_LAST_SEQ["seq"] = 0
+_d = fr_decide(fr_state(15, 16, [_t, _other]))
+assert _d["action"] == "NAVIGATE_TO_CELL:19,17"
+with _ctx.redirect_stdout(_io.StringIO()):
+    for _i, (_a, _b) in enumerate([(25, 24), (24, 22), (22, 20)], start=1):
+        brain.note_burrow_progress({"zone_id": _FZ, "last_burrow": {"seq": _i, "dir": "W", "name": "shimscale mangrove tree", "x": 17, "y": 17,
+                                    "has_hp": True, "hp_before": _a, "hp_after": _b, "max_hp": 25, "destroyed": False}})
+    brain.note_burrow_progress({"zone_id": _FZ, "last_burrow": {"seq": 4, "dir": "W", "name": "shimscale mangrove tree", "x": 17, "y": 17,
+                                "has_hp": True, "hp_before": 2, "hp_after": 0, "max_hp": 25, "destroyed": True}})
+assert (_FZ, (19, 17)) not in brain.UNREACHABLE_SECTORS and brain.FRONTIER_COMMIT["target"] == (19, 17), "A breakable tree must not cost him the target"
+brain.BURROW_BLOCKED.clear(); brain.BURROW_PROGRESS.clear(); brain.BURROW_LAST_SEQ["seq"] = 0
+print("  [OK] Test 65 Passed: frontier walks exempt from the oscillation breaker; unbreakable blockers write targets off; breakable ones do not.")

@@ -212,6 +212,52 @@ namespace QudAIBrain
 
         private static string LastBurrowJson() { return "\"last_burrow\": " + lastBurrowJson + ","; }
 
+        // ---- Obstacles on an engine-planned path (HANDOFF issue 47) ----
+        // The engine pathfinder routes THROUGH trees and plant walls (it expects the walker to hack through), but a step into an
+        // occluding cell used to be refused here, so such a path always failed. If the blocker is a solid, ownerless, non-creature
+        // object with hit points, attack it, and report the swing in last_burrow exactly like ATTACK_WALL does.
+        private static bool TryBreakPathObstacle(GameObject player, Cell cell, string dir)
+        {
+            try
+            {
+                if (player == null || cell == null || cell.Objects == null) return false;
+                if (IsSettlementZone(player.CurrentCell?.ParentZone)) return false;
+                GameObject target = null;
+                foreach (GameObject o in cell.Objects)
+                {
+                    if (o == null || o.IsPlayer() || o.Brain != null || o.HasPart("Brain") || o.HasPart("Door")) continue;
+                    if (IsCompanion(o, player)) continue;
+                    if (o.IsOwned() || !string.IsNullOrEmpty(o.Owner) || o.HasProperty("Owned") || o.HasProperty("OwnedBy")) continue;
+                    var phys = o.GetPart<Physics>();
+                    if (phys == null || !phys.Solid || !o.HasStat("Hitpoints")) continue;
+                    target = o;
+                    break;
+                }
+                if (target == null) return false;
+
+                int energyBefore = player.Energy?.Value ?? 0;
+                int hpBefore = 0, maxHp = 0;
+                try { hpBefore = target.hitpoints; maxHp = target.baseHitpoints; } catch { }
+                UnityEngine.Debug.Log($"[QudAI PATH_OBSTACLE] Breaking {target.DisplayNameOnly} ({dir}) at ({cell.X}, {cell.Y}) on the engine path");
+                try { player.PerformMeleeAttack(target); }
+                catch (Exception ex) { UnityEngine.Debug.LogError("[QudAI PATH_OBSTACLE Error] " + ex.ToString()); }
+
+                int hpAfter = hpBefore;
+                bool destroyed = false;
+                try { hpAfter = target.hitpoints; } catch { }
+                try { destroyed = hpAfter <= 0 || (cell.Objects != null && !cell.Objects.Contains(target)); } catch { }
+                burrowSeq++;
+                lastBurrowJson = "{\"seq\": " + burrowSeq + ", \"dir\": \"" + dir.ToUpper() + "\", \"name\": \"" + EscapeJson(StripQudFormatting(target.DisplayNameOnly ?? "")) +
+                    "\", \"x\": " + cell.X + ", \"y\": " + cell.Y + ", \"has_hp\": true, \"hp_before\": " + hpBefore + ", \"hp_after\": " + hpAfter +
+                    ", \"max_hp\": " + maxHp + ", \"destroyed\": " + (destroyed ? "true" : "false") + "}";
+                UnityEngine.Debug.Log($"[QudAI PATH_OBSTACLE] {target.DisplayNameOnly}: HP {hpBefore} -> {hpAfter}/{maxHp}{(destroyed ? " (destroyed)" : "")}");
+
+                if (player.Energy != null && player.Energy.Value >= energyBefore) player.UseEnergy(1000, "Attack");
+                return true;
+            }
+            catch { return false; }
+        }
+
         private const int FrontierPerQuadrant = 3;
         private const int FrontierPathChecksPerQuadrant = 6;
         private static readonly HashSet<string> frontierVisited = new HashSet<string>();
@@ -2637,6 +2683,12 @@ namespace QudAIBrain
                             Cell targetNext = player.CurrentCell?.GetCellFromDirection(step, false);
                             if (targetNext != null && (targetNext.IsOccluding() || targetNext.HasWall()))
                             {
+                                if (TryBreakPathObstacle(player, targetNext, step))
+                                {
+                                    lastMoveFailed = false;
+                                    lastFailedDir = "";
+                                    return;
+                                }
                                 lastMoveFailed = true;
                                 lastFailedDir = step.ToUpper();
                                 if (player.Energy != null) player.UseEnergy(1000, "Pass");
@@ -2652,6 +2704,12 @@ namespace QudAIBrain
 
                             if (!moved || !cellChanged)
                             {
+                                if (TryBreakPathObstacle(player, player.CurrentCell?.GetCellFromDirection(step, false), step))
+                                {
+                                    lastMoveFailed = false;
+                                    lastFailedDir = "";
+                                    return;
+                                }
                                 lastMoveFailed = true;
                                 lastFailedDir = step.ToUpper();
                                 TryOpenDoorInDirection(player, step);

@@ -290,6 +290,11 @@ def _frontier_write_off(zone_id, xy, why):
     print(f"[FRONTIER] Writing off target {xy} in {zone_id}: {why}.")
 
 
+def is_frontier_walk(action, reason):
+    """True for a committed engine-reachable frontier walk (exempt from the oscillation breaker)."""
+    return str(action).startswith("NAVIGATE_TO_CELL:") and str(reason).startswith("Frontier:")
+
+
 def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
     """Chooses an engine-reachable frontier target from C#'s `frontier_targets` (explored walkable cells that touch
     unexplored cells and that AutoAct.TryFindPathStep can route to, never ones the player already stood on).
@@ -1153,6 +1158,7 @@ def note_burrow_progress(game_state):
     if not lb.get("has_hp"):
         BURROW_BLOCKED[key] = TURN_CLOCK + BURROW_BLOCK_TURNS
         print(f"[BURROW] {name} has no hit points: it cannot be broken. Writing it off.")
+        _written_off_obstacle_blocks_frontier(game_state)
         return
     prog = BURROW_PROGRESS.setdefault(key, {"stalled": 0})
     if lb.get("hp_after", 0) >= lb.get("hp_before", 0):
@@ -1160,9 +1166,18 @@ def note_burrow_progress(game_state):
         if prog["stalled"] >= BURROW_STALL_LIMIT:
             BURROW_BLOCKED[key] = TURN_CLOCK + BURROW_BLOCK_TURNS
             print(f"[BURROW] {name} took no damage in {BURROW_STALL_LIMIT} swings (HP {lb.get('hp_after')}/{lb.get('max_hp')}). Writing it off.")
+            _written_off_obstacle_blocks_frontier(game_state)
     else:
         prog["stalled"] = 0
         print(f"[BURROW] {name}: HP {lb.get('hp_after')}/{lb.get('max_hp')}.")
+
+
+def _written_off_obstacle_blocks_frontier(game_state):
+    """The path to the committed frontier target runs through an obstacle that cannot be broken: write the target off too
+    (otherwise the engine keeps listing it as reachable and the walk starts the same swings again)."""
+    zone_id = game_state.get("zone_id")
+    if FRONTIER_COMMIT["zone"] == zone_id and FRONTIER_COMMIT["target"] is not None:
+        _frontier_write_off(zone_id, FRONTIER_COMMIT["target"], "its path runs through an obstacle that cannot be broken")
 
 
 def blocked_burrow_dirs(zone_id, cur_pos):
@@ -3229,7 +3244,12 @@ def main():
                 is_attacking = action.startswith("MOVE_") and (action[5:] in adj_threats)
                 is_combat_action = action.startswith("USE_ABILITY") or action.startswith("FIRE_MISSILE") or is_attacking
                 is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_combat_action)
-                is_oscillating = not is_in_combat and not is_combat_action and (
+                # A committed engine-reachable frontier walk is exempt from the oscillation breaker: its own failure and
+                # pursuit limits (FRONTIER_FAIL_LIMIT / FRONTIER_PURSUIT_MAX) write a bad target off. Without this exemption
+                # the breaker overrode the walk with "move away from the cycle centroid" and he ping-ponged forever
+                # (HANDOFF issue 47).
+                is_frontier_nav = is_frontier_walk(action, reason)
+                is_oscillating = not is_in_combat and not is_combat_action and not is_frontier_nav and (
                     (pos_frequency >= 3) or
                     (len(recent_positions) >= 10 and unique_positions <= 5)
                 )
