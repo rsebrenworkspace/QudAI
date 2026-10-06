@@ -1,0 +1,38 @@
+{
+  "_meta": {
+    "purpose": "Maps engine ability commands (data/abilities.json) to the families the brain has logic for. Exact command match, never substring.",
+    "policy": "A command that is in the registry but in no auto_use family is NEVER used automatically. auto_use=false families are documented, not wired.",
+    "history": "Replaces the keyword lists of find_ready_ability (HANDOFF issue 52). The old lists matched by substring on display names: 'charge' also matched Discharge, RechargeObject, ToggleProvideCharge and 'Lase (4 charges)'; 'teleportation' matched nothing (the mutation's command is CommandTeleport); 'disarm' and 'chain fire' match no real ability."
+  },
+  "families": {
+    "proselytize":    {"commands": ["CommandProselytize", "CommandBeguileCreature"], "targeting": "adjacent", "role": "recruit", "auto_use": true},
+    "sunder_mind":    {"commands": ["CommandSunderMind"], "targeting": "ray", "range": 12, "role": "offensive", "auto_use": true},
+    "stunning_force": {"commands": ["CommandStunningForce"], "targeting": "ray", "range": 8, "role": "offensive", "auto_use": true},
+    "lase":           {"commands": ["CommandLase"], "targeting": "ray", "range": 10, "role": "offensive", "risk": ["light damage burns corpses (no butchering) and can ignite plants"], "auto_use": true},
+    "freezing_ray":   {"commands": ["CommandFreezingRay", "CommandFreezeBreath"], "targeting": "ray", "range": 10, "role": "offensive", "auto_use": true},
+    "flaming_ray":    {"commands": ["CommandFlamingRay"], "targeting": "ray", "range": 10, "role": "offensive", "risk": ["fire: ignites plants, the campfire death"], "auto_use": true},
+    "elemental_ray":  {"commands": ["CommandCryokinesis", "CommandPyrokinesis", "CommandFlamingRay", "CommandFreezingRay", "CommandFreezeBreath"], "targeting": "ray", "range": 10, "role": "offensive", "auto_use": true},
+    "syphon_vim":     {"commands": ["CommandLifeDrain"], "targeting": "ray", "range": 4, "role": "offensive", "auto_use": true},
+    "force_shield":   {"commands": ["CommandForceBubble", "CommandForceWall"], "targeting": "self_or_direction", "role": "defensive", "auto_use": true},
+    "teleport_other": {"commands": ["CommandTeleportOther"], "targeting": "adjacent", "role": "defensive", "auto_use": true},
+    "intimidate":     {"commands": ["CommandIntimidate"], "targeting": "self", "role": "control", "auto_use": true},
+    "melee_strike":   {"commands": ["CommandDismember", "CommandFlurry", "CommandShieldSlam", "CommandCudgelSlam", "CommandSwipe"], "targeting": "adjacent", "role": "offensive", "auto_use": true},
+    "melee_charge":   {"commands": ["CommandMeleeCharge", "CommandLunge", "CommandMassiveCharge"], "targeting": "direction", "role": "offensive", "auto_use": true},
+    "phase_escape":   {"commands": ["CommandPhaseIn", "CommandPhaseOut"], "targeting": "self", "role": "defensive", "auto_use": true},
+    "sprint":         {"commands": ["CommandToggleRunning"], "targeting": "self", "role": "movement", "toggle": true, "auto_use": true},
+    "camp":           {"commands": ["CommandSurvivalCamp"], "targeting": "self", "role": "survival", "auto_use": true},
+
+    "disarming_shot": {"commands": [], "targeting": "adjacent", "role": "offensive", "auto_use": false, "note": "No such activated ability exists in the game data; the old keyword never matched anything."},
+    "chain_fire":     {"commands": [], "targeting": "ray", "role": "offensive", "auto_use": false, "note": "No such activated ability exists in the game data; the old keyword never matched anything."},
+    "teleport_self":  {"commands": ["CommandTeleport"], "targeting": "target_cell", "role": "movement", "auto_use": false,
+                       "note": "The Teleportation mutation. The old code looked for 'teleportation' and never matched it, so it was never used. Wiring it needs the cell picker path tested in game first."},
+    "phase_toggle":   {"commands": ["CommandTogglePhase"], "targeting": "self", "role": "movement", "toggle": true, "auto_use": false,
+                       "note": "Phasing toggle. Needs untoggle logic before it can be used safely."},
+    "burrowing":      {"commands": ["CommandToggleBurrowingClaws", "CommandDigUp", "CommandDigDown", "CommandBurrow", "CommandDig"], "targeting": "direction", "role": "traversal", "toggle": true, "auto_use": false,
+                       "note": "Burrowing Claws and Dig: BACKLOG B7. A burrowed character cannot do some things or travel far."},
+    "toggle_decapitate": {"commands": ["CommandToggleDecapitate"], "targeting": "self", "role": "offensive", "toggle": true, "auto_use": false,
+                       "note": "A toggle, not a strike. The old 'decapitate' keyword wrongly treated it as one."},
+    "clairvoyance":   {"commands": ["CommandClairvoyance"], "targeting": "self", "role": "utility", "auto_use": false, "note": "Reveals a map region; deliberately not combat."},
+    "ambient_light":  {"commands": ["CommandAmbientLight"], "targeting": "self", "role": "utility", "toggle": true, "auto_use": false, "note": "Kept on by the mod (EnsureLightSource)."}
+  }
+}

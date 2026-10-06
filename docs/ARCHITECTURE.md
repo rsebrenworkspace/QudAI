@@ -12,6 +12,7 @@
 |---|---|---|
 | C# Harmony mod | `mod/QudAIBrain/AIBrainPart.cs` | Runs inside Qud. Exports state, executes actions headlessly, suppresses UI modals. |
 | Python driver | `brain.py` | Reads state, decides an action, writes it back. Phases A/B/C below. |
+| Mutation policy | `mutation_policy.py` | Ranking of all 59 mutations in the human-approved tier order: survival, safe control/ranged, traversal (Burrowing Claws, Wings), physical, situational, hazardous, defects plus the build's own priorities; published to `mutation_ranking.txt` for the mod's picker; copy of the picker rule for tests. Policy, not engine rules. |
 | Build templates | `build_templates.py` | 9 archetypes: detection, stat/skill/mutation priorities, combat doctrine. |
 | Skill data | `skill_database.py` | Static copy of skill costs/requirements. Engine telemetry takes priority. See Known Issues. |
 | Chronicler | `chronicler.py` | Post-mortem on death; stores aphorisms in `memory/ancestral_wisdom.json`. |
@@ -20,8 +21,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 67 -->
-`dry_run.py` currently holds Tests 1-67. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 69 -->
+`dry_run.py` currently holds Tests 1-69. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -35,6 +36,7 @@ Exchange directory: `...\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI` (hard
 | `death.json` | game -> Python | Written once on player death; consumed by the Chronicler. |
 | `last_state.json` | Python | Debug copy of the last state. |
 | `last_action_executed.txt` | C# | UTC timestamp + action. Useful to tell "hung" from "looping". |
+| `mutation_ranking.txt` | Python -> game | Mutation names, best first (class or display names; `#` comments). Rewritten when the detected build changes; read (cached by file time) by the mutation picker. |
 | `memory/decision_trace.jsonl` | Python | One JSON line per turn: turn clock, zone, position, action, reason (160 chars), combat flag, engine flags (`autoexplore_stuck`, `zone_fully_explored`, `unexplored_cells`, nearest unexplored, `reachable_edges`), chosen exit, whether exits are suppressed, last-move-failed. Rotates at 3 MB to `.1`. For diagnosing loops without pasted console output; not committed. |
 | `memory/exit_choices.jsonl` | Python | One JSON line per zone-exit decision (zone, position, `reachable_edges`, reverse direction, failed/explored/cycle neighbours, candidates, novel candidates, chosen, mode). Diagnostic and future training data; not committed. |
 
@@ -93,7 +95,7 @@ Autolevel circuit breaker keyed on `(ap, sp, mp, len(skills))`.
 | `AIPickFieldTargetPatch` | `PickTarget.ShowFieldPicker` | Auto-select field target cells. |
 | `AIPopupShowYesNoPatch` | `Popup.ShowYesNo` | Auto-confirm Yes. |
 | `AIPopupShowYesNoCancelPatch` | `Popup.ShowYesNoCancel` | Auto-confirm Yes. |
-| `AIPickOptionPatch` | `Popup.PickOption` | Mutation/advancement/option picker. Uses `PreferredMutation`, then a hard-coded priority list. |
+| `AIPickOptionPatch` | `Popup.PickOption` | Mutation/advancement/option picker. Normalized-name match of the option against `PreferredMutation`, then the ranking in `mutation_ranking.txt` (published by Python for the detected build), then a built-in list, then the first entry. Logs every option and the reason (`[QudAI MutationChoice]`). |
 <!-- patches:end -->
 
 Also set while AI is active: `Popup.Suppress = true`, `GameManager.runPlayerTurnOnUIThread = false`, `XRL.Core.Globals.HPWarningThreshold = 0` (kills the "Your health has dropped below N%!" press-space popup; the player's value is restored when paused).
@@ -112,7 +114,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 - `GET_ITEM`
 - `EAT`, `MAKE_CAMP`, `COOK_MEAL`, `BUTCHER`, `HARVEST`: programmatic, no UI modals
 - `AUTOLEVEL`, `AUTOLEVEL_STAT:<stat>`, `AUTOLEVEL_SKILL:<class>`, `AUTOLEVEL_MUTATION:<name>`, `AUTOLEVEL_BUY_MUTATION[:<name>]`
-- `REST`, `PASS`
+- `REST`, `PASS`: pass a turn; they no longer spend AP/SP/MP (the old hard-coded C# autolevel ignored the template, T-1.24)
 - `USE_ABILITY:<command>[:<dir>]`: alias-resolved against the player's ActivatedAbilities
 - `ACTIVATE_SPRINT`, `SPRINT_<dir>`
 - `NAVIGATE_TO_CELL:x,y`: engine A* (`AutoAct.TryFindPathStep`); if the next step is blocked by a solid, ownerless, non-creature object with hit points (a tree, a plant wall) it is attacked (`TryBreakPathObstacle`, reported in `last_burrow`), because the engine routes through such obstacles
@@ -125,6 +127,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 - **Vitals/progress:** `hp`, `max_hp`, `level`, `xp`, `ap`, `sp`, `mp`, `attributes`, `skills` (class and display name),
   `learnable_skills` (only affordable ones), `mutations` (`level`, `cap`, `can_level`)
 - **Position:** `x`, `y`, `z`, `zone_id`, `zone_name`, `is_settlement`, `zone_tier`
+- **Ability use:** `last_ability_use` (result of the last `USE_ABILITY`: `seq`, `command`, `dir`, `known`, `cd_before`, `cd_after`, `fired` = cooldown rose, `refused` + `reason` when the C# pre-check found the ability disabled, unusable or on cooldown, or `null`). Python `note_ability_use` counts it per command in `memory/ability_stats.json` (`attempts`, `fired`, `refused`), kept across characters. Abilities are matched by exact engine command through `data/ability_families.json` (loader `ability_registry.py`); an ability in no wired family is never used automatically (T-1.25).
 - **Burrowing:** `last_burrow` (result of the last `ATTACK_WALL` swing: `seq`, `dir`, `name`, `x`, `y`, `has_hp`, `hp_before`, `hp_after`, `max_hp`, `destroyed`, or `null`). Python keeps swinging while the target loses HP, writes it off (400 turns) after 3 swings with no damage or at once if it has no HP, and `guard_blocked_burrow` swaps in another breakable obstacle, a free move, or a pass (T-1.19).
 - **Exploration:** `frontier_checked`, `frontier_cells`, `frontier_targets` (T-1.18: explored walkable cells touching unexplored cells that the engine pathfinder can route to, up to 3 per quadrant NW/NE/SW/SE, never cells the player already stood on; computed only while autoexplore is stuck or the zone is engine-explored: `q`, `x`, `y`, `ux`, `uy`, `dist`), `zone_fully_explored`, `autoexplore_stuck`, `unexplored_cells`, `unexplored_centroid_x/y`,
   `nearest_unexplored_x/y/dist`, `reachable_edges` (string of N/S/E/W)

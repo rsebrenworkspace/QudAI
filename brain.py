@@ -9,6 +9,8 @@ from collections import deque, defaultdict
 import chronicler
 import twitch_bot
 import build_templates
+import mutation_policy
+import ability_registry
 
 # Paths
 # QUDAI_EXCHANGE_DIR overrides the folder (tests point it at a temp dir so they can never touch the real game files).
@@ -1144,6 +1146,49 @@ def get_adjacent_threats(surroundings, companions=None, cur_pos=None):
     return adj
 
 
+# Ability use evidence (HANDOFF issue 52): C# reports each USE_ABILITY in `last_ability_use` (cooldown before/after, refusal).
+# Counted per engine command in memory/ability_stats.json, kept across characters, so "this ability works" is measured.
+ABILITY_STATS_PATH = os.path.join(chronicler.MEMORY_DIR, "ability_stats.json")
+ABILITY_LAST_SEQ = {"seq": 0}
+
+
+def note_ability_use(game_state):
+    """Counts the engine's report of the last ability use: attempts, fired (cooldown rose), refused (C# pre-check). Never raises."""
+    try:
+        lu = game_state.get("last_ability_use")
+        if not lu or lu.get("seq", 0) <= ABILITY_LAST_SEQ["seq"]:
+            return
+        ABILITY_LAST_SEQ["seq"] = lu.get("seq", 0)
+        cmd = lu.get("command", "")
+        if not cmd:
+            return
+        try:
+            with open(ABILITY_STATS_PATH, "r", encoding="utf-8") as f:
+                stats = json.load(f)
+        except (OSError, ValueError):
+            stats = {}
+        rec = stats.setdefault(cmd, {"attempts": 0, "fired": 0, "refused": 0, "unknown": 0})
+        rec["attempts"] += 1
+        if lu.get("refused"):
+            rec["refused"] += 1
+            rec["last_refusal"] = lu.get("reason", "")
+        elif lu.get("fired"):
+            rec["fired"] += 1
+        if not lu.get("known", True):
+            rec["unknown"] += 1
+        rec["last_seen"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        tmp = ABILITY_STATS_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(stats, f, indent=1, sort_keys=True)
+        os.replace(tmp, ABILITY_STATS_PATH)
+        if lu.get("refused"):
+            print(f"[ABILITY] {cmd} refused by the game: {lu.get('reason')}")
+        elif not lu.get("fired"):
+            print(f"[ABILITY] {cmd} used but its cooldown did not change (cd {lu.get('cd_before')} -> {lu.get('cd_after')}); it may not have fired.")
+    except Exception:
+        pass
+
+
 # Burrow progress (HANDOFF issue 45): C# reports each ATTACK_WALL swing in `last_burrow` (target HP before/after, destroyed).
 BURROW_STALL_LIMIT = 3          # swings that did no damage before the target is written off
 BURROW_BLOCK_TURNS = 400
@@ -1353,14 +1398,13 @@ def is_ability_ready(ab):
     return True
 
 
-def find_ready_ability(abilities, keywords):
-    """Finds an enabled, usable ability off cooldown matching any keyword in name or command."""
+def find_ready_ability(abilities, *families):
+    """First enabled, usable, off-cooldown ability whose engine command is in one of the families (ability_registry).
+
+    Exact command match; an ability in no wired family is never returned (HANDOFF issue 52)."""
     for ab in abilities:
-        if is_ability_ready(ab):
-            name = ab.get("name", "").lower()
-            cmd = ab.get("command", "").lower()
-            if any(k in name or k in cmd for k in keywords):
-                return ab
+        if is_ability_ready(ab) and ability_registry.in_family(ab, *families):
+            return ab
     return None
 
 
@@ -1562,6 +1606,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
             combined = f"{name} {cmd}".lower()
             if any(nc in combined for nc in NON_COMBAT_KEYWORDS):
                 continue
+            if "sprint" not in combined and not ability_registry.is_wired(ab):
+                continue
             if "sprint" in combined:
                 if can_sprint:
                     ready_abilities.append("- Sprint: Ready (Action: ACTIVATE_SPRINT)")
@@ -1659,7 +1705,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 name = ab.get("name", "")
                 cmd = ab.get("command", "")
                 combined = f"{name} {cmd}".lower()
-                if any(nc in combined for nc in NON_COMBAT_KEYWORDS) or "sprint" in combined:
+                if any(nc in combined for nc in NON_COMBAT_KEYWORDS) or "sprint" in combined or not ability_registry.is_wired(ab):
                     continue
 
                 if any(ray in combined for ray in ["freezingray", "flamingray", "spitpoison", "cryokinesis", "pyrokinesis", "lase", "stunningforce", "stunning force", "syphonvim", "syphon vim", "sundermind", "sunder mind", "chainfire", "disarmingshot"]):
@@ -1718,7 +1764,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 name = ab.get("name", "")
                 cmd = ab.get("command", "")
                 combined = f"{name} {cmd}".lower()
-                if any(nc in combined for nc in NON_COMBAT_KEYWORDS) or "sprint" in combined:
+                if any(nc in combined for nc in NON_COMBAT_KEYWORDS) or "sprint" in combined or not ability_registry.is_wired(ab):
                     continue
 
                 if any(mta in combined for mta in ["dismember", "cleave", "shieldslam", "slam", "swipe", "decapitate"]):
@@ -1749,7 +1795,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 name = ab.get("name", "")
                 cmd = ab.get("command", "")
                 combined = f"{name} {cmd}".lower()
-                if any(nc in combined for nc in NON_COMBAT_KEYWORDS) or "sprint" in combined:
+                if any(nc in combined for nc in NON_COMBAT_KEYWORDS) or "sprint" in combined or not ability_registry.is_wired(ab):
                     continue
                 # Skip if already handled in categories 1 or 2
                 if any(k in combined for k in [
@@ -1968,7 +2014,7 @@ VALID ACTIONS:
                     cty = closest.get("ty", py)
                     clear, reason = is_line_of_fire_clear((px, py), (ctx, cty), companions=companions, blocked_set=blocked_coords, target_entity=closest, surroundings=surroundings)
                     if not clear:
-                        ab_sunder = find_ready_ability(abilities, ["sunder mind", "sundermind", "sunder"])
+                        ab_sunder = find_ready_ability(abilities, "sunder_mind")
                         s_dir = get_step_direction((px, py), (ctx, cty))
                         if ab_sunder and ab_sunder.get("command") and s_dir:
                             action = f"USE_ABILITY:{ab_sunder['command']}:{s_dir}"
@@ -2008,7 +2054,7 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_entities)
     # 0. Pet Recruitment: If without an active companion, proselytize adjacent beasts or humanoids
     if not has_companion:
-        ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
+        ab_proselytize = find_ready_ability(abilities, "proselytize")
         if ab_proselytize and ab_proselytize.get("command"):
             for ent in raw_entities:
                 if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions):
@@ -2030,14 +2076,14 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
         target_dir = list(adj_threats.keys())[0]
         target_name = adj_threats[target_dir]
 
-        ab_strike = find_ready_ability(abilities, ["dismember", "cleave", "shieldslam", "slam", "swipe", "decapitate", "bludgeon", "backhand", "flurry"])
+        ab_strike = find_ready_ability(abilities, "melee_strike")
         if ab_strike and ab_strike.get("command"):
             cmd = ab_strike["command"]
             name = ab_strike.get("name", "Strike")
             return {"action": f"USE_ABILITY:{cmd}:{target_dir}", "reason": f"[{template['name']} Fallback] Executing {name} on adjacent {target_name} ({target_dir})"}
 
         # Point-blank elemental burst (Flaming Ray / Freezing Ray)
-        ab_burst = find_ready_ability(abilities, ["flaming ray", "flamingray", "flameray", "flame ray", "freezing ray", "freezingray"])
+        ab_burst = find_ready_ability(abilities, "flaming_ray", "freezing_ray")
         if ab_burst and ab_burst.get("command"):
             return {"action": f"USE_ABILITY:{ab_burst['command']}:{target_dir}", "reason": f"[{template['name']} Fallback] Point-blank {ab_burst.get('name', 'Ray')} burst on {target_name} ({target_dir})"}
 
@@ -2046,14 +2092,14 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
     # 3. Gap Closer & Ray Fire: If enemy at distance 2-6, use Charge or fire Ray!
     if closest_enemy and 2 <= closest_dist <= 6:
-        ab_charge = find_ready_ability(abilities, ["charge", "meleecharge", "chargingstrike", "lunge"])
+        ab_charge = find_ready_ability(abilities, "melee_charge")
         s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
         if closest_dist <= 4 and ab_charge and ab_charge.get("command"):
             cmd = ab_charge["command"]
             return {"action": f"USE_ABILITY:{cmd}:{s_dir}", "reason": f"[{template['name']} Fallback] Charging {c_name} ({s_dir}) to close gap and daze target"}
 
         # Secondary action bar ray fire (Freezing Ray / Flaming Ray) while closing distance
-        ab_ray = find_ready_ability(abilities, ["freezing ray", "freezingray", "freeze", "flaming ray", "flamingray", "flameray", "flame ray"])
+        ab_ray = find_ready_ability(abilities, "flaming_ray", "freezing_ray")
         if ab_ray and ab_ray.get("command") and s_dir:
             surroundings = game_state.get("surroundings", {})
             is_clear, _ = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest_enemy, surroundings=surroundings)
@@ -2107,7 +2153,7 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
     # 0. Pet Recruitment: If without an active companion, proselytize adjacent beasts or humanoids into combat thralls
     if not has_companion:
-        ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
+        ab_proselytize = find_ready_ability(abilities, "proselytize")
         if ab_proselytize and ab_proselytize.get("command"):
             # A. Adjacent candidate recruitment (dist == 1)
             for ent in raw_entities:
@@ -2136,21 +2182,21 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
     # 1. Close-Contact Emergency: Defensive Mental Shielding, Banishment & Evasion
     if adj_threats:
-        ab_bubble = find_ready_ability(abilities, ["force bubble", "forcebubble", "bubble", "force wall", "forcewall"])
+        ab_bubble = find_ready_ability(abilities, "force_shield")
         if ab_bubble and ab_bubble.get("command"):
             return {"action": f"USE_ABILITY:{ab_bubble['command']}", "reason": f"[{template['name']} Fallback] Popping Force Bubble impenetrable barrier against close hostiles"}
 
-        ab_banish = find_ready_ability(abilities, ["teleport other", "teleportother"])
+        ab_banish = find_ready_ability(abilities, "teleport_other")
         if ab_banish and ab_banish.get("command"):
             t_dir = list(adj_threats.keys())[0]
             t_name = adj_threats[t_dir]
             return {"action": f"USE_ABILITY:{ab_banish['command']}:{t_dir}", "reason": f"[{template['name']} Fallback] Banishing adjacent hostile {t_name} with Teleport Other ({t_dir})"}
 
-        ab_intimidate = find_ready_ability(abilities, ["intimidate"])
+        ab_intimidate = find_ready_ability(abilities, "intimidate")
         if ab_intimidate and ab_intimidate.get("command"):
             return {"action": f"USE_ABILITY:{ab_intimidate['command']}", "reason": f"[{template['name']} Fallback] Terrifying close hostile with Intimidate"}
 
-        ab_teleport = find_ready_ability(abilities, ["teleportation", "phasing"])
+        ab_teleport = find_ready_ability(abilities, "phase_escape")
         if ab_teleport and ab_teleport.get("command"):
             return {"action": f"USE_ABILITY:{ab_teleport['command']}", "reason": f"[{template['name']} Fallback] Teleporting away from close hostiles"}
 
@@ -2168,22 +2214,22 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
         c_lof_clear, c_lof_reason = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest_enemy, surroundings=surroundings)
 
         # A. Sunder Mind (Uncapped psychic annihilation - max range 12, DIRECT MENTAL, 100% SAFE OVER PETS & WALLS!)
-        ab_sunder = find_ready_ability(abilities, ["sunder mind", "sundermind", "sunder"])
+        ab_sunder = find_ready_ability(abilities, "sunder_mind")
         if ab_sunder and ab_sunder.get("command") and closest_dist <= 12 and s_dir:
             return {"action": f"USE_ABILITY:{ab_sunder['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Channeling Sunder Mind against {c_name} (dist: {closest_dist})"}
 
         # B. Opener CC: Stunning Force on approaching mobile enemies (dist 3-8, requires clear LOF and LOS)
-        ab_stun = find_ready_ability(abilities, ["stunning force", "stunningforce"])
+        ab_stun = find_ready_ability(abilities, "stunning_force")
         if ab_stun and ab_stun.get("command") and 3 <= closest_dist <= 8 and not is_stationary and s_dir and c_lof_clear and c_has_los:
             return {"action": f"USE_ABILITY:{ab_stun['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Blasting approaching {c_name} with Stunning Force CC opener ({s_dir})"}
 
         # C. Lase (Light Manipulation focused laser beam - max range 10, requires clear LOF and LOS past companions and walls)
-        ab_lase = find_ready_ability(abilities, ["lase", "light manipulation"])
+        ab_lase = find_ready_ability(abilities, "lase")
         if ab_lase and ab_lase.get("command") and closest_dist <= 10 and s_dir and c_lof_clear and c_has_los:
             return {"action": f"USE_ABILITY:{ab_lase['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Firing Lase light beam at {c_name} ({s_dir}, dist: {closest_dist})"}
 
         # D. Cryokinesis / Pyrokinesis / Ray / Elemental / Gas attacks (max range 10, requires clear LOF and LOS)
-        ab_elemental = find_ready_ability(abilities, ["cryokinesis", "pyrokinesis", "flaming ray", "flamingray", "flameray", "flame ray", "freezing ray", "freezingray", "spit poison", "electrical generation", "corrosive gas", "sleep gas"])
+        ab_elemental = find_ready_ability(abilities, "elemental_ray")
         if ab_elemental and ab_elemental.get("command") and closest_dist <= 10 and s_dir and c_lof_clear and c_has_los:
             return {"action": f"USE_ABILITY:{ab_elemental['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Manifesting {ab_elemental.get('name')} at {c_name} ({s_dir})"}
 
@@ -2192,7 +2238,7 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             return {"action": f"USE_ABILITY:{ab_stun['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Blasting {c_name} with Stunning Force ({s_dir})"}
 
         # F. Syphon Vim (Life drain if within 4 tiles, requires clear LOS)
-        ab_syphon = find_ready_ability(abilities, ["syphon vim", "syphonvim"])
+        ab_syphon = find_ready_ability(abilities, "syphon_vim")
         if ab_syphon and ab_syphon.get("command") and closest_dist <= 4 and s_dir and c_has_los:
             return {"action": f"USE_ABILITY:{ab_syphon['command']}:{s_dir}", "reason": f"[{template['name']} Fallback] Draining life force from {c_name} ({s_dir})"}
 
@@ -2280,7 +2326,7 @@ def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_move
     has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_entities)
     # 0. Pet Recruitment: If without an active companion, proselytize adjacent beasts or humanoids
     if not has_companion:
-        ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
+        ab_proselytize = find_ready_ability(abilities, "proselytize")
         if ab_proselytize and ab_proselytize.get("command"):
             for ent in raw_entities:
                 if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions):
@@ -2302,7 +2348,7 @@ def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_move
         target_dir = list(adj_threats.keys())[0]
         target_name = adj_threats[target_dir]
 
-        ab_disarm = find_ready_ability(abilities, ["disarm", "disarmingshot"])
+        ab_disarm = find_ready_ability(abilities, "disarming_shot")
         if ab_disarm and ab_disarm.get("command"):
             return {"action": f"USE_ABILITY:{ab_disarm['command']}:{target_dir}", "reason": f"[{template['name']} Fallback] Disarming shot on adjacent {target_name} ({target_dir})"}
 
@@ -2312,7 +2358,7 @@ def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_move
         if has_missile and ammo > 0:
             return {"action": f"FIRE_MISSILE@{px + CARDINAL_OFFSETS[target_dir][0]},{py + CARDINAL_OFFSETS[target_dir][1]}", "reason": f"[{template['name']} Fallback] Point-blank pistol blast at {target_name}"}
 
-        ab_burst = find_ready_ability(abilities, ["flaming ray", "flamingray", "flameray", "flame ray", "freezing ray", "freezingray"])
+        ab_burst = find_ready_ability(abilities, "flaming_ray", "freezing_ray")
         if ab_burst and ab_burst.get("command"):
             return {"action": f"USE_ABILITY:{ab_burst['command']}:{target_dir}", "reason": f"[{template['name']} Fallback] Point-blank {ab_burst.get('name', 'Ray')} burst on {target_name} ({target_dir})"}
 
@@ -2320,12 +2366,12 @@ def fallback_gunslinger(game_state, enemies, adj_threats, open_moves, valid_move
 
     # 3. Chain Fire / Rapid Pistol Volley / Ray Beams (Distance 2 to 8)
     if closest_enemy and 2 <= closest_dist <= 8:
-        ab_chain = find_ready_ability(abilities, ["chain fire", "chainfire"])
+        ab_chain = find_ready_ability(abilities, "chain_fire")
         if ab_chain and ab_chain.get("command") and ammo >= 3:
             return {"action": f"USE_ABILITY:{ab_chain['command']}", "reason": f"[{template['name']} Fallback] Unleashing Chain Fire pistol volley at {c_name} (dist: {closest_dist})"}
 
         # Secondary action bar ray attack (Freezing Ray / Flaming Ray)
-        ab_ray = find_ready_ability(abilities, ["freezing ray", "freezingray", "freeze", "flaming ray", "flamingray", "flameray", "flame ray"])
+        ab_ray = find_ready_ability(abilities, "flaming_ray", "freezing_ray")
         if ab_ray and ab_ray.get("command") and (ammo <= 0 or closest_dist <= 5):
             s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
             surroundings = game_state.get("surroundings", {})
@@ -2387,7 +2433,7 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_entities)
     # 0. Pet Recruitment: If without an active companion, proselytize adjacent beasts or humanoids
     if not has_companion:
-        ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
+        ab_proselytize = find_ready_ability(abilities, "proselytize")
         if ab_proselytize and ab_proselytize.get("command"):
             for ent in raw_entities:
                 if ent.get("dist") == 1 and is_proselytizable(ent, companions=companions):
@@ -2410,8 +2456,8 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
     # 3. Crowd Control & Thermal Ray Sniping: Freezing Ray or Flaming Ray on incoming pursuers (distance 2-6)
     if closest_enemy and 2 <= closest_dist <= 6:
-        ab_freeze = find_ready_ability(abilities, ["freezing ray", "freezingray", "freeze"])
-        ab_flame = find_ready_ability(abilities, ["flaming ray", "flamingray", "flameray", "flame ray"])
+        ab_freeze = find_ready_ability(abilities, "freezing_ray")
+        ab_flame = find_ready_ability(abilities, "flaming_ray")
         ray_ab = ab_freeze or ab_flame
         if ray_ab and ray_ab.get("command"):
             s_dir = get_step_direction(cur_pos, (c_tx, c_ty))
@@ -2466,7 +2512,7 @@ def fallback_nomad(game_state, enemies, adj_threats, open_moves, valid_moves, ab
     if adj_threats:
         d, ename = list(adj_threats.items())[0]
         # Point-blank burst (Flaming Ray / Freezing Ray)
-        ab_burst = find_ready_ability(abilities, ["flaming ray", "flamingray", "flameray", "flame ray", "freezing ray", "freezingray"])
+        ab_burst = find_ready_ability(abilities, "flaming_ray", "freezing_ray")
         if ab_burst and ab_burst.get("command"):
             return {"action": f"USE_ABILITY:{ab_burst['command']}:{d}", "reason": f"[{template['name']} Fallback] Point-blank {ab_burst.get('name', 'Ray')} burst on {ename} ({d})"}
         return {"action": f"MOVE_{d}", "reason": f"[{template['name']} Fallback] Striking adjacent threat {ename} ({d})"}
@@ -2532,6 +2578,8 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             stuck_autoexplore_zones.add(CURRENT_TRACKED_ZONE)
 
     template = build_templates.detect_build(game_state)
+    # Publish this build's mutation ranking for the mod's picker (rewritten only when the detected build changes).
+    mutation_policy.publish_mutation_ranking(template, os.path.join(EXCHANGE_DIR, "mutation_ranking.txt"))
 
     surroundings = game_state.get("surroundings", {})
     has_missile = game_state.get("has_missile_weapon", False)
@@ -2737,7 +2785,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         raw_entities = game_state.get("visible_entities", [])
         has_companion = game_state.get("has_companion", False) or bool(companions) or any(e.get("is_companion") for e in raw_entities)
         if not has_companion:
-            ab_proselytize = find_ready_ability(abilities, ["proselytize", "beguile"])
+            ab_proselytize = find_ready_ability(abilities, "proselytize")
             if ab_proselytize and ab_proselytize.get("command"):
                 # Adjacent candidate recruitment (dist == 1)
                 for ent in raw_entities:
@@ -3124,6 +3172,7 @@ def main():
 
                 update_zone_records(game_state)
                 note_burrow_progress(game_state)
+                note_ability_use(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
 

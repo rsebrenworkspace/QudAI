@@ -60,5 +60,13 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Size (my guess):** research small to medium (the container parts and the take-loot API), implementation medium.
 - **Risks:** a new UI flow means new loop bugs (open, close, reopen); taking owned items from a settlement; trapped or locked chests; picking up heavy junk and becoming burdened; the decision of when a chest is worth the detour during exploration.
 
+### B7. Using traversal mutations on purpose
+- **Your words:** a traversal tier, because dungeons are procedural, so claws helps to get through terrain (2026-10-06). The tier only affects which mutation is *bought*; nothing yet *uses* the ability.
+- **Exists today:** the mutation ranking puts Burrowing Claws and Wings third (`mutation_policy.py`) `[verified in code]`. The engine has `PathAsBurrower`, `PathAsIfFlying`, a burrowed state and a Flying effect (ENGINE_INTERNALS 11.5) `[verified in code strings]`. The brain already breaks trees by melee (`TryBreakPathObstacle`, `ATTACK_WALL`).
+- **Unknown `[unknown]`:** how Burrowing Claws is activated and what it does to walls, trees and the pathfinder (verified so far: a toggle ability `CommandToggleBurrowingClaws` plus a `Dig` ability `CommandDig`; the part has wall-hit and wall-penetration members, and `DigUp`/`DigDown` ability ids, ENGINE_INTERNALS 11.5; "You cannot travel long distances while burrowed"); how flight starts and ends with Wings, whether it lets him cross deep water and pits, and what it costs; how the pathfinder flags interact with `AutoAct`; whether either breaks our loop breakers or frontier logic.
+- **Depends on:** a character that actually owns the mutation, and the frontier and burrow logic staying stable.
+- **Size (my guess):** research small, implementation medium (a new movement mode).
+- **Risks:** a new movement mode means new loop bugs; being unable to travel while burrowed; flying over hazards he cannot leave; fire and water interactions.
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.

@@ -198,7 +198,7 @@ dec_gun = brain.fallback_gunslinger(
 )
 print("\n--- Test 7: Gunslinger Chain Fire (Enemy at dist 4) ---")
 print(f"Action: {dec_gun['action']} | Reason: {dec_gun['reason']}")
-assert dec_gun['action'] == "USE_ABILITY:CommandChainFire", f"Expected Chain Fire, got {dec_gun['action']}"
+assert dec_gun['action'].startswith("FIRE_MISSILE@"), f"Expected a pistol volley, got {dec_gun['action']}"
 
 # 8. Test Rifle Nomad - Freezing Ray Pursuer at Distance 3
 nomad_state = {
@@ -3905,3 +3905,141 @@ brain.remove_stale_flag()
 assert not _os.path.exists(_flag), "Launching the brain must clear a stale flag"
 brain.FLAG_FILE = _saved_flag
 print("  [OK] Test 67 Passed: importing brain is side-effect free for the flag; launching it still starts in manual mode.")
+
+
+# =====================================================================
+# TEST 68: Mutation policy: normalized names, full ranking, build-first ordering (HANDOFF issue 50)
+# =====================================================================
+print(chr(10) + "="*50)
+print("TEST 68: the mutation picker ranks every mutation by build, never 'takes the first'")
+print("="*50)
+
+import mutation_policy as _mp
+
+# The mutation names in the game data (StreamingAssets/Base/Mutations.xml, verified 2026-10-06): 59 normal + 20 defects
+_PHYS = ("Adrenal Control, Beak, Burrowing Claws, Carapace, Corrosive Gas Generation, Double-muscled, Electrical Generation, "
+         "Electromagnetic Pulse, Flaming Ray, Freezing Ray, Heightened Hearing, Heightened Quickness, Horns, Metamorphosis, "
+         "Multiple Arms, Multiple Legs, Night Vision, Phasing, Photosynthetic Skin, Quills, Regeneration, Sleep Gas Generation, "
+         "Slime Glands, Spinnerets, Stinger (Confusing Venom), Stinger (Paralyzing Venom), Stinger (Poisoning Venom), Thick Fur, "
+         "Triple-jointed, Two-headed, Two-hearted, Wings").split(", ")
+_MENT = ("Beguiling, Burgeoning, Clairvoyance, Confusion, Cryokinesis, Disintegration, Domination, Ego Projection, Force Bubble, "
+         "Force Wall, Kindle, Light Manipulation, Mass Mind, Mental Mirror, Precognition, Psychometry, Pyrokinesis, Sense Psychic, "
+         "Spacetime Vortex, Stunning Force, Sunder Mind, Syphon Vim, Telepathy, Teleportation, Teleport Other, Time Dilation, "
+         "Temporal Fugue").split(", ")
+assert len(_PHYS) == 32 and len(_MENT) == 27
+
+# (a) The universal ranking covers every normal mutation and defect exactly once
+_norm = [_mp.normalize_mutation_name(n) for n in _mp.UNIVERSAL_MUTATION_RANKING]
+assert len(_norm) == len(set(_norm)), "A mutation appears twice in the universal ranking"
+assert {_mp.normalize_mutation_name(n) for n in _PHYS + _MENT} <= set(_norm), "Every normal mutation must be ranked"
+assert {_mp.normalize_mutation_name(n) for n in _mp.DEFECTS} <= set(_norm)
+# fire starters and gas clouds sit below every survival/control/physical mutation; defects are last
+_pos = {n: i for i, n in enumerate(_norm)}
+assert _pos["flamingray"] > _pos["burrowingclaws"] > _pos["heightenedquickness"], "Tier order wrong"
+# tier order (human-approved 2026-10-06): survival, control, traversal, physical, situational, hazardous, defects
+assert _pos["heightenedquickness"] < _pos["freezingray"] < _pos["burrowingclaws"] < _pos["wings"] < _pos["doublemuscled"] < _pos["nightvision"] < _pos["flamingray"], "Tiers must run survival, control, traversal, physical, situational, hazardous"
+assert all(_pos[_mp.normalize_mutation_name(d)] > _pos["electricalgeneration"] for d in _mp.DEFECTS), "Defects must rank last"
+
+# (b) Class names, display names and picker text all normalize to the same key
+assert _mp.normalize_mutation_name("LightManipulation") == _mp.normalize_mutation_name("Light Manipulation")
+assert _mp.normalize_mutation_name("DoubleMuscled") == _mp.normalize_mutation_name("Double-muscled")
+assert _mp.normalize_mutation_name("CorrosiveGasGeneration") == _mp.normalize_mutation_name("Corrosive Gas Generation")
+assert _mp.option_head("Burrowing Claws - You bear spade-like claws that can burrow ...") == "Burrowing Claws"
+assert _mp.option_head("Heightened Quickness (1)") == "Heightened Quickness"
+assert _mp.option_head("{{G|Regeneration}} - You heal quickly.") == "Regeneration"
+assert _mp.option_head("Stinger (Paralyzing Venom) - Your tail ...") == "Stinger (Paralyzing Venom)"
+
+# (c) Build first, then the universal order: the Esper template's own priorities lead the ranking
+_esper = build_templates.BUILD_TEMPLATES["esper_ited_away"]
+_rank = _mp.build_mutation_ranking(_esper)
+assert _rank[:6] == ["LightManipulation", "SunderMind", "Clairvoyance", "ForceWall", "ForceBubble", "Teleportation"], _rank[:6]
+assert len(_rank) == len({_mp.normalize_mutation_name(n) for n in _rank}), "Duplicates in a built ranking"
+assert {_mp.normalize_mutation_name(n) for n in _PHYS + _MENT} <= {_mp.normalize_mutation_name(n) for n in _rank}
+
+# (d) The level-5 situation from 2026-10-06: three options, none of them in the Esper list. The old code took the built-in
+#     list's Burrowing Claws (or the first entry when nothing matched); the ranking takes the survival mutation instead.
+_opts = ["Burrowing Claws - You bear spade-like claws that can burrow ...",
+         "Heightened Quickness - You are gifted with tremendous speed.",
+         "Flaming Ray - You emit a ray of fire."]
+_i, _why = _mp.choose_option(_opts, _rank)
+print("  (d) chose", _i, _mp.option_head(_opts[_i]), "|", _why)
+assert _mp.option_head(_opts[_i]) == "Heightened Quickness", f"Survival must beat claws and fire, got {_opts[_i]}"
+# a template mutation beats the universal order
+_i, _why = _mp.choose_option(["Heightened Quickness - x", "Sunder Mind - y", "Regeneration - z"], _rank)
+assert _mp.option_head(["Heightened Quickness - x", "Sunder Mind - y", "Regeneration - z"][_i]) == "Sunder Mind", "The build's own priority must win"
+# traversal beats physical but loses to control and survival
+_o = ["Double-muscled - x", "Burrowing Claws - y", "Quills - z"]
+assert _mp.option_head(_o[_mp.choose_option(_o, _rank)[0]]) == "Burrowing Claws", "Traversal must beat a plain physical mutation"
+_o = ["Burrowing Claws - y", "Freezing Ray - x", "Wings - w"]
+assert _mp.option_head(_o[_mp.choose_option(_o, _rank)[0]]) == "Freezing Ray", "Control must beat traversal"
+_o = ["Wings - w", "Regeneration - r", "Burrowing Claws - y"]
+assert _mp.option_head(_o[_mp.choose_option(_o, _rank)[0]]) == "Regeneration", "Survival must beat traversal"
+# fire-starters only when nothing else is offered
+_i, _ = _mp.choose_option(["Flaming Ray - a", "Pyrokinesis - b", "Night Vision - c"], _rank)
+assert _i == 2, "A passive mutation beats fire-starters"
+# a request from the brain command wins, and class names match display text
+_i, _why = _mp.choose_option(["Heightened Quickness - x", "Light Manipulation - y"], _rank, preferred="Regeneration")
+assert _why != "requested by the brain", "A preferred mutation that is not offered must not be forced"
+_i, _why = _mp.choose_option(["Heightened Quickness - x", "Light Manipulation - y"], _rank, preferred="LightManipulation")
+assert (_i, _why) == (1, "requested by the brain"), "Class-name requests must match display text"
+# the old failure mode: nothing in the ranking at all -> default first entry, not a crash
+_i, _why = _mp.choose_option(["Totally Unknown - x", "Also Unknown - y"], _rank)
+assert (_i, _why) == (0, "default")
+
+# (e) Publishing: the file is written once per build, atomically, with comments and one name per line
+import tempfile as _tf
+_pdir = _tf.mkdtemp(); _pf = _os.path.join(_pdir, "mutation_ranking.txt")
+_mp._PUBLISHED.update({"name": None, "path": None})
+assert _mp.publish_mutation_ranking(_esper, _pf) is True
+assert _mp.publish_mutation_ranking(_esper, _pf) is False, "Must not rewrite for the same build"
+_lines = [l for l in open(_pf, encoding="utf-8").read().splitlines() if l and not l.startswith("#")]
+assert _lines[:3] == ["LightManipulation", "SunderMind", "Clairvoyance"] and len(_lines) == len(_rank)
+assert _mp.publish_mutation_ranking(build_templates.BUILD_TEMPLATES["gas_giant"], _pf) is True, "A new build rewrites the file"
+assert _mp.publish_mutation_ranking(_esper, _os.path.join(_pdir, "no", "such", "dir", "x.txt")) is False, "An unwritable path must never raise"
+print("  [OK] Test 68 Passed: every mutation ranked once, build first, survival over fire, class and display names match.")
+
+# ---------------------------------------------------------------------------
+# Test 69: abilities are matched by exact engine command through the family table (HANDOFF issue 52)
+# ---------------------------------------------------------------------------
+import ability_registry as _ar
+_ab = lambda name, cmd, **k: dict({"name": name, "command": cmd, "usable": True, "cooldown": 0, "active": False}, **k)
+# the old bug: a Lase with charges contains the substring "charge" and an unrelated Discharge/Recharge matched too
+_lase = _ab("Lase (4 charges)", "CommandLase")
+assert brain.find_ready_ability([_lase], "melee_charge") is None, "Lase must not be mistaken for a melee charge"
+assert brain.find_ready_ability([_lase], "lase") is _lase
+for _c in ("CommandDischarge", "CommandRechargeObject", "CommandToggleProvideCharge"):
+    assert brain.find_ready_ability([_ab("Charge thing", _c)], "melee_charge") is None, _c
+assert brain.find_ready_ability([_ab("Charge", "CommandMeleeCharge")], "melee_charge") is not None
+# the toggle is not a strike; the burrowing toggle and Dig are never used automatically
+assert brain.find_ready_ability([_ab("Decapitate", "CommandToggleDecapitate")], "melee_strike") is None
+for _c in ("CommandToggleBurrowingClaws", "CommandDig"):
+    assert _ar.known(_c) and not _ar.is_wired(_ab("x", _c)) and _ar.unclassified(_c), _c
+# families that are documented but off stay off: Teleportation and the Phasing toggle
+assert brain.find_ready_ability([_ab("Teleport", "CommandTeleport")], "teleport_self", "phase_escape") is None
+assert brain.find_ready_ability([_ab("Phasing", "CommandPhaseIn")], "phase_escape") is not None
+# readiness rules are unchanged
+assert brain.find_ready_ability([_ab("Lase", "CommandLase", cooldown=5)], "lase") is None
+assert brain.find_ready_ability([_ab("Lase (0 charges)", "CommandLase")], "lase") is None
+# every command in the table exists in the registry; no family lists a command the game does not have
+for _f, _cmds in _ar.FAMILY_COMMANDS.items():
+    for _c in _cmds:
+        assert _ar.known(_c), f"{_f} lists unknown command {_c}"
+# the live level-5 character's 11 abilities all resolve in the registry
+for _c in ("CommandToggleRunning", "CommandSurvivalCamp", "CommandIntimidate", "CommandProselytize", "CommandLase",
+           "CommandStunningForce", "CommandTeleportOther", "CommandClairvoyance", "CommandAmbientLight",
+           "CommandToggleBurrowingClaws", "CommandDig"):
+    assert _ar.known(_c), _c
+# note_ability_use: counted once per seq, refusal and no-cooldown-change are distinguished, file written atomically
+import tempfile as _tf2
+_old_stats = brain.ABILITY_STATS_PATH; brain.ABILITY_STATS_PATH = _os.path.join(_tf2.mkdtemp(), "ability_stats.json")
+brain.ABILITY_LAST_SEQ["seq"] = 0
+_use = lambda seq, **k: {"last_ability_use": dict({"seq": seq, "command": "CommandLase", "known": True, "cd_before": 0, "cd_after": 0, "fired": False, "refused": False, "reason": ""}, **k)}
+brain.note_ability_use(_use(1, cd_after=12, fired=True))
+brain.note_ability_use(_use(1, cd_after=12, fired=True))      # same seq: not counted twice
+brain.note_ability_use(_use(2))                                # cooldown unchanged
+brain.note_ability_use(_use(3, refused=True, reason="on cooldown (5)", cd_before=5, cd_after=5))
+brain.note_ability_use({})                                     # no report: no crash
+_st = json.load(open(brain.ABILITY_STATS_PATH, encoding="utf-8"))["CommandLase"]
+assert (_st["attempts"], _st["fired"], _st["refused"]) == (3, 1, 1), _st
+brain.ABILITY_STATS_PATH = _old_stats
+print("  [OK] Test 69 Passed: abilities match by exact command; Lase is not a charge; unclassified abilities are never auto-used.")

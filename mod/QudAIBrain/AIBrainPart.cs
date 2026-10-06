@@ -28,6 +28,7 @@ namespace QudAIBrain
     {
         private const string ExchangeDir = @"C:\Users\rsebr\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI";
         public static string FlagFile => Path.Combine(ExchangeDir, "active.flag");
+        public static string ExchangeFile(string name) { return Path.Combine(ExchangeDir, name); }
         private static string StateFile => Path.Combine(ExchangeDir, "state.json");
         private static string ActionFile => Path.Combine(ExchangeDir, "action.json");
 
@@ -211,6 +212,44 @@ namespace QudAIBrain
         private static string lastBurrowJson = "null";
 
         private static string LastBurrowJson() { return "\"last_burrow\": " + lastBurrowJson + ","; }
+
+        // ---- Ability use log (HANDOFF issue 52): what the last USE_ABILITY did to the ability's cooldown, so "it works" is
+        // measured instead of assumed. Python (note_ability_use) turns it into memory/ability_stats.json.
+        private static int abilityUseSeq = 0;
+        private static string lastAbilityUseJson = "null";
+
+        private static string LastAbilityUseJson() { return "\"last_ability_use\": " + lastAbilityUseJson + ","; }
+
+        // Reads the live state of the player's ability with this engine command. found=false when the player has no such ability.
+        private static void ReadAbilityState(GameObject player, string cmd, out bool found, out bool enabled, out bool usable, out int cooldown)
+        {
+            found = false; enabled = false; usable = false; cooldown = 0;
+            try
+            {
+                var abilities = player.GetPart<ActivatedAbilities>();
+                if (abilities == null || abilities.AbilityByGuid == null) return;
+                foreach (var kvp in abilities.AbilityByGuid)
+                {
+                    var ab = kvp.Value;
+                    if (ab == null || !string.Equals(ab.Command ?? "", cmd, StringComparison.OrdinalIgnoreCase)) continue;
+                    found = true;
+                    enabled = ab.Enabled;
+                    usable = ab.IsUsable;
+                    cooldown = ab.CooldownRounds > 0 ? ab.CooldownRounds : ab.Cooldown;
+                    return;
+                }
+            }
+            catch { }
+        }
+
+        private static void RecordAbilityUse(string cmd, string dir, bool found, int cdBefore, int cdAfter, bool refused, string reason)
+        {
+            abilityUseSeq++;
+            lastAbilityUseJson = "{\"seq\": " + abilityUseSeq + ", \"command\": \"" + EscapeJson(cmd) + "\", \"dir\": \"" + EscapeJson(dir ?? "") +
+                "\", \"known\": " + (found ? "true" : "false") + ", \"cd_before\": " + cdBefore + ", \"cd_after\": " + cdAfter +
+                ", \"fired\": " + ((!refused && cdAfter > cdBefore) ? "true" : "false") + ", \"refused\": " + (refused ? "true" : "false") +
+                ", \"reason\": \"" + EscapeJson(reason ?? "") + "\"}";
+        }
 
         // ---- Obstacles on an engine-planned path (HANDOFF issue 47) ----
         // The engine pathfinder routes THROUGH trees and plant walls (it expects the walker to hack through), but a step into an
@@ -1256,6 +1295,7 @@ namespace QudAIBrain
                 sb.Append($"\"nearest_unexplored_dist\": {(minUnexpDist != int.MaxValue ? minUnexpDist : -1)},");
                 sb.Append(BuildFrontierJson(player, currentCell, isAutoexploreStuck || isZoneFullyExplored));
                 sb.Append(LastBurrowJson());
+                sb.Append(LastAbilityUseJson());
 
                 string reachableEdges = "";
                 try
@@ -2299,14 +2339,10 @@ namespace QudAIBrain
             {
                 lastMoveFailed = false;
                 lastFailedDir = "";
-                try
-                {
-                    if (player.Stat("AP", 0) > 0 || player.Stat("SP", 0) >= 50 || player.Stat("MP", 0) > 0)
-                    {
-                        ExecuteAutolevel(player, "AUTOLEVEL");
-                    }
-                }
-                catch { }
+                // REST / PASS used to run a hard-coded autolevel here (rifle/acrobatics/endurance skills, Toughness or Agility for
+                // attributes, the first available mutation) that ignored the build template: it bought Acrobatics and put a point
+                // into Agility for an Esper that wanted Tactics and Ego. Python spends points explicitly with AUTOLEVEL_STAT /
+                // AUTOLEVEL_SKILL / AUTOLEVEL_*MUTATION according to the template (HANDOFF issue 50).
                 player.UseEnergy(1000, "Pass");
                 return;
             }
@@ -2364,6 +2400,20 @@ namespace QudAIBrain
                 if (cmd.IndexOf("harvest", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     ExecuteCommand(player, "HARVEST");
+                    return;
+                }
+
+                // Usability pre-check (HANDOFF issue 52): do not fire into a cooldown or a disabled ability and call it a use.
+                // The turn is still spent (R4: a command that spends no energy re-exports the same state and loops).
+                bool abFound, abEnabled, abUsable; int cdBefore;
+                ReadAbilityState(player, cmd, out abFound, out abEnabled, out abUsable, out cdBefore);
+                if (abFound && (!abEnabled || !abUsable || cdBefore > 0))
+                {
+                    string why = !abEnabled ? "disabled" : (!abUsable ? "not usable" : "on cooldown (" + cdBefore + ")");
+                    UnityEngine.Debug.LogWarning($"[QudAI USE_ABILITY] Refused {cmd}: {why}");
+                    RecordAbilityUse(cmd, PreferredDirection, true, cdBefore, cdBefore, true, why);
+                    PreferredDirection = "";
+                    player.UseEnergy(1000, "Ability");
                     return;
                 }
 
@@ -2522,6 +2572,12 @@ namespace QudAIBrain
                     Sidebar.Update();
                 }
                 catch { }
+
+                {
+                    bool f2, e2, u2; int cdAfter;
+                    ReadAbilityState(player, cmd, out f2, out e2, out u2, out cdAfter);
+                    RecordAbilityUse(cmd, PreferredDirection, abFound, cdBefore, cdAfter, false, "");
+                }
 
                 PreferredDirection = "";
                 PreferredTargetCell = null;
@@ -4093,6 +4149,53 @@ namespace QudAIBrain
             "HeightenedHearing", "HeightenedSmell", "NightVision"
         };
 
+        // ---- Mutation naming and the published ranking (HANDOFF issue 50) ----
+        private static List<string> cachedRanking = null;
+        private static DateTime rankingStamp = DateTime.MinValue;
+
+        public static string NormalizeMutationName(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            var sb = new StringBuilder();
+            foreach (char ch in s) if (char.IsLetterOrDigit(ch)) sb.Append(char.ToLowerInvariant(ch));
+            return sb.ToString();
+        }
+
+        public static string OptionHead(string option)
+        {
+            string s = option ?? "";
+            try { s = ConsoleLib.Console.ColorUtility.StripFormatting(s); } catch { }
+            int i = s.IndexOf(" - ", StringComparison.Ordinal);
+            if (i >= 0) s = s.Substring(0, i);
+            s = Regex.Replace(s, @"\s*\(\d+\)\s*$", "");
+            return s.Trim();
+        }
+
+        // mutation_ranking.txt: one mutation name per line (class or display name), best first; '#' lines are comments.
+        private static List<string> LoadRanking()
+        {
+            try
+            {
+                string path = AIPlayerTurnPatch.ExchangeFile("mutation_ranking.txt");
+                if (!File.Exists(path)) return cachedRanking;
+                DateTime stamp = File.GetLastWriteTimeUtc(path);
+                if (stamp != rankingStamp)
+                {
+                    var list = new List<string>();
+                    foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
+                    {
+                        string tl = line.Trim();
+                        if (tl.Length == 0 || tl.StartsWith("#")) continue;
+                        list.Add(NormalizeMutationName(tl));
+                    }
+                    cachedRanking = list;
+                    rankingStamp = stamp;
+                }
+            }
+            catch { }
+            return cachedRanking;
+        }
+
         public static bool Prefix(
             string Title,
             string Intro,
@@ -4110,38 +4213,50 @@ namespace QudAIBrain
                 }
 
                 int chosenIndex = -1;
+                string chosenReason = "default";
 
-                // 1. If PreferredMutation is specified by brain command (e.g. AUTOLEVEL_BUY_MUTATION:LightManipulation)
+                // Option text looks like "Burrowing Claws - You bear spade-like claws..." or "Heightened Quickness (1)". Compare by
+                // normalized head (letters and digits, lower case) so class names (LightManipulation), display names (Light
+                // Manipulation) and "Double-muscled" / "DoubleMuscled" all match. The old substring match never matched class names.
+                var heads = new List<string>();
+                for (int i = 0; i < Options.Count; i++) heads.Add(OptionHead(Options[i]));
+                var norm = heads.Select(h => NormalizeMutationName(h)).ToList();
+
+                // 1. A specific mutation requested by the brain command (AUTOLEVEL_BUY_MUTATION:<name>)
                 if (!string.IsNullOrEmpty(AIPlayerTurnPatch.PreferredMutation))
                 {
-                    string target = AIPlayerTurnPatch.PreferredMutation.Trim();
-                    for (int i = 0; i < Options.Count; i++)
+                    string want = NormalizeMutationName(AIPlayerTurnPatch.PreferredMutation);
+                    for (int i = 0; i < norm.Count; i++)
                     {
-                        if (Options[i] != null && Options[i].IndexOf(target, StringComparison.OrdinalIgnoreCase) >= 0)
-                        {
-                            chosenIndex = i;
-                            break;
-                        }
+                        if (norm[i].Length > 0 && norm[i] == want) { chosenIndex = i; chosenReason = "requested by the brain"; break; }
                     }
                 }
 
-                // 2. Mutation or Advance Selection: evaluate against build priority list
-                if (chosenIndex < 0 && Options.Count > 1)
-                {
-                    bool isMutationPicker = (Intro != null && (Intro.IndexOf("mutation", StringComparison.OrdinalIgnoreCase) >= 0 || Intro.IndexOf("advance", StringComparison.OrdinalIgnoreCase) >= 0))
+                // 2. Mutation picker: the ranking Python publishes for the detected build (mutation_ranking.txt), then the built-in list
+                bool isMutationPicker = (Intro != null && (Intro.IndexOf("mutation", StringComparison.OrdinalIgnoreCase) >= 0 || Intro.IndexOf("advance", StringComparison.OrdinalIgnoreCase) >= 0))
                                          || (Title != null && (Title.IndexOf("mutation", StringComparison.OrdinalIgnoreCase) >= 0 || Title.IndexOf("advance", StringComparison.OrdinalIgnoreCase) >= 0));
 
-                    if (isMutationPicker)
+                if (chosenIndex < 0 && Options.Count > 1 && isMutationPicker)
+                {
+                    var ranking = LoadRanking();
+                    int bestRank = int.MaxValue;
+                    if (ranking != null)
+                    {
+                        for (int i = 0; i < norm.Count; i++)
+                        {
+                            int r = norm[i].Length > 0 ? ranking.IndexOf(norm[i]) : -1;
+                            if (r >= 0 && r < bestRank) { bestRank = r; chosenIndex = i; }
+                        }
+                        if (chosenIndex >= 0) chosenReason = "build ranking #" + (bestRank + 1);
+                    }
+                    if (chosenIndex < 0)
                     {
                         foreach (string p in MutationPriorities)
                         {
-                            for (int i = 0; i < Options.Count; i++)
+                            string np = NormalizeMutationName(p);
+                            for (int i = 0; i < norm.Count; i++)
                             {
-                                if (Options[i] != null && Options[i].IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0)
-                                {
-                                    chosenIndex = i;
-                                    break;
-                                }
+                                if (norm[i].Length > 0 && norm[i] == np) { chosenIndex = i; chosenReason = "built-in list"; break; }
                             }
                             if (chosenIndex >= 0) break;
                         }
@@ -4164,6 +4279,7 @@ namespace QudAIBrain
                 string logMsg = $"{{G|[AI Autonomous Choice] Picked option {chosenIndex}: '{chosenText}'}}";
                 MessageQueue.AddPlayerMessage(logMsg);
                 UnityEngine.Debug.Log($"[QudAI AIPickOptionPatch] Intro: '{Intro}', Picked [{chosenIndex}]: {chosenText}");
+                UnityEngine.Debug.Log("[QudAI MutationChoice] options: " + string.Join(" | ", heads.Select((h, k) => "[" + k + "] " + h)) + " -> chose [" + chosenIndex + "] (" + chosenReason + ")");
                 return false;
             }
             return true;

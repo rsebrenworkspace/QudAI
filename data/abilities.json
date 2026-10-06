@@ -1,0 +1,2047 @@
+{
+ "_meta": {
+  "generated": "2026-10-06",
+  "sources": [
+   "Assembly-CSharp.dll (AddActivatedAbility/AddMyActivatedAbility registrations, AIGet*AbilityListEvent handlers)",
+   "StreamingAssets/Base/Mutations.xml",
+   "StreamingAssets/Base/Skills.xml"
+  ],
+  "command_source": "literal = spelled out in the registering method; literal-in-type = the only Command* literal in the type; derived = 'Command' + name without spaces (a guess; confirm with live data in memory/ability_stats.json)",
+  "count": 145
+ },
+ "abilities": {
+  "CommandAcrobaticsJump": {
+   "command": "CommandAcrobaticsJump",
+   "command_source": "literal-in-type",
+   "name": "Jump",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Acrobatics_Jump"
+   ],
+   "source_name": "Jump",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandActivate": {
+   "command": "CommandActivate",
+   "command_source": "derived",
+   "name": "Activate",
+   "category": "Items",
+   "kind": "item",
+   "owners": [
+    "Parts.Teleprojector"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandActivateCathedra": {
+   "command": "CommandActivateCathedra",
+   "command_source": "literal",
+   "name": "Wormhole",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsCathedraBlackOpal",
+    "Parts.CyberneticsCathedraRuby",
+    "Parts.CyberneticsCathedraSapphire",
+    "Parts.CyberneticsCathedraWhiteOpal"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandActivateFlumeFlier": {
+   "command": "CommandActivateFlumeFlier",
+   "command_source": "derived",
+   "name": "Activate Flume-Flier",
+   "category": "Items",
+   "kind": "item",
+   "owners": [
+    "Parts.SkybearShroud"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandActivateTetheredRecoilerTeleporter": {
+   "command": "CommandActivateTetheredRecoilerTeleporter",
+   "command_source": "literal",
+   "name": "Recoil to",
+   "category": "Maneuvers",
+   "kind": "other",
+   "owners": [
+    "Parts.TetheredOnboardRecoilerTeleporter"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandAggressiveStance": {
+   "command": "CommandAggressiveStance",
+   "command_source": "literal",
+   "name": "Aggressive Stance",
+   "category": "Stances",
+   "kind": "stance",
+   "owners": [
+    "Parts.LongBladesCore"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandAmbientLight": {
+   "command": "CommandAmbientLight",
+   "command_source": "literal",
+   "name": "Ambient Light",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.LightManipulation"
+   ],
+   "source_name": "Light Manipulation",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandAmputateLimb": {
+   "command": "CommandAmputateLimb",
+   "command_source": "literal",
+   "name": "Amputate Limb",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Physic_AmputateLimb"
+   ],
+   "source_name": "Amputate Limb",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandAxeBerserk": {
+   "command": "CommandAxeBerserk",
+   "command_source": "literal",
+   "name": "Berserk!",
+   "category": "Stances",
+   "kind": "stance",
+   "owners": [
+    "Parts.Skill.Axe_Berserk"
+   ],
+   "source_name": "Berserk!",
+   "engine_roles": [
+    "offensive"
+   ],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandAxeHookAndDrag": {
+   "command": "CommandAxeHookAndDrag",
+   "command_source": "literal",
+   "name": "Hook and Drag",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Axe_HookAndDrag"
+   ],
+   "source_name": "Hook and Drag",
+   "engine_roles": [
+    "offensive"
+   ],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandBask": {
+   "command": "CommandBask",
+   "command_source": "literal-in-type",
+   "name": "Bask",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.PhotosyntheticSkin"
+   ],
+   "source_name": "Photosynthetic Skin",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandBeguileCreature": {
+   "command": "CommandBeguileCreature",
+   "command_source": "literal",
+   "name": "Beguile Creature",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Beguiling"
+   ],
+   "source_name": "Beguiling",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandBurgeoning": {
+   "command": "CommandBurgeoning",
+   "command_source": "literal",
+   "name": "Burgeoning",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Burgeoning"
+   ],
+   "source_name": "Burgeoning",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandBurrow": {
+   "command": "CommandBurrow",
+   "command_source": "literal",
+   "name": "Burrow",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Burrowing"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "defensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandButcherToggle": {
+   "command": "CommandButcherToggle",
+   "command_source": "literal",
+   "name": "Butcher Corpses",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.CookingAndGathering_Butchery"
+   ],
+   "source_name": "Butchery",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandChangeGrip": {
+   "command": "CommandChangeGrip",
+   "command_source": "literal",
+   "name": "Change Grip",
+   "category": "Items",
+   "kind": "item",
+   "owners": [
+    "Parts.GripChange"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandClairvoyance": {
+   "command": "CommandClairvoyance",
+   "command_source": "literal",
+   "name": "Clairvoyance",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Clairvoyance"
+   ],
+   "source_name": "Clairvoyance",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandConfuse": {
+   "command": "CommandConfuse",
+   "command_source": "literal",
+   "name": "Confusion",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Confusion"
+   ],
+   "source_name": "Confusion",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandConk": {
+   "command": "CommandConk",
+   "command_source": "literal-in-type",
+   "name": "Conk",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Cudgel_Conk"
+   ],
+   "source_name": "Conk",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandCryokinesis": {
+   "command": "CommandCryokinesis",
+   "command_source": "literal-in-type",
+   "name": "Chill",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Cryokinesis"
+   ],
+   "source_name": "Cryokinesis",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandCudgelSlam": {
+   "command": "CommandCudgelSlam",
+   "command_source": "literal",
+   "name": "Slam",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Cudgel_Slam"
+   ],
+   "source_name": "Slam",
+   "engine_roles": [
+    "offensive"
+   ],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandDeathFromAbove": {
+   "command": "CommandDeathFromAbove",
+   "command_source": "derived",
+   "name": "Death From Above",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Tactics_DeathFromAbove"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandDeathblow": {
+   "command": "CommandDeathblow",
+   "command_source": "literal",
+   "name": "En Garde!",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.LongBladesDeathblow"
+   ],
+   "source_name": "En Garde!",
+   "engine_roles": [
+    "offensive"
+   ],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandDecarbonizer": {
+   "command": "CommandDecarbonizer",
+   "command_source": "literal",
+   "name": "Decarbonize",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Decarbonizer"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandDefensiveStance": {
+   "command": "CommandDefensiveStance",
+   "command_source": "literal",
+   "name": "Defensive Stance",
+   "category": "Stances",
+   "kind": "stance",
+   "owners": [
+    "Parts.LongBladesCore"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandDeployTurret": {
+   "command": "CommandDeployTurret",
+   "command_source": "literal",
+   "name": "Deploy Turret",
+   "category": "Tinkering",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Tinkering_DeployTurret"
+   ],
+   "source_name": "Deploy Turret",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandDig": {
+   "command": "CommandDig",
+   "command_source": "literal-in-type",
+   "name": "Dig",
+   "category": "Maneuvers",
+   "kind": "other",
+   "owners": [
+    "Parts.Digging"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandDigDown": {
+   "command": "CommandDigDown",
+   "command_source": "literal",
+   "name": "Excavate down",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.BurrowingClaws"
+   ],
+   "source_name": "Burrowing Claws",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandDigUp": {
+   "command": "CommandDigUp",
+   "command_source": "literal",
+   "name": "Excavate up",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.BurrowingClaws"
+   ],
+   "source_name": "Burrowing Claws",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandDischarge": {
+   "command": "CommandDischarge",
+   "command_source": "literal",
+   "name": "Discharge",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.ElectricalGeneration"
+   ],
+   "source_name": "Electrical Generation",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandDisciplineMeditate": {
+   "command": "CommandDisciplineMeditate",
+   "command_source": "literal",
+   "name": "Meditate",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Discipline_Meditate"
+   ],
+   "source_name": "Meditate",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandDisintegration": {
+   "command": "CommandDisintegration",
+   "command_source": "literal-in-type",
+   "name": "Disintegration",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Disintegration"
+   ],
+   "source_name": "Disintegration",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandDismember": {
+   "command": "CommandDismember",
+   "command_source": "literal",
+   "name": "Dismember",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Axe_Dismember"
+   ],
+   "source_name": "Dismember",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandDominateCreature": {
+   "command": "CommandDominateCreature",
+   "command_source": "literal",
+   "name": "Dominate Creature",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Domination"
+   ],
+   "source_name": "Domination",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandDuelingStance": {
+   "command": "CommandDuelingStance",
+   "command_source": "literal",
+   "name": "Dueling Stance",
+   "category": "Stances",
+   "kind": "stance",
+   "owners": [
+    "Parts.Skill.LongBladesDuelingStance"
+   ],
+   "source_name": "Dueling Stance",
+   "engine_roles": [
+    "offensive"
+   ],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandEgo": {
+   "command": "CommandEgo",
+   "command_source": "derived",
+   "name": "Ego",
+   "category": "Items",
+   "kind": "item",
+   "owners": [
+    "Parts.Stopsvaalinn"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandElectromagneticPulse": {
+   "command": "CommandElectromagneticPulse",
+   "command_source": "literal",
+   "name": "Emit Pulse",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.ElectromagneticPulse"
+   ],
+   "source_name": "Electromagnetic Pulse",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandEndMetamorphosis": {
+   "command": "CommandEndMetamorphosis",
+   "command_source": "literal",
+   "name": "End Metamorphosis",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Metamorphed"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandEngulf": {
+   "command": "CommandEngulf",
+   "command_source": "literal-in-type",
+   "name": "Engulf",
+   "category": "Physical Mutations",
+   "kind": "other",
+   "owners": [
+    "Parts.Engulfing"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandEquipObject": {
+   "command": "CommandEquipObject",
+   "command_source": "literal-in-type",
+   "name": "Metamorphosis",
+   "category": "Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Metamorphosis"
+   ],
+   "source_name": "Metamorphosis",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandFabricateForceKnife": {
+   "command": "CommandFabricateForceKnife",
+   "command_source": "derived",
+   "name": "Fabricate Force Knife",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsPrecisionForceLathe"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandFearAura": {
+   "command": "CommandFearAura",
+   "command_source": "literal-in-type",
+   "name": "Fear Aura",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.FearAura"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandFlamingRay": {
+   "command": "CommandFlamingRay",
+   "command_source": "literal-in-type",
+   "name": "Flaming Ray",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.FlamingRay"
+   ],
+   "source_name": "Flaming Ray",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandFloorSmash": {
+   "command": "CommandFloorSmash",
+   "command_source": "literal",
+   "name": "Catapult",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Smash_Floor"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandFlurry": {
+   "command": "CommandFlurry",
+   "command_source": "literal",
+   "name": "Flurry",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Multiweapon_Flurry"
+   ],
+   "source_name": "Flurry",
+   "engine_roles": [
+    "offensive"
+   ],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandForceBubble": {
+   "command": "CommandForceBubble",
+   "command_source": "literal-in-type",
+   "name": "Force Bubble",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.ForceBubble"
+   ],
+   "source_name": "Force Bubble",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandForceWall": {
+   "command": "CommandForceWall",
+   "command_source": "literal",
+   "name": "Force Wall",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.ForceWall"
+   ],
+   "source_name": "Force Wall",
+   "engine_roles": [
+    "offensive",
+    "retreat"
+   ],
+   "name_source": "code"
+  },
+  "CommandFreezeBreath": {
+   "command": "CommandFreezeBreath",
+   "command_source": "literal",
+   "name": "Freezing Ultraray",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.FreezeBreath"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandFreezingRay": {
+   "command": "CommandFreezingRay",
+   "command_source": "literal-in-type",
+   "name": "Freezing Ray",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.FreezingRay"
+   ],
+   "source_name": "Freezing Ray",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandFrostWebs": {
+   "command": "CommandFrostWebs",
+   "command_source": "literal",
+   "name": "Knit Frosty Webs",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.FrostWebs"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandHarvestToggle": {
+   "command": "CommandHarvestToggle",
+   "command_source": "literal",
+   "name": "Harvest Plants",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.CookingAndGathering_Harvestry"
+   ],
+   "source_name": "Harvestry",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandHeavyWeaponsSweep": {
+   "command": "CommandHeavyWeaponsSweep",
+   "command_source": "literal-in-type",
+   "name": "Sweep",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.HeavyWeapons_Sweep"
+   ],
+   "source_name": "Sweep",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandHobble": {
+   "command": "CommandHobble",
+   "command_source": "literal",
+   "name": "Hobble",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.ShortBlades_Hobble"
+   ],
+   "source_name": "Hobble",
+   "engine_roles": [
+    "offensive"
+   ],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandInfiltrate": {
+   "command": "CommandInfiltrate",
+   "command_source": "literal",
+   "name": "Infiltrate",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Infiltrate"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandIntimidate": {
+   "command": "CommandIntimidate",
+   "command_source": "literal-in-type",
+   "name": "Intimidate",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Persuasion_Intimidate"
+   ],
+   "source_name": "Intimidate",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandKindle": {
+   "command": "CommandKindle",
+   "command_source": "literal",
+   "name": "Kindle",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Kindle"
+   ],
+   "source_name": "Kindle",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandLase": {
+   "command": "CommandLase",
+   "command_source": "literal",
+   "name": "Lase",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.LightManipulation"
+   ],
+   "source_name": "Light Manipulation",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandLayMine": {
+   "command": "CommandLayMine",
+   "command_source": "literal",
+   "name": "Lay Mine",
+   "category": "Tinkering",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Tinkering_LayMine"
+   ],
+   "source_name": "Lay Mine / Set Bomb",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandLayMineTimed": {
+   "command": "CommandLayMineTimed",
+   "command_source": "literal",
+   "name": "Set Bomb",
+   "category": "Tinkering",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Tinkering_LayMine"
+   ],
+   "source_name": "Lay Mine / Set Bomb",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandLeaderTeleport": {
+   "command": "CommandLeaderTeleport",
+   "command_source": "literal",
+   "name": "Teleport",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.ErosTeleportation"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "movement",
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandLeyShift": {
+   "command": "CommandLeyShift",
+   "command_source": "literal",
+   "name": "Ley Shift",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.LeyShifting"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandLifeDrain": {
+   "command": "CommandLifeDrain",
+   "command_source": "literal",
+   "name": "Syphon Vim",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.LifeDrain"
+   ],
+   "source_name": "Syphon Vim",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandLunge": {
+   "command": "CommandLunge",
+   "command_source": "literal",
+   "name": "Lunge",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.LongBladesLunge"
+   ],
+   "source_name": "Lunge",
+   "engine_roles": [
+    "offensive"
+   ],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandMagneticPulse": {
+   "command": "CommandMagneticPulse",
+   "command_source": "literal-in-type",
+   "name": "Magnetic Pulse",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.MagneticPulse"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandMarkTarget": {
+   "command": "CommandMarkTarget",
+   "command_source": "literal-in-type",
+   "name": "Mark Target",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Rifle_DrawABead"
+   ],
+   "source_name": "Draw a Bead",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandMassMind": {
+   "command": "CommandMassMind",
+   "command_source": "literal",
+   "name": "Tap the Mass Mind",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.MassMind"
+   ],
+   "source_name": "Mass Mind",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandMassiveCharge": {
+   "command": "CommandMassiveCharge",
+   "command_source": "literal",
+   "name": "Triple Horn",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.MultiHorns"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandMeleeCharge": {
+   "command": "CommandMeleeCharge",
+   "command_source": "literal-in-type",
+   "name": "Charge",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Tactics_Charge"
+   ],
+   "source_name": "Charge",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandMentalMirror": {
+   "command": "CommandMentalMirror",
+   "command_source": "literal",
+   "name": "Mental Mirror",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.MentalMirror"
+   ],
+   "source_name": "Mental Mirror",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandMetamorphosis": {
+   "command": "CommandMetamorphosis",
+   "command_source": "literal",
+   "name": "Metamorphosis",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Metamorphosis"
+   ],
+   "source_name": "Metamorphosis",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandPersuasionBerate": {
+   "command": "CommandPersuasionBerate",
+   "command_source": "literal-in-type",
+   "name": "Berate",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Persuasion_Berate"
+   ],
+   "source_name": "Berate",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandPersuasionMenacingStare": {
+   "command": "CommandPersuasionMenacingStare",
+   "command_source": "literal-in-type",
+   "name": "Menacing Stare",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Persuasion_MenacingStare"
+   ],
+   "source_name": "Menacing Stare",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandPhaseIn": {
+   "command": "CommandPhaseIn",
+   "command_source": "literal-in-type",
+   "name": "Phasing",
+   "category": "Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Phasing"
+   ],
+   "source_name": "Phasing",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandPhaseOut": {
+   "command": "CommandPhaseOut",
+   "command_source": "literal-in-type",
+   "name": "Phasing",
+   "category": "Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Phasing"
+   ],
+   "source_name": "Phasing",
+   "engine_roles": [
+    "defensive",
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandPistolEmptyTheClips": {
+   "command": "CommandPistolEmptyTheClips",
+   "command_source": "literal-in-type",
+   "name": "Empty the Clips",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Pistol_EmptyTheClips"
+   ],
+   "source_name": "Empty the Clips",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandPlaceMine": {
+   "command": "CommandPlaceMine",
+   "command_source": "literal-in-type",
+   "name": "Explosives",
+   "category": "Skills",
+   "kind": "other",
+   "owners": [
+    "Parts.Miner"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandPrecognition": {
+   "command": "CommandPrecognition",
+   "command_source": "literal",
+   "name": "Precognition - Start vision",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Precognition"
+   ],
+   "source_name": "Precognition",
+   "engine_roles": [
+    "defensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandPrecognitionRevert": {
+   "command": "CommandPrecognitionRevert",
+   "command_source": "literal",
+   "name": "Precognition - End vision",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Precognition"
+   ],
+   "source_name": "Precognition",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandProselytize": {
+   "command": "CommandProselytize",
+   "command_source": "literal",
+   "name": "Proselytize",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Persuasion_Proselytize"
+   ],
+   "source_name": "Proselytize",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandPsychometryMenu": {
+   "command": "CommandPsychometryMenu",
+   "command_source": "literal-in-type",
+   "name": "Psychometry",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Psychometry"
+   ],
+   "source_name": "Psychometry",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandPuffSpores": {
+   "command": "CommandPuffSpores",
+   "command_source": "derived",
+   "name": "Puff Spores",
+   "category": "Items",
+   "kind": "item",
+   "owners": [
+    "Parts.PaxInfection"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandPyrokinesis": {
+   "command": "CommandPyrokinesis",
+   "command_source": "literal-in-type",
+   "name": "Toast",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Pyrokinesis"
+   ],
+   "source_name": "Pyrokinesis",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandQuillFling": {
+   "command": "CommandQuillFling",
+   "command_source": "literal-in-type",
+   "name": "Quills",
+   "category": "Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Quills"
+   ],
+   "source_name": "Quills",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandRebukeRobot": {
+   "command": "CommandRebukeRobot",
+   "command_source": "literal",
+   "name": "Rebuke Robot",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Persuasion_RebukeRobot"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandRechargeObject": {
+   "command": "CommandRechargeObject",
+   "command_source": "literal",
+   "name": "Recharge",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Tinkering_Tinker1"
+   ],
+   "source_name": "Tinker I",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandRecoil": {
+   "command": "CommandRecoil",
+   "command_source": "literal-in-type",
+   "name": "Recoil",
+   "category": "Items",
+   "kind": "item",
+   "owners": [
+    "Parts.RecoilAbility"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandReleaseAdrenaline": {
+   "command": "CommandReleaseAdrenaline",
+   "command_source": "literal",
+   "name": "Release Adrenaline",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.AdrenalControl2"
+   ],
+   "source_name": "Adrenal Control",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandRepellingForce": {
+   "command": "CommandRepellingForce",
+   "command_source": "literal",
+   "name": "Repelling Force",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.RepellingForce"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "guess"
+  },
+  "CommandRunOver": {
+   "command": "CommandRunOver",
+   "command_source": "literal-in-type",
+   "name": "Run Over",
+   "category": "Maneuvers",
+   "kind": "other",
+   "owners": [
+    "Parts.RunOver"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandScintillate": {
+   "command": "CommandScintillate",
+   "command_source": "literal",
+   "name": "Scintillate",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.DefensiveChromatophores"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandSerenity": {
+   "command": "CommandSerenity",
+   "command_source": "literal",
+   "name": "Serenity",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Serenity"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandSetTargetTemperature": {
+   "command": "CommandSetTargetTemperature",
+   "command_source": "derived",
+   "name": "Set Target Temperature",
+   "category": "Items",
+   "kind": "item",
+   "owners": [
+    "Parts.TemperatureController"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandShank": {
+   "command": "CommandShank",
+   "command_source": "literal",
+   "name": "Shank",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.ShortBlades_Shank"
+   ],
+   "source_name": "Shank",
+   "engine_roles": [
+    "offensive"
+   ],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandShieldSlam": {
+   "command": "CommandShieldSlam",
+   "command_source": "literal-in-type",
+   "name": "Shield Slam",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Shield_Slam"
+   ],
+   "source_name": "Shield Slam",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandShieldWall": {
+   "command": "CommandShieldWall",
+   "command_source": "literal-in-type",
+   "name": "Shield Wall",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Shield_ShieldWall"
+   ],
+   "source_name": "Shield Wall",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandSingleWeaponFighting": {
+   "command": "CommandSingleWeaponFighting",
+   "command_source": "literal-in-type",
+   "name": "Single Weapon Fighting",
+   "category": "Skills",
+   "kind": "other",
+   "owners": [
+    "Parts.SingleWeaponFighting_Ability"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandSlog": {
+   "command": "CommandSlog",
+   "command_source": "literal",
+   "name": "Slug",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.SlogGlands"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandSmashUp": {
+   "command": "CommandSmashUp",
+   "command_source": "literal",
+   "name": "Demolish",
+   "category": "Stances",
+   "kind": "stance",
+   "owners": [
+    "Parts.Skill.Cudgel_SmashUp"
+   ],
+   "source_name": "Demolish",
+   "engine_roles": [
+    "offensive"
+   ],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandSnapjawHowl": {
+   "command": "CommandSnapjawHowl",
+   "command_source": "literal",
+   "name": "Howl",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Snapjaw_Howl"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandSpaceTimeVortex": {
+   "command": "CommandSpaceTimeVortex",
+   "command_source": "literal",
+   "name": "Spacetime Vortex",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.SpacetimeVortex"
+   ],
+   "source_name": "Spacetime Vortex",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandSpinSimpleWeb": {
+   "command": "CommandSpinSimpleWeb",
+   "command_source": "literal",
+   "name": "Spin Webs",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.SpiderWebs"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "movement",
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandSpinWeb": {
+   "command": "CommandSpinWeb",
+   "command_source": "literal",
+   "name": "Spin Webs",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Spinnerets"
+   ],
+   "source_name": "Spinnerets",
+   "engine_roles": [
+    "movement",
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandSpitAcid": {
+   "command": "CommandSpitAcid",
+   "command_source": "literal",
+   "name": "Spit Acid",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.AcidSlimeGlands"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandSpitLiquid": {
+   "command": "CommandSpitLiquid",
+   "command_source": "literal",
+   "name": "Spit Liquid",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.LiquidSpitter"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandSpitSlime": {
+   "command": "CommandSpitSlime",
+   "command_source": "literal-in-type",
+   "name": "Spit Slime",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.SlimeGlands"
+   ],
+   "source_name": "Slime Glands",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandStasisArena": {
+   "command": "CommandStasisArena",
+   "command_source": "derived",
+   "name": "Stasis Arena",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsStasisArena"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandStasisEntangler": {
+   "command": "CommandStasisEntangler",
+   "command_source": "literal-in-type",
+   "name": "Stasis Entangler",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsStasisEntangler"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandStickyTongue": {
+   "command": "CommandStickyTongue",
+   "command_source": "literal",
+   "name": "Tongue",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.StickyTongue"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandSting": {
+   "command": "CommandSting",
+   "command_source": "literal",
+   "name": "Sting",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Stinger"
+   ],
+   "source_name": "Stinger (Poisoning Venom)",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandStunningForce": {
+   "command": "CommandStunningForce",
+   "command_source": "literal",
+   "name": "Stunning Force",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.StunningForce"
+   ],
+   "source_name": "Stunning Force",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandSubmerge": {
+   "command": "CommandSubmerge",
+   "command_source": "literal",
+   "name": "Submerge",
+   "category": "Maneuvers",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Submersion"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandSunderMind": {
+   "command": "CommandSunderMind",
+   "command_source": "literal",
+   "name": "Sunder Mind",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.SunderMind"
+   ],
+   "source_name": "Sunder Mind",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandSurvivalCamp": {
+   "command": "CommandSurvivalCamp",
+   "command_source": "literal-in-type",
+   "name": "Make Camp",
+   "category": "Maneuvers",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Survival_Camp"
+   ],
+   "source_name": "Make Camp",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandSwipe": {
+   "command": "CommandSwipe",
+   "command_source": "literal",
+   "name": "Swipe",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.LongBladesSwipe"
+   ],
+   "source_name": "Swipe",
+   "engine_roles": [
+    "offensive"
+   ],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandTacticsJuke": {
+   "command": "CommandTacticsJuke",
+   "command_source": "literal-in-type",
+   "name": "Juke",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Tactics_Juke"
+   ],
+   "source_name": "Juke",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandTelekinesis": {
+   "command": "CommandTelekinesis",
+   "command_source": "literal",
+   "name": "Telekinesis",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Telekinesis"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandTelepathy": {
+   "command": "CommandTelepathy",
+   "command_source": "literal-in-type",
+   "name": "Telepathy",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Telepathy"
+   ],
+   "source_name": "Telepathy",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandTeleport": {
+   "command": "CommandTeleport",
+   "command_source": "literal-in-type",
+   "name": "Teleport",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Teleportation"
+   ],
+   "source_name": "Teleportation",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandTeleportOther": {
+   "command": "CommandTeleportOther",
+   "command_source": "literal",
+   "name": "Teleport Other",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.TeleportOther"
+   ],
+   "source_name": "Teleport Other",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandTemporalFugue": {
+   "command": "CommandTemporalFugue",
+   "command_source": "literal-in-type",
+   "name": "Temporal Fugue",
+   "category": "Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.TemporalFugue"
+   ],
+   "source_name": "Temporal Fugue",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandTightenCarapace": {
+   "command": "CommandTightenCarapace",
+   "command_source": "literal",
+   "name": "Tighten",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Carapace"
+   ],
+   "source_name": "Carapace",
+   "engine_roles": [
+    "defensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandTimeDilation": {
+   "command": "CommandTimeDilation",
+   "command_source": "literal",
+   "name": "Time Dilation",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.TimeDilation"
+   ],
+   "source_name": "Time Dilation",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandTinkerTurret": {
+   "command": "CommandTinkerTurret",
+   "command_source": "literal",
+   "name": "Tinker Turret",
+   "category": "Skills",
+   "kind": "other",
+   "owners": [
+    "Parts.TurretTinker"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "guess"
+  },
+  "CommandToggleAkimbo": {
+   "command": "CommandToggleAkimbo",
+   "command_source": "literal",
+   "name": "Akimbo",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Pistol_Akimbo"
+   ],
+   "source_name": "Akimbo",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandToggleAnchorSpikes": {
+   "command": "CommandToggleAnchorSpikes",
+   "command_source": "literal-in-type",
+   "name": "Anchor Spikes",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsAnchorSpikes"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandToggleAnomalyFumigator": {
+   "command": "CommandToggleAnomalyFumigator",
+   "command_source": "literal-in-type",
+   "name": "Anomaly Fumigator",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsAnomalyFumigator"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandToggleBurrowingClaws": {
+   "command": "CommandToggleBurrowingClaws",
+   "command_source": "literal",
+   "name": "Burrowing Claws",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.BurrowingClaws"
+   ],
+   "source_name": "Burrowing Claws",
+   "engine_roles": [],
+   "name_source": "xml"
+  },
+  "CommandToggleCyberNightVision": {
+   "command": "CommandToggleCyberNightVision",
+   "command_source": "literal-in-type",
+   "name": "Night Vision",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsNightVision"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandToggleDecapitate": {
+   "command": "CommandToggleDecapitate",
+   "command_source": "literal",
+   "name": "Decapitate",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.Axe_Decapitate"
+   ],
+   "source_name": "Decapitate",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandToggleFireSuppressionSystem": {
+   "command": "CommandToggleFireSuppressionSystem",
+   "command_source": "literal-in-type",
+   "name": "Fire Suppression",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsFireSuppressionSystem"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandToggleMedassistModule": {
+   "command": "CommandToggleMedassistModule",
+   "command_source": "literal",
+   "name": "Medassist Module",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsMedassistModule"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandTogglePenetratingRadar": {
+   "command": "CommandTogglePenetratingRadar",
+   "command_source": "literal-in-type",
+   "name": "Penetrating Radar",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsPenetratingRadar"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandTogglePhase": {
+   "command": "CommandTogglePhase",
+   "command_source": "literal",
+   "name": "Phase",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Phasing"
+   ],
+   "source_name": "Phasing",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandTogglePhaseAdaptiveScope": {
+   "command": "CommandTogglePhaseAdaptiveScope",
+   "command_source": "literal-in-type",
+   "name": "Phase-Adaptive Projectiles",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsPhaseAdaptiveScope"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandTogglePhaseHarmonicModulator": {
+   "command": "CommandTogglePhaseHarmonicModulator",
+   "command_source": "literal-in-type",
+   "name": "Phase Harmonic Modulator",
+   "category": "Cybernetics",
+   "kind": "cybernetic",
+   "owners": [
+    "Parts.CyberneticsPhaseHarmonicModulator"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandToggleProvideCharge": {
+   "command": "CommandToggleProvideCharge",
+   "command_source": "literal",
+   "name": "Power Devices",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.ElectricalGeneration"
+   ],
+   "source_name": "Electrical Generation",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandToggleRejoinder": {
+   "command": "CommandToggleRejoinder",
+   "command_source": "literal",
+   "name": "Rejoinder",
+   "category": "Skills",
+   "kind": "skill",
+   "owners": [
+    "Parts.Skill.ShortBlades_Rejoinder"
+   ],
+   "source_name": "Rejoinder",
+   "engine_roles": [],
+   "description": "",
+   "name_source": "code"
+  },
+  "CommandToggleRunning": {
+   "command": "CommandToggleRunning",
+   "command_source": "literal",
+   "name": "Toggle Running",
+   "category": "Maneuvers",
+   "kind": "other",
+   "owners": [
+    "Parts.Run"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "guess"
+  },
+  "CommandToggleTelekineticThrowing": {
+   "command": "CommandToggleTelekineticThrowing",
+   "command_source": "literal",
+   "name": "Telekinetic Throwing",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Telekinesis"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandToggleTrashRifling": {
+   "command": "CommandToggleTrashRifling",
+   "command_source": "literal-in-type",
+   "name": "Rifle through Trash",
+   "category": "Skills",
+   "kind": "other",
+   "owners": [
+    "Parts.TrashRifling"
+   ],
+   "source_name": "",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandUnequipObject": {
+   "command": "CommandUnequipObject",
+   "command_source": "literal-in-type",
+   "name": "Metamorphosis",
+   "category": "Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.Metamorphosis"
+   ],
+   "source_name": "Metamorphosis",
+   "engine_roles": [],
+   "name_source": "code"
+  },
+  "CommandWaveformWorm": {
+   "command": "CommandWaveformWorm",
+   "command_source": "literal",
+   "name": "Waveform Dash",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.WaveformWorm"
+   ],
+   "source_name": "",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandWillForceAgility": {
+   "command": "CommandWillForceAgility",
+   "command_source": "literal",
+   "name": "Boost Agility",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.WillForce"
+   ],
+   "source_name": "Ego Projection",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandWillForceStrength": {
+   "command": "CommandWillForceStrength",
+   "command_source": "literal",
+   "name": "Boost Strength",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.WillForce"
+   ],
+   "source_name": "Ego Projection",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "CommandWillForceToughness": {
+   "command": "CommandWillForceToughness",
+   "command_source": "literal",
+   "name": "Boost Toughness",
+   "category": "Mental Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.WillForce"
+   ],
+   "source_name": "Ego Projection",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  }
+ }
+}
