@@ -89,6 +89,9 @@ def build_postmortem(death_data, last_state, rows, generation=None):
     out = [f"# Post-mortem: {name}" + (f" (Gen {generation})" if generation else ""), ""]
     out.append(f"- Level {death_data.get('level', last_state.get('level', '?'))}, {death_data.get('turns', '?')} turns, zone: {death_data.get('zone', last_state.get('zone_name', '?'))}")
     out.append(f"- Cause: {death_data.get('death_reason', '?')}")
+    models = sorted({str(r.get("model")) for r in rows if r.get("model")})
+    if models:
+        out.append(f"- Combat model(s) this run: {', '.join(models)}")
     out.append(f"- Final HP {last_state.get('hp', '?')}/{max_hp or '?'} | effects: {', '.join(last_state.get('effects', [])) or 'none'} | position ({last_state.get('x', '?')}, {last_state.get('y', '?')}) z={last_state.get('z', '?')}")
     out.append("")
 

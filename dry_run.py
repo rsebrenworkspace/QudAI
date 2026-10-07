@@ -4464,3 +4464,20 @@ assert "Danger retreat" not in _dec["reason"], "Without the record the engine's 
 brain.LAST_ZONE_ENTRY = None
 _dl.LEDGER_PATH = _os.path.join(_tempfile.mkdtemp(), "danger_ledger_dry_run.json"); _dl.reset_cache()
 print("  [OK] Test 84 Passed: the ledger learns from hits and kills, rates against current max HP, only ever raises a rating, and feeds the existing retreat rules.")
+
+
+# ---------------------------------------------------------------------------
+# Test 85: the brain picks the LOADED chat model, honours an override, and the model is recorded (HANDOFF issue 65)
+# ---------------------------------------------------------------------------
+_v0 = [{"id": "text-embedding-nomic", "type": "embeddings", "state": "loaded"}, {"id": "google/gemma-4-12b", "type": "vlm", "state": "not-loaded"},
+       {"id": "ministral-3-8b-instruct-2512", "type": "llm", "state": "loaded"}]
+_v1 = [{"id": "google/gemma-4-12b"}, {"id": "text-embedding-bge-m3"}, {"id": "ministral-3-8b-instruct-2512"}]
+assert brain.pick_model_id(_v0, _v1) == "ministral-3-8b-instruct-2512", "The loaded chat model, not the first listed"
+assert brain.pick_model_id(_v0, _v1, override="qwen/qwen3-vl-8b-instruct") == "qwen/qwen3-vl-8b-instruct", "Override wins"
+assert brain.pick_model_id([], _v1) == "google/gemma-4-12b", "No load info: first non-embedding model"
+assert brain.pick_model_id([], [{"id": "text-embedding-bge-m3"}]) is None, "Only embeddings: no chat model"
+assert brain.pick_model_id([], []) is None
+assert isinstance(brain.LM_STUDIO_TIMEOUT, float) and brain.LM_STUDIO_TIMEOUT > 0
+_md = _pm.build_postmortem({"player_name": "X"}, {}, [{"t": 1, "hp": 5, "action": "REST", "model": "google/gemma-4-12b"}])
+assert "Combat model(s) this run: google/gemma-4-12b" in _md
+print("  [OK] Test 85 Passed: loaded chat model chosen, override honoured, embeddings never picked, model recorded in the post-mortem.")

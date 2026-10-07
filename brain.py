@@ -25,6 +25,11 @@ DEATH_FILE = os.path.join(EXCHANGE_DIR, "death.json")
 # QUDAI_LM_URL points the brain at another endpoint (tests use a dead port so they never call the live LLM).
 LM_STUDIO_URL = os.environ.get("QUDAI_LM_URL") or "http://localhost:1234/v1/chat/completions"
 LM_STUDIO_MODELS_URL = "http://localhost:1234/v1/models"
+LM_STUDIO_MODELS_V0_URL = LM_STUDIO_MODELS_URL.replace("/v1/models", "/api/v0/models")   # LM Studio's own listing: includes each model's load state
+# Model lab (HANDOFF issue 65): QUDAI_LM_MODEL forces a model id (LM Studio loads it on demand if just-in-time loading is on);
+# QUDAI_LLM_TIMEOUT is the seconds the combat call may take (a slower, stronger model needs more than the default).
+LM_MODEL_OVERRIDE = os.environ.get("QUDAI_LM_MODEL") or None
+LM_STUDIO_TIMEOUT = float(os.environ.get("QUDAI_LLM_TIMEOUT") or 6.0)
 
 # Pacing and Thresholds
 EXPLORE_STEP_DELAY = 0.25  # Seconds per exploration turn (250ms makes movement comfortable to watch)
@@ -1193,18 +1198,42 @@ last_executed_action = None
 last_executed_pos = None
 
 
+def pick_model_id(v0_models, v1_models, override=None):
+    """The model to talk to: the override; else a LOADED chat model from LM Studio's own listing; else the first non-embedding model of
+    the OpenAI-style listing. (It used to be "the first entry of /v1/models", which lists every downloaded model, embeddings included.)"""
+    if override:
+        return override
+    for m in v0_models or []:
+        if m.get("state") == "loaded" and m.get("type") in ("llm", "vlm"):
+            return m.get("id")
+    for m in v1_models or []:
+        mid = str(m.get("id", ""))
+        if mid and "embed" not in mid.lower():
+            return mid
+    return None
+
+
 def detect_lm_studio_model():
     global active_model_id
+    v0, v1 = [], []
+    try:
+        res = requests.get(LM_STUDIO_MODELS_V0_URL, timeout=3)
+        if res.status_code == 200:
+            v0 = res.json().get("data", [])
+    except Exception:
+        pass
     try:
         res = requests.get(LM_STUDIO_MODELS_URL, timeout=3)
         if res.status_code == 200:
-            data = res.json().get("data", [])
-            if data:
-                active_model_id = data[0]["id"]
-                print(f"[LM Studio Connected] Active model: {active_model_id}")
-                return active_model_id
+            v1 = res.json().get("data", [])
     except Exception as e:
         print(f"[LM Studio Warning] Could not reach LM Studio on port 1234: {e}")
+    chosen = pick_model_id(v0, v1, LM_MODEL_OVERRIDE)
+    if chosen:
+        active_model_id = chosen
+        why = "forced by QUDAI_LM_MODEL" if LM_MODEL_OVERRIDE else "loaded in LM Studio"
+        print(f"[LM Studio Connected] Active model: {active_model_id} ({why}); combat call timeout {LM_STUDIO_TIMEOUT:.0f}s")
+        return active_model_id
     return None
 
 
@@ -2269,7 +2298,7 @@ VALID ACTIONS:
 
     try:
         t0 = time.time()
-        res = requests.post(LM_STUDIO_URL, json=payload, timeout=6.0)
+        res = requests.post(LM_STUDIO_URL, json=payload, timeout=LM_STUDIO_TIMEOUT)
         if res.status_code == 200:
             content = res.json()["choices"][0]["message"]["content"]
             # Clean possible markdown fence
@@ -3874,7 +3903,7 @@ def main():
                     "nearest": [game_state.get("nearest_unexplored_x"), game_state.get("nearest_unexplored_y")],
                     "reach": game_state.get("reachable_edges"), "chosen_exit": CURRENT_ZONE_CHOSEN_EXIT,
                     "suppressed": EXIT_SUPPRESS_UNTIL.get(game_state.get("zone_id"), 0) > TURN_CLOCK,
-                    "move_failed": game_state.get("last_move_failed"),
+                    "move_failed": game_state.get("last_move_failed"), "model": active_model_id,
                 })
 
                 dmg_flag = " [!HIT!]" if took_damage else ""
