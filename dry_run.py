@@ -4771,3 +4771,36 @@ _inv_reset()
 assert brain.choose_inventory_action(_gs88([_row("g1", _pistol88, eq=True), _row("d1", _dag88)]), _gk, False) is None, "No dagger swap while holding the pistol"
 brain.ITEM_DROP_LOG_PATH = _old_log; _inv_reset()
 print("  [OK] Test 88 Passed: equip clear upgrades, drop only whitelisted junk under pressure with a log of where it was left, never loop on a refusal, never in a fight or a town.")
+
+
+# ---------------------------------------------------------------------------
+# Test 89: fear and banishment are not spent on an adjacent immobile hostile (HANDOFF issue 68)
+# ---------------------------------------------------------------------------
+_lov = {"name": "jilted lover", "blueprint": "Jilted Lover", "dist": 1, "dir": "SE", "is_enemy": True, "is_stationary": True, "difficulty": "Average", "has_los": True}
+_gs89 = {"x": 10, "y": 10, "stairs_up": [], "stairs_down": []}
+_ab89 = [{"name": "Intimidate", "command": "CommandIntimidate", "cooldown": 0, "usable": True}, {"name": "Teleport Other", "command": "CommandTeleportOther", "cooldown": 0, "usable": True},
+         {"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 0, "usable": True}, {"name": "Lase (4 charges)", "command": "CommandLase", "cooldown": 0, "usable": True}]
+brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_DOWN.clear()
+for _wasted in ("USE_ABILITY:CommandIntimidate", "USE_ABILITY:CommandTeleportOther:SE", "USE_ABILITY:CommandIntimidate:SE"):
+    _d = brain.enforce_stand_and_fight({"action": _wasted, "reason": "[LLM] fear to control the vine"}, _gs89, {"SE": "jilted lover"}, [_lov], _ab89)
+    assert _d["action"] == "USE_ABILITY:CommandLase:SE", f"Damage first against a rooted target, got {_d}"
+_d = brain.enforce_stand_and_fight({"action": "USE_ABILITY:CommandIntimidate", "reason": "x"}, _gs89, {"SE": "jilted lover"}, [_lov], [_ab89[0], _ab89[1]])
+assert _d["action"] == "MOVE_SE", f"No damage ability: melee, got {_d}"
+# not for a mobile enemy (fear and banishment are the right tools there), not for a tough immobile one, not when anything mobile is adjacent too
+_bab = dict(_lov, name="baboon", is_stationary=False)
+_w = {"action": "USE_ABILITY:CommandTeleportOther:SE", "reason": "x"}
+assert brain.enforce_stand_and_fight(_w, _gs89, {"SE": "baboon"}, [_bab], _ab89) is _w, "Banishing a mobile enemy is legitimate"
+assert brain.enforce_stand_and_fight(_w, _gs89, {"SE": "turret"}, [dict(_lov, difficulty="Tough")], _ab89) is _w, "A tough immobile hostile is left to the usual logic"
+_w2 = {"action": "USE_ABILITY:CommandIntimidate", "reason": "x"}
+assert brain.enforce_stand_and_fight(_w2, _gs89, {"SE": "jilted lover", "E": "baboon"}, [_lov, dict(_bab, dist=1, dir="E")], _ab89) is _w2, "With a mobile attacker adjacent too, fear stays available"
+# other actions against the vine are untouched (a plain attack, a ray)
+for _ok in ({"action": "MOVE_SE", "reason": "attack"}, {"action": "USE_ABILITY:CommandLase:SE", "reason": "x"}):
+    assert brain.enforce_stand_and_fight(_ok, _gs89, {"SE": "jilted lover"}, [_lov], _ab89) is _ok
+assert brain.immobile_adjacent({}, [_lov]) == [] and brain.immobile_adjacent({"SE": "x"}, [dict(_lov, is_stationary=False)]) == []
+# priority, not list order: with Stunning Force listed first, Lase is still chosen against a rooted target, and Stunning Force still wins the stand-and-fight rule
+assert brain.first_ready_by_priority(_ab89, ("lase", "stunning_force"))["command"] == "CommandLase"
+assert brain.first_ready_by_priority(_ab89, ("stunning_force", "lase"))["command"] == "CommandStunningForce"
+assert brain.first_ready_by_priority(_ab89[:2], ("lase", "stunning_force")) is None, "Only Intimidate and Teleport Other are ready: nothing"
+_d = brain.enforce_stand_and_fight({"action": "SPRINT_W", "reason": "[LLM] run"}, _gs89, {"E": "snapjaw"}, [{"name": "snapjaw", "dist": 1, "dir": "E", "difficulty": "Easy", "is_enemy": True}], list(reversed(_ab89)))
+assert _d["action"] == "USE_ABILITY:CommandStunningForce:E", f"Stand-and-fight: Stunning Force first whatever the list order, got {_d}"
+print("  [OK] Test 89 Passed: fear and banishment aimed at an adjacent immobile hostile become a damage attack (melee if none); mobile, tough and mixed cases are untouched.")

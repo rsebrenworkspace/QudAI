@@ -2991,6 +2991,16 @@ STAND_FIGHT_FAMILIES = ("stunning_force", "sunder_mind", "lase", "elemental_ray"
 STAND_FLEE_PREFIXES = ("SPRINT_", "NAVIGATE_", "USE_STAIRS")
 
 
+def first_ready_by_priority(abilities, families):
+    """The ready ability of the earliest family in `families` that has one. (find_ready_ability alone returns the first match in the ability LIST,
+    which is not the order of preference.)"""
+    for fam in families:
+        ab = find_ready_ability(abilities, fam)
+        if ab:
+            return ab
+    return None
+
+
 def must_stand_and_fight(game_state, adj_threats, enemies):
     """(True, [adjacent enemy dicts]) when fleeing is forbidden this turn."""
     if not adj_threats:
@@ -3010,11 +3020,42 @@ def must_stand_and_fight(game_state, adj_threats, enemies):
     return True, adj_enemies
 
 
+# Immobile adjacent hostiles (HANDOFF issue 68). A rooted creature such as the wall-dwelling jilted lover (5 HP, grabs at radius 1) cannot be scared off or
+# chased, and banishing it only spends a 69-turn cooldown: the human saw a level 1 character burn Intimidate and Teleport Other on them. Against adjacent
+# immobile hostiles below Tough those control abilities become an attack, damage first because the target has a handful of hit points.
+IMMOBILE_POINTLESS_COMMANDS = ("CommandIntimidate", "CommandTeleportOther")
+IMMOBILE_FIGHT_FAMILIES = ("lase", "sunder_mind", "elemental_ray", "syphon_vim", "melee_strike", "stunning_force")
+
+
+def immobile_adjacent(adj_threats, enemies):
+    """The adjacent hostile dicts when EVERY adjacent hostile is immobile and below Tough, else []."""
+    if not adj_threats:
+        return []
+    adj_enemies = [e for e in enemies if e.get("dist") == 1 and e.get("dir") in adj_threats]
+    if not adj_enemies or not all(e.get("is_stationary") for e in adj_enemies):
+        return []
+    if any(e.get("difficulty") in ("Tough", "Very Tough", "Impossible") for e in adj_enemies):
+        return []
+    return adj_enemies
+
+
 def enforce_stand_and_fight(decision, game_state, adj_threats, enemies, abilities):
-    """Replaces a flee decision by an attack when `must_stand_and_fight`. Other decisions pass through unchanged."""
+    """Replaces a flee decision by an attack when `must_stand_and_fight`, and fear or banishment aimed at an immobile adjacent hostile by an attack.
+    Other decisions pass through unchanged."""
     action = (decision or {}).get("action", "")
     if (decision or {}).get("flee_ok"):
         return decision
+    imm = immobile_adjacent(adj_threats, enemies)
+    if imm and any(action.startswith(f"USE_ABILITY:{c}") for c in IMMOBILE_POINTLESS_COMMANDS):
+        target = imm[0]
+        d = target.get("dir")
+        ab = first_ready_by_priority(abilities, IMMOBILE_FIGHT_FAMILIES)
+        if ab and ab.get("command"):
+            new = {"action": f"USE_ABILITY:{ab['command']}:{d}", "reason": f"Attack the immobile {target.get('name', 'enemy')} ({d}) with {ab.get('name', 'an ability')}: fear and banishment do nothing to a rooted creature"}
+        else:
+            new = {"action": f"MOVE_{d}", "reason": f"Melee the immobile {target.get('name', 'enemy')} ({d}): fear and banishment do nothing to a rooted creature"}
+        print(f"[IMMOBILE] {action} -> {new['action']}")
+        return new
     stand, adj_enemies = must_stand_and_fight(game_state, adj_threats, enemies)
     if not stand:
         return decision
@@ -3025,7 +3066,7 @@ def enforce_stand_and_fight(decision, game_state, adj_threats, enemies, abilitie
         return decision
     target = adj_enemies[0]
     d = target.get("dir")
-    ab = find_ready_ability(abilities, *STAND_FIGHT_FAMILIES)
+    ab = first_ready_by_priority(abilities, STAND_FIGHT_FAMILIES)
     if ab and ab.get("command"):
         new = {"action": f"USE_ABILITY:{ab['command']}:{d}", "reason": f"Stand and fight: {ab.get('name', 'ability')} on adjacent {target.get('name', 'enemy')} ({d}) instead of fleeing ({target.get('difficulty', '?')} threat, no stairs close)"}
     else:
