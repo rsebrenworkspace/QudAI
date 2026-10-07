@@ -11,6 +11,7 @@ import twitch_bot
 import build_templates
 import mutation_policy
 import ability_registry
+import danger_ledger
 
 # Paths
 # QUDAI_EXCHANGE_DIR overrides the folder (tests point it at a temp dir so they can never touch the real game files).
@@ -24,6 +25,18 @@ DEATH_FILE = os.path.join(EXCHANGE_DIR, "death.json")
 # QUDAI_LM_URL points the brain at another endpoint (tests use a dead port so they never call the live LLM).
 LM_STUDIO_URL = os.environ.get("QUDAI_LM_URL") or "http://localhost:1234/v1/chat/completions"
 LM_STUDIO_MODELS_URL = "http://localhost:1234/v1/models"
+LM_STUDIO_MODELS_V0_URL = LM_STUDIO_MODELS_URL.replace("/v1/models", "/api/v0/models")   # LM Studio's own listing: includes each model's load state
+# Model lab (HANDOFF issue 65): QUDAI_LM_MODEL forces a model id (LM Studio loads it on demand if just-in-time loading is on);
+# QUDAI_LLM_TIMEOUT is the seconds the combat call may take (a slower, stronger model needs more than the default).
+LM_MODEL_OVERRIDE = os.environ.get("QUDAI_LM_MODEL") or None
+LM_STUDIO_TIMEOUT = float(os.environ.get("QUDAI_LLM_TIMEOUT") or 6.0)
+LM_MAX_TOKENS = int(os.environ.get("QUDAI_LLM_MAX_TOKENS") or 128)      # a thinking model needs more than 128 tokens to reach its answer
+try:
+    LM_EXTRA_PAYLOAD = json.loads(os.environ.get("QUDAI_LLM_EXTRA") or "{}")   # e.g. {"chat_template_kwargs": {"enable_thinking": false}}
+    if not isinstance(LM_EXTRA_PAYLOAD, dict):
+        LM_EXTRA_PAYLOAD = {}
+except ValueError:
+    LM_EXTRA_PAYLOAD = {}
 
 # Pacing and Thresholds
 EXPLORE_STEP_DELAY = 0.25  # Seconds per exploration turn (250ms makes movement comfortable to watch)
@@ -420,6 +433,40 @@ def filter_corpse_burners(game_state, abilities, hostiles, hp_ratio):
     if not withhold:
         return abilities
     return [a for a in abilities if not ability_registry.in_family(a, CORPSE_BURNER_FAMILY)]
+
+
+# Retreat across the arrival border (HANDOFF issue 61). Gen 16 (level 5) stepped into a new zone, stood on its border for 12 turns Lasing a group of
+# jells the engine rates Impossible, and died; one step back would have returned him to the cleared zone. When an Impossible hostile is in view
+# and he is still within BORDER_RETREAT_RADIUS of the border he just came through, he goes back, and the exit that leads into that zone is
+# written off (FAILED_ZONE_EXITS) so the exit chooser does not walk him straight back in. Stairs, when known, are used first (is_overwhelmed).
+BORDER_RETREAT_RADIUS = 6
+OPPOSITE_DIR = {"N": "S", "S": "N", "E": "W", "W": "E"}
+
+
+def border_retreat_decision(game_state, zone_id, cur_pos, enemies):
+    """A retreat decision through the border he arrived by, or None."""
+    entry = LAST_ZONE_ENTRY
+    if not entry or entry.get("to_zone") != zone_id or not entry.get("reverse_dir"):
+        return None
+    danger = [e for e in enemies
+              if e.get("difficulty") == "Impossible" and e.get("has_los") is not False and e.get("dist", 999) <= 10
+              and not is_ignorable_stationary_enemy(e)]
+    if not danger:
+        return None
+    ex, ey = entry.get("entry_pos", (None, None))
+    if ex is None or max(abs(cur_pos[0] - ex), abs(cur_pos[1] - ey)) > BORDER_RETREAT_RADIUS:
+        return None
+    rev = entry["reverse_dir"]
+    px, py = cur_pos
+    on_border = (rev == "W" and px == 0) or (rev == "E" and px == 79) or (rev == "N" and py == 0) or (rev == "S" and py == 24)
+    from_zone = entry.get("from_zone")
+    if from_zone:
+        FAILED_ZONE_EXITS.add((from_zone, OPPOSITE_DIR.get(rev, rev)))
+    names = ", ".join(sorted({e.get("name", "?") for e in danger})[:3])
+    why = f"Danger retreat: {names} (Impossible) in view {min(e.get('dist', 99) for e in danger)} tiles away; going back through the {rev} border I arrived by"
+    if on_border:
+        return {"action": f"MOVE_{rev}", "reason": why, "flee_ok": True}
+    return {"action": f"NAVIGATE_ZONE_EXIT:{rev}", "reason": why, "flee_ok": True}
 
 
 # Reacting to being on fire (HANDOFF issue 32). Engine facts [verified in code, ENGINE_INTERNALS 12.1g]: `Burning` deals damage every turn
@@ -1158,18 +1205,42 @@ last_executed_action = None
 last_executed_pos = None
 
 
+def pick_model_id(v0_models, v1_models, override=None):
+    """The model to talk to: the override; else a LOADED chat model from LM Studio's own listing; else the first non-embedding model of
+    the OpenAI-style listing. (It used to be "the first entry of /v1/models", which lists every downloaded model, embeddings included.)"""
+    if override:
+        return override
+    for m in v0_models or []:
+        if m.get("state") == "loaded" and m.get("type") in ("llm", "vlm"):
+            return m.get("id")
+    for m in v1_models or []:
+        mid = str(m.get("id", ""))
+        if mid and "embed" not in mid.lower():
+            return mid
+    return None
+
+
 def detect_lm_studio_model():
     global active_model_id
+    v0, v1 = [], []
+    try:
+        res = requests.get(LM_STUDIO_MODELS_V0_URL, timeout=3)
+        if res.status_code == 200:
+            v0 = res.json().get("data", [])
+    except Exception:
+        pass
     try:
         res = requests.get(LM_STUDIO_MODELS_URL, timeout=3)
         if res.status_code == 200:
-            data = res.json().get("data", [])
-            if data:
-                active_model_id = data[0]["id"]
-                print(f"[LM Studio Connected] Active model: {active_model_id}")
-                return active_model_id
+            v1 = res.json().get("data", [])
     except Exception as e:
         print(f"[LM Studio Warning] Could not reach LM Studio on port 1234: {e}")
+    chosen = pick_model_id(v0, v1, LM_MODEL_OVERRIDE)
+    if chosen:
+        active_model_id = chosen
+        why = "forced by QUDAI_LM_MODEL" if LM_MODEL_OVERRIDE else "loaded in LM Studio"
+        print(f"[LM Studio Connected] Active model: {active_model_id} ({why}); combat call timeout {LM_STUDIO_TIMEOUT:.0f}s")
+        return active_model_id
     return None
 
 
@@ -1793,6 +1864,10 @@ def is_ignorable_stationary_enemy(e):
     return False
 
 
+# Model lab hook (HANDOFF issue 65): when tools/model_lab.py sets this to a dict, query_llm_decision records what it offered and what came back.
+LLM_PROBE = None
+
+
 def query_llm_decision(game_state, enemies, valid_moves, abilities, template=None, took_damage=False):
     """Invokes LM Studio for high-level tactical combat decisions tailored to the character class."""
     global active_model_id
@@ -2229,14 +2304,25 @@ VALID ACTIONS:
             {"role": "user", "content": user_prompt}
         ],
         "temperature": 0.1,
-        "max_tokens": 128
+        "max_tokens": LM_MAX_TOKENS
     }
+    payload.update(LM_EXTRA_PAYLOAD)
+    if LLM_PROBE is not None:
+        LLM_PROBE.update({"choices": list(action_choices), "prompt_chars": len(system_prompt) + len(user_prompt), "raw": None, "error": None, "http_status": None})
 
     try:
         t0 = time.time()
-        res = requests.post(LM_STUDIO_URL, json=payload, timeout=6.0)
+        res = requests.post(LM_STUDIO_URL, json=payload, timeout=LM_STUDIO_TIMEOUT)
+        if LLM_PROBE is not None:
+            LLM_PROBE.update({"latency": time.time() - t0, "http_status": res.status_code})
         if res.status_code == 200:
-            content = res.json()["choices"][0]["message"]["content"]
+            body = res.json()
+            content = body["choices"][0]["message"]["content"]
+            if LLM_PROBE is not None:
+                msg = body["choices"][0].get("message") or {}
+                LLM_PROBE.update({"raw": content if content is not None else "", "finish_reason": body["choices"][0].get("finish_reason"),
+                                  "reasoning_chars": len(msg.get("reasoning_content") or msg.get("reasoning") or ""),
+                                  "completion_tokens": (body.get("usage") or {}).get("completion_tokens")})
             # Clean possible markdown fence
             clean = re.sub(r"^```json\s*", "", content.strip(), flags=re.IGNORECASE)
             clean = re.sub(r"^```\s*", "", clean)
@@ -2244,6 +2330,8 @@ VALID ACTIONS:
             data = json.loads(clean)
             raw_action = data.get("action", "").strip()
             thought = data.get("thought", "").strip()
+            if LLM_PROBE is not None:
+                LLM_PROBE["parsed_action"] = raw_action
 
             # Sanitize action (e.g. "MOVE_N (Melee Attack snapjaw)" -> "MOVE_N")
             action = raw_action.split()[0] if raw_action else ""
@@ -2286,8 +2374,13 @@ VALID ACTIONS:
 
             if action:
                 dt = time.time() - t0
+                if LLM_PROBE is not None:
+                    LLM_PROBE["final_action"] = action
                 return {"action": action, "thought": f"[LLM in {dt:.2f}s] {thought}"}
     except Exception as e:
+        if LLM_PROBE is not None:
+            LLM_PROBE["error"] = f"{type(e).__name__}: {e}"
+            LLM_PROBE.setdefault("latency", time.time() - t0)
         print(f"[LLM Error / Timeout] {e}")
 
     return None
@@ -2839,6 +2932,8 @@ def must_stand_and_fight(game_state, adj_threats, enemies):
 def enforce_stand_and_fight(decision, game_state, adj_threats, enemies, abilities):
     """Replaces a flee decision by an attack when `must_stand_and_fight`. Other decisions pass through unchanged."""
     action = (decision or {}).get("action", "")
+    if (decision or {}).get("flee_ok"):
+        return decision
     stand, adj_enemies = must_stand_and_fight(game_state, adj_threats, enemies)
     if not stand:
         return decision
@@ -2914,6 +3009,8 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     is_town = is_town_zone(game_state)
 
     enemies = filter_hostile_enemies(enemies, companions)
+    # Experience across characters (danger_ledger.py, HANDOFF issue 64): a creature that has hit hard relative to this character's HP is rated higher.
+    enemies = danger_ledger.apply(enemies, game_state.get("max_hp"))
     adj_threats = get_adjacent_threats(surroundings, companions=companions, cur_pos=(game_state.get("x", 0), game_state.get("y", 0)))
     close_threats = get_close_threats(enemies, game_state)
     abilities = filter_corpse_burners(game_state, abilities, enemies, hp_ratio)
@@ -2981,6 +3078,11 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 best_m = get_best_move_towards(cur_pos, su_pos, valid_moves)
                 if best_m and sector_target_ok(zone_id, su_pos, cur_pos, "stairs"):
                     return {"action": best_m, "reason": flee + " [no engine route; stepping greedily]"}
+
+    border_decision = border_retreat_decision(game_state, zone_id, cur_pos, enemies)
+    if border_decision:
+        print(f"[DANGER RETREAT] {border_decision['reason']}")
+        return border_decision
 
     # Priority Attribute Allocation: If character leveled up and has unspent AP, spend immediately before battle
     g_ap = game_state.get("ap", 0)
@@ -3478,7 +3580,14 @@ def main():
                     pass
                 CHARMED_COMPANION_COORDS.clear()
                 if death_data:
-                    chronicler.process_death_event(death_data, list(recent_actions), active_model_id)
+                    last_state_for_pm = None
+                    try:
+                        with open(os.path.join(EXCHANGE_DIR, "last_state.json"), "r", encoding="utf-8-sig") as lsf:
+                            last_state_for_pm = json.load(lsf, strict=False)
+                    except Exception:
+                        pass
+                    danger_ledger.record_death(last_state_for_pm, death_data.get("death_reason"))
+                    chronicler.process_death_event(death_data, list(recent_actions), active_model_id, last_state=last_state_for_pm, trace_path=DECISION_TRACE_PATH)
             except Exception as ex:
                 print(f"[Death Processing Error] {ex}")
 
@@ -3521,6 +3630,7 @@ def main():
                 hp = game_state.get("hp", 0)
                 max_hp = game_state.get("max_hp", 1)
                 took_damage = (last_hp is not None and hp < last_hp)
+                danger_ledger.record_turn_damage(game_state, last_hp)
                 last_hp = hp
 
                 visit_counts[cur_pos] += 1
@@ -3822,7 +3932,7 @@ def main():
                     "nearest": [game_state.get("nearest_unexplored_x"), game_state.get("nearest_unexplored_y")],
                     "reach": game_state.get("reachable_edges"), "chosen_exit": CURRENT_ZONE_CHOSEN_EXIT,
                     "suppressed": EXIT_SUPPRESS_UNTIL.get(game_state.get("zone_id"), 0) > TURN_CLOCK,
-                    "move_failed": game_state.get("last_move_failed"),
+                    "move_failed": game_state.get("last_move_failed"), "model": active_model_id,
                 })
 
                 dmg_flag = " [!HIT!]" if took_damage else ""

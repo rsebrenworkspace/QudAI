@@ -6,6 +6,8 @@ import brain
 # Never write test decisions into the real exit log (memory/exit_choices.jsonl).
 brain.EXIT_LOG_PATH = os.path.join(tempfile.mkdtemp(), "exit_choices_dry_run.jsonl")
 brain.DECISION_TRACE_PATH = os.path.join(tempfile.mkdtemp(), "decision_trace_dry_run.jsonl")
+import danger_ledger
+danger_ledger.LEDGER_PATH = os.path.join(tempfile.mkdtemp(), "danger_ledger_dry_run.json"); danger_ledger.reset_cache()
 import build_templates
 import item_evaluator
 
@@ -4313,3 +4315,300 @@ assert _d["action"] == "MOVE_SW", f"With the amoeba recognised, an Average melee
 assert not brain.is_ignorable_stationary_enemy({"name": "cherubic spade", "dist": 5, "difficulty": "Average"}), "A spade is not a pad"
 assert brain.is_ignorable_stationary_enemy({"name": "lily pad", "dist": 5, "difficulty": "Easy"}) and brain.is_ignorable_stationary_enemy({"name": "glowpad", "dist": 5, "difficulty": "Easy"})
 print("  [OK] Test 80 Passed: short peaceful keywords match whole words only; the amoeba stays an enemy and the marsh is not a town.")
+
+
+# ---------------------------------------------------------------------------
+# Test 81: Impossible hostiles near the arrival border: go back through it (HANDOFF issue 61)
+# ---------------------------------------------------------------------------
+_jell = {"name": "black jell", "blueprint": "BlackJell", "dist": 5, "dir": "SW", "tx": 45, "ty": 5, "is_enemy": True, "has_los": True, "difficulty": "Impossible"}
+_BZ = "JoppaWorld.11.20.0.0.12"
+brain.LAST_ZONE_ENTRY = {"from_zone": "JoppaWorld.11.22.1.1.12", "to_zone": _BZ, "entry_pos": (48, 0), "reverse_dir": "N"}
+brain.FAILED_ZONE_EXITS.discard(("JoppaWorld.11.22.1.1.12", "S"))
+_d = brain.border_retreat_decision({}, _BZ, (48, 0), [_jell])
+assert _d["action"] == "MOVE_N" and _d.get("flee_ok"), f"On the border: step back through it, got {_d}"
+assert ("JoppaWorld.11.22.1.1.12", "S") in brain.FAILED_ZONE_EXITS, "The exit that leads into the danger zone must be written off"
+_d = brain.border_retreat_decision({}, _BZ, (50, 2), [_jell])
+assert _d["action"] == "NAVIGATE_ZONE_EXIT:N", f"Near the border: walk back to it, got {_d}"
+assert brain.border_retreat_decision({}, _BZ, (60, 12), [_jell]) is None, "Far from the arrival border: no border retreat"
+assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, difficulty="Tough")]) is None, "Only Impossible hostiles trigger it"
+assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, has_los=False)]) is None, "Out of sight: no retreat"
+assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, dist=14)]) is None, "Too far away to matter yet"
+assert brain.border_retreat_decision({}, "SomeOtherZone", (48, 0), [_jell]) is None, "Only in the zone he just entered"
+# the stand-and-fight rule must not undo it, even with a weak hostile adjacent
+_weak = {"name": "snapjaw", "dist": 1, "dir": "E", "difficulty": "Easy", "is_enemy": True}
+_flee = {"action": "MOVE_N", "reason": "Danger retreat", "flee_ok": True}
+assert brain.enforce_stand_and_fight(_flee, {"x": 48, "y": 0}, {"E": "snapjaw"}, [_weak, _jell], []) is _flee
+# in the full decision, the retreat comes before any fight
+brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_DOWN.clear(); brain.RETREAT_TARGET_LEVEL = None
+brain.LAST_ZONE_ENTRY = {"from_zone": "X.prev", "to_zone": dungeon_stratum11_zone, "entry_pos": (15, 0), "reverse_dir": "N"}
+_st = dict(delve_state_nearby); _st["x"], _st["y"] = 15, 0; _st["visible_entities"] = [_jell]
+_st["surroundings"] = {"N": "[ZONE_EXIT: N]", "S": "dirt floor", "E": "dirt floor", "W": "dirt floor"}
+_dec = brain.query_decision(_st, took_damage=False, enemies=[_jell])
+assert _dec["action"] == "MOVE_N" and "Danger retreat" in _dec["reason"], f"Full decision: go back through the border, got {_dec}"
+brain.LAST_ZONE_ENTRY = None; brain.FAILED_ZONE_EXITS.discard(("X.prev", "S")); brain.FAILED_ZONE_EXITS.discard(("JoppaWorld.11.22.1.1.12", "S"))
+print("  [OK] Test 81 Passed: Impossible hostiles near the arrival border send him back through it; the exit is written off; stand-and-fight leaves it alone.")
+
+
+# ---------------------------------------------------------------------------
+# Test 82: only approved ancestral lessons reach the combat prompt (HANDOFF issue 62)
+# ---------------------------------------------------------------------------
+import chronicler as _chr
+import tempfile as _tf3
+_old_wf = _chr.WISDOM_FILE
+_chr.WISDOM_FILE = _os.path.join(_tf3.mkdtemp(), "ancestral_wisdom.json")
+try:
+    assert "No approved" in _chr.format_ancestral_memory_for_prompt(), "No file: neutral text"
+    _chr.save_ancestral_wisdom([
+        {"generation": 1, "name": "A", "zone": "z", "death_reason": "x", "lesson": "Invented lesson one."},
+        {"generation": 2, "name": "B", "zone": "z", "death_reason": "y", "lesson": "Checked lesson two.", "approved": True},
+        {"generation": 3, "name": "C", "zone": "z", "death_reason": "z", "lesson": "Unapproved lesson three.", "approved": False},
+    ])
+    _p = _chr.format_ancestral_memory_for_prompt()
+    assert "Checked lesson two." in _p and "Invented lesson one." not in _p and "Unapproved lesson three." not in _p, _p
+    _chr.save_ancestral_wisdom([{"generation": 1, "lesson": "Only a guess."}])
+    assert "Only a guess." not in _chr.format_ancestral_memory_for_prompt() and "No approved" in _chr.format_ancestral_memory_for_prompt()
+    # the CLI approves and rejects by generation and keeps everything else
+    import importlib.util as _iu
+    _spec = _iu.spec_from_file_location("wisdom_cli", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "wisdom.py"))
+    _cli = _iu.module_from_spec(_spec); _spec.loader.exec_module(_cli)
+    with _ctx.redirect_stdout(_io.StringIO()):
+        _cli.main(["approve", "1"])
+    assert "Only a guess." in _chr.format_ancestral_memory_for_prompt(), "Approved by the CLI"
+    with _ctx.redirect_stdout(_io.StringIO()):
+        _cli.main(["reject", "1"])
+    assert "Only a guess." not in _chr.format_ancestral_memory_for_prompt(), "Rejected again"
+    assert len(_chr.load_ancestral_wisdom()) == 1, "Rejecting never deletes a lesson"
+finally:
+    _chr.WISDOM_FILE = _old_wf
+print("  [OK] Test 82 Passed: unapproved lessons are saved but never shown to the model; tools/wisdom.py approves and rejects.")
+
+
+# ---------------------------------------------------------------------------
+# Test 83: the automatic post-mortem states the facts of a death (HANDOFF issue 63)
+# ---------------------------------------------------------------------------
+import postmortem as _pm
+import tempfile as _tf4
+_dir4 = _tf4.mkdtemp()
+_rows = [{"t": 1, "pos": [5, 5], "hp": 31, "action": "AUTOEXPLORE", "reason": "explore", "combat": False}]
+for _i, (_hp, _act, _c) in enumerate([(31, "USE_ABILITY:CommandLase:SE", True), (31, "USE_ABILITY:CommandLase:SE", True), (31, "USE_ABILITY:CommandLase:SE", True),
+                                      (31, "USE_ABILITY:CommandLase:SE", True), (22, "SPRINT_E", True), (9, "SPRINT_E", True), (9, "SPRINT_SW", True),
+                                      (9, "SPRINT_E", True), (9, "SPRINT_W", True), (9, "SPRINT_E", True), (9, "SPRINT_W", True), (9, "SPRINT_E", True)], start=2):
+    _rows.append({"t": _i, "pos": [48 + (_i % 2), 0], "hp": _hp, "action": _act, "reason": "LLM: sustain beam | piped", "combat": _c})
+_state = {"hp": 9, "max_hp": 31, "level": 5, "x": 49, "y": 0, "z": 12, "effects": ["dazed"],
+          "visible_entities": [{"name": "black jell", "dist": 2, "dir": "SW", "difficulty": "Impossible", "level": 14, "has_los": True, "is_enemy": True},
+                               {"name": "goat", "dist": 1, "dir": "E", "is_companion": True}],
+          "abilities": [{"name": "Lase (0 charges)", "cooldown": 0}]}
+_death = {"player_name": "Test Pilgrim", "level": 5, "turns": 2209, "zone": "subterranean desert canyon", "death_reason": "killed by a brown jell"}
+_md = _pm.build_postmortem(_death, _state, _rows, generation=16)
+for _needle in ("Post-mortem: Test Pilgrim (Gen 16)", "black jell", "Impossible", "(-13)", "Largest single-turn HP loss", "13 (42% of max HP)",
+                "running did not shake the attacker", "Position flip", "Lase (0 charges)", "Companions: goat"):
+    assert _needle in _md, f"missing in post-mortem: {_needle}\n{_md}"
+assert "slimy/slimy" in _pm.build_postmortem({}, {"visible_entities": [{"name": "slimy|slimy jell", "is_enemy": True, "dist": 1}]}, []), "A pipe in a creature name must not break the table"
+assert _pm.classify("SPRINT_N") == "flee/escape" and _pm.classify("REST") == "rest" and _pm.classify("USE_ABILITY:x") == "ability"
+# a run boundary: only the newest run's rows are used
+_tp = _os.path.join(_dir4, "trace.jsonl")
+with open(_tp, "w", encoding="utf-8") as _f:
+    for _r in [{"t": 1, "hp": 9, "action": "OLD"}, {"t": 2, "hp": 9, "action": "OLD"}, {"t": 1, "hp": 20, "action": "NEW"}, {"t": 2, "hp": 20, "action": "NEW2"}]:
+        _f.write(json.dumps(_r) + "\n")
+assert [r["action"] for r in _pm.load_trace_run(_tp)] == ["NEW", "NEW2"]
+assert _pm.load_trace_run(_os.path.join(_dir4, "missing.jsonl")) == []
+_path = _pm.write_postmortem(_dir4, _death, _state, _rows, 16, timestamp=123)
+assert _os.path.basename(_path) == "Postmortem_Gen16_Test_Pilgrim_123.md" and "black jell" in open(_path, encoding="utf-8").read()
+# no data at all must not crash
+assert "No decision trace found" in _pm.build_postmortem({}, None, [])
+print("  [OK] Test 83 Passed: the post-mortem lists the hostiles and their ratings, the HP drops, the decision mix and the heuristic observations.")
+
+
+# ---------------------------------------------------------------------------
+# Test 84: the danger ledger raises the rating of creatures that proved dangerous (HANDOFF issue 64)
+# ---------------------------------------------------------------------------
+import danger_ledger as _dl
+_dl.LEDGER_PATH = _os.path.join(_tempfile.mkdtemp(), "ledger84.json"); _dl.reset_cache()
+_amb = lambda dist=1, **k: dict({"name": "giant amoeba", "blueprint": "GiantAmoeba", "is_enemy": True, "dist": dist, "dir": "SW", "difficulty": "Average", "has_los": True}, **k)
+_gs = lambda hp, mx=18, ents=None, **k: dict({"hp": hp, "max_hp": mx, "visible_entities": ents if ents is not None else [_amb()], "effects": []}, **k)
+assert _dl.rating_for("GiantAmoeba", 18) is None, "Unknown creature: no rating"
+assert _dl.record_turn_damage(_gs(1), 18), "17 HP lost next to one amoeba is recorded"
+assert _dl.rating_for("GiantAmoeba", 18) is None, "One observation can be a freak: not rated yet"
+_dl.record_turn_damage(_gs(2), 19)
+assert _dl.rating_for("GiantAmoeba", 18) == "Impossible", "Two big hits against 18 max HP: Impossible"
+assert _dl.rating_for("GiantAmoeba", 31) == "Very Tough" and _dl.rating_for("GiantAmoeba", 100) is None, "Rated against the CURRENT max HP"
+# what must not be recorded
+_n_before = _dl._load()["GiantAmoeba"]["hits"]
+assert not _dl.record_turn_damage(_gs(10, ents=[_amb(), _amb(blueprint="Baboon", name="baboon")]), 25), "Two kinds adjacent: cannot attribute"
+assert not _dl.record_turn_damage(_gs(10, effects=["bleeding"]), 25), "Bleeding is not the creature"
+assert not _dl.record_turn_damage(_gs(10, is_on_fire=True), 25), "Fire is not the creature"
+assert not _dl.record_turn_damage(_gs(30), 25), "HP went up"
+assert not _dl.record_turn_damage(_gs(10, ents=[_amb(dist=3)]), 25), "Not adjacent: not attributed"
+assert _dl._load()["GiantAmoeba"]["hits"] == _n_before
+# kills count at once and are credited to the creature named in the death message
+assert _dl.record_death({"visible_entities": [_amb(blueprint="Baboon", name="baboon"), _amb()]}, "You were @@killed by a giant amoeba## with a slimy pseudopod##.") == "GiantAmoeba"
+assert _dl._load()["GiantAmoeba"]["kills"] == 1
+assert _dl.record_death({"visible_entities": []}, "x") is None
+# apply: only ever raises, keeps the engine's rating, leaves strangers alone
+_out = _dl.apply([_amb(), _amb(blueprint="Baboon", name="baboon"), _amb(difficulty="Impossible")], 31)
+assert _out[0]["difficulty"] == "Very Tough" and _out[0]["difficulty_engine"] == "Average" and "max hit" in _out[0]["ledger_note"]
+assert _out[1]["difficulty"] == "Average" and "difficulty_engine" not in _out[1], "No entry: untouched"
+assert _out[2]["difficulty"] == "Impossible", "Never lowered"
+# in the full decision: an Average-rated amoeba with a bad record sends a low-HP character back through the arrival border
+_dl._load()["GiantAmoeba"]["max_hit"] = 25
+brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_DOWN.clear(); brain.RETREAT_TARGET_LEVEL = None
+brain.LAST_ZONE_ENTRY = {"from_zone": "X.prev", "to_zone": dungeon_stratum11_zone, "entry_pos": (15, 0), "reverse_dir": "N"}
+_st = dict(delve_state_nearby); _st["x"], _st["y"] = 15, 0; _st["max_hp"] = 28; _st["hp"] = 28
+_foe = _amb(dist=3, tx=12, ty=2)
+_st["visible_entities"] = [_foe]; _st["surroundings"] = {"N": "[ZONE_EXIT: N]", "S": "dirt floor", "E": "dirt floor", "W": "dirt floor"}
+_dec = brain.query_decision(dict(_st), took_damage=False, enemies=[_foe])
+assert _dec["action"] == "MOVE_N" and "Danger retreat" in _dec["reason"], f"The ledger makes the amoeba Impossible for this character, got {_dec}"
+_dl.LEDGER_PATH = _os.path.join(_tempfile.mkdtemp(), "ledger84b.json"); _dl.reset_cache()
+_dec = brain.query_decision(dict(_st), took_damage=False, enemies=[_foe])
+assert "Danger retreat" not in _dec["reason"], "Without the record the engine's Average rating stands"
+brain.LAST_ZONE_ENTRY = None
+_dl.LEDGER_PATH = _os.path.join(_tempfile.mkdtemp(), "danger_ledger_dry_run.json"); _dl.reset_cache()
+print("  [OK] Test 84 Passed: the ledger learns from hits and kills, rates against current max HP, only ever raises a rating, and feeds the existing retreat rules.")
+
+
+# ---------------------------------------------------------------------------
+# Test 85: the brain picks the LOADED chat model, honours an override, and the model is recorded (HANDOFF issue 65)
+# ---------------------------------------------------------------------------
+_v0 = [{"id": "text-embedding-nomic", "type": "embeddings", "state": "loaded"}, {"id": "google/gemma-4-12b", "type": "vlm", "state": "not-loaded"},
+       {"id": "ministral-3-8b-instruct-2512", "type": "llm", "state": "loaded"}]
+_v1 = [{"id": "google/gemma-4-12b"}, {"id": "text-embedding-bge-m3"}, {"id": "ministral-3-8b-instruct-2512"}]
+assert brain.pick_model_id(_v0, _v1) == "ministral-3-8b-instruct-2512", "The loaded chat model, not the first listed"
+assert brain.pick_model_id(_v0, _v1, override="qwen/qwen3-vl-8b-instruct") == "qwen/qwen3-vl-8b-instruct", "Override wins"
+assert brain.pick_model_id([], _v1) == "google/gemma-4-12b", "No load info: first non-embedding model"
+assert brain.pick_model_id([], [{"id": "text-embedding-bge-m3"}]) is None, "Only embeddings: no chat model"
+assert brain.pick_model_id([], []) is None
+assert isinstance(brain.LM_STUDIO_TIMEOUT, float) and brain.LM_STUDIO_TIMEOUT > 0
+_md = _pm.build_postmortem({"player_name": "X"}, {}, [{"t": 1, "hp": 5, "action": "REST", "model": "google/gemma-4-12b"}])
+assert "Combat model(s) this run: google/gemma-4-12b" in _md
+print("  [OK] Test 85 Passed: loaded chat model chosen, override honoured, embeddings never picked, model recorded in the post-mortem.")
+
+
+# ---------------------------------------------------------------------------
+# Test 86: the model lab scores models on the brain's real combat call (HANDOFF issue 65), against a fake LM Studio
+# ---------------------------------------------------------------------------
+import copy as _copy
+import http.server as _hs
+import importlib.util as _iu2
+import threading as _th
+import time as _tm
+
+_spec2 = _iu2.spec_from_file_location("model_lab", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "model_lab.py"))
+_lab = _iu2.module_from_spec(_spec2); _spec2.loader.exec_module(_lab)
+
+
+class _FakeLM(_hs.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _send(self, obj, code=200):
+        body = json.dumps(obj).encode()
+        try:
+            self.send_response(code); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+        except OSError:
+            pass   # the client gave up (that is the timeout test)
+
+    def do_GET(self):
+        data = [{"id": "lab-good", "type": "llm", "state": "loaded"}, {"id": "lab-embed", "type": "embeddings", "state": "loaded"}, {"id": "lab-bad", "type": "llm", "state": "not-loaded"}]
+        self._send({"data": data})
+
+    def do_POST(self):
+        payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        type(self).last_payload = payload
+        model = payload.get("model")
+        user = payload["messages"][-1]["content"]
+        if "VALID ACTIONS:" not in user:
+            return self._send({"choices": [{"message": {"content": "ready"}}]})
+        first = user.split("VALID ACTIONS:")[1].strip().splitlines()[0][2:].split()[0]
+        if model == "lab-good":
+            content = json.dumps({"action": first, "thought": "taking the first valid action"})
+        elif model == "lab-garbage":
+            content = "I think you should probably run away!"
+        elif model == "lab-think":
+            content = "<think>Let me consider every option at great length...</think>" + json.dumps({"action": first, "thought": "x"})
+        elif model == "lab-offmenu":
+            content = json.dumps({"action": "TELEPORT_HOME", "thought": "not an offered action"})
+        elif model == "lab-empty":
+            return self._send({"choices": [{"message": {"content": "", "reasoning_content": "Let me think about the options for a very long time..."}, "finish_reason": "length"}], "usage": {"completion_tokens": 128}})
+        elif model == "lab-slow":
+            _tm.sleep(1.2)
+            content = json.dumps({"action": first, "thought": "slow"})
+        else:
+            return self._send({"error": "no such model"}, 404)
+        self._send({"choices": [{"message": {"content": content}}]})
+
+
+_srv = _hs.ThreadingHTTPServer(("127.0.0.1", 0), _FakeLM)
+_th.Thread(target=_srv.serve_forever, daemon=True).start()
+_base = f"http://127.0.0.1:{_srv.server_address[1]}"
+_scn = json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "model_lab_scenarios.json"), encoding="utf-8"))["scenarios"]
+assert len(_scn) >= 8 and all({"id", "state", "enemies", "checks"} <= set(s) for s in _scn), "The scenario file must be well formed"
+_old_url, _old_to, _old_model = brain.LM_STUDIO_URL, brain.LM_STUDIO_TIMEOUT, brain.active_model_id
+try:
+    _res = _lab.run_lab(["lab-good", "lab-garbage", "lab-think", "lab-offmenu", "lab-nobody"], _scn[:4], base=_base, repeat=2, timeout=5.0, unload=False, manage_models=False, log=lambda *a: None)
+    _by = {s["model"]: s for s in _res["summaries"]}
+    assert _by["lab-good"]["parse_pct"] == 100 and _by["lab-good"]["menu_pct"] == 100, _by["lab-good"]
+    assert _by["lab-good"]["latency_p50"] is not None and _by["lab-good"]["same_action_pct"] == 100.0, "Same fixed reply: fully consistent"
+    assert _by["lab-garbage"]["parse_pct"] == 0 and _by["lab-garbage"]["bad_json"] == _by["lab-garbage"]["runs"] and _by["lab-garbage"]["score_pct"] == 0
+    assert _by["lab-think"]["think_leaks"] == _by["lab-think"]["runs"] and _by["lab-think"]["parse_pct"] == 0, "Thinking aloud breaks the brain's JSON parser: counted as a think leak"
+    assert _by["lab-offmenu"]["parse_pct"] == 100 and _by["lab-offmenu"]["menu_pct"] == 0 and _by["lab-offmenu"]["score_pct"] == 0, "An action nobody offered is not in the menu"
+    assert _by["lab-nobody"]["errors"] == _by["lab-nobody"]["runs"] and _by["lab-nobody"]["score_pct"] == 0, "An unknown model (HTTP 404) is an error, not a pass"
+    # a thinking model that spends its token budget returns HTTP 200 with no text: a separate, diagnosable failure, and the model is abandoned early
+    _resE = _lab.run_lab(["lab-empty"], _scn[:4], base=_base, repeat=3, timeout=5.0, unload=False, manage_models=False, log=lambda *a: None, do_warm=False)
+    _e = _resE["summaries"][0]
+    assert _e["empty_replies"] == _e["runs"] and _e["reasoning_runs"] == _e["runs"] and _e["aborted"] and _e["runs"] == _lab.ABORT_AFTER, _e
+    assert "thought but returned no answer" in _resE["markdown"] and "abandoned" in _resE["markdown"]
+    assert _resE["per_model"]["lab-empty"][_scn[0]["id"]][0]["finish_reason"] == "length" and _resE["per_model"]["lab-empty"][_scn[0]["id"]][0]["reasoning_chars"] > 0
+    # a good model is never abandoned
+    assert not _by["lab-good"]["aborted"]
+    # extra request settings and the token budget reach the request (how a thinking model's reasoning is switched off)
+    _old_extra, _old_mt = brain.LM_EXTRA_PAYLOAD, brain.LM_MAX_TOKENS
+    brain.LM_EXTRA_PAYLOAD, brain.LM_MAX_TOKENS = {"reasoning_effort": "none"}, 222
+    try:
+        _lab.run_lab(["lab-good"], _scn[:1], base=_base, repeat=1, timeout=5.0, unload=False, manage_models=False, log=lambda *a: None, do_warm=False)
+        assert _FakeLM.last_payload.get("reasoning_effort") == "none" and _FakeLM.last_payload.get("max_tokens") == 222, _FakeLM.last_payload
+    finally:
+        brain.LM_EXTRA_PAYLOAD, brain.LM_MAX_TOKENS = _old_extra, _old_mt
+    # policy checks are judged on the raw action: a scenario that forbids everything makes even the good model fail
+    _strict = _copy.deepcopy(_scn[:2])
+    for _s in _strict:
+        _s["checks"] = {"must_not": ["MOVE_", "USE_ABILITY", "SPRINT_", "REST", "WAIT", "ACTIVATE"], "should_any": []}
+    _res2 = _lab.run_lab(["lab-good"], _strict, base=_base, repeat=1, timeout=5.0, unload=False, manage_models=False, log=lambda *a: None)
+    assert _res2["summaries"][0]["menu_pct"] == 100 and _res2["summaries"][0]["policy_pct"] == 0 and _res2["summaries"][0]["score_pct"] == 0
+    _lenient = _copy.deepcopy(_scn[:2])
+    for _s in _lenient:
+        _s["checks"] = {"must_not": [], "should_any": [""]}
+    assert _lab.run_lab(["lab-good"], _lenient, base=_base, repeat=1, timeout=5.0, unload=False, manage_models=False, log=lambda *a: None)["summaries"][0]["score_pct"] == 100
+    # a reply that takes longer than the lab timeout is a timeout; one that fits the lab but not the brain's timeout is flagged as too slow
+    _res3 = _lab.run_lab(["lab-slow"], _scn[:2], base=_base, repeat=1, timeout=0.5, unload=False, manage_models=False, log=lambda *a: None, do_warm=False)
+    assert _res3["summaries"][0]["timeouts"] == _res3["summaries"][0]["runs"] == 2, _res3["summaries"][0]
+    _res4 = _lab.run_lab(["lab-slow"], _scn[:2], base=_base, repeat=1, timeout=5.0, brain_timeout=1.0, unload=False, manage_models=False, log=lambda *a: None, do_warm=False)
+    assert _res4["summaries"][0]["parse_pct"] == 100 and _res4["summaries"][0]["within_brain_timeout_pct"] == 0.0 and _res4["summaries"][0]["latency_p50"] >= 1.0
+    # the report and the saved files
+    _od = _tempfile.mkdtemp()
+    _res5 = _lab.run_lab(["lab-good", "lab-garbage"], _scn[:2], base=_base, repeat=1, timeout=5.0, unload=False, manage_models=False, out_dir=_od, log=lambda *a: None, do_warm=False)
+    assert "| lab-good |" in _res5["markdown"] and "Scenario by scenario" in _res5["markdown"]
+    assert sorted(f.split(".")[-1] for f in _os.listdir(_od)) == ["json", "md"]
+    # `lms` prints UTF-8 progress characters: decoding them with the Windows default code page crashed the first managed run
+    import sys as _sys
+    _r = _lab.run_cmd([_sys.executable, "-c", "import sys; sys.stdout.buffer.write('ok \\u2713 \\u2588 and a stray byte \\x8f'.encode('utf-8')[:-1] + b'\\x8f')"], 30)
+    assert _r is not None and _r.returncode == 0 and _r.stdout.startswith("ok") and "\u2713" in _r.stdout, _r
+    assert _lab.run_cmd(["definitely-not-a-command-xyz"], 5) is None, "A missing command is None, not an exception"
+    # a command that produced no output must not crash the load helper
+    _real_lms = _lab._lms
+    class _NoOut:
+        returncode = 1; stdout = None; stderr = None
+    _lab._lms = lambda *a, **k: _NoOut()
+    try:
+        _okx, _sx, _mx = _lab.lms_load("m", 8192)
+        assert _okx is False and _mx == "", (_okx, _mx)
+        assert _lab.lms_ps() == []
+    finally:
+        _lab._lms = _real_lms
+    # helpers
+    assert _lab.norm_action("USE_ABILITY:CommandLase:SE (beam)") == "USE_ABILITY:CommandLase" and _lab.norm_action("MOVE_E (Melee Attack x)") == "MOVE_E"
+    assert _lab.policy_verdict("REST", {"must_not": ["REST"]})[0] is False and _lab.policy_verdict("MOVE_E", {"should_any": ["MOVE_"]})[0] is True
+    assert _lab.chat_models(_base) == [("lab-good", True), ("lab-bad", False)], "Embedding models are never offered for the combat call"
+finally:
+    brain.LM_STUDIO_URL, brain.LM_STUDIO_TIMEOUT, brain.active_model_id, brain.LLM_PROBE = _old_url, _old_to, _old_model, None
+    _srv.shutdown()
+print("  [OK] Test 86 Passed: the lab scores parse, menu and policy per model, counts timeouts, thinking leaks and errors, and writes its report.")

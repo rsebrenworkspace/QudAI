@@ -37,12 +37,14 @@ def save_ancestral_wisdom(wisdom_list):
 
 def format_ancestral_memory_for_prompt():
     """Format the top lessons from past deaths to inject into the LLM system prompt."""
-    wisdom = load_ancestral_wisdom()
+    # Only lessons a human (or a reviewer) approved reach the prompt: the lessons the small model writes from a death message are guesses and some
+    # were wrong or invented (HANDOFF issue 62). Everything is still saved; `python tools/wisdom.py` lists and approves.
+    wisdom = [w for w in load_ancestral_wisdom() if w.get("approved") is True]
     if not wisdom:
-        return "No recorded ancestral memories yet. You are the vanguard of your lineage."
+        return "No approved ancestral lessons yet. You are the vanguard of your lineage."
 
     recent = wisdom[-4:]
-    lines = ["ANCESTRAL WISDOM FROM FALLEN FOREBEARS:"]
+    lines = ["ANCESTRAL WISDOM FROM FALLEN FOREBEARS (verified):"]
     for w in recent:
         gen = w.get("generation", 1)
         name = w.get("name", "Unknown")
@@ -93,6 +95,10 @@ def distill_lesson(death_data, recent_actions, model_id=None):
     return f"Exercise extreme caution against '{cause}' in {zone}."
 
 
+# A 250-400 word story takes a local 8B model longer than the old 12 seconds, so the chronicle fell back to its template text (HANDOFF issue 62).
+CHRONICLE_TIMEOUT_SECONDS = 60.0
+
+
 def generate_obsidian_chronicle(death_data, recent_actions, generation, lesson, model_id=None):
     """Generate a dramatic, lore-rich markdown note for Obsidian."""
     name = death_data.get("player_name", "Nomad")
@@ -140,9 +146,9 @@ REQUIREMENTS:
                     {"role": "user", "content": narrative_prompt}
                 ],
                 "temperature": 0.7,
-                "max_tokens": 1024
+                "max_tokens": 700
             }
-            res = requests.post(LM_STUDIO_URL, json=payload, timeout=12.0)
+            res = requests.post(LM_STUDIO_URL, json=payload, timeout=CHRONICLE_TIMEOUT_SECONDS)
             if res.status_code == 200:
                 story_body = res.json()["choices"][0]["message"]["content"].strip()
         except Exception as e:
@@ -202,7 +208,7 @@ tags:
     return filepath
 
 
-def process_death_event(death_data, recent_actions, active_model_id=None):
+def process_death_event(death_data, recent_actions, active_model_id=None, last_state=None, trace_path=None):
     """Full lifecycle: archives run, distills ancestral lesson, and writes Obsidian chronicle."""
     print("\n" + "=" * 55)
     print(" [DEATH DETECTED] The Pilgrim Has Fallen")
@@ -236,18 +242,30 @@ def process_death_event(death_data, recent_actions, active_model_id=None):
         "zone": death_data.get("zone", "Unknown"),
         "death_reason": death_data.get("death_reason", "Unknown"),
         "lesson": lesson,
+        "approved": False,
         "timestamp": datetime.datetime.utcnow().isoformat()
     }
     wisdom.append(new_memory_entry)
     save_ancestral_wisdom(wisdom)
 
-    print(f"[Ancestral Wisdom Updated] Gen {generation} Lesson: {lesson}")
+    print(f"[Ancestral Wisdom Updated] Gen {generation} Lesson (NOT approved, not shown to the model): {lesson}")
 
     # 3. Generate Obsidian Chronicle
     chronicle_path = generate_obsidian_chronicle(death_data, recent_actions, generation, lesson, active_model_id)
 
+    # 4. Evidence, not flavour: a deterministic post-mortem from the decision trace and the last game state (HANDOFF issue 63)
+    postmortem_path = None
+    try:
+        import postmortem
+        rows = postmortem.load_trace_run(trace_path or os.path.join(MEMORY_DIR, "decision_trace.jsonl"))
+        postmortem_path = postmortem.write_postmortem(CHRONICLES_DIR, death_data, last_state, rows, generation)
+        print(f"[Post-mortem] Facts of this death written to: {postmortem_path}\n")
+    except Exception as ex:
+        print(f"[Post-mortem] could not be written: {ex}")
+
     return {
         "generation": generation,
         "lesson": lesson,
-        "chronicle_path": chronicle_path
+        "chronicle_path": chronicle_path,
+        "postmortem_path": postmortem_path
     }
