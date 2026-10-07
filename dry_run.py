@@ -4213,3 +4213,35 @@ assert (stratum1_zone, _su) in brain.STAIRS_GIVEUP, "A retreat that never gets c
 assert "Fleeing towards stairs up" not in _seen[-1], "After the give-up he must stop fleeing toward them and fight or act otherwise"
 brain.STAIRS_GIVEUP.clear(); brain.UNREACHABLE_SECTORS.discard((stratum1_zone, _su)); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
 print("  [OK] Test 77 Passed: retreat to stairs up by engine path; the greedy fallback gives up without progress.")
+
+# ---------------------------------------------------------------------------
+# Test 78: stand and fight (HANDOFF issue 58): no fleeing from an adjacent below-Tough attacker unless stairs are close
+# ---------------------------------------------------------------------------
+_hunter = lambda diff="Average": {"name": "snapjaw hunter", "dist": 1, "dir": "E", "tx": 11, "ty": 10, "difficulty": diff, "is_enemy": True}
+_gs = {"x": 10, "y": 10, "stairs_up": [], "stairs_down": []}
+_adj = {"E": "snapjaw hunter"}
+_abs = [{"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 0, "usable": True},
+        {"name": "Lase (4 charges)", "command": "CommandLase", "cooldown": 0, "usable": True}]
+brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_DOWN.clear()
+_flee = {"action": "SPRINT_W", "reason": "[LLM] Emergency retreat from melee threat"}
+_d = brain.enforce_stand_and_fight(_flee, _gs, _adj, [_hunter()], _abs)
+assert _d["action"] == "USE_ABILITY:CommandStunningForce:E", f"Stunning Force comes first, got {_d}"
+_d = brain.enforce_stand_and_fight(_flee, _gs, _adj, [_hunter()], _abs[1:])
+assert _d["action"] == "USE_ABILITY:CommandLase:E", f"then Lase, got {_d}"
+_d = brain.enforce_stand_and_fight(_flee, _gs, _adj, [_hunter()], [])
+assert _d["action"] == "MOVE_E", f"then a melee bump, got {_d}"
+for _fl in ({"action": "MOVE_W", "reason": "x"}, {"action": "ACTIVATE_SPRINT", "reason": "x"}, {"action": "NAVIGATE_ZONE_EXIT:S", "reason": "x"}, {"action": "USE_STAIRS_UP", "reason": "x"}):
+    assert brain.enforce_stand_and_fight(_fl, _gs, _adj, [_hunter()], _abs)["action"].startswith(("USE_ABILITY", "MOVE_E")), _fl
+# decisions that are not fleeing pass through untouched
+for _ok in ({"action": "MOVE_E", "reason": "attack"}, {"action": "USE_ABILITY:CommandIntimidate", "reason": "x"}, {"action": "EAT", "reason": "x"}):
+    assert brain.enforce_stand_and_fight(_ok, _gs, _adj, [_hunter()], _abs) is _ok, _ok
+# the exceptions: Tough or worse, stairs close, standing on stairs, nobody adjacent
+assert brain.enforce_stand_and_fight(_flee, _gs, _adj, [_hunter("Tough")], _abs) is _flee, "Tough: he may run"
+assert brain.enforce_stand_and_fight(_flee, dict(_gs, stairs_up=[{"tx": 13, "ty": 12}]), _adj, [_hunter()], _abs) is _flee, "Stairs within 4 tiles: he may run to them"
+assert brain.enforce_stand_and_fight(_flee, dict(_gs, stairs_up=[{"tx": 30, "ty": 12}]), _adj, [_hunter()], _abs)["action"] != "SPRINT_W", "Far stairs do not count"
+assert brain.enforce_stand_and_fight(_flee, dict(_gs, standing_on_stairs_up=True), _adj, [_hunter()], _abs) is _flee
+assert brain.enforce_stand_and_fight(_flee, _gs, {}, [dict(_hunter(), dist=3)], _abs) is _flee, "Nobody adjacent: nothing to stand against"
+brain.KNOWN_STAIRS_UP[("zz",)] = {"tx": 11, "ty": 11}
+assert brain.enforce_stand_and_fight(_flee, _gs, _adj, [_hunter()], _abs) is _flee, "Remembered stairs close by also allow running"
+brain.KNOWN_STAIRS_UP.clear()
+print("  [OK] Test 78 Passed: below-Tough adjacent attackers are fought (Stunning Force, Lase, melee); Tough, close stairs and non-flee actions are untouched.")
