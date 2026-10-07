@@ -4175,3 +4175,22 @@ _br.note_other((0, 34, 3, 14))
 assert not _br.suppressed((0, 34, 3, 14)) and _br.failed == 0, "Changed points (the purchase worked) reset the breaker"
 brain.TURN_CLOCK = 0
 print("  [OK] Test 75 Passed: the circuit breaker suppresses, retries after AUTOLEVEL_RETRY_TURNS, and resets on progress.")
+
+# ---------------------------------------------------------------------------
+# Test 76: a wall-dwelling, immobile hostile at distance 3 no longer locks him into combat (HANDOFF issue 57)
+# ---------------------------------------------------------------------------
+_lover = {"name": "jilted lover", "blueprint": "Jilted Lover", "dist": 3, "dir": "SE", "tx": 18, "ty": 18, "is_enemy": True, "is_companion": False,
+          "can_proselytize": True, "has_los": True, "level": 1, "difficulty": "Easy", "is_stationary": True, "corpse_chance": 2}
+assert brain.is_ignorable_stationary_enemy(_lover), "A stationary Easy hostile two or more tiles away is not a threat"
+assert not brain.is_ignorable_stationary_enemy(dict(_lover, dist=1)), "Adjacent: never ignored"
+assert not brain.is_ignorable_stationary_enemy(dict(_lover, difficulty="Tough")), "Tough: never ignored"
+assert not brain.is_ignorable_stationary_enemy(dict(_lover, name="turret", is_stationary=True)), "Turrets: never ignored"
+assert not brain.is_ignorable_stationary_enemy(dict(_lover, is_stationary=False, name="baboon")), "A mobile creature is a threat"
+brain.KNOWN_STAIRS_DOWN[dungeon_stratum11_zone] = {"tx": 15, "ty": 12, "name": "hole in the ground"}; brain.RETREAT_TARGET_LEVEL = None
+brain.UNREACHABLE_SECTORS.discard((dungeon_stratum11_zone, (15, 12))); brain.STAIRS_GIVEUP.clear()
+_st = dict(delve_state_nearby); _st["visible_entities"] = [_lover]; _st["zone_fully_explored"] = True
+_dec = brain.query_decision(_st, took_damage=False, enemies=[_lover])
+assert _dec["action"] == "NAVIGATE_TO_CELL:15,12", f"With only an immobile vine in view he must carry on to the stairs, got {_dec}"
+_dec = brain.query_decision(_st, took_damage=False, enemies=[dict(_lover, is_stationary=False, name="baboon", blueprint="Baboon")])
+assert not _dec["action"].startswith("NAVIGATE_TO_CELL"), f"A mobile hostile at distance 3 must still be fought, got {_dec}"
+print("  [OK] Test 76 Passed: stationary hostiles beyond one tile do not force combat; adjacent, tough and mobile ones still do.")

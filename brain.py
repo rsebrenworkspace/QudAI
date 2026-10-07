@@ -1691,8 +1691,10 @@ def is_ignorable_stationary_enemy(e):
     if diff in ("Tough", "Very Tough", "Impossible"):
         return False
 
-    # If stationary and trivial/easy/average, ignore for combat lock at distance > 3
-    if is_stat and dist > 3 and diff in ("Trivial", "Easy", "Average", ""):
+    # A stationary creature (the engine says it cannot move, or it is a plant) only reaches adjacent cells, so beyond one tile it is not
+    # a threat. The old limit of 3 let a wall-dwelling jilted lover at distance 3 lock the brain into combat for 100+ turns (HANDOFF issue 57).
+    # Turrets and anything Tough or worse were already excluded above; damage taken still forces combat in the caller.
+    if is_stat and dist > 1 and diff in ("Trivial", "Easy", "Average", ""):
         return True
 
     # Aquatic creatures swimming in isolated pools (glowfish, etc.) cannot traverse dry land.
