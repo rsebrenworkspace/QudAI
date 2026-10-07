@@ -731,7 +731,7 @@ assert stratum1_zone in brain.KNOWN_STAIRS_UP, "Stairs up must be recorded in sp
 # When not standing on stairs up, should flee towards stairs up (20, 12) from (20, 15) -> MOVE_N
 dec_flee_su = brain.query_decision(state_stratum1_retreat, took_damage=True, enemies=[{"name": "snapjaw hunter", "dist": 3, "tx": 23, "ty": 15, "difficulty": "Tough"}])
 print(f"Critical HP underground decision: {dec_flee_su['action']} | Reason: {dec_flee_su['reason']}")
-assert dec_flee_su["action"] == "MOVE_N", f"Expected MOVE_N towards stairs up, got {dec_flee_su['action']}"
+assert dec_flee_su["action"] == "NAVIGATE_TO_CELL:20,12", f"Expected the engine path to the stairs up, got {dec_flee_su['action']}"
 assert "stairs up" in dec_flee_su["reason"].lower()
 
 # When standing on stairs up with critical HP -> USE_STAIRS_UP and sets RETREAT_TARGET_LEVEL = cur_lvl + 1 = 4
@@ -4194,3 +4194,54 @@ assert _dec["action"] == "NAVIGATE_TO_CELL:15,12", f"With only an immobile vine 
 _dec = brain.query_decision(_st, took_damage=False, enemies=[dict(_lover, is_stationary=False, name="baboon", blueprint="Baboon")])
 assert not _dec["action"].startswith("NAVIGATE_TO_CELL"), f"A mobile hostile at distance 3 must still be fought, got {_dec}"
 print("  [OK] Test 76 Passed: stationary hostiles beyond one tile do not force combat; adjacent, tough and mobile ones still do.")
+
+# ---------------------------------------------------------------------------
+# Test 77: the retreat to stairs up uses the engine path, and a wall can no longer make it flip until he dies (issue 58)
+# ---------------------------------------------------------------------------
+_enemy_h = [{"name": "snapjaw hunter", "dist": 3, "tx": 23, "ty": 15, "difficulty": "Tough"}]
+_su = (20, 12)
+brain.STAIRS_GIVEUP.clear(); brain.UNREACHABLE_SECTORS.discard((stratum1_zone, _su)); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+brain.update_stair_records(state_stratum1_retreat); brain.RETREAT_TARGET_LEVEL = None
+_dec = brain.query_decision(dict(state_stratum1_retreat), took_damage=True, enemies=_enemy_h)
+assert _dec["action"] == "NAVIGATE_TO_CELL:20,12", _dec
+brain.UNREACHABLE_SECTORS.add((stratum1_zone, _su))      # the engine said: no route
+_seen = []
+for _i in range(brain.SECTOR_STALL_LIMIT + 6):
+    _st = dict(state_stratum1_retreat); _st["x"], _st["y"] = (20, 15) if _i % 2 == 0 else (19, 15)   # flipping, never closer
+    _seen.append(brain.query_decision(_st, took_damage=True, enemies=_enemy_h)["reason"])
+assert (stratum1_zone, _su) in brain.STAIRS_GIVEUP, "A retreat that never gets closer must be given up"
+assert "Fleeing towards stairs up" not in _seen[-1], "After the give-up he must stop fleeing toward them and fight or act otherwise"
+brain.STAIRS_GIVEUP.clear(); brain.UNREACHABLE_SECTORS.discard((stratum1_zone, _su)); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+print("  [OK] Test 77 Passed: retreat to stairs up by engine path; the greedy fallback gives up without progress.")
+
+# ---------------------------------------------------------------------------
+# Test 78: stand and fight (HANDOFF issue 58): no fleeing from an adjacent below-Tough attacker unless stairs are close
+# ---------------------------------------------------------------------------
+_hunter = lambda diff="Average": {"name": "snapjaw hunter", "dist": 1, "dir": "E", "tx": 11, "ty": 10, "difficulty": diff, "is_enemy": True}
+_gs = {"x": 10, "y": 10, "stairs_up": [], "stairs_down": []}
+_adj = {"E": "snapjaw hunter"}
+_abs = [{"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 0, "usable": True},
+        {"name": "Lase (4 charges)", "command": "CommandLase", "cooldown": 0, "usable": True}]
+brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_DOWN.clear()
+_flee = {"action": "SPRINT_W", "reason": "[LLM] Emergency retreat from melee threat"}
+_d = brain.enforce_stand_and_fight(_flee, _gs, _adj, [_hunter()], _abs)
+assert _d["action"] == "USE_ABILITY:CommandStunningForce:E", f"Stunning Force comes first, got {_d}"
+_d = brain.enforce_stand_and_fight(_flee, _gs, _adj, [_hunter()], _abs[1:])
+assert _d["action"] == "USE_ABILITY:CommandLase:E", f"then Lase, got {_d}"
+_d = brain.enforce_stand_and_fight(_flee, _gs, _adj, [_hunter()], [])
+assert _d["action"] == "MOVE_E", f"then a melee bump, got {_d}"
+for _fl in ({"action": "MOVE_W", "reason": "x"}, {"action": "ACTIVATE_SPRINT", "reason": "x"}, {"action": "NAVIGATE_ZONE_EXIT:S", "reason": "x"}, {"action": "USE_STAIRS_UP", "reason": "x"}):
+    assert brain.enforce_stand_and_fight(_fl, _gs, _adj, [_hunter()], _abs)["action"].startswith(("USE_ABILITY", "MOVE_E")), _fl
+# decisions that are not fleeing pass through untouched
+for _ok in ({"action": "MOVE_E", "reason": "attack"}, {"action": "USE_ABILITY:CommandIntimidate", "reason": "x"}, {"action": "EAT", "reason": "x"}):
+    assert brain.enforce_stand_and_fight(_ok, _gs, _adj, [_hunter()], _abs) is _ok, _ok
+# the exceptions: Tough or worse, stairs close, standing on stairs, nobody adjacent
+assert brain.enforce_stand_and_fight(_flee, _gs, _adj, [_hunter("Tough")], _abs) is _flee, "Tough: he may run"
+assert brain.enforce_stand_and_fight(_flee, dict(_gs, stairs_up=[{"tx": 13, "ty": 12}]), _adj, [_hunter()], _abs) is _flee, "Stairs within 4 tiles: he may run to them"
+assert brain.enforce_stand_and_fight(_flee, dict(_gs, stairs_up=[{"tx": 30, "ty": 12}]), _adj, [_hunter()], _abs)["action"] != "SPRINT_W", "Far stairs do not count"
+assert brain.enforce_stand_and_fight(_flee, dict(_gs, standing_on_stairs_up=True), _adj, [_hunter()], _abs) is _flee
+assert brain.enforce_stand_and_fight(_flee, _gs, {}, [dict(_hunter(), dist=3)], _abs) is _flee, "Nobody adjacent: nothing to stand against"
+brain.KNOWN_STAIRS_UP[("zz",)] = {"tx": 11, "ty": 11}
+assert brain.enforce_stand_and_fight(_flee, _gs, _adj, [_hunter()], _abs) is _flee, "Remembered stairs close by also allow running"
+brain.KNOWN_STAIRS_UP.clear()
+print("  [OK] Test 78 Passed: below-Tough adjacent attackers are fought (Stunning Force, Lase, melee); Tough, close stairs and non-flee actions are untouched.")

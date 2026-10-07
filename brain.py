@@ -2719,7 +2719,65 @@ def get_close_threats(enemies, game_state):
     ]
 
 
+# Stand and fight (HANDOFF issue 58, human decision 2026-10-06, option A). Running from an adjacent same-speed melee attacker costs HP and gains
+# nothing: Gen 14 "emergency retreated" for 15 turns from a snapjaw (HP 28 to 10) without ever striking back. When the adjacent hostiles are all
+# below Tough and no stairs are close, a flee action is replaced by an attack: Stunning Force, then Lase and the other ready offensive abilities,
+# then a melee bump. Tough or worse, or stairs within STAND_STAIRS_RADIUS, keep the old freedom to run.
+STAND_STAIRS_RADIUS = 4
+STAND_CONTEXT = {"adj_threats": {}, "enemies": [], "abilities": []}
+STAND_FIGHT_FAMILIES = ("stunning_force", "sunder_mind", "lase", "elemental_ray", "syphon_vim", "melee_strike")
+STAND_FLEE_PREFIXES = ("SPRINT_", "NAVIGATE_", "USE_STAIRS")
+
+
+def must_stand_and_fight(game_state, adj_threats, enemies):
+    """(True, [adjacent enemy dicts]) when fleeing is forbidden this turn."""
+    if not adj_threats:
+        return False, []
+    adj_enemies = [e for e in enemies if e.get("dist") == 1 and e.get("dir") in adj_threats]
+    if not adj_enemies or any(e.get("difficulty") in ("Tough", "Very Tough", "Impossible") for e in adj_enemies):
+        return False, []
+    if game_state.get("standing_on_stairs_up") or game_state.get("standing_on_stairs_down"):
+        return False, []
+    px, py = game_state.get("x", 0), game_state.get("y", 0)
+    stairs = list(game_state.get("stairs_up", []) or []) + list(game_state.get("stairs_down", []) or [])
+    for rec in list(KNOWN_STAIRS_UP.values()) + list(KNOWN_STAIRS_DOWN.values()):
+        stairs.append(rec)
+    for s in stairs:
+        if "tx" in s and "ty" in s and max(abs(s["tx"] - px), abs(s["ty"] - py)) <= STAND_STAIRS_RADIUS:
+            return False, []
+    return True, adj_enemies
+
+
+def enforce_stand_and_fight(decision, game_state, adj_threats, enemies, abilities):
+    """Replaces a flee decision by an attack when `must_stand_and_fight`. Other decisions pass through unchanged."""
+    action = (decision or {}).get("action", "")
+    stand, adj_enemies = must_stand_and_fight(game_state, adj_threats, enemies)
+    if not stand:
+        return decision
+    adj_dirs = {e.get("dir") for e in adj_enemies}
+    flee = (action.startswith(STAND_FLEE_PREFIXES) or action == "ACTIVATE_SPRINT"
+            or (action.startswith("MOVE_") and action[5:] not in adj_dirs))
+    if not flee:
+        return decision
+    target = adj_enemies[0]
+    d = target.get("dir")
+    ab = find_ready_ability(abilities, *STAND_FIGHT_FAMILIES)
+    if ab and ab.get("command"):
+        new = {"action": f"USE_ABILITY:{ab['command']}:{d}", "reason": f"Stand and fight: {ab.get('name', 'ability')} on adjacent {target.get('name', 'enemy')} ({d}) instead of fleeing ({target.get('difficulty', '?')} threat, no stairs close)"}
+    else:
+        new = {"action": f"MOVE_{d}", "reason": f"Stand and fight: melee on adjacent {target.get('name', 'enemy')} ({d}) instead of fleeing ({target.get('difficulty', '?')} threat, no stairs close)"}
+    print(f"[STAND AND FIGHT] {action} -> {new['action']} ({decision.get('reason', '')[:60]})")
+    return new
+
+
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
+    """The decision for this turn: `_query_decision` plus the stand-and-fight rule."""
+    STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+    decision = _query_decision(game_state, took_damage, enemies, suppress_autolevel)
+    return enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
+
+
+def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     global last_action, consecutive_kites, RETREAT_TARGET_LEVEL, CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS, TURN_CLOCK
     TURN_CLOCK += 1
 
@@ -2771,6 +2829,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     adj_threats = get_adjacent_threats(surroundings, companions=companions, cur_pos=(game_state.get("x", 0), game_state.get("y", 0)))
     close_threats = get_close_threats(enemies, game_state)
     abilities = filter_corpse_burners(game_state, abilities, enemies, hp_ratio)
+    STAND_CONTEXT.update({"adj_threats": dict(adj_threats), "enemies": enemies, "abilities": abilities})
     engine_hostiles = (game_state.get("hostiles_adjacent", False) and bool(adj_threats)) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
     is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
 
@@ -2825,9 +2884,15 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         su_info = KNOWN_STAIRS_UP.get(zone_id)
         if su_info:
             su_pos = (su_info["tx"], su_info["ty"])
-            best_m = get_best_move_towards(cur_pos, su_pos, valid_moves)
-            if best_m:
-                return {"action": best_m, "reason": f"Tactical Retreat: Fleeing towards stairs up at {su_pos} (HP {hp}/{max_hp}, Stratum {cur_z})"}
+            # Engine pathfinder first; the greedy step is only a guarded fallback (R6). A wall between him and the stairs made the greedy
+            # retreat flip E/W for 20 turns while a snapjaw hunter killed him (HANDOFF issue 58).
+            if cur_pos != su_pos and (zone_id, su_pos) not in STAIRS_GIVEUP:
+                flee = f"Tactical Retreat: Fleeing towards stairs up at {su_pos} (HP {hp}/{max_hp}, Stratum {cur_z})"
+                if (zone_id, su_pos) not in UNREACHABLE_SECTORS:
+                    return {"action": f"NAVIGATE_TO_CELL:{su_pos[0]},{su_pos[1]}", "reason": flee}
+                best_m = get_best_move_towards(cur_pos, su_pos, valid_moves)
+                if best_m and sector_target_ok(zone_id, su_pos, cur_pos, "stairs"):
+                    return {"action": best_m, "reason": flee + " [no engine route; stepping greedily]"}
 
     # Priority Attribute Allocation: If character leveled up and has unspent AP, spend immediately before battle
     g_ap = game_state.get("ap", 0)
