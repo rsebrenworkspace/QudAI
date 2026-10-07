@@ -4313,3 +4313,35 @@ assert _d["action"] == "MOVE_SW", f"With the amoeba recognised, an Average melee
 assert not brain.is_ignorable_stationary_enemy({"name": "cherubic spade", "dist": 5, "difficulty": "Average"}), "A spade is not a pad"
 assert brain.is_ignorable_stationary_enemy({"name": "lily pad", "dist": 5, "difficulty": "Easy"}) and brain.is_ignorable_stationary_enemy({"name": "glowpad", "dist": 5, "difficulty": "Easy"})
 print("  [OK] Test 80 Passed: short peaceful keywords match whole words only; the amoeba stays an enemy and the marsh is not a town.")
+
+
+# ---------------------------------------------------------------------------
+# Test 81: Impossible hostiles near the arrival border: go back through it (HANDOFF issue 61)
+# ---------------------------------------------------------------------------
+_jell = {"name": "black jell", "blueprint": "BlackJell", "dist": 5, "dir": "SW", "tx": 45, "ty": 5, "is_enemy": True, "has_los": True, "difficulty": "Impossible"}
+_BZ = "JoppaWorld.11.20.0.0.12"
+brain.LAST_ZONE_ENTRY = {"from_zone": "JoppaWorld.11.22.1.1.12", "to_zone": _BZ, "entry_pos": (48, 0), "reverse_dir": "N"}
+brain.FAILED_ZONE_EXITS.discard(("JoppaWorld.11.22.1.1.12", "S"))
+_d = brain.border_retreat_decision({}, _BZ, (48, 0), [_jell])
+assert _d["action"] == "MOVE_N" and _d.get("flee_ok"), f"On the border: step back through it, got {_d}"
+assert ("JoppaWorld.11.22.1.1.12", "S") in brain.FAILED_ZONE_EXITS, "The exit that leads into the danger zone must be written off"
+_d = brain.border_retreat_decision({}, _BZ, (50, 2), [_jell])
+assert _d["action"] == "NAVIGATE_ZONE_EXIT:N", f"Near the border: walk back to it, got {_d}"
+assert brain.border_retreat_decision({}, _BZ, (60, 12), [_jell]) is None, "Far from the arrival border: no border retreat"
+assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, difficulty="Tough")]) is None, "Only Impossible hostiles trigger it"
+assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, has_los=False)]) is None, "Out of sight: no retreat"
+assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, dist=14)]) is None, "Too far away to matter yet"
+assert brain.border_retreat_decision({}, "SomeOtherZone", (48, 0), [_jell]) is None, "Only in the zone he just entered"
+# the stand-and-fight rule must not undo it, even with a weak hostile adjacent
+_weak = {"name": "snapjaw", "dist": 1, "dir": "E", "difficulty": "Easy", "is_enemy": True}
+_flee = {"action": "MOVE_N", "reason": "Danger retreat", "flee_ok": True}
+assert brain.enforce_stand_and_fight(_flee, {"x": 48, "y": 0}, {"E": "snapjaw"}, [_weak, _jell], []) is _flee
+# in the full decision, the retreat comes before any fight
+brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_DOWN.clear(); brain.RETREAT_TARGET_LEVEL = None
+brain.LAST_ZONE_ENTRY = {"from_zone": "X.prev", "to_zone": dungeon_stratum11_zone, "entry_pos": (15, 0), "reverse_dir": "N"}
+_st = dict(delve_state_nearby); _st["x"], _st["y"] = 15, 0; _st["visible_entities"] = [_jell]
+_st["surroundings"] = {"N": "[ZONE_EXIT: N]", "S": "dirt floor", "E": "dirt floor", "W": "dirt floor"}
+_dec = brain.query_decision(_st, took_damage=False, enemies=[_jell])
+assert _dec["action"] == "MOVE_N" and "Danger retreat" in _dec["reason"], f"Full decision: go back through the border, got {_dec}"
+brain.LAST_ZONE_ENTRY = None; brain.FAILED_ZONE_EXITS.discard(("X.prev", "S")); brain.FAILED_ZONE_EXITS.discard(("JoppaWorld.11.22.1.1.12", "S"))
+print("  [OK] Test 81 Passed: Impossible hostiles near the arrival border send him back through it; the exit is written off; stand-and-fight leaves it alone.")

@@ -422,6 +422,40 @@ def filter_corpse_burners(game_state, abilities, hostiles, hp_ratio):
     return [a for a in abilities if not ability_registry.in_family(a, CORPSE_BURNER_FAMILY)]
 
 
+# Retreat across the arrival border (HANDOFF issue 61). Gen 16 (level 5) stepped into a new zone, stood on its border for 12 turns Lasing a group of
+# jells the engine rates Impossible, and died; one step back would have returned him to the cleared zone. When an Impossible hostile is in view
+# and he is still within BORDER_RETREAT_RADIUS of the border he just came through, he goes back, and the exit that leads into that zone is
+# written off (FAILED_ZONE_EXITS) so the exit chooser does not walk him straight back in. Stairs, when known, are used first (is_overwhelmed).
+BORDER_RETREAT_RADIUS = 6
+OPPOSITE_DIR = {"N": "S", "S": "N", "E": "W", "W": "E"}
+
+
+def border_retreat_decision(game_state, zone_id, cur_pos, enemies):
+    """A retreat decision through the border he arrived by, or None."""
+    entry = LAST_ZONE_ENTRY
+    if not entry or entry.get("to_zone") != zone_id or not entry.get("reverse_dir"):
+        return None
+    danger = [e for e in enemies
+              if e.get("difficulty") == "Impossible" and e.get("has_los") is not False and e.get("dist", 999) <= 10
+              and not is_ignorable_stationary_enemy(e)]
+    if not danger:
+        return None
+    ex, ey = entry.get("entry_pos", (None, None))
+    if ex is None or max(abs(cur_pos[0] - ex), abs(cur_pos[1] - ey)) > BORDER_RETREAT_RADIUS:
+        return None
+    rev = entry["reverse_dir"]
+    px, py = cur_pos
+    on_border = (rev == "W" and px == 0) or (rev == "E" and px == 79) or (rev == "N" and py == 0) or (rev == "S" and py == 24)
+    from_zone = entry.get("from_zone")
+    if from_zone:
+        FAILED_ZONE_EXITS.add((from_zone, OPPOSITE_DIR.get(rev, rev)))
+    names = ", ".join(sorted({e.get("name", "?") for e in danger})[:3])
+    why = f"Danger retreat: {names} (Impossible) in view {min(e.get('dist', 99) for e in danger)} tiles away; going back through the {rev} border I arrived by"
+    if on_border:
+        return {"action": f"MOVE_{rev}", "reason": why, "flee_ok": True}
+    return {"action": f"NAVIGATE_ZONE_EXIT:{rev}", "reason": why, "flee_ok": True}
+
+
 # Reacting to being on fire (HANDOFF issue 32). Engine facts [verified in code, ENGINE_INTERNALS 12.1g]: `Burning` deals damage every turn
 # and removes itself once the creature is no longer aflame; contact with liquid cools it (`LiquidVolume.ProcessExposure` /
 # `GetLiquidCooling`). So: step into deep water if it is adjacent; otherwise move away from burning cells; otherwise let it burn out.
@@ -2839,6 +2873,8 @@ def must_stand_and_fight(game_state, adj_threats, enemies):
 def enforce_stand_and_fight(decision, game_state, adj_threats, enemies, abilities):
     """Replaces a flee decision by an attack when `must_stand_and_fight`. Other decisions pass through unchanged."""
     action = (decision or {}).get("action", "")
+    if (decision or {}).get("flee_ok"):
+        return decision
     stand, adj_enemies = must_stand_and_fight(game_state, adj_threats, enemies)
     if not stand:
         return decision
@@ -2981,6 +3017,11 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 best_m = get_best_move_towards(cur_pos, su_pos, valid_moves)
                 if best_m and sector_target_ok(zone_id, su_pos, cur_pos, "stairs"):
                     return {"action": best_m, "reason": flee + " [no engine route; stepping greedily]"}
+
+    border_decision = border_retreat_decision(game_state, zone_id, cur_pos, enemies)
+    if border_decision:
+        print(f"[DANGER RETREAT] {border_decision['reason']}")
+        return border_decision
 
     # Priority Attribute Allocation: If character leveled up and has unspent AP, spend immediately before battle
     g_ap = game_state.get("ap", 0)

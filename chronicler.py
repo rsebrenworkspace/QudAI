@@ -93,6 +93,10 @@ def distill_lesson(death_data, recent_actions, model_id=None):
     return f"Exercise extreme caution against '{cause}' in {zone}."
 
 
+# A 250-400 word story takes a local 8B model longer than the old 12 seconds, so the chronicle fell back to its template text (HANDOFF issue 62).
+CHRONICLE_TIMEOUT_SECONDS = 60.0
+
+
 def generate_obsidian_chronicle(death_data, recent_actions, generation, lesson, model_id=None):
     """Generate a dramatic, lore-rich markdown note for Obsidian."""
     name = death_data.get("player_name", "Nomad")
@@ -140,9 +144,9 @@ REQUIREMENTS:
                     {"role": "user", "content": narrative_prompt}
                 ],
                 "temperature": 0.7,
-                "max_tokens": 1024
+                "max_tokens": 700
             }
-            res = requests.post(LM_STUDIO_URL, json=payload, timeout=12.0)
+            res = requests.post(LM_STUDIO_URL, json=payload, timeout=CHRONICLE_TIMEOUT_SECONDS)
             if res.status_code == 200:
                 story_body = res.json()["choices"][0]["message"]["content"].strip()
         except Exception as e:
