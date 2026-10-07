@@ -2825,9 +2825,15 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         su_info = KNOWN_STAIRS_UP.get(zone_id)
         if su_info:
             su_pos = (su_info["tx"], su_info["ty"])
-            best_m = get_best_move_towards(cur_pos, su_pos, valid_moves)
-            if best_m:
-                return {"action": best_m, "reason": f"Tactical Retreat: Fleeing towards stairs up at {su_pos} (HP {hp}/{max_hp}, Stratum {cur_z})"}
+            # Engine pathfinder first; the greedy step is only a guarded fallback (R6). A wall between him and the stairs made the greedy
+            # retreat flip E/W for 20 turns while a snapjaw hunter killed him (HANDOFF issue 58).
+            if cur_pos != su_pos and (zone_id, su_pos) not in STAIRS_GIVEUP:
+                flee = f"Tactical Retreat: Fleeing towards stairs up at {su_pos} (HP {hp}/{max_hp}, Stratum {cur_z})"
+                if (zone_id, su_pos) not in UNREACHABLE_SECTORS:
+                    return {"action": f"NAVIGATE_TO_CELL:{su_pos[0]},{su_pos[1]}", "reason": flee}
+                best_m = get_best_move_towards(cur_pos, su_pos, valid_moves)
+                if best_m and sector_target_ok(zone_id, su_pos, cur_pos, "stairs"):
+                    return {"action": best_m, "reason": flee + " [no engine route; stepping greedily]"}
 
     # Priority Attribute Allocation: If character leveled up and has unspent AP, spend immediately before battle
     g_ap = game_state.get("ap", 0)
