@@ -1066,7 +1066,16 @@ def is_peaceful_npc(name, blueprint=None):
         "apothecary", "water merchant", "mayor", "councillor", "cantor", "scribe",
         "archivist", "librarian", "domestic pig"
     ]
-    return any(pk in combined for pk in peaceful_keywords)
+    # Short keywords must be whole words: "tam" (a Joppa NPC) is a substring of "GiantAmoeba", "Metamorphic Polygel" and "Stamped Data
+    # Disk", and made the brain treat a giant amoeba as a peaceful citizen and the whole marsh as a town (HANDOFF issue 60).
+    words = set(re.findall(r"[a-z]+|\d+", nl)) | {w.lower() for w in re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+", blueprint or "")}
+    for pk in peaceful_keywords:
+        if len(pk) <= 4:
+            if pk in words:
+                return True
+        elif pk in combined:
+            return True
+    return False
 
 
 SETTLEMENT_KEYWORDS = [
@@ -1752,9 +1761,11 @@ def is_ignorable_stationary_enemy(e):
     name = e.get("name", "").lower()
     dist = e.get("dist", 999)
     diff = e.get("difficulty", "")
+    # "pad" must be a whole word: it is a substring of "spade" (Cherubic Spade, Metachrome Spade are hostile constructs, HANDOFF issue 60).
+    name_words = set(re.findall(r"[a-z]+", name))
     is_stat = e.get("is_stationary", False) or any(k in name for k in [
-        "glowpad", "plant", "fungus", "lichen", "brimestalk", "root", "vine", "seaweed", "lily", "pad"
-    ])
+        "glowpad", "plant", "fungus", "lichen", "brimestalk", "root", "vine", "seaweed", "lily"
+    ]) or "pad" in name_words
 
     # If adjacent (dist <= 1), never ignore
     if dist <= 1:

@@ -4295,3 +4295,21 @@ brain.LOOT_LAST_SEQ["seq"] = 0
 brain.note_loot({"last_loot": {"seq": 1, "kind": "chest", "name": "chest", "count": 3, "left": 0}}); brain.note_loot({"last_loot": {"seq": 1}}); brain.note_loot({})
 assert brain.LOOT_LAST_SEQ["seq"] == 1
 print("  [OK] Test 79 Passed: loot sources are walked to nearest-first, taken when adjacent, skipped in towns, and every dead end is written off.")
+# Test 80: "tam" no longer makes a giant amoeba a peaceful citizen (HANDOFF issue 60)
+# ---------------------------------------------------------------------------
+assert not brain.is_peaceful_npc("giant amoeba", "GiantAmoeba"), "A giant amoeba is not a peaceful NPC"
+assert not brain.is_peaceful_npc("stamped data disk", "Stamped Data Disk")
+assert not brain.is_peaceful_npc("metamorphic polygel", "Metamorphic Polygel")
+assert brain.is_peaceful_npc("Tam", "Tam"), "The real NPC is still peaceful"
+assert brain.is_peaceful_npc("Tam the dromad", None), "Whole word anywhere in the name"
+assert brain.is_peaceful_npc("water merchant", "WaterMerchant") and brain.is_peaceful_npc("Barathrumites", None) and brain.is_peaceful_npc("farmer", "Farmer1")
+assert brain.is_peaceful_npc("amoeba farmer", "AmoebaFarmer"), "Longer keywords keep substring matching (variants and plurals)"
+assert not brain.is_peaceful_npc("snapjaw warden", "SnapjawWarden"), "Hostile overrides still win"
+_amoeba = {"name": "giant amoeba", "blueprint": "GiantAmoeba", "is_enemy": True, "is_companion": False, "tx": 19, "ty": 7, "dist": 1, "dir": "SW", "difficulty": "Average"}
+assert brain.filter_hostile_enemies([_amoeba]) == [_amoeba], "The amoeba must stay in the enemy list"
+assert not brain.is_town_zone({"visible_entities": [_amoeba], "zone_name": "slimy salt marsh"}), "A marsh with an amoeba in it is not a town"
+_d = brain.enforce_stand_and_fight({"action": "SPRINT_N", "reason": "[LLM] Escape melee threat"}, {"x": 20, "y": 6, "stairs_up": [], "stairs_down": []}, {"SW": "giant amoeba"}, [_amoeba], [])
+assert _d["action"] == "MOVE_SW", f"With the amoeba recognised, an Average melee threat is fought, got {_d}"
+assert not brain.is_ignorable_stationary_enemy({"name": "cherubic spade", "dist": 5, "difficulty": "Average"}), "A spade is not a pad"
+assert brain.is_ignorable_stationary_enemy({"name": "lily pad", "dist": 5, "difficulty": "Easy"}) and brain.is_ignorable_stationary_enemy({"name": "glowpad", "dist": 5, "difficulty": "Easy"})
+print("  [OK] Test 80 Passed: short peaceful keywords match whole words only; the amoeba stays an enemy and the marsh is not a town.")
