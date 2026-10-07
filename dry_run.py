@@ -4750,6 +4750,12 @@ assert brain.choose_inventory_action(_gs88([_row("a1", _boots88)]), _tm88, True)
 assert brain.choose_inventory_action(_gs88([_row("a1", _boots88)], is_swimming=True), _tm88, False) is None
 assert brain.choose_inventory_action(_gs88([_row("a1", _boots88, ident=False)]), _tm88, False) is None, "An unidentified item is not equipped"
 assert brain.choose_inventory_action({"inventory": []}, _tm88, False) is None and brain.choose_inventory_action({}, _tm88, False) is None
+# 5b. the mod reports a stack's TOTAL weight (12 torches: 12): the brain divides by the count before scoring
+_inv_reset()
+_stack = _gs88([_row("g1", _lune88, eq=True), _row("s1", _scrap88, n=4, w=8)], cw=190)
+_dd = brain.choose_inventory_action(_stack, _tm88, False)
+assert _dd and _dd["action"] == "DROP_ITEMS:s1", _dd
+assert brain.INV_STATE["pending"]["ids"] == ["s1"]
 # 6. in the full decision it comes before exploring and before the ammo top-off
 _inv_reset()
 brain.KNOWN_STAIRS_DOWN.clear(); brain.RETREAT_TARGET_LEVEL = None; brain.LAST_ZONE_ENTRY = None
@@ -4804,3 +4810,20 @@ assert brain.first_ready_by_priority(_ab89[:2], ("lase", "stunning_force")) is N
 _d = brain.enforce_stand_and_fight({"action": "SPRINT_W", "reason": "[LLM] run"}, _gs89, {"E": "snapjaw"}, [{"name": "snapjaw", "dist": 1, "dir": "E", "difficulty": "Easy", "is_enemy": True}], list(reversed(_ab89)))
 assert _d["action"] == "USE_ABILITY:CommandStunningForce:E", f"Stand-and-fight: Stunning Force first whatever the list order, got {_d}"
 print("  [OK] Test 89 Passed: fear and banishment aimed at an adjacent immobile hostile become a damage attack (melee if none); mobile, tough and mixed cases are untouched.")
+
+
+# ---------------------------------------------------------------------------
+# Test 90: the brain reports when the mod steers the pathfinder around immobile hostiles (HANDOFF issue 69)
+# ---------------------------------------------------------------------------
+brain.AVOID_SEEN["n"] = 0
+_buf = _io.StringIO()
+with _ctx.redirect_stdout(_buf):
+    brain.note_avoid({"avoid_tagged": 3}); brain.note_avoid({"avoid_tagged": 3}); brain.note_avoid({"avoid_tagged": 5}); brain.note_avoid({}); brain.note_avoid({"avoid_tagged": "x"})
+_lines = [l for l in _buf.getvalue().splitlines() if l.startswith("[AVOID]")]
+assert len(_lines) == 2 and "3 more" in _lines[0] and "2 more" in _lines[1] and brain.AVOID_SEEN["n"] == 5, _lines
+brain.AVOID_SEEN["n"] = 0
+_csrc = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _needle in ("AvoidMovingNearby", "TagImmobileHostilesForAvoidance(player", "FlushNavigationCache", "avoid_tagged"):
+    assert _needle in _csrc, f"the mod must contain {_needle}"
+assert _csrc.count("{") == _csrc.count("}"), "C# braces"
+print("  [OK] Test 90 Passed: the brain announces newly avoided immobile hostiles once; the mod source tags them with the engine's AvoidMovingNearby part and flushes the navigation cache.")

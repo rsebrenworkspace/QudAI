@@ -399,6 +399,51 @@ namespace QudAIBrain
             catch { return false; }
         }
 
+        // ---- Steering around immobile hostiles (HANDOFF issue 69) ----
+        // A rooted hostile such as the wall-dwelling jilted lover (5 HP, grabs at radius 1) cannot follow, but the engine's autoexplore and path steps walk straight past
+        // it and into its reach. The engine's own `AvoidMovingNearby` part (a Weight that GetNavigationWeightEvent and GetAdjacentNavigationWeightEvent add to the
+        // object's cell and every cell next to it; walls use the sibling AvoidMovingOnto at 40) makes the pathfinder prefer a detour while still allowing the route when
+        // there is no other. Each immobile hostile gets the part once, and the cached navigation costs around it are flushed.
+        private const int AvoidWeight = 40;
+        private const int AvoidMaxNewPerTurn = 24;
+        private static readonly HashSet<string> avoidDecidedIds = new HashSet<string>();
+        private static int avoidTaggedTotal = 0;
+
+        private static void TagImmobileHostilesForAvoidance(GameObject player, Zone zone)
+        {
+            try
+            {
+                if (player == null || zone == null || zone.IsWorldMap()) return;
+                int added = 0;
+                foreach (GameObject o in GetSafeZoneObjects(zone))
+                {
+                    if (o == null || o == player || o.CurrentCell == null) continue;
+                    string id = o.ID;
+                    if (string.IsNullOrEmpty(id) || avoidDecidedIds.Contains(id)) continue;
+                    if (!IsImmobile(o)) continue;
+                    if (IsCompanion(o, player) || !CheckIsEnemy(o, player)) continue;
+                    avoidDecidedIds.Add(id);                       // one decision per object
+                    if (o.HasPart("AvoidMovingNearby")) continue;
+                    o.AddPart(new AvoidMovingNearby { Weight = AvoidWeight });
+                    added++;
+                    try
+                    {
+                        o.CurrentCell.FlushNavigationCache();
+                        var adj = o.CurrentCell.GetLocalAdjacentCells();
+                        if (adj != null) foreach (Cell a in adj) if (a != null) a.FlushNavigationCache();
+                    }
+                    catch { }
+                    if (added >= AvoidMaxNewPerTurn) break;
+                }
+                if (added > 0)
+                {
+                    avoidTaggedTotal += added;
+                    UnityEngine.Debug.Log("[QudAI Avoid] tagged " + added + " immobile hostile(s) for path avoidance (total " + avoidTaggedTotal + ")");
+                }
+            }
+            catch { }
+        }
+
         // ---- Inventory (HANDOFF issue 66, stage 2) ----
         // Export: every carried or worn item (natural weapons excluded) with its object id, so Python can score it (item_scoring.py) and name it in a command.
         // Commands: DROP_ITEMS:<id>,<id> (whole items, never equipped, never in a settlement or with hostiles near) and EQUIP_ITEM:<id> (the engine's own AutoEquip).
@@ -1350,6 +1395,7 @@ namespace QudAIBrain
                     }
                 }
                 catch { }
+                TagImmobileHostilesForAvoidance(player, currentCell?.ParentZone);
                 string inventoryJson = BuildInventoryJson(player);
                 int carryNow = 0, carryMax = 0;
                 try { carryNow = player.GetCarriedWeight(); carryMax = player.GetMaxCarriedWeight(); } catch { }
@@ -1514,6 +1560,7 @@ namespace QudAIBrain
                 sb.Append($"\"loot_sources\": [{string.Join(",", lootSourceEntries)}],");
                 sb.Append($"\"inventory\": {inventoryJson},");
                 sb.Append($"\"carry_weight\": {carryNow}, \"max_carry_weight\": {carryMax},");
+                sb.Append($"\"avoid_tagged\": {avoidTaggedTotal},");
                 sb.Append($"\"harvestable_nearby\": {harvestableNearby},");
                 sb.Append($"\"campfire_nearby\": {(campfireNearby ? "true" : "false")},");
                 sb.Append($"\"can_make_camp\": {(canMakeCamp ? "true" : "false")},");

@@ -570,7 +570,9 @@ def choose_inventory_action(game_state, template, is_town):
     sig = tuple(sorted((i.get("id"), bool(i.get("equipped")), i.get("count", 1)) for i in inv)) + (game_state.get("carry_weight"),)
     if sig == INV_STATE["sig"]:
         return None                                   # nothing changed since the last time we found nothing to do
-    items = [dict(i, blueprint=i.get("blueprint")) for i in inv if i.get("id") and not INV_STATE["fails"].get(i.get("id"), 0) >= INV_FAIL_LIMIT]
+    # The mod's `weight` is the STACK's total (12 torches report 12, verified in game 2026-10-06); the scorer thinks per unit, so convert.
+    items = [dict(i, blueprint=i.get("blueprint"), weight=(i.get("weight") or 0) / max(1, i.get("count") or 1)) for i in inv
+             if i.get("id") and not INV_STATE["fails"].get(i.get("id"), 0) >= INV_FAIL_LIMIT]
     profile = _inv_profile(template)
     # 1. equip: one clear upgrade per turn, never an unidentified item (its real stats are unknown)
     for it, slot, why in item_scoring.choose_equips([i for i in items if i.get("identified") is not False or i.get("equipped")], profile):
@@ -587,6 +589,20 @@ def choose_inventory_action(game_state, template, is_town):
         return {"action": "DROP_ITEMS:" + ",".join(ids), "reason": f"Inventory: dropping {names} ({drops[0][1]})"}
     INV_STATE["sig"] = sig
     return None
+
+
+AVOID_SEEN = {"n": 0}
+
+
+def note_avoid(game_state):
+    """Prints when the mod has tagged more immobile hostiles for path avoidance (`avoid_tagged`, HANDOFF issue 69). Never raises."""
+    try:
+        n = int(game_state.get("avoid_tagged") or 0)
+        if n > AVOID_SEEN["n"]:
+            print(f"[AVOID] the pathfinder now steers around {n - AVOID_SEEN['n']} more immobile hostile(s) (total {n})")
+        AVOID_SEEN["n"] = max(AVOID_SEEN["n"], n)
+    except Exception:
+        pass
 
 
 def log_item_drop(record):
@@ -3752,6 +3768,7 @@ def main():
                 note_ability_use(game_state)
                 note_loot(game_state)
                 note_inventory_action(game_state)
+                note_avoid(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
 
