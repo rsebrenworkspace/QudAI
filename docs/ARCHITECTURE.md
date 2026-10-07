@@ -21,8 +21,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 73 -->
-`dry_run.py` currently holds Tests 1-73. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 74 -->
+`dry_run.py` currently holds Tests 1-74. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -128,6 +128,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
   `learnable_skills` (only affordable ones), `mutations` (`level`, `cap`, `can_level`)
 - **Position:** `x`, `y`, `z`, `zone_id`, `zone_name`, `is_settlement`, `zone_tier`
 - **Ability use:** `last_ability_use` (result of the last `USE_ABILITY`: `seq`, `command`, `dir`, `known`, `cd_before`, `cd_after`, `fired` = the cooldown rose, or the ability label changed ("Lase (5 charges)" count, toggle on/off), `refused` + `reason` when the C# pre-check found the ability disabled, unusable or on cooldown, or `null`). Python `note_ability_use` counts it per command in `memory/ability_stats.json` (`attempts`, `fired`, `refused`), kept across characters. Abilities are matched by exact engine command through `data/ability_families.json` (loader `ability_registry.py`); an ability in no wired family is never used automatically (T-1.25).
+- **Delving (T-1.29):** the route to a known stairs down is `NAVIGATE_TO_CELL` (engine pathfinder). Only after a PATH_BLOCKED report (target in `UNREACHABLE_SECTORS`) does a greedy step remain, guarded by `sector_target_ok(..., "stairs")`; 14 turns without a new closest distance puts the stairs in `STAIRS_GIVEUP` and delving to them is skipped.
 - **Lase and food (T-1.28):** `filter_corpse_burners` removes the `corpse_burners` family (Lase, Flaming Ray, Pyrokinesis) from the ability list of a decision when `withhold_corpse_burners` says so: he can butcher, is hungry or holds fewer than `FOOD_RESTOCK_THRESHOLD` food items, HP is at least 50%, fewer than 3 hostiles, none Tough or worse, and the nearest hostile has `corpse_chance > 0`. Missing data never withholds. Logged as `[FOOD POLICY]` on change only.
 - **On fire (T-1.27):** `fire_reaction` (before the stairs-retreat and Phase A) reads `is_on_fire`: step into adjacent deep water, else move away from `[HAZARD: fire]` cells, else do nothing (let it burn out); at most `FIRE_REACTION_MAX` (10) consecutive turns.
 - **Burrowing Claws (T-1.26):** `claws_toggle_action` (Phase A, before autolevel) switches `CommandToggleBurrowingClaws` OFF when `is_town_zone` (R7) and ON elsewhere, at most once per `CLAWS_TOGGLE_GAP` (25) turns. The claws are not in a wired family: the LLM and fallbacks never see the toggle. Water/sector traversal targets are committed intents: `sector_target_ok` writes a target off after `SECTOR_STALL_LIMIT` (14) turns without a new closest distance (the "nearest cell" chase is tracked per zone and ends in `SECTOR_GIVEUP`).

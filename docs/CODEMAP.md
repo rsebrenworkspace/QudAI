@@ -36,7 +36,7 @@
 | Area | Functions / globals |
 |---|---|
 | Constants/helpers | `CARDINAL_OFFSETS`, `DIRECTIONAL_ABILITIES`, `PROSELYTIZE_EXCLUSIONS`, `min_level_for_depth`, `is_swim_move`, `get_best_move_towards`, `get_step_direction` |
-| Zone tracking | `update_zone_records` (zone cycles, entry border), `find_zone_unexplored_frontier`, `_compute_adjacent_zone_id`, `check_exit_direction_failure`, `get_zone_exit_target`, `CURRENT_ZONE_CHOSEN_EXIT`, `FAILED_ZONE_EXITS`, `EXPLORED_ZONE_SET`, `UNREACHABLE_SECTORS`, `sector_target_ok`/`SECTOR_GIVEUP` (water-sector progress), `claws_toggle_action` (claws policy), `fire_reaction` (on-fire response), `withhold_corpse_burners`/`filter_corpse_burners` (Lase vs food) |
+| Zone tracking | `update_zone_records` (zone cycles, entry border), `find_zone_unexplored_frontier`, `_compute_adjacent_zone_id`, `check_exit_direction_failure`, `get_zone_exit_target`, `CURRENT_ZONE_CHOSEN_EXIT`, `FAILED_ZONE_EXITS`, `EXPLORED_ZONE_SET`, `UNREACHABLE_SECTORS`, `sector_target_ok`/`SECTOR_GIVEUP` (water-sector progress), `claws_toggle_action` (claws policy), `fire_reaction` (on-fire response), `withhold_corpse_burners`/`filter_corpse_burners` (Lase vs food), `STAIRS_GIVEUP` (delve fallback) |
 | Stairs | `is_valid_stair_down`, `get_stair_priority`, `update_stair_records`, `KNOWN_STAIRS_DOWN/UP` |
 | Entities | `is_companion_name`, `register_companion`, `is_proselytizable`, `is_peaceful_npc`, `is_town_zone`, `filter_hostile_enemies`, `get_adjacent_threats`, `is_ignorable_stationary_enemy`, `find_burrow_direction` |
 | Geometry | `get_valid_moves`, `render_5x5_grid`, `bresenham_line`, `is_line_of_fire_clear` |

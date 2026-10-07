@@ -284,7 +284,7 @@ fully_explored_state["visible_entities"] = [
 dec_zone_done = brain.query_decision(fully_explored_state, took_damage=False, enemies=[])
 print("\n--- Test 11: Zone Fully Explored -> Navigate to Stairs Down ---")
 print(f"Action: {dec_zone_done['action']} | Reason: {dec_zone_done['reason']}")
-assert dec_zone_done['action'] == "MOVE_N", f"Expected MOVE_N towards stairs down, got {dec_zone_done['action']}"
+assert dec_zone_done['action'] == "NAVIGATE_TO_CELL:10,9", f"Expected the engine path to the stairs down, got {dec_zone_done['action']}"
 # Test 11 told the brain (as the engine) that this zone ID is fully explored. Later scenarios reuse the ID as a fresh zone,
 # so forget what the engine said here (T-1.15: the brain now remembers the engine's explored flag across turns).
 brain.EXPLORED_ZONE_SET.clear()
@@ -700,7 +700,7 @@ state_surface_lvl3_cleared = {
 dec_route = brain.query_decision(state_surface_lvl3_cleared, took_damage=False, enemies=[])
 print(f"Level 3 cleared zone decision: {dec_route['action']} | Reason: {dec_route['reason']}")
 # From (10, 10) towards (15, 12), best move is SE or E
-assert dec_route["action"] in ("MOVE_SE", "MOVE_E", "MOVE_S"), f"Expected movement towards stairs down, got {dec_route['action']}"
+assert dec_route["action"] == "NAVIGATE_TO_CELL:15,12", f"Expected the engine path to the stairs down, got {dec_route['action']}"
 assert "Navigating to stairs down" in dec_route["reason"] or "Dungeon" in dec_route["reason"]
 
 # Scenario 21.3: Standing on stairs down at Level 3 -> Descend!
@@ -1215,7 +1215,7 @@ swim_explore_state = {
 # Scenario 26.3: Water Traversal across River toward Known Stairs Down
 dec_swim_stairs = brain.query_decision(swim_explore_state, took_damage=False, enemies=[])
 print(f"River stairs crossing decision: {dec_swim_stairs['action']} | Reason: {dec_swim_stairs['reason']}")
-assert dec_swim_stairs["action"] == "MOVE_N", f"Expected character to swim across water MOVE_N towards stairs at (15, 12)! Got: {dec_swim_stairs['action']}"
+assert dec_swim_stairs["action"] == "NAVIGATE_TO_CELL:15,12", f"Expected the engine path to the stairs at (15, 12)! Got: {dec_swim_stairs['action']}"
 assert "Navigating to stairs down" in dec_swim_stairs["reason"]
 
 # Scenario 26.4: Water Traversal across River to Unvisited Frontier
@@ -2136,7 +2136,7 @@ delve_state_nearby["surroundings"] = {
 }
 dec_nearby = brain.query_decision(delve_state_nearby, took_damage=False, enemies=[])
 print(f"Nearby dungeon stairs navigation decision: {dec_nearby['action']} | Reason: {dec_nearby['reason']}")
-assert dec_nearby["action"] == "MOVE_N", f"Expected character to move N towards stairs down at (15, 12)! Got: {dec_nearby['action']}"
+assert dec_nearby["action"] == "NAVIGATE_TO_CELL:15,12", f"Expected the engine path to the stairs down at (15, 12)! Got: {dec_nearby['action']}"
 assert "Dungeon Delving: Navigating to stairs down" in dec_nearby["reason"]
 
 # =====================================================================
@@ -3374,7 +3374,7 @@ explored_reset()
 dec = brain.query_decision(zone_state(ZB, engine_explored=True, unexplored=0), took_damage=False, enemies=[])
 print(f"  engine-explored turn: {dec['action']} | {dec['reason'][:90]}")
 assert ZB in brain.EXPLORED_ZONE_SET, "The engine's own explored flag must be remembered"
-assert "Zone fully explored" in dec["reason"] or dec["action"].startswith(("NAVIGATE_ZONE_EXIT", "MOVE_")), f"Unexpected decision {dec}"
+assert "Zone fully explored" in dec["reason"] or dec["action"].startswith(("NAVIGATE_ZONE_EXIT", "NAVIGATE_TO_CELL", "MOVE_")), f"Unexpected decision {dec}"
 
 # (e) Leaving a zone: the OLD zone's flag decides, not the new zone's (game_state describes the new zone after the hop)
 explored_reset()
@@ -4132,3 +4132,27 @@ _dec = brain.fallback_esper(_need, [dict(_bab, corpse_chance=0)], {}, ["MOVE_W"]
 assert _dec["action"].startswith("USE_ABILITY:CommandLase"), _dec["action"]
 brain.LASE_POLICY_STATE["withheld"] = False
 print("  [OK] Test 73 Passed: Lase withheld only for a hungry butcher in a safe fight against a corpse-yielding animal.")
+
+# ---------------------------------------------------------------------------
+# Test 74: delving to the stairs uses the engine path; a wall between him and the stairs can no longer flip him forever (issue 55)
+# ---------------------------------------------------------------------------
+_sd = (15, 12)
+brain.KNOWN_STAIRS_DOWN[dungeon_stratum11_zone] = {"tx": 15, "ty": 12, "name": "hole in the ground"}; brain.RETREAT_TARGET_LEVEL = None
+brain.UNREACHABLE_SECTORS.discard((dungeon_stratum11_zone, _sd)); brain.STAIRS_GIVEUP.clear(); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+brain.last_action = ""
+_dec = brain.query_decision(dict(delve_state_nearby), took_damage=False, enemies=[])
+assert _dec["action"] == "NAVIGATE_TO_CELL:15,12", _dec
+# the engine reports no route: greedy steps are a fallback, and only while they get closer
+brain.UNREACHABLE_SECTORS.add((dungeon_stratum11_zone, _sd))
+_acts = []
+for _i in range(brain.SECTOR_STALL_LIMIT + 6):
+    _st = dict(delve_state_nearby); _st["x"], _st["y"] = (15, 15) if _i % 2 == 0 else (14, 16)   # flipping, never closer than 3
+    brain.last_action = ""
+    _acts.append(brain.query_decision(_st, took_damage=False, enemies=[])["action"])
+assert (dungeon_stratum11_zone, _sd) in brain.STAIRS_GIVEUP, "A stairs target that is never approached must be given up"
+assert not any(a.startswith("MOVE_") and "stairs" in a for a in _acts[-3:]), "After the give-up no delve step may remain"
+# honest progress is never cut off
+brain.STAIRS_GIVEUP.clear(); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+assert all(brain.sector_target_ok(dungeon_stratum11_zone, _sd, (15, 40 - i), "stairs") for i in range(25))
+brain.UNREACHABLE_SECTORS.discard((dungeon_stratum11_zone, _sd)); brain.STAIRS_GIVEUP.clear(); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+print("  [OK] Test 74 Passed: delving uses the engine path; with no route the greedy fallback gives up after 14 turns without progress.")

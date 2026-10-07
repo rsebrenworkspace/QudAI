@@ -359,12 +359,13 @@ def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
 # to it sets no new minimum for SECTOR_STALL_LIMIT turns, it is written off like any other unreachable target.
 SECTOR_STALL_LIMIT = 14
 SECTOR_PROGRESS = {"key": None, "best": None, "stall": 0}
+STAIRS_GIVEUP = set()       # (zone_id, stairs xy) the greedy fallback could not approach: delving to them is skipped
 SECTOR_GIVEUP = set()       # zone ids where even the nearest-unexplored-cell chase stalled: stop the water traversal there
 
 
 def sector_target_ok(zone_id, target, cur_pos, kind="centroid"):
     """Records this turn's distance to the committed sector target. False (and blacklisted) once progress has stalled."""
-    key = (zone_id, tuple(target)) if kind == "centroid" else (zone_id, kind)   # the nearest cell moves every step
+    key = (zone_id, tuple(target)) if kind in ("centroid", "stairs") else (zone_id, kind)   # the nearest cell moves every step
     dist = max(abs(target[0] - cur_pos[0]), abs(target[1] - cur_pos[1]))
     if SECTOR_PROGRESS["key"] != key:
         SECTOR_PROGRESS.update({"key": key, "best": dist, "stall": 0})
@@ -375,7 +376,9 @@ def sector_target_ok(zone_id, target, cur_pos, kind="centroid"):
     SECTOR_PROGRESS["stall"] += 1
     if SECTOR_PROGRESS["stall"] >= SECTOR_STALL_LIMIT:
         UNREACHABLE_SECTORS.add((zone_id, tuple(target)))
-        if kind != "centroid":
+        if kind == "stairs":
+            STAIRS_GIVEUP.add((zone_id, tuple(target)))
+        elif kind != "centroid":
             SECTOR_GIVEUP.add(zone_id)
         SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
         print(f"[SECTOR] No progress toward {tuple(target)} in {SECTOR_STALL_LIMIT} turns (closest {dist}). Writing it off.")
@@ -2981,11 +2984,18 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             sd_pos = (sd_info["tx"], sd_info["ty"])
             # In dungeons, if zone is cleared (or subterranean with no visible threats), route to stairs down
             if is_zone_cleared or (is_subterranean and cur_pos != sd_pos and max(abs(px - sd_pos[0]), abs(py - sd_pos[1])) <= 6):
-                best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
-                if best_m:
+                # The engine pathfinder, not a greedy step: a wall between him and the stairs made the greedy step flip back and
+                # forth for 40+ turns (HANDOFF issue 55, R6). A PATH_BLOCKED report puts the stairs in UNREACHABLE_SECTORS and
+                # delving is skipped until another route opens up.
+                if cur_pos != sd_pos and (zone_id, sd_pos) not in STAIRS_GIVEUP:
                     delve_type = "Dungeon Delving" if is_subterranean else "Dungeon Entry"
                     rec_str = f"Level {cur_lvl} >= Req {req_depth_lvl}" if cur_lvl >= req_depth_lvl else f"Level {cur_lvl} < Rec {req_depth_lvl}"
-                    return {"action": best_m, "reason": f"{delve_type}: Navigating to stairs down at {sd_pos} to delve stratum {cur_z + 1} ({rec_str})"}
+                    if (zone_id, sd_pos) not in UNREACHABLE_SECTORS:
+                        return {"action": f"NAVIGATE_TO_CELL:{sd_pos[0]},{sd_pos[1]}", "reason": f"{delve_type}: Navigating to stairs down at {sd_pos} to delve stratum {cur_z + 1} ({rec_str})"}
+                    # The engine pathfinder reported no route (it may not swim). Greedy steps only as a guarded fallback.
+                    best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
+                    if best_m and sector_target_ok(zone_id, sd_pos, cur_pos, "stairs"):
+                        return {"action": best_m, "reason": f"{delve_type}: no engine route to the stairs at {sd_pos}; stepping {best_m[5:]} toward them ({rec_str})"}
 
         # 6. Inward Border Navigation & Zone Hopping Prevention
         rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
