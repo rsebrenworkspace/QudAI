@@ -4612,3 +4612,79 @@ finally:
     brain.LM_STUDIO_URL, brain.LM_STUDIO_TIMEOUT, brain.active_model_id, brain.LLM_PROBE = _old_url, _old_to, _old_model, None
     _srv.shutdown()
 print("  [OK] Test 86 Passed: the lab scores parse, menu and policy per model, counts timeouts, thinking leaks and errors, and writes its report.")
+
+
+# ---------------------------------------------------------------------------
+# Test 87: item scoring is data-driven and build-aware; equip and junk decisions (HANDOFF issue 66)
+# ---------------------------------------------------------------------------
+import item_scoring as _is
+_cat = _is.catalog()["items"]
+assert len(_cat) > 1500 and _is.catalog()["_meta"]["counts"]["loot_items"] > 900, "data/items.json must be the full catalog"
+def _find(name, group=None):
+    for _k, _v in _cat.items():
+        if _v["name"] == name and (group is None or _v["group"] == group):
+            return _k, _v
+    raise AssertionError(f"catalog has no {name!r}")
+assert _is.dice_mean("1d8+2") == 6.5 and _is.dice_mean("3d2") == 4.5 and _is.dice_mean("2d6-1") == 6.0 and _is.dice_mean(None) == 0 and _is.dice_mean("junk") == 0
+assert _is.parse_boosts("DV:4;MA:-1") == {"DV": 4.0, "MA": -1.0} and _is.parse_boosts("") == {}
+_P = {b: _is.build_profile(build_templates.BUILD_TEMPLATES[b]) for b in ("auspicious_beginnings", "praetorian_generalist", "esper_ited_away", "uncle_iroh", "bullet_specter", "classic_punchkin", "gunkin", "gas_giant", "limb_off")}
+assert "Axe" in _P["auspicious_beginnings"]["weapon_skills"] and not _P["auspicious_beginnings"]["caster"] and _P["auspicious_beginnings"]["weight_class"] == "heavy"
+assert {"Rifle", "LongBlades"} <= set(_P["praetorian_generalist"]["weapon_skills"]) and _P["praetorian_generalist"]["wants_shield"] and _P["praetorian_generalist"]["ranged"]
+assert _P["esper_ited_away"]["caster"] and _P["esper_ited_away"]["weapon_skills"] == [] and _P["esper_ited_away"]["stat_weights"]["Ego"] == 3.0
+assert _P["gunkin"]["ranged"] and "Pistol" in _P["gunkin"]["weapon_skills"] and _P["gunkin"]["agile"] and _P["gunkin"]["weight_class"] == "light"
+assert _P["uncle_iroh"]["weapon_skills"] == ["Cudgel"] and not _P["uncle_iroh"]["caster"] and _P["gas_giant"]["caster"]
+# a weapon the build trains beats an equivalent one it does not; a caster values melee little; firearms follow the firearm skill
+_axe = _find("carbide battle axe")[1]; _dag = _find("steel dagger")[1]; _pist = _find("chain pistol")[1]
+assert _is.score_item(_axe, _P["auspicious_beginnings"])[0] > _is.score_item(_dag, _P["auspicious_beginnings"])[0], "Axe build prefers the axe"
+assert _is.score_item(_dag, _P["auspicious_beginnings"])[0] < _is.score_item(_axe, _P["auspicious_beginnings"])[0] * 0.6
+assert _is.score_item(_pist, _P["gunkin"])[0] > _is.score_item(_axe, _P["gunkin"])[0], "Pistol build prefers the pistol"
+assert _is.score_item(_pist, _P["auspicious_beginnings"])[0] < _is.score_item(_pist, _P["gunkin"])[0] / 2, "An untrained firearm is worth far less"
+assert _is.score_item(_axe, _P["esper_ited_away"])[0] < _is.score_item(_axe, _P["auspicious_beginnings"])[0] / 3, "A caster values a battle axe little"
+_shield = _find("flawless crysteel aegis")[1]
+assert _is.score_item(_shield, _P["praetorian_generalist"])[0] > _is.score_item(_shield, _P["gunkin"])[0], "Only a shield build gets the shield bonus"
+_helm = _find("psychodyne helmet")[1]
+assert _is.score_item(_helm, _P["esper_ited_away"])[0] > _is.score_item(_helm, _P["auspicious_beginnings"])[0], "Ego/Willpower boosts matter to an Esper"
+_s, _kv, _why = _is.score_item(_axe, _P["auspicious_beginnings"])
+assert _why and all(isinstance(r, str) for r in _why), "Every score carries its reasons"
+# equip decisions: fill an empty slot, replace only when clearly better, never swap for a marginal gain
+_boots = _find("flawless crysteel boots")[0]; _chain_mail = _find("chain mail")[0]; _lune = _find("zetachrome lune")[0]
+_inv = [{"blueprint": _chain_mail, "equipped": True}, {"blueprint": _lune}, {"blueprint": _boots}]
+_acts = {slot: it["blueprint"] for it, slot, why in _is.choose_equips(_inv, _P["auspicious_beginnings"])}
+assert _acts.get("Feet") == _boots and _acts.get("Body") == _lune, _acts
+assert not _is.choose_equips([{"blueprint": _lune, "equipped": True}, {"blueprint": _chain_mail}], _P["auspicious_beginnings"]), "Already wearing the better one"
+_w_axe = _find("carbide battle axe")[0]; _w_dag = _find("steel dagger")[0]
+_weap = _is.choose_equips([{"blueprint": _w_dag, "equipped": True}, {"blueprint": _w_axe}], _P["auspicious_beginnings"])
+assert _weap and _weap[0][0]["blueprint"] == _w_axe and _weap[0][1] == "Hand"
+# junk decisions
+_scrap = _find("bent metal sheet")[0]; _wedge = _find("cybernetics credit wedge")[0]; _food = _find("jerky", None)[0] if any(v["name"] == "jerky" for v in _cat.values()) else None
+_inv2 = [{"blueprint": _lune, "equipped": True}, {"blueprint": _chain_mail}, {"blueprint": _scrap, "count": 1}, {"blueprint": _wedge}]
+_d = _is.choose_drops(_inv2, _P["auspicious_beginnings"], carried_weight=10, capacity=200)
+assert [x[0]["blueprint"] for x in _d] == [_chain_mail], f"No pressure: only the outclassed armor goes, got {[x[0]['blueprint'] for x in _d]}"
+assert "outclassed" in _d[0][1]
+_d = _is.choose_drops(_inv2, _P["auspicious_beginnings"], carried_weight=190, capacity=200)
+_names = [x[0]["blueprint"] for x in _d]
+assert _chain_mail in _names and _scrap in _names, "Under pressure junk goes too"
+assert _wedge not in _names and _lune not in _names, "Weightless items and equipped gear are never dropped"
+# stackable supplies are capped, dropping only the extra
+_fk = next(k for k, v in _cat.items() if v["group"] == "food" and v.get("loot"))
+_d = _is.choose_drops([{"blueprint": _fk, "count": 11}], _P["gunkin"], carried_weight=10, capacity=200)
+assert _d and _d[0][2] == 11 - _is.MAX_KEPT["food"], _d
+assert not _is.choose_drops([{"blueprint": _fk, "count": 11}], _P["gunkin"], carried_weight=10, capacity=200, hungry=True), "Hungry: keep the food"
+# quest items and equipped things are never dropped, whatever the pressure
+_q = next(k for k, v in _cat.items() if v["group"] == "quest_item" and v.get("loot"))
+assert not _is.choose_drops([{"blueprint": _q}, {"blueprint": _scrap, "equipped": True}], _P["gunkin"], carried_weight=199, capacity=200)
+# the pressure relief stops as soon as the pack is comfortable
+_inv3 = [{"blueprint": _scrap, "count": 1, "weight": 10} for _ in range(6)]
+_d = _is.choose_drops(_inv3, _P["gunkin"], carried_weight=150, capacity=200)
+assert 0 < len(_d) < 6, f"Drop only as much as needed, got {len(_d)}"
+# safety overrides carried over from the old evaluator, now data-driven: sole light source, sole ranged weapon (for a firing build), escape gear, unidentified items
+_torch = next(k for k, v in _cat.items() if v["group"] == "light_source" and v.get("loot"))
+_rec = next(k for k, v in _cat.items() if v.get("escape") and v.get("loot"))
+_press = dict(carried_weight=195, capacity=200)
+_names = [x[0]["blueprint"] for x in _is.choose_drops([{"blueprint": _torch}, {"blueprint": _scrap}], _P["gunkin"], **_press)]
+assert _torch not in _names and _scrap in _names, "The only light source stays"
+assert _rec not in [x[0]["blueprint"] for x in _is.choose_drops([{"blueprint": _rec}, {"blueprint": _scrap}], _P["gunkin"], **_press)], "Escape gear stays"
+_shotgun = _find("pump shotgun")[0]
+assert _shotgun not in [x[0]["blueprint"] for x in _is.choose_drops([{"blueprint": _shotgun}, {"blueprint": _scrap}], _P["gunkin"], **_press)], "The only firearm of a firing build stays"
+assert _scrap not in [x[0]["blueprint"] for x in _is.choose_drops([{"blueprint": _scrap, "identified": False}], _P["gunkin"], **_press)], "Anything unidentified stays"
+print("  [OK] Test 87 Passed: scores follow the build's skills and stats, equip fills slots and replaces only clear upgrades, junk is dropped by relative merit and pressure.")
