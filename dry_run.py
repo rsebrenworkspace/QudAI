@@ -4513,6 +4513,7 @@ class _FakeLM(_hs.BaseHTTPRequestHandler):
 
     def do_POST(self):
         payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        type(self).last_payload = payload
         model = payload.get("model")
         user = payload["messages"][-1]["content"]
         if "VALID ACTIONS:" not in user:
@@ -4526,6 +4527,8 @@ class _FakeLM(_hs.BaseHTTPRequestHandler):
             content = "<think>Let me consider every option at great length...</think>" + json.dumps({"action": first, "thought": "x"})
         elif model == "lab-offmenu":
             content = json.dumps({"action": "TELEPORT_HOME", "thought": "not an offered action"})
+        elif model == "lab-empty":
+            return self._send({"choices": [{"message": {"content": "", "reasoning_content": "Let me think about the options for a very long time..."}, "finish_reason": "length"}], "usage": {"completion_tokens": 128}})
         elif model == "lab-slow":
             _tm.sleep(1.2)
             content = json.dumps({"action": first, "thought": "slow"})
@@ -4541,7 +4544,7 @@ _scn = json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__))
 assert len(_scn) >= 8 and all({"id", "state", "enemies", "checks"} <= set(s) for s in _scn), "The scenario file must be well formed"
 _old_url, _old_to, _old_model = brain.LM_STUDIO_URL, brain.LM_STUDIO_TIMEOUT, brain.active_model_id
 try:
-    _res = _lab.run_lab(["lab-good", "lab-garbage", "lab-think", "lab-offmenu", "lab-nobody"], _scn[:4], base=_base, repeat=2, timeout=5.0, unload=False, log=lambda *a: None)
+    _res = _lab.run_lab(["lab-good", "lab-garbage", "lab-think", "lab-offmenu", "lab-nobody"], _scn[:4], base=_base, repeat=2, timeout=5.0, unload=False, manage_models=False, log=lambda *a: None)
     _by = {s["model"]: s for s in _res["summaries"]}
     assert _by["lab-good"]["parse_pct"] == 100 and _by["lab-good"]["menu_pct"] == 100, _by["lab-good"]
     assert _by["lab-good"]["latency_p50"] is not None and _by["lab-good"]["same_action_pct"] == 100.0, "Same fixed reply: fully consistent"
@@ -4549,24 +4552,40 @@ try:
     assert _by["lab-think"]["think_leaks"] == _by["lab-think"]["runs"] and _by["lab-think"]["parse_pct"] == 0, "Thinking aloud breaks the brain's JSON parser: counted as a think leak"
     assert _by["lab-offmenu"]["parse_pct"] == 100 and _by["lab-offmenu"]["menu_pct"] == 0 and _by["lab-offmenu"]["score_pct"] == 0, "An action nobody offered is not in the menu"
     assert _by["lab-nobody"]["errors"] == _by["lab-nobody"]["runs"] and _by["lab-nobody"]["score_pct"] == 0, "An unknown model (HTTP 404) is an error, not a pass"
+    # a thinking model that spends its token budget returns HTTP 200 with no text: a separate, diagnosable failure, and the model is abandoned early
+    _resE = _lab.run_lab(["lab-empty"], _scn[:4], base=_base, repeat=3, timeout=5.0, unload=False, manage_models=False, log=lambda *a: None, do_warm=False)
+    _e = _resE["summaries"][0]
+    assert _e["empty_replies"] == _e["runs"] and _e["reasoning_runs"] == _e["runs"] and _e["aborted"] and _e["runs"] == _lab.ABORT_AFTER, _e
+    assert "thought but returned no answer" in _resE["markdown"] and "abandoned" in _resE["markdown"]
+    assert _resE["per_model"]["lab-empty"][_scn[0]["id"]][0]["finish_reason"] == "length" and _resE["per_model"]["lab-empty"][_scn[0]["id"]][0]["reasoning_chars"] > 0
+    # a good model is never abandoned
+    assert not _by["lab-good"]["aborted"]
+    # extra request settings and the token budget reach the request (how a thinking model's reasoning is switched off)
+    _old_extra, _old_mt = brain.LM_EXTRA_PAYLOAD, brain.LM_MAX_TOKENS
+    brain.LM_EXTRA_PAYLOAD, brain.LM_MAX_TOKENS = {"reasoning_effort": "none"}, 222
+    try:
+        _lab.run_lab(["lab-good"], _scn[:1], base=_base, repeat=1, timeout=5.0, unload=False, manage_models=False, log=lambda *a: None, do_warm=False)
+        assert _FakeLM.last_payload.get("reasoning_effort") == "none" and _FakeLM.last_payload.get("max_tokens") == 222, _FakeLM.last_payload
+    finally:
+        brain.LM_EXTRA_PAYLOAD, brain.LM_MAX_TOKENS = _old_extra, _old_mt
     # policy checks are judged on the raw action: a scenario that forbids everything makes even the good model fail
     _strict = _copy.deepcopy(_scn[:2])
     for _s in _strict:
         _s["checks"] = {"must_not": ["MOVE_", "USE_ABILITY", "SPRINT_", "REST", "WAIT", "ACTIVATE"], "should_any": []}
-    _res2 = _lab.run_lab(["lab-good"], _strict, base=_base, repeat=1, timeout=5.0, unload=False, log=lambda *a: None)
+    _res2 = _lab.run_lab(["lab-good"], _strict, base=_base, repeat=1, timeout=5.0, unload=False, manage_models=False, log=lambda *a: None)
     assert _res2["summaries"][0]["menu_pct"] == 100 and _res2["summaries"][0]["policy_pct"] == 0 and _res2["summaries"][0]["score_pct"] == 0
     _lenient = _copy.deepcopy(_scn[:2])
     for _s in _lenient:
         _s["checks"] = {"must_not": [], "should_any": [""]}
-    assert _lab.run_lab(["lab-good"], _lenient, base=_base, repeat=1, timeout=5.0, unload=False, log=lambda *a: None)["summaries"][0]["score_pct"] == 100
+    assert _lab.run_lab(["lab-good"], _lenient, base=_base, repeat=1, timeout=5.0, unload=False, manage_models=False, log=lambda *a: None)["summaries"][0]["score_pct"] == 100
     # a reply that takes longer than the lab timeout is a timeout; one that fits the lab but not the brain's timeout is flagged as too slow
-    _res3 = _lab.run_lab(["lab-slow"], _scn[:2], base=_base, repeat=1, timeout=0.5, unload=False, log=lambda *a: None, do_warm=False)
+    _res3 = _lab.run_lab(["lab-slow"], _scn[:2], base=_base, repeat=1, timeout=0.5, unload=False, manage_models=False, log=lambda *a: None, do_warm=False)
     assert _res3["summaries"][0]["timeouts"] == _res3["summaries"][0]["runs"] == 2, _res3["summaries"][0]
-    _res4 = _lab.run_lab(["lab-slow"], _scn[:2], base=_base, repeat=1, timeout=5.0, brain_timeout=1.0, unload=False, log=lambda *a: None, do_warm=False)
+    _res4 = _lab.run_lab(["lab-slow"], _scn[:2], base=_base, repeat=1, timeout=5.0, brain_timeout=1.0, unload=False, manage_models=False, log=lambda *a: None, do_warm=False)
     assert _res4["summaries"][0]["parse_pct"] == 100 and _res4["summaries"][0]["within_brain_timeout_pct"] == 0.0 and _res4["summaries"][0]["latency_p50"] >= 1.0
     # the report and the saved files
     _od = _tempfile.mkdtemp()
-    _res5 = _lab.run_lab(["lab-good", "lab-garbage"], _scn[:2], base=_base, repeat=1, timeout=5.0, unload=False, out_dir=_od, log=lambda *a: None, do_warm=False)
+    _res5 = _lab.run_lab(["lab-good", "lab-garbage"], _scn[:2], base=_base, repeat=1, timeout=5.0, unload=False, manage_models=False, out_dir=_od, log=lambda *a: None, do_warm=False)
     assert "| lab-good |" in _res5["markdown"] and "Scenario by scenario" in _res5["markdown"]
     assert sorted(f.split(".")[-1] for f in _os.listdir(_od)) == ["json", "md"]
     # helpers

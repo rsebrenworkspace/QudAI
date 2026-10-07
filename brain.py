@@ -30,6 +30,13 @@ LM_STUDIO_MODELS_V0_URL = LM_STUDIO_MODELS_URL.replace("/v1/models", "/api/v0/mo
 # QUDAI_LLM_TIMEOUT is the seconds the combat call may take (a slower, stronger model needs more than the default).
 LM_MODEL_OVERRIDE = os.environ.get("QUDAI_LM_MODEL") or None
 LM_STUDIO_TIMEOUT = float(os.environ.get("QUDAI_LLM_TIMEOUT") or 6.0)
+LM_MAX_TOKENS = int(os.environ.get("QUDAI_LLM_MAX_TOKENS") or 128)      # a thinking model needs more than 128 tokens to reach its answer
+try:
+    LM_EXTRA_PAYLOAD = json.loads(os.environ.get("QUDAI_LLM_EXTRA") or "{}")   # e.g. {"chat_template_kwargs": {"enable_thinking": false}}
+    if not isinstance(LM_EXTRA_PAYLOAD, dict):
+        LM_EXTRA_PAYLOAD = {}
+except ValueError:
+    LM_EXTRA_PAYLOAD = {}
 
 # Pacing and Thresholds
 EXPLORE_STEP_DELAY = 0.25  # Seconds per exploration turn (250ms makes movement comfortable to watch)
@@ -2297,8 +2304,9 @@ VALID ACTIONS:
             {"role": "user", "content": user_prompt}
         ],
         "temperature": 0.1,
-        "max_tokens": 128
+        "max_tokens": LM_MAX_TOKENS
     }
+    payload.update(LM_EXTRA_PAYLOAD)
     if LLM_PROBE is not None:
         LLM_PROBE.update({"choices": list(action_choices), "prompt_chars": len(system_prompt) + len(user_prompt), "raw": None, "error": None, "http_status": None})
 
@@ -2308,9 +2316,13 @@ VALID ACTIONS:
         if LLM_PROBE is not None:
             LLM_PROBE.update({"latency": time.time() - t0, "http_status": res.status_code})
         if res.status_code == 200:
-            content = res.json()["choices"][0]["message"]["content"]
+            body = res.json()
+            content = body["choices"][0]["message"]["content"]
             if LLM_PROBE is not None:
-                LLM_PROBE["raw"] = content
+                msg = body["choices"][0].get("message") or {}
+                LLM_PROBE.update({"raw": content if content is not None else "", "finish_reason": body["choices"][0].get("finish_reason"),
+                                  "reasoning_chars": len(msg.get("reasoning_content") or msg.get("reasoning") or ""),
+                                  "completion_tokens": (body.get("usage") or {}).get("completion_tokens")})
             # Clean possible markdown fence
             clean = re.sub(r"^```json\s*", "", content.strip(), flags=re.IGNORECASE)
             clean = re.sub(r"^```\s*", "", clean)
