@@ -4345,3 +4345,37 @@ _dec = brain.query_decision(_st, took_damage=False, enemies=[_jell])
 assert _dec["action"] == "MOVE_N" and "Danger retreat" in _dec["reason"], f"Full decision: go back through the border, got {_dec}"
 brain.LAST_ZONE_ENTRY = None; brain.FAILED_ZONE_EXITS.discard(("X.prev", "S")); brain.FAILED_ZONE_EXITS.discard(("JoppaWorld.11.22.1.1.12", "S"))
 print("  [OK] Test 81 Passed: Impossible hostiles near the arrival border send him back through it; the exit is written off; stand-and-fight leaves it alone.")
+
+
+# ---------------------------------------------------------------------------
+# Test 82: only approved ancestral lessons reach the combat prompt (HANDOFF issue 62)
+# ---------------------------------------------------------------------------
+import chronicler as _chr
+import tempfile as _tf3
+_old_wf = _chr.WISDOM_FILE
+_chr.WISDOM_FILE = _os.path.join(_tf3.mkdtemp(), "ancestral_wisdom.json")
+try:
+    assert "No approved" in _chr.format_ancestral_memory_for_prompt(), "No file: neutral text"
+    _chr.save_ancestral_wisdom([
+        {"generation": 1, "name": "A", "zone": "z", "death_reason": "x", "lesson": "Invented lesson one."},
+        {"generation": 2, "name": "B", "zone": "z", "death_reason": "y", "lesson": "Checked lesson two.", "approved": True},
+        {"generation": 3, "name": "C", "zone": "z", "death_reason": "z", "lesson": "Unapproved lesson three.", "approved": False},
+    ])
+    _p = _chr.format_ancestral_memory_for_prompt()
+    assert "Checked lesson two." in _p and "Invented lesson one." not in _p and "Unapproved lesson three." not in _p, _p
+    _chr.save_ancestral_wisdom([{"generation": 1, "lesson": "Only a guess."}])
+    assert "Only a guess." not in _chr.format_ancestral_memory_for_prompt() and "No approved" in _chr.format_ancestral_memory_for_prompt()
+    # the CLI approves and rejects by generation and keeps everything else
+    import importlib.util as _iu
+    _spec = _iu.spec_from_file_location("wisdom_cli", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "wisdom.py"))
+    _cli = _iu.module_from_spec(_spec); _spec.loader.exec_module(_cli)
+    with _ctx.redirect_stdout(_io.StringIO()):
+        _cli.main(["approve", "1"])
+    assert "Only a guess." in _chr.format_ancestral_memory_for_prompt(), "Approved by the CLI"
+    with _ctx.redirect_stdout(_io.StringIO()):
+        _cli.main(["reject", "1"])
+    assert "Only a guess." not in _chr.format_ancestral_memory_for_prompt(), "Rejected again"
+    assert len(_chr.load_ancestral_wisdom()) == 1, "Rejecting never deletes a lesson"
+finally:
+    _chr.WISDOM_FILE = _old_wf
+print("  [OK] Test 82 Passed: unapproved lessons are saved but never shown to the model; tools/wisdom.py approves and rejects.")

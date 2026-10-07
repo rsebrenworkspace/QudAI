@@ -37,12 +37,14 @@ def save_ancestral_wisdom(wisdom_list):
 
 def format_ancestral_memory_for_prompt():
     """Format the top lessons from past deaths to inject into the LLM system prompt."""
-    wisdom = load_ancestral_wisdom()
+    # Only lessons a human (or a reviewer) approved reach the prompt: the lessons the small model writes from a death message are guesses and some
+    # were wrong or invented (HANDOFF issue 62). Everything is still saved; `python tools/wisdom.py` lists and approves.
+    wisdom = [w for w in load_ancestral_wisdom() if w.get("approved") is True]
     if not wisdom:
-        return "No recorded ancestral memories yet. You are the vanguard of your lineage."
+        return "No approved ancestral lessons yet. You are the vanguard of your lineage."
 
     recent = wisdom[-4:]
-    lines = ["ANCESTRAL WISDOM FROM FALLEN FOREBEARS:"]
+    lines = ["ANCESTRAL WISDOM FROM FALLEN FOREBEARS (verified):"]
     for w in recent:
         gen = w.get("generation", 1)
         name = w.get("name", "Unknown")
@@ -240,12 +242,13 @@ def process_death_event(death_data, recent_actions, active_model_id=None):
         "zone": death_data.get("zone", "Unknown"),
         "death_reason": death_data.get("death_reason", "Unknown"),
         "lesson": lesson,
+        "approved": False,
         "timestamp": datetime.datetime.utcnow().isoformat()
     }
     wisdom.append(new_memory_entry)
     save_ancestral_wisdom(wisdom)
 
-    print(f"[Ancestral Wisdom Updated] Gen {generation} Lesson: {lesson}")
+    print(f"[Ancestral Wisdom Updated] Gen {generation} Lesson (NOT approved, not shown to the model): {lesson}")
 
     # 3. Generate Obsidian Chronicle
     chronicle_path = generate_obsidian_chronicle(death_data, recent_actions, generation, lesson, active_model_id)
