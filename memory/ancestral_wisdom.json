@@ -68,5 +68,95 @@
     "death_reason": "You were @@bitten to death by a snapjaw scavenger.",
     "lesson": "Avoid moving SW near unknown terrain\u2014snapjaws lurk in desert canyons and strike from shadows.",
     "timestamp": "2026-10-05T03:40:16.219999"
+  },
+  {
+    "generation": 8,
+    "name": "Uuruuur",
+    "level": 2,
+    "turns": 418,
+    "zone": "outskirts, Red Rock, surface",
+    "death_reason": "You were @@bitten to death by a baboon.",
+    "lesson": "Avoid resting near baboon-infested zones\u2014stay vigilant and move swiftly through risky terrain.",
+    "timestamp": "2026-10-05T05:09:49.512795"
+  },
+  {
+    "generation": 9,
+    "name": "fiery|flaming Tyq",
+    "level": 4,
+    "turns": 1313,
+    "zone": "desert canyon, surface",
+    "death_reason": "You were accidentally @@immolated by a campfire.",
+    "lesson": "Never stand beside campfires\u2014always maintain distance or extinguish them before sleeping.",
+    "timestamp": "2026-10-05T05:55:37.714748"
+  },
+  {
+    "generation": 10,
+    "name": "fiery|flaming tarred Famet",
+    "level": 3,
+    "turns": 323,
+    "zone": "outskirts and tar pools, Red Rock, surface",
+    "death_reason": "You were @@bitten to death by a hulking baboon.",
+    "lesson": "Never provoke hulking baboons near tar pools\u2014retreat or use ranged abilities first.",
+    "timestamp": "2026-10-05T06:42:37.815334"
+  },
+  {
+    "generation": 11,
+    "name": "salty bloody Shwurukat",
+    "level": 6,
+    "turns": 2809,
+    "zone": "subterranean salt marsh, workshop of Mehruwer, legendary armorer, 1 stratum deep",
+    "death_reason": "You were @@bitten to death by a salty bloody segmented mirthworm.",
+    "lesson": "Avoid lingering near Mehruwer\u2019s workshop\u2014mirthworms ambush from salt marsh tunnels.",
+    "timestamp": "2026-10-06T07:40:11.863377"
+  },
+  {
+    "generation": 12,
+    "name": "Umir",
+    "level": 3,
+    "turns": 599,
+    "zone": "Red Rock, surface",
+    "death_reason": "You were @@killed by a baboon## with a small stone##.",
+    "lesson": "Never rest near baboon-infested zones\u2014always scout or fight before sleeping.",
+    "timestamp": "2026-10-06T09:40:25.272338"
+  },
+  {
+    "generation": 13,
+    "name": "bloody wet Kushrishrud",
+    "level": 3,
+    "turns": 1403,
+    "zone": "desert canyon, surface",
+    "death_reason": "You were @@killed by Scurrafohowofsuob, the fleet-footed Snapjaw Gutspiller## with a M-G-B-R-b-y-W-r-B-R-g-G-b-m-r sequence|jewel-encrusted sturdy bronze two-handed sword##.",
+    "lesson": "**\"Prioritize *Defend* over *CommandLase* when facing Snapjaw Gutspillers\u2014intimidate first, then disengage.\"**",
+    "timestamp": "2026-10-07T01:33:52.697125"
+  },
+  {
+    "generation": 14,
+    "name": "wet Iromeq [wading]",
+    "level": 4,
+    "turns": 3847,
+    "zone": "Red Rock, 3 strata deep",
+    "death_reason": "You were @@killed by a wet snapjaw hunter## with a wet bronze dagger##.",
+    "lesson": "**\"Always flank or anchor\u2014never zigzag past hunters with ranged attacks in tight caves.\"**",
+    "timestamp": "2026-10-07T02:12:56.969094"
+  },
+  {
+    "generation": 15,
+    "name": "dilute slimy|slimy Shwuyushriun",
+    "level": 1,
+    "turns": 1411,
+    "zone": "slimy salt marsh, surface",
+    "death_reason": "You were @@killed by a giant amoeba## with a slimy pseudopod##.",
+    "lesson": "**\"Prioritize scouting with Command Intimidate before sprinting\u2014amoebas ambush from hidden terrain.\"**",
+    "timestamp": "2026-10-07T03:13:24.305106"
+  },
+  {
+    "generation": 16,
+    "name": "salty oozing Iroshwabas [wading]",
+    "level": 5,
+    "turns": 2209,
+    "zone": "subterranean desert canyon, 2 strata deep",
+    "death_reason": "You were @@killed by a slimy|slimy dilute oozing brown jell [wading]## with a sludgy pseudopod##.",
+    "lesson": "**\"Avoid standing still while oozing enemies lased you\u2014always move or dodge after targeting them.\"**",
+    "timestamp": "2026-10-07T03:40:10.171626"
   }
 ]
