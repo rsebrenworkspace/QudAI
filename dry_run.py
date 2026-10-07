@@ -4379,3 +4379,39 @@ try:
 finally:
     _chr.WISDOM_FILE = _old_wf
 print("  [OK] Test 82 Passed: unapproved lessons are saved but never shown to the model; tools/wisdom.py approves and rejects.")
+
+
+# ---------------------------------------------------------------------------
+# Test 83: the automatic post-mortem states the facts of a death (HANDOFF issue 63)
+# ---------------------------------------------------------------------------
+import postmortem as _pm
+import tempfile as _tf4
+_dir4 = _tf4.mkdtemp()
+_rows = [{"t": 1, "pos": [5, 5], "hp": 31, "action": "AUTOEXPLORE", "reason": "explore", "combat": False}]
+for _i, (_hp, _act, _c) in enumerate([(31, "USE_ABILITY:CommandLase:SE", True), (31, "USE_ABILITY:CommandLase:SE", True), (31, "USE_ABILITY:CommandLase:SE", True),
+                                      (31, "USE_ABILITY:CommandLase:SE", True), (22, "SPRINT_E", True), (9, "SPRINT_E", True), (9, "SPRINT_SW", True),
+                                      (9, "SPRINT_E", True), (9, "SPRINT_W", True), (9, "SPRINT_E", True), (9, "SPRINT_W", True), (9, "SPRINT_E", True)], start=2):
+    _rows.append({"t": _i, "pos": [48 + (_i % 2), 0], "hp": _hp, "action": _act, "reason": "LLM: sustain beam | piped", "combat": _c})
+_state = {"hp": 9, "max_hp": 31, "level": 5, "x": 49, "y": 0, "z": 12, "effects": ["dazed"],
+          "visible_entities": [{"name": "black jell", "dist": 2, "dir": "SW", "difficulty": "Impossible", "level": 14, "has_los": True, "is_enemy": True},
+                               {"name": "goat", "dist": 1, "dir": "E", "is_companion": True}],
+          "abilities": [{"name": "Lase (0 charges)", "cooldown": 0}]}
+_death = {"player_name": "Test Pilgrim", "level": 5, "turns": 2209, "zone": "subterranean desert canyon", "death_reason": "killed by a brown jell"}
+_md = _pm.build_postmortem(_death, _state, _rows, generation=16)
+for _needle in ("Post-mortem: Test Pilgrim (Gen 16)", "black jell", "Impossible", "(-13)", "Largest single-turn HP loss", "13 (42% of max HP)",
+                "running did not shake the attacker", "Position flip", "Lase (0 charges)", "Companions: goat"):
+    assert _needle in _md, f"missing in post-mortem: {_needle}\n{_md}"
+assert "slimy/slimy" in _pm.build_postmortem({}, {"visible_entities": [{"name": "slimy|slimy jell", "is_enemy": True, "dist": 1}]}, []), "A pipe in a creature name must not break the table"
+assert _pm.classify("SPRINT_N") == "flee/escape" and _pm.classify("REST") == "rest" and _pm.classify("USE_ABILITY:x") == "ability"
+# a run boundary: only the newest run's rows are used
+_tp = _os.path.join(_dir4, "trace.jsonl")
+with open(_tp, "w", encoding="utf-8") as _f:
+    for _r in [{"t": 1, "hp": 9, "action": "OLD"}, {"t": 2, "hp": 9, "action": "OLD"}, {"t": 1, "hp": 20, "action": "NEW"}, {"t": 2, "hp": 20, "action": "NEW2"}]:
+        _f.write(json.dumps(_r) + "\n")
+assert [r["action"] for r in _pm.load_trace_run(_tp)] == ["NEW", "NEW2"]
+assert _pm.load_trace_run(_os.path.join(_dir4, "missing.jsonl")) == []
+_path = _pm.write_postmortem(_dir4, _death, _state, _rows, 16, timestamp=123)
+assert _os.path.basename(_path) == "Postmortem_Gen16_Test_Pilgrim_123.md" and "black jell" in open(_path, encoding="utf-8").read()
+# no data at all must not crash
+assert "No decision trace found" in _pm.build_postmortem({}, None, [])
+print("  [OK] Test 83 Passed: the post-mortem lists the hostiles and their ratings, the HP drops, the decision mix and the heuristic observations.")

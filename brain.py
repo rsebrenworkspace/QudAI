@@ -3519,7 +3519,13 @@ def main():
                     pass
                 CHARMED_COMPANION_COORDS.clear()
                 if death_data:
-                    chronicler.process_death_event(death_data, list(recent_actions), active_model_id)
+                    last_state_for_pm = None
+                    try:
+                        with open(os.path.join(EXCHANGE_DIR, "last_state.json"), "r", encoding="utf-8-sig") as lsf:
+                            last_state_for_pm = json.load(lsf, strict=False)
+                    except Exception:
+                        pass
+                    chronicler.process_death_event(death_data, list(recent_actions), active_model_id, last_state=last_state_for_pm, trace_path=DECISION_TRACE_PATH)
             except Exception as ex:
                 print(f"[Death Processing Error] {ex}")
 

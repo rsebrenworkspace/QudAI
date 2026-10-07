@@ -208,7 +208,7 @@ tags:
     return filepath
 
 
-def process_death_event(death_data, recent_actions, active_model_id=None):
+def process_death_event(death_data, recent_actions, active_model_id=None, last_state=None, trace_path=None):
     """Full lifecycle: archives run, distills ancestral lesson, and writes Obsidian chronicle."""
     print("\n" + "=" * 55)
     print(" [DEATH DETECTED] The Pilgrim Has Fallen")
@@ -253,8 +253,19 @@ def process_death_event(death_data, recent_actions, active_model_id=None):
     # 3. Generate Obsidian Chronicle
     chronicle_path = generate_obsidian_chronicle(death_data, recent_actions, generation, lesson, active_model_id)
 
+    # 4. Evidence, not flavour: a deterministic post-mortem from the decision trace and the last game state (HANDOFF issue 63)
+    postmortem_path = None
+    try:
+        import postmortem
+        rows = postmortem.load_trace_run(trace_path or os.path.join(MEMORY_DIR, "decision_trace.jsonl"))
+        postmortem_path = postmortem.write_postmortem(CHRONICLES_DIR, death_data, last_state, rows, generation)
+        print(f"[Post-mortem] Facts of this death written to: {postmortem_path}\n")
+    except Exception as ex:
+        print(f"[Post-mortem] could not be written: {ex}")
+
     return {
         "generation": generation,
         "lesson": lesson,
-        "chronicle_path": chronicle_path
+        "chronicle_path": chronicle_path,
+        "postmortem_path": postmortem_path
     }
