@@ -58,6 +58,7 @@ in a small context window.
 ## Dead ends (do not retry without new evidence)
 
 | Approach | Why it failed | Ref |
+| Opening a chest by firing the "Open" event (what the engine's autoexplore does) | `Container.AttemptOpen` shows the trade screen for the player; the mod cannot answer that screen, so the run would hang. Containers are emptied directly from their `Inventory` part instead (T-1.34). `[verified in code]` | R-2 |
 |---|---|---|
 | OS screen capture + OCR + simulated keypresses | OCR >600 ms/frame, misread tiles, modal popups stole focus, dropped keys | Iter 1 |
 | Targeting every visible entity as an "unexplored frontier" | Hundreds of harmless objects; character tried to step on all of them (800+ turns in one zone) | Iter 19 |

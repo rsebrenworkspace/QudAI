@@ -4245,3 +4245,71 @@ brain.KNOWN_STAIRS_UP[("zz",)] = {"tx": 11, "ty": 11}
 assert brain.enforce_stand_and_fight(_flee, _gs, _adj, [_hunter()], _abs) is _flee, "Remembered stairs close by also allow running"
 brain.KNOWN_STAIRS_UP.clear()
 print("  [OK] Test 78 Passed: below-Tough adjacent attackers are fought (Stunning Force, Lase, melee); Tough, close stairs and non-flee actions are untouched.")
+
+
+# ---------------------------------------------------------------------------
+# Test 79: loot (issue 59): walk to unowned items and chests, take them when adjacent, never in towns, never loop
+# ---------------------------------------------------------------------------
+def _loot_reset():
+    brain.LOOT_BLACKLIST.clear(); brain.LOOT_PURSUIT.update({"key": None, "turns": 0}); brain.LOOT_STREAK.update({"key": None, "count": 0}); brain.LOOT_TURN = 0
+_loot_reset()
+_src = lambda **k: dict({"kind": "chest", "name": "chest", "tx": 20, "ty": 10, "dist": 5}, **k)
+_LZ = "LootZone.1"
+assert brain.choose_loot_action({"loot_sources": []}, _LZ, "", False) is None, "Nothing to loot: nothing to do"
+assert brain.choose_loot_action({"loot_sources": [_src()]}, _LZ, "", True) is None, "Never in a settlement (R7)"
+assert brain.choose_loot_action({"loot_sources": [_src()], "is_swimming": True}, _LZ, "", False) is None
+_d = brain.choose_loot_action({"loot_sources": [_src(), _src(name="sword", kind="item", tx=15, ty=10, dist=3)]}, _LZ, "", False)
+assert _d["action"] == "NAVIGATE_TO_CELL:15,10", f"Nearest first, got {_d}"
+_d = brain.choose_loot_action({"loot_sources": [_src(dist=1, tx=11, ty=10)]}, _LZ, "", False)
+assert _d["action"] == "LOOT", f"Adjacent: take it, got {_d}"
+_d = brain.choose_loot_action({"loot_sources": [_src(dist=0, tx=10, ty=10, kind="item", name="dagger")]}, _LZ, "LOOT", False)
+assert _d["action"] == "LOOT", "Standing on an item: take it"
+# a LOOT that keeps not removing the source is written off after LOOT_STREAK_MAX tries
+_loot_reset()
+_acts = [brain.choose_loot_action({"loot_sources": [_src(dist=1, tx=11, ty=10)]}, _LZ, "LOOT", False) for _ in range(brain.LOOT_STREAK_MAX + 3)]
+assert _acts[0]["action"] == "LOOT" and _acts[-1] is None, "A source that cannot be looted must be given up"
+assert (_LZ, 11, 10) in brain.LOOT_BLACKLIST
+# the engine pathfinder says no route: blacklist, move on to the next source
+_loot_reset()
+brain.choose_loot_action({"loot_sources": [_src()]}, _LZ, "", False)
+_d = brain.choose_loot_action({"loot_sources": [_src(), _src(tx=30, ty=10, dist=9)], "last_move_failed": True, "last_failed_dir": "PATH_BLOCKED"}, _LZ, "NAVIGATE_TO_CELL:20,10", False)
+assert (_LZ, 20, 10) in brain.LOOT_BLACKLIST and _d["action"] == "NAVIGATE_TO_CELL:30,10", f"Unreachable source skipped, got {_d}"
+# a walk that never arrives is written off after LOOT_PURSUIT_MAX_TURNS
+_loot_reset()
+_last = [brain.choose_loot_action({"loot_sources": [_src()]}, _LZ, "", False) for _ in range(brain.LOOT_PURSUIT_MAX_TURNS + 3)]
+assert _last[0] is not None and _last[-1] is None and (_LZ, 20, 10) in brain.LOOT_BLACKLIST
+# in the full decision, Phase A walks to loot before it descends or explores
+_loot_reset()
+brain.KNOWN_STAIRS_DOWN[dungeon_stratum11_zone] = {"tx": 15, "ty": 12, "name": "hole in the ground"}; brain.RETREAT_TARGET_LEVEL = None
+brain.UNREACHABLE_SECTORS.discard((dungeon_stratum11_zone, (15, 12))); brain.STAIRS_GIVEUP.clear()
+_st = dict(delve_state_nearby); _st["zone_fully_explored"] = True; _st["visible_entities"] = []
+_st["loot_sources"] = [{"kind": "chest", "name": "chest", "tx": 12, "ty": 15, "dist": 3}]
+_dec = brain.query_decision(_st, took_damage=False, enemies=[])
+assert _dec["action"] == "NAVIGATE_TO_CELL:12,15" and "Loot" in _dec["reason"], f"Loot comes before the descent, got {_dec}"
+_st["loot_sources"] = []
+_dec = brain.query_decision(_st, took_damage=False, enemies=[])
+assert "Loot" not in _dec["reason"], "No loot, no loot step"
+_loot_reset()
+# the console report is printed once per sequence number
+brain.LOOT_LAST_SEQ["seq"] = 0
+brain.note_loot({"last_loot": {"seq": 1, "kind": "chest", "name": "chest", "count": 3, "left": 0}}); brain.note_loot({"last_loot": {"seq": 1}}); brain.note_loot({})
+assert brain.LOOT_LAST_SEQ["seq"] == 1
+print("  [OK] Test 79 Passed: loot sources are walked to nearest-first, taken when adjacent, skipped in towns, and every dead end is written off.")
+# Test 80: "tam" no longer makes a giant amoeba a peaceful citizen (HANDOFF issue 60)
+# ---------------------------------------------------------------------------
+assert not brain.is_peaceful_npc("giant amoeba", "GiantAmoeba"), "A giant amoeba is not a peaceful NPC"
+assert not brain.is_peaceful_npc("stamped data disk", "Stamped Data Disk")
+assert not brain.is_peaceful_npc("metamorphic polygel", "Metamorphic Polygel")
+assert brain.is_peaceful_npc("Tam", "Tam"), "The real NPC is still peaceful"
+assert brain.is_peaceful_npc("Tam the dromad", None), "Whole word anywhere in the name"
+assert brain.is_peaceful_npc("water merchant", "WaterMerchant") and brain.is_peaceful_npc("Barathrumites", None) and brain.is_peaceful_npc("farmer", "Farmer1")
+assert brain.is_peaceful_npc("amoeba farmer", "AmoebaFarmer"), "Longer keywords keep substring matching (variants and plurals)"
+assert not brain.is_peaceful_npc("snapjaw warden", "SnapjawWarden"), "Hostile overrides still win"
+_amoeba = {"name": "giant amoeba", "blueprint": "GiantAmoeba", "is_enemy": True, "is_companion": False, "tx": 19, "ty": 7, "dist": 1, "dir": "SW", "difficulty": "Average"}
+assert brain.filter_hostile_enemies([_amoeba]) == [_amoeba], "The amoeba must stay in the enemy list"
+assert not brain.is_town_zone({"visible_entities": [_amoeba], "zone_name": "slimy salt marsh"}), "A marsh with an amoeba in it is not a town"
+_d = brain.enforce_stand_and_fight({"action": "SPRINT_N", "reason": "[LLM] Escape melee threat"}, {"x": 20, "y": 6, "stairs_up": [], "stairs_down": []}, {"SW": "giant amoeba"}, [_amoeba], [])
+assert _d["action"] == "MOVE_SW", f"With the amoeba recognised, an Average melee threat is fought, got {_d}"
+assert not brain.is_ignorable_stationary_enemy({"name": "cherubic spade", "dist": 5, "difficulty": "Average"}), "A spade is not a pad"
+assert brain.is_ignorable_stationary_enemy({"name": "lily pad", "dist": 5, "difficulty": "Easy"}) and brain.is_ignorable_stationary_enemy({"name": "glowpad", "dist": 5, "difficulty": "Easy"})
+print("  [OK] Test 80 Passed: short peaceful keywords match whole words only; the amoeba stays an enemy and the marsh is not a town.")

@@ -21,8 +21,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 78 -->
-`dry_run.py` currently holds Tests 1-78. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 80 -->
+`dry_run.py` currently holds Tests 1-80. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -112,6 +112,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 - `ATTACK_WALL:<dir>` (aliases `FORCE_ATTACK:`, `ATTACK_CELL:`): melee a destructible obstacle; refused in settlements
 - `USE_STAIRS_DOWN`, `USE_STAIRS_UP`
 - `GET_ITEM`
+- `LOOT`: takes one unowned ground item, or empties one unowned chest, on his cell or an adjacent one (`TryLootNearby`); never in a settlement, never with hostiles nearby, at most 80 actions per zone; the same step also runs at the start of every `AUTOEXPLORE` turn
 - `EAT`, `MAKE_CAMP`, `COOK_MEAL`, `BUTCHER`, `HARVEST`: programmatic, no UI modals
 - `AUTOLEVEL`, `AUTOLEVEL_STAT:<stat>`, `AUTOLEVEL_SKILL:<class>`, `AUTOLEVEL_MUTATION:<name>`, `AUTOLEVEL_BUY_MUTATION[:<name>]`
 - `REST`, `PASS`: pass a turn; they no longer spend AP/SP/MP (the old hard-coded C# autolevel ignored the template, T-1.24)
@@ -142,6 +143,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 - **Move feedback:** `last_move_failed`, `last_failed_dir` (a direction, or `PATH_BLOCKED`)
 - **Survival:** `hunger_level`, `is_hungry`, `is_famished`, `has_food`, `food_count`, `food_items`, `corpses_nearby`,
   `harvestable_nearby`, `food_sources` (up to 8 butcherable corpses/harvestable plants within 15 tiles: `kind`, `name`, `tx`, `ty`, `dist`; a corpse is an object with a `Butcherable` part, never a living creature; empty while swimming), `campfire_nearby`, `can_make_camp/cook/butcher/harvest` (`can_make_camp` is false when a plant or fire is within 2 cells, T-1.12), `is_swimming`, `is_on_fire`, `water_drams`
+- **Loot (T-1.34):** `loot_sources` (up to 8 within 14 tiles: `kind` `item` or `chest`, `name`, `tx`, `ty`, `dist`; unowned only, empty outside settlements; an item is one the engine would autoget (`CanAutoget`, `ShouldAutoget`), not a corpse, within the weight guard; a chest is `ShouldAutoexploreAsChest` with contents and no `Brain`/`Mimic`) and `last_loot` (`seq`, `kind`, `name`, `count`, `left`). Python `choose_loot_action` (Phase A step 3B, after resting) walks to the nearest source with pursuit and blacklist guards and sends `LOOT` when adjacent; `note_loot` prints `[LOOT] ...`.
 - **Combat:** `hostiles_nearby`, `hostiles_adjacent`, `effects`, `abilities`, `is_sprinting`, `has_missile_weapon`,
   `missile_ammo`, `missile_max_ammo`, `inventory_ammo`
 - **Identity:** `genotype`, `subtype`, `calling` (same as subtype), `equipped_summary`

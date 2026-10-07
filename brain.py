@@ -1066,7 +1066,16 @@ def is_peaceful_npc(name, blueprint=None):
         "apothecary", "water merchant", "mayor", "councillor", "cantor", "scribe",
         "archivist", "librarian", "domestic pig"
     ]
-    return any(pk in combined for pk in peaceful_keywords)
+    # Short keywords must be whole words: "tam" (a Joppa NPC) is a substring of "GiantAmoeba", "Metamorphic Polygel" and "Stamped Data
+    # Disk", and made the brain treat a giant amoeba as a peaceful citizen and the whole marsh as a town (HANDOFF issue 60).
+    words = set(re.findall(r"[a-z]+|\d+", nl)) | {w.lower() for w in re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+", blueprint or "")}
+    for pk in peaceful_keywords:
+        if len(pk) <= 4:
+            if pk in words:
+                return True
+        elif pk in combined:
+            return True
+    return False
 
 
 SETTLEMENT_KEYWORDS = [
@@ -1553,6 +1562,83 @@ def choose_food_source(game_state, zone_id, learned_skills, last_act):
             "reason": f"Foraging: walking to {s.get('name', 'food')} ({s.get('dist')} tiles) to {verb} it for food"}
 
 
+# Loot (HANDOFF issue 59, BACKLOG B6, human decision 2026-10-06: take everything unowned). C# exports `loot_sources` (unowned ground items the
+# engine would autoget, and unowned chests that still hold something; never in settlements) and does the taking (`LOOT`, and a loot step
+# inside AUTOEXPLORE). Python only walks to the nearest one, with the same guards as foraging.
+LOOT_BLACKLIST = {}            # (zone_id, tx, ty) -> LOOT_TURN value when the entry expires
+LOOT_PURSUIT = {"key": None, "turns": 0}
+LOOT_TURN = 0
+LOOT_PURSUIT_MAX_TURNS = 40
+LOOT_BLACKLIST_TURNS = 300
+LOOT_STREAK_MAX = 4            # consecutive LOOT actions at one spot before the spot is written off
+LOOT_STREAK = {"key": None, "count": 0}
+LOOT_LAST_SEQ = {"seq": 0}
+
+
+def choose_loot_action(game_state, zone_id, last_act, is_town):
+    """`LOOT` when a loot source is on or next to him, a committed NAVIGATE_TO_CELL when one is in view, else None."""
+    global LOOT_TURN
+    LOOT_TURN += 1
+    for k in [k for k, exp in LOOT_BLACKLIST.items() if exp <= LOOT_TURN]:
+        del LOOT_BLACKLIST[k]
+    sources = game_state.get("loot_sources") or []
+    if is_town or game_state.get("is_swimming") or not sources:
+        LOOT_PURSUIT.update({"key": None, "turns": 0})
+        LOOT_STREAK.update({"key": None, "count": 0})
+        return None
+    cur_key = LOOT_PURSUIT["key"]
+    if (cur_key and game_state.get("last_move_failed") and game_state.get("last_failed_dir") == "PATH_BLOCKED"
+            and last_act and last_act.startswith("NAVIGATE_TO_CELL:")):
+        LOOT_BLACKLIST[cur_key] = LOOT_TURN + LOOT_BLACKLIST_TURNS
+        LOOT_PURSUIT.update({"key": None, "turns": 0})
+    best = None
+    for s in sources:
+        key = (zone_id, s.get("tx"), s.get("ty"))
+        if key in LOOT_BLACKLIST:
+            continue
+        rank = (s.get("dist", 999), 0 if s.get("kind") == "chest" else 1)
+        if best is None or rank < best[0]:
+            best = (rank, key, s)
+    if best is None:
+        LOOT_PURSUIT.update({"key": None, "turns": 0})
+        return None
+    _, key, s = best
+    what = f"{s.get('kind', 'item')} '{s.get('name', '?')}'"
+    if s.get("dist", 99) <= 1:
+        if last_act == "LOOT" and LOOT_STREAK["key"] == key:
+            LOOT_STREAK["count"] += 1
+        else:
+            LOOT_STREAK.update({"key": key, "count": 1})
+        if LOOT_STREAK["count"] > LOOT_STREAK_MAX:
+            LOOT_BLACKLIST[key] = LOOT_TURN + LOOT_BLACKLIST_TURNS
+            LOOT_STREAK.update({"key": None, "count": 0})
+            return None
+        return {"action": "LOOT", "reason": f"Loot: taking from {what} right here"}
+    if LOOT_PURSUIT["key"] == key:
+        LOOT_PURSUIT["turns"] += 1
+    else:
+        LOOT_PURSUIT.update({"key": key, "turns": 1})
+    if LOOT_PURSUIT["turns"] > LOOT_PURSUIT_MAX_TURNS:
+        LOOT_BLACKLIST[key] = LOOT_TURN + LOOT_BLACKLIST_TURNS
+        LOOT_PURSUIT.update({"key": None, "turns": 0})
+        return None
+    return {"action": f"NAVIGATE_TO_CELL:{s.get('tx')},{s.get('ty')}",
+            "reason": f"Loot: walking to {what} ({s.get('dist')} tiles)"}
+
+
+def note_loot(game_state):
+    """Prints the engine's report of the last loot action once. Never raises."""
+    try:
+        ll = game_state.get("last_loot")
+        if not ll or ll.get("seq", 0) <= LOOT_LAST_SEQ["seq"]:
+            return
+        LOOT_LAST_SEQ["seq"] = ll.get("seq", 0)
+        left = f", left {ll.get('left')}" if ll.get("left") else ""
+        print(f"[LOOT] {ll.get('kind')} '{ll.get('name')}': took {ll.get('count')}{left}")
+    except Exception:
+        pass
+
+
 def is_ability_ready(ab):
     """Checks if an ability is enabled, usable, off cooldown, and has available charges (not '0 charges')."""
     if not ab or not ab.get("usable", True) or ab.get("cooldown", 0) > 0 or ab.get("active", False):
@@ -1675,9 +1761,11 @@ def is_ignorable_stationary_enemy(e):
     name = e.get("name", "").lower()
     dist = e.get("dist", 999)
     diff = e.get("difficulty", "")
+    # "pad" must be a whole word: it is a substring of "spade" (Cherubic Spade, Metachrome Spade are hostile constructs, HANDOFF issue 60).
+    name_words = set(re.findall(r"[a-z]+", name))
     is_stat = e.get("is_stationary", False) or any(k in name for k in [
-        "glowpad", "plant", "fungus", "lichen", "brimestalk", "root", "vine", "seaweed", "lily", "pad"
-    ])
+        "glowpad", "plant", "fungus", "lichen", "brimestalk", "root", "vine", "seaweed", "lily"
+    ]) or "pad" in name_words
 
     # If adjacent (dist <= 1), never ignore
     if dist <= 1:
@@ -3018,6 +3106,11 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             pct = int(hp_ratio * 100)
             return {"action": "REST", "reason": f"Safe resting: HP at {pct}% (< {int(REST_HP_THRESHOLD*100)}%)"}
 
+        # 3B. Loot: unowned ground items and chests (issue 59). Phase A only, so never with a hostile around.
+        loot_decision = choose_loot_action(game_state, zone_id, last_action, is_town)
+        if loot_decision:
+            return loot_decision
+
         # 4. Top-off ammo while area is secure (only if we have spare ammo in inventory!)
         if has_missile and max_ammo > 0 and ammo < max_ammo and inv_ammo > 0:
             return {"action": "RELOAD", "reason": f"Safe top-off: reloading rifle ({ammo}/{max_ammo}, Inv: {inv_ammo})"}
@@ -3421,6 +3514,7 @@ def main():
                 update_zone_records(game_state)
                 note_burrow_progress(game_state)
                 note_ability_use(game_state)
+                note_loot(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
 
