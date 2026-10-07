@@ -78,3 +78,18 @@ score 77.8%, parse 100%, menu 100%, policy 77.8%, p50 3.51 s, p95 4.37 s, all in
 (Lase on the Impossible jell group, Lase through the pet). Measured with ministral still loaded beside it and the game running (GPU 15.6 GB, RAM 27.7 GB in use), so
 speed would likely be better on a clean load. On this sample it is **not better than ministral-3-8b** (77.8 vs 83.3 is within the noise of 27 vs 18 runs); it is more
 stable run to run and costs 1.4 GB more VRAM. Neither model "knows" to keep Lase off Impossible enemies or off a line with the pet in it: the brain's own guards do that.
+
+## Third data point (2026-10-06, `qwen/qwen3-vl-8b-instruct`, 5 repeats, managed load: context 8192, 1 slot, gpu max)
+
+score **88.9%**, parse 100%, menu 100%, policy 88.9%, p50 **2.68 s**, p95 3.05 s, all in time, same-action 100%, load 26.7 s, GPU 9416 MiB and RAM 22.8 GB in use (the game was closed;
+ministral restored afterwards). One policy failure: it opened with Stunning Force on the Impossible jell group (the brain's border retreat normally intercepts that).
+It is the **only model so far that passed `pet_in_line_of_fire`** (it chose to move instead of firing through the pet).
+
+| model | runs | score | p50 s | same-action | note |
+|---|---|---|---|---|---|
+| qwen/qwen3-vl-8b-instruct | 45 | 88.9% | 2.68 | 100% | no thinking, no extra settings needed |
+| ministral-3-8b-instruct-2512 | 18 | 83.3% | 2.93 | 88.9% | current model; only 2 repeats, loaded with LM Studio's own settings |
+| google/gemma-4-12b (reasoning off) | 27 | 77.8% | 3.51 | 100% | needs `{"reasoning_effort": "none"}`; measured with two models loaded |
+
+The three were not measured under identical conditions (repeats and load settings differ), and the gaps are a few points on 18 to 45 runs: **treat the order as a lead, not a verdict**.
+A like-for-like run of ministral (`--models ministral-3-8b-instruct-2512 --repeat 5`, same managed load) is the next fair comparison.
