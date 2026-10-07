@@ -4481,3 +4481,99 @@ assert isinstance(brain.LM_STUDIO_TIMEOUT, float) and brain.LM_STUDIO_TIMEOUT > 
 _md = _pm.build_postmortem({"player_name": "X"}, {}, [{"t": 1, "hp": 5, "action": "REST", "model": "google/gemma-4-12b"}])
 assert "Combat model(s) this run: google/gemma-4-12b" in _md
 print("  [OK] Test 85 Passed: loaded chat model chosen, override honoured, embeddings never picked, model recorded in the post-mortem.")
+
+
+# ---------------------------------------------------------------------------
+# Test 86: the model lab scores models on the brain's real combat call (HANDOFF issue 65), against a fake LM Studio
+# ---------------------------------------------------------------------------
+import copy as _copy
+import http.server as _hs
+import importlib.util as _iu2
+import threading as _th
+import time as _tm
+
+_spec2 = _iu2.spec_from_file_location("model_lab", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "model_lab.py"))
+_lab = _iu2.module_from_spec(_spec2); _spec2.loader.exec_module(_lab)
+
+
+class _FakeLM(_hs.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _send(self, obj, code=200):
+        body = json.dumps(obj).encode()
+        try:
+            self.send_response(code); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+        except OSError:
+            pass   # the client gave up (that is the timeout test)
+
+    def do_GET(self):
+        data = [{"id": "lab-good", "type": "llm", "state": "loaded"}, {"id": "lab-embed", "type": "embeddings", "state": "loaded"}, {"id": "lab-bad", "type": "llm", "state": "not-loaded"}]
+        self._send({"data": data})
+
+    def do_POST(self):
+        payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        model = payload.get("model")
+        user = payload["messages"][-1]["content"]
+        if "VALID ACTIONS:" not in user:
+            return self._send({"choices": [{"message": {"content": "ready"}}]})
+        first = user.split("VALID ACTIONS:")[1].strip().splitlines()[0][2:].split()[0]
+        if model == "lab-good":
+            content = json.dumps({"action": first, "thought": "taking the first valid action"})
+        elif model == "lab-garbage":
+            content = "I think you should probably run away!"
+        elif model == "lab-think":
+            content = "<think>Let me consider every option at great length...</think>" + json.dumps({"action": first, "thought": "x"})
+        elif model == "lab-offmenu":
+            content = json.dumps({"action": "TELEPORT_HOME", "thought": "not an offered action"})
+        elif model == "lab-slow":
+            _tm.sleep(1.2)
+            content = json.dumps({"action": first, "thought": "slow"})
+        else:
+            return self._send({"error": "no such model"}, 404)
+        self._send({"choices": [{"message": {"content": content}}]})
+
+
+_srv = _hs.ThreadingHTTPServer(("127.0.0.1", 0), _FakeLM)
+_th.Thread(target=_srv.serve_forever, daemon=True).start()
+_base = f"http://127.0.0.1:{_srv.server_address[1]}"
+_scn = json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "model_lab_scenarios.json"), encoding="utf-8"))["scenarios"]
+assert len(_scn) >= 8 and all({"id", "state", "enemies", "checks"} <= set(s) for s in _scn), "The scenario file must be well formed"
+_old_url, _old_to, _old_model = brain.LM_STUDIO_URL, brain.LM_STUDIO_TIMEOUT, brain.active_model_id
+try:
+    _res = _lab.run_lab(["lab-good", "lab-garbage", "lab-think", "lab-offmenu", "lab-nobody"], _scn[:4], base=_base, repeat=2, timeout=5.0, unload=False, log=lambda *a: None)
+    _by = {s["model"]: s for s in _res["summaries"]}
+    assert _by["lab-good"]["parse_pct"] == 100 and _by["lab-good"]["menu_pct"] == 100, _by["lab-good"]
+    assert _by["lab-good"]["latency_p50"] is not None and _by["lab-good"]["same_action_pct"] == 100.0, "Same fixed reply: fully consistent"
+    assert _by["lab-garbage"]["parse_pct"] == 0 and _by["lab-garbage"]["bad_json"] == _by["lab-garbage"]["runs"] and _by["lab-garbage"]["score_pct"] == 0
+    assert _by["lab-think"]["think_leaks"] == _by["lab-think"]["runs"] and _by["lab-think"]["parse_pct"] == 0, "Thinking aloud breaks the brain's JSON parser: counted as a think leak"
+    assert _by["lab-offmenu"]["parse_pct"] == 100 and _by["lab-offmenu"]["menu_pct"] == 0 and _by["lab-offmenu"]["score_pct"] == 0, "An action nobody offered is not in the menu"
+    assert _by["lab-nobody"]["errors"] == _by["lab-nobody"]["runs"] and _by["lab-nobody"]["score_pct"] == 0, "An unknown model (HTTP 404) is an error, not a pass"
+    # policy checks are judged on the raw action: a scenario that forbids everything makes even the good model fail
+    _strict = _copy.deepcopy(_scn[:2])
+    for _s in _strict:
+        _s["checks"] = {"must_not": ["MOVE_", "USE_ABILITY", "SPRINT_", "REST", "WAIT", "ACTIVATE"], "should_any": []}
+    _res2 = _lab.run_lab(["lab-good"], _strict, base=_base, repeat=1, timeout=5.0, unload=False, log=lambda *a: None)
+    assert _res2["summaries"][0]["menu_pct"] == 100 and _res2["summaries"][0]["policy_pct"] == 0 and _res2["summaries"][0]["score_pct"] == 0
+    _lenient = _copy.deepcopy(_scn[:2])
+    for _s in _lenient:
+        _s["checks"] = {"must_not": [], "should_any": [""]}
+    assert _lab.run_lab(["lab-good"], _lenient, base=_base, repeat=1, timeout=5.0, unload=False, log=lambda *a: None)["summaries"][0]["score_pct"] == 100
+    # a reply that takes longer than the lab timeout is a timeout; one that fits the lab but not the brain's timeout is flagged as too slow
+    _res3 = _lab.run_lab(["lab-slow"], _scn[:2], base=_base, repeat=1, timeout=0.5, unload=False, log=lambda *a: None, do_warm=False)
+    assert _res3["summaries"][0]["timeouts"] == _res3["summaries"][0]["runs"] == 2, _res3["summaries"][0]
+    _res4 = _lab.run_lab(["lab-slow"], _scn[:2], base=_base, repeat=1, timeout=5.0, brain_timeout=1.0, unload=False, log=lambda *a: None, do_warm=False)
+    assert _res4["summaries"][0]["parse_pct"] == 100 and _res4["summaries"][0]["within_brain_timeout_pct"] == 0.0 and _res4["summaries"][0]["latency_p50"] >= 1.0
+    # the report and the saved files
+    _od = _tempfile.mkdtemp()
+    _res5 = _lab.run_lab(["lab-good", "lab-garbage"], _scn[:2], base=_base, repeat=1, timeout=5.0, unload=False, out_dir=_od, log=lambda *a: None, do_warm=False)
+    assert "| lab-good |" in _res5["markdown"] and "Scenario by scenario" in _res5["markdown"]
+    assert sorted(f.split(".")[-1] for f in _os.listdir(_od)) == ["json", "md"]
+    # helpers
+    assert _lab.norm_action("USE_ABILITY:CommandLase:SE (beam)") == "USE_ABILITY:CommandLase" and _lab.norm_action("MOVE_E (Melee Attack x)") == "MOVE_E"
+    assert _lab.policy_verdict("REST", {"must_not": ["REST"]})[0] is False and _lab.policy_verdict("MOVE_E", {"should_any": ["MOVE_"]})[0] is True
+    assert _lab.chat_models(_base) == [("lab-good", True), ("lab-bad", False)], "Embedding models are never offered for the combat call"
+finally:
+    brain.LM_STUDIO_URL, brain.LM_STUDIO_TIMEOUT, brain.active_model_id, brain.LLM_PROBE = _old_url, _old_to, _old_model, None
+    _srv.shutdown()
+print("  [OK] Test 86 Passed: the lab scores parse, menu and policy per model, counts timeouts, thinking leaks and errors, and writes its report.")

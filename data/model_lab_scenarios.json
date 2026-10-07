@@ -1,0 +1,1929 @@
+{
+ "_meta": {
+  "purpose": "Fixed combat situations replayed by tools/model_lab.py through the real query_llm_decision. 'checks.must_not' and 'checks.should_any' are action prefixes judged on the model's raw choice; edit them freely, they encode current policy, not engine rules.",
+  "note": "States follow the mod's state.json shape. Expectations are policy judgements by the project, not ground truth."
+ },
+ "scenarios": [
+  {
+   "id": "jell_adjacent_low_hp",
+   "description": "HP 9/31, an Impossible-rated brown jell adjacent to the west, most abilities on cooldown, Lase empty, dazed. The position of Gen 16's last turns.",
+   "why": "Resting or waiting next to an Impossible hostile is certain death; any move, sprint or ability is at least an attempt.",
+   "source": "Gen 16 death, HANDOFF issue 61",
+   "state": {
+    "hp": 9,
+    "max_hp": 31,
+    "level": 5,
+    "x": 20,
+    "y": 10,
+    "z": 12,
+    "attributes": {
+     "Strength": 15,
+     "Agility": 16,
+     "Toughness": 18,
+     "Intelligence": 17,
+     "Willpower": 18,
+     "Ego": 22
+    },
+    "skills": [
+     "Tactics"
+    ],
+    "mutations": [
+     {
+      "name": "Clairvoyance",
+      "class": "Clairvoyance",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Light Manipulation",
+      "class": "LightManipulation",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Stunning Force",
+      "class": "StunningForce",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Teleport Other",
+      "class": "TeleportOther",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     }
+    ],
+    "calling": "Apostle",
+    "subtype": "Apostle",
+    "genotype": "Mutated Human",
+    "is_sprinting": false,
+    "hostiles_nearby": true,
+    "hostiles_adjacent": true,
+    "water_drams": 4,
+    "hunger_level": "Satisfied",
+    "is_hungry": false,
+    "is_famished": false,
+    "has_food": true,
+    "food_count": 4,
+    "is_swimming": false,
+    "is_on_fire": false,
+    "effects": [
+     "dazed",
+     "oozing"
+    ],
+    "abilities": [
+     {
+      "name": "Sprint",
+      "command": "CommandToggleRunning",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Intimidate",
+      "command": "CommandIntimidate",
+      "cooldown": 41,
+      "usable": false,
+      "active": false
+     },
+     {
+      "name": "Proselytize",
+      "command": "CommandProselytize",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Lase (0 charges)",
+      "command": "CommandLase",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Stunning Force",
+      "command": "CommandStunningForce",
+      "cooldown": 34,
+      "usable": false,
+      "active": false
+     },
+     {
+      "name": "Teleport Other",
+      "command": "CommandTeleportOther",
+      "cooldown": 69,
+      "usable": false,
+      "active": false
+     }
+    ],
+    "has_missile_weapon": false,
+    "missile_ammo": 0,
+    "missile_max_ammo": 0,
+    "inventory_ammo": 0,
+    "zone_id": "JoppaWorld.11.20.0.0.12",
+    "zone_name": "subterranean desert canyon, 2 strata deep",
+    "is_settlement": false,
+    "has_companion": true,
+    "companions": [
+     {
+      "name": "goat",
+      "hp": 22,
+      "max_hp": 22,
+      "dist": 2,
+      "dir": "SW",
+      "tx": 19,
+      "ty": 12
+     }
+    ],
+    "visible_entities": [
+     {
+      "name": "brown jell",
+      "blueprint": "BrownJell",
+      "dist": 1,
+      "dir": "W",
+      "tx": 19,
+      "ty": 10,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 18,
+      "difficulty": "Impossible",
+      "is_stationary": false,
+      "corpse_chance": 25
+     },
+     {
+      "name": "goat",
+      "blueprint": "Goat",
+      "dist": 2,
+      "dir": "SW",
+      "tx": 19,
+      "ty": 12,
+      "is_enemy": false,
+      "is_companion": true,
+      "can_proselytize": false,
+      "has_los": true,
+      "level": 3,
+      "difficulty": "Average",
+      "is_stationary": false,
+      "corpse_chance": 25
+     }
+    ],
+    "surroundings": {
+     "N": "Empty ground",
+     "S": "Empty ground",
+     "E": "Empty ground",
+     "W": "[ENEMY: brown jell]",
+     "NE": "Empty ground",
+     "NW": "Empty ground",
+     "SE": "Empty ground",
+     "SW": "[COMPANION: goat]",
+     "NW2": "Empty ground",
+     "NNW": "Empty ground",
+     "NN": "Empty ground",
+     "NNE": "Empty ground",
+     "NE2": "Empty ground",
+     "WNW": "Empty ground",
+     "ENE": "Empty ground",
+     "WW": "Empty ground",
+     "EE": "Empty ground",
+     "WSW": "Empty ground",
+     "ESE": "Empty ground",
+     "SW2": "Empty ground",
+     "SSW": "Empty ground",
+     "SS": "Empty ground",
+     "SSE": "Empty ground",
+     "SE2": "Empty ground"
+    },
+    "standing_on_stairs_down": false,
+    "standing_on_stairs_up": false,
+    "stairs_down": [],
+    "stairs_up": []
+   },
+   "enemies": [
+    {
+     "name": "brown jell",
+     "blueprint": "BrownJell",
+     "dist": 1,
+     "dir": "W",
+     "tx": 19,
+     "ty": 10,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 18,
+     "difficulty": "Impossible",
+     "is_stationary": false,
+     "corpse_chance": 25
+    }
+   ],
+   "checks": {
+    "must_not": [
+     "REST",
+     "WAIT",
+     "USE_ABILITY:CommandLase"
+    ],
+    "should_any": []
+   }
+  },
+  {
+   "id": "jell_group_at_range_full_hp",
+   "description": "HP 31/31, three Impossible-rated jells 5 to 7 tiles away with line of sight; Lase, Stunning Force and Teleport Other are ready.",
+   "why": "Do not open a fight with Impossible creatures at range: back off, or do something else. (The brain's border retreat normally intercepts this; this measures the model's own judgement.)",
+   "source": "Gen 16 death",
+   "state": {
+    "hp": 31,
+    "max_hp": 31,
+    "level": 5,
+    "x": 20,
+    "y": 10,
+    "z": 12,
+    "attributes": {
+     "Strength": 15,
+     "Agility": 16,
+     "Toughness": 18,
+     "Intelligence": 17,
+     "Willpower": 18,
+     "Ego": 22
+    },
+    "skills": [
+     "Tactics"
+    ],
+    "mutations": [
+     {
+      "name": "Clairvoyance",
+      "class": "Clairvoyance",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Light Manipulation",
+      "class": "LightManipulation",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Stunning Force",
+      "class": "StunningForce",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Teleport Other",
+      "class": "TeleportOther",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     }
+    ],
+    "calling": "Apostle",
+    "subtype": "Apostle",
+    "genotype": "Mutated Human",
+    "is_sprinting": false,
+    "hostiles_nearby": true,
+    "hostiles_adjacent": false,
+    "water_drams": 4,
+    "hunger_level": "Satisfied",
+    "is_hungry": false,
+    "is_famished": false,
+    "has_food": true,
+    "food_count": 4,
+    "is_swimming": false,
+    "is_on_fire": false,
+    "effects": [],
+    "abilities": [
+     {
+      "name": "Sprint",
+      "command": "CommandToggleRunning",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Intimidate",
+      "command": "CommandIntimidate",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Proselytize",
+      "command": "CommandProselytize",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Lase (4 charges)",
+      "command": "CommandLase",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Stunning Force",
+      "command": "CommandStunningForce",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Teleport Other",
+      "command": "CommandTeleportOther",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     }
+    ],
+    "has_missile_weapon": false,
+    "missile_ammo": 0,
+    "missile_max_ammo": 0,
+    "inventory_ammo": 0,
+    "zone_id": "JoppaWorld.11.20.0.0.12",
+    "zone_name": "subterranean desert canyon, 2 strata deep",
+    "is_settlement": false,
+    "has_companion": false,
+    "companions": [],
+    "visible_entities": [
+     {
+      "name": "black jell",
+      "blueprint": "BlackJell",
+      "dist": 5,
+      "dir": "SW",
+      "tx": 16,
+      "ty": 13,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 18,
+      "difficulty": "Impossible",
+      "is_stationary": false,
+      "corpse_chance": 25
+     },
+     {
+      "name": "brown jell",
+      "blueprint": "BrownJell",
+      "dist": 6,
+      "dir": "SW",
+      "tx": 15,
+      "ty": 14,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 18,
+      "difficulty": "Impossible",
+      "is_stationary": false,
+      "corpse_chance": 25
+     },
+     {
+      "name": "green jell",
+      "blueprint": "GreenJell",
+      "dist": 7,
+      "dir": "SW",
+      "tx": 14,
+      "ty": 14,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 18,
+      "difficulty": "Impossible",
+      "is_stationary": false,
+      "corpse_chance": 25
+     }
+    ],
+    "surroundings": {
+     "N": "Empty ground",
+     "S": "Empty ground",
+     "E": "Empty ground",
+     "W": "Empty ground",
+     "NE": "Empty ground",
+     "NW": "Empty ground",
+     "SE": "Empty ground",
+     "SW": "[ENEMY: black jell]",
+     "NW2": "Empty ground",
+     "NNW": "Empty ground",
+     "NN": "Empty ground",
+     "NNE": "Empty ground",
+     "NE2": "Empty ground",
+     "WNW": "Empty ground",
+     "ENE": "Empty ground",
+     "WW": "Empty ground",
+     "EE": "Empty ground",
+     "WSW": "[ENEMY: green jell]",
+     "ESE": "Empty ground",
+     "SW2": "Empty ground",
+     "SSW": "Empty ground",
+     "SS": "Empty ground",
+     "SSE": "Empty ground",
+     "SE2": "Empty ground"
+    },
+    "standing_on_stairs_down": false,
+    "standing_on_stairs_up": false,
+    "stairs_down": [],
+    "stairs_up": []
+   },
+   "enemies": [
+    {
+     "name": "black jell",
+     "blueprint": "BlackJell",
+     "dist": 5,
+     "dir": "SW",
+     "tx": 16,
+     "ty": 13,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 18,
+     "difficulty": "Impossible",
+     "is_stationary": false,
+     "corpse_chance": 25
+    },
+    {
+     "name": "brown jell",
+     "blueprint": "BrownJell",
+     "dist": 6,
+     "dir": "SW",
+     "tx": 15,
+     "ty": 14,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 18,
+     "difficulty": "Impossible",
+     "is_stationary": false,
+     "corpse_chance": 25
+    },
+    {
+     "name": "green jell",
+     "blueprint": "GreenJell",
+     "dist": 7,
+     "dir": "SW",
+     "tx": 14,
+     "ty": 14,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 18,
+     "difficulty": "Impossible",
+     "is_stationary": false,
+     "corpse_chance": 25
+    }
+   ],
+   "checks": {
+    "must_not": [
+     "USE_ABILITY:CommandLase",
+     "USE_ABILITY:CommandStunningForce",
+     "REST"
+    ],
+    "should_any": []
+   }
+  },
+  {
+   "id": "amoeba_adjacent_full_hp",
+   "description": "Level 1, HP 18/18, a giant amoeba (rated Average) adjacent to the south-west. Only Intimidate and Proselytize are available.",
+   "why": "Policy: an adjacent below-Tough attacker is fought, not fled from (running costs HP and gains nothing).",
+   "source": "Gen 15 death, HANDOFF issue 60",
+   "state": {
+    "hp": 18,
+    "max_hp": 18,
+    "level": 1,
+    "x": 20,
+    "y": 10,
+    "z": 10,
+    "attributes": {
+     "Strength": 15,
+     "Agility": 16,
+     "Toughness": 18,
+     "Intelligence": 17,
+     "Willpower": 18,
+     "Ego": 22
+    },
+    "skills": [
+     "Tactics"
+    ],
+    "mutations": [
+     {
+      "name": "Clairvoyance",
+      "class": "Clairvoyance",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Light Manipulation",
+      "class": "LightManipulation",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Stunning Force",
+      "class": "StunningForce",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Teleport Other",
+      "class": "TeleportOther",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     }
+    ],
+    "calling": "Apostle",
+    "subtype": "Apostle",
+    "genotype": "Mutated Human",
+    "is_sprinting": false,
+    "hostiles_nearby": true,
+    "hostiles_adjacent": true,
+    "water_drams": 4,
+    "hunger_level": "Satisfied",
+    "is_hungry": false,
+    "is_famished": false,
+    "has_food": true,
+    "food_count": 4,
+    "is_swimming": false,
+    "is_on_fire": false,
+    "effects": [],
+    "abilities": [
+     {
+      "name": "Sprint",
+      "command": "CommandToggleRunning",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Intimidate",
+      "command": "CommandIntimidate",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Proselytize",
+      "command": "CommandProselytize",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     }
+    ],
+    "has_missile_weapon": false,
+    "missile_ammo": 0,
+    "missile_max_ammo": 0,
+    "inventory_ammo": 0,
+    "zone_id": "JoppaWorld.11.20.0.0.12",
+    "zone_name": "slimy salt marsh, surface",
+    "is_settlement": false,
+    "has_companion": false,
+    "companions": [],
+    "visible_entities": [
+     {
+      "name": "giant amoeba",
+      "blueprint": "GiantAmoeba",
+      "dist": 1,
+      "dir": "SW",
+      "tx": 19,
+      "ty": 11,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 1,
+      "difficulty": "Average",
+      "is_stationary": false,
+      "corpse_chance": 25
+     }
+    ],
+    "surroundings": {
+     "N": "Empty ground",
+     "S": "Empty ground",
+     "E": "Empty ground",
+     "W": "Empty ground",
+     "NE": "Empty ground",
+     "NW": "Empty ground",
+     "SE": "Empty ground",
+     "SW": "[ENEMY: giant amoeba]",
+     "NW2": "Empty ground",
+     "NNW": "Empty ground",
+     "NN": "Empty ground",
+     "NNE": "Empty ground",
+     "NE2": "Empty ground",
+     "WNW": "Empty ground",
+     "ENE": "Empty ground",
+     "WW": "Empty ground",
+     "EE": "Empty ground",
+     "WSW": "Empty ground",
+     "ESE": "Empty ground",
+     "SW2": "Empty ground",
+     "SSW": "Empty ground",
+     "SS": "Empty ground",
+     "SSE": "Empty ground",
+     "SE2": "Empty ground"
+    },
+    "standing_on_stairs_down": false,
+    "standing_on_stairs_up": false,
+    "stairs_down": [],
+    "stairs_up": []
+   },
+   "enemies": [
+    {
+     "name": "giant amoeba",
+     "blueprint": "GiantAmoeba",
+     "dist": 1,
+     "dir": "SW",
+     "tx": 19,
+     "ty": 11,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 1,
+     "difficulty": "Average",
+     "is_stationary": false,
+     "corpse_chance": 25
+    }
+   ],
+   "checks": {
+    "must_not": [
+     "SPRINT_",
+     "REST",
+     "WAIT"
+    ],
+    "should_any": [
+     "USE_ABILITY:",
+     "MOVE_SW"
+    ]
+   }
+  },
+  {
+   "id": "hunter_adjacent_easy",
+   "description": "HP 28/31, a snapjaw hunter (Easy) adjacent to the east; Stunning Force and Lase ready.",
+   "why": "Policy: stand and fight an Easy adjacent attacker. Gen 14 sprinted away from one for fifteen turns and lost 18 HP.",
+   "source": "Gen 14 death, HANDOFF issue 58",
+   "state": {
+    "hp": 28,
+    "max_hp": 31,
+    "level": 4,
+    "x": 20,
+    "y": 10,
+    "z": 12,
+    "attributes": {
+     "Strength": 15,
+     "Agility": 16,
+     "Toughness": 18,
+     "Intelligence": 17,
+     "Willpower": 18,
+     "Ego": 22
+    },
+    "skills": [
+     "Tactics"
+    ],
+    "mutations": [
+     {
+      "name": "Clairvoyance",
+      "class": "Clairvoyance",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Light Manipulation",
+      "class": "LightManipulation",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Stunning Force",
+      "class": "StunningForce",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Teleport Other",
+      "class": "TeleportOther",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     }
+    ],
+    "calling": "Apostle",
+    "subtype": "Apostle",
+    "genotype": "Mutated Human",
+    "is_sprinting": false,
+    "hostiles_nearby": true,
+    "hostiles_adjacent": true,
+    "water_drams": 4,
+    "hunger_level": "Satisfied",
+    "is_hungry": false,
+    "is_famished": false,
+    "has_food": true,
+    "food_count": 4,
+    "is_swimming": false,
+    "is_on_fire": false,
+    "effects": [],
+    "abilities": [
+     {
+      "name": "Sprint",
+      "command": "CommandToggleRunning",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Intimidate",
+      "command": "CommandIntimidate",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Proselytize",
+      "command": "CommandProselytize",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Lase (4 charges)",
+      "command": "CommandLase",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Stunning Force",
+      "command": "CommandStunningForce",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Teleport Other",
+      "command": "CommandTeleportOther",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     }
+    ],
+    "has_missile_weapon": false,
+    "missile_ammo": 0,
+    "missile_max_ammo": 0,
+    "inventory_ammo": 0,
+    "zone_id": "JoppaWorld.11.20.0.0.12",
+    "zone_name": "subterranean desert canyon, 2 strata deep",
+    "is_settlement": false,
+    "has_companion": false,
+    "companions": [],
+    "visible_entities": [
+     {
+      "name": "snapjaw hunter",
+      "blueprint": "SnapjawHunter",
+      "dist": 1,
+      "dir": "E",
+      "tx": 21,
+      "ty": 10,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 3,
+      "difficulty": "Easy",
+      "is_stationary": false,
+      "corpse_chance": 25
+     }
+    ],
+    "surroundings": {
+     "N": "Empty ground",
+     "S": "Empty ground",
+     "E": "[ENEMY: snapjaw hunter]",
+     "W": "Empty ground",
+     "NE": "Empty ground",
+     "NW": "Empty ground",
+     "SE": "Empty ground",
+     "SW": "Empty ground",
+     "NW2": "Empty ground",
+     "NNW": "Empty ground",
+     "NN": "Empty ground",
+     "NNE": "Empty ground",
+     "NE2": "Empty ground",
+     "WNW": "Empty ground",
+     "ENE": "Empty ground",
+     "WW": "Empty ground",
+     "EE": "Empty ground",
+     "WSW": "Empty ground",
+     "ESE": "Empty ground",
+     "SW2": "Empty ground",
+     "SSW": "Empty ground",
+     "SS": "Empty ground",
+     "SSE": "Empty ground",
+     "SE2": "Empty ground"
+    },
+    "standing_on_stairs_down": false,
+    "standing_on_stairs_up": false,
+    "stairs_down": [],
+    "stairs_up": []
+   },
+   "enemies": [
+    {
+     "name": "snapjaw hunter",
+     "blueprint": "SnapjawHunter",
+     "dist": 1,
+     "dir": "E",
+     "tx": 21,
+     "ty": 10,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 3,
+     "difficulty": "Easy",
+     "is_stationary": false,
+     "corpse_chance": 25
+    }
+   ],
+   "checks": {
+    "must_not": [
+     "SPRINT_",
+     "REST",
+     "WAIT"
+    ],
+    "should_any": [
+     "USE_ABILITY:",
+     "MOVE_E"
+    ]
+   }
+  },
+  {
+   "id": "lone_enemy_at_range",
+   "description": "HP 31/31, a baboon (Average) five tiles away with a clear line of fire; Lase, Stunning Force and Intimidate ready.",
+   "why": "The ordinary good case: use a ranged ability or close in; never rest or wait with a hostile closing.",
+   "source": "",
+   "state": {
+    "hp": 31,
+    "max_hp": 31,
+    "level": 5,
+    "x": 20,
+    "y": 10,
+    "z": 10,
+    "attributes": {
+     "Strength": 15,
+     "Agility": 16,
+     "Toughness": 18,
+     "Intelligence": 17,
+     "Willpower": 18,
+     "Ego": 22
+    },
+    "skills": [
+     "Tactics"
+    ],
+    "mutations": [
+     {
+      "name": "Clairvoyance",
+      "class": "Clairvoyance",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Light Manipulation",
+      "class": "LightManipulation",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Stunning Force",
+      "class": "StunningForce",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Teleport Other",
+      "class": "TeleportOther",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     }
+    ],
+    "calling": "Apostle",
+    "subtype": "Apostle",
+    "genotype": "Mutated Human",
+    "is_sprinting": false,
+    "hostiles_nearby": true,
+    "hostiles_adjacent": false,
+    "water_drams": 4,
+    "hunger_level": "Satisfied",
+    "is_hungry": false,
+    "is_famished": false,
+    "has_food": true,
+    "food_count": 4,
+    "is_swimming": false,
+    "is_on_fire": false,
+    "effects": [],
+    "abilities": [
+     {
+      "name": "Sprint",
+      "command": "CommandToggleRunning",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Intimidate",
+      "command": "CommandIntimidate",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Proselytize",
+      "command": "CommandProselytize",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Lase (4 charges)",
+      "command": "CommandLase",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Stunning Force",
+      "command": "CommandStunningForce",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Teleport Other",
+      "command": "CommandTeleportOther",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     }
+    ],
+    "has_missile_weapon": false,
+    "missile_ammo": 0,
+    "missile_max_ammo": 0,
+    "inventory_ammo": 0,
+    "zone_id": "JoppaWorld.11.20.0.0.12",
+    "zone_name": "desert canyon, surface",
+    "is_settlement": false,
+    "has_companion": false,
+    "companions": [],
+    "visible_entities": [
+     {
+      "name": "baboon",
+      "blueprint": "Baboon",
+      "dist": 5,
+      "dir": "E",
+      "tx": 25,
+      "ty": 10,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 5,
+      "difficulty": "Average",
+      "is_stationary": false,
+      "corpse_chance": 25
+     }
+    ],
+    "surroundings": {
+     "N": "Empty ground",
+     "S": "Empty ground",
+     "E": "Empty ground",
+     "W": "Empty ground",
+     "NE": "Empty ground",
+     "NW": "Empty ground",
+     "SE": "Empty ground",
+     "SW": "Empty ground",
+     "NW2": "Empty ground",
+     "NNW": "Empty ground",
+     "NN": "Empty ground",
+     "NNE": "Empty ground",
+     "NE2": "Empty ground",
+     "WNW": "Empty ground",
+     "ENE": "Empty ground",
+     "WW": "Empty ground",
+     "EE": "Empty ground",
+     "WSW": "Empty ground",
+     "ESE": "Empty ground",
+     "SW2": "Empty ground",
+     "SSW": "Empty ground",
+     "SS": "Empty ground",
+     "SSE": "Empty ground",
+     "SE2": "Empty ground"
+    },
+    "standing_on_stairs_down": false,
+    "standing_on_stairs_up": false,
+    "stairs_down": [],
+    "stairs_up": []
+   },
+   "enemies": [
+    {
+     "name": "baboon",
+     "blueprint": "Baboon",
+     "dist": 5,
+     "dir": "E",
+     "tx": 25,
+     "ty": 10,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 5,
+     "difficulty": "Average",
+     "is_stationary": false,
+     "corpse_chance": 25
+    }
+   ],
+   "checks": {
+    "must_not": [
+     "REST",
+     "WAIT"
+    ],
+    "should_any": [
+     "USE_ABILITY:CommandLase",
+     "USE_ABILITY:CommandStunningForce",
+     "USE_ABILITY:CommandSunderMind",
+     "MOVE_"
+    ]
+   }
+  },
+  {
+   "id": "pet_in_line_of_fire",
+   "description": "HP 31/31, a baboon four tiles east with the pet goat standing between (two tiles east). Lase is ready.",
+   "why": "Never fire a beam through your own companion (AGENTS R8).",
+   "source": "AGENTS R8",
+   "state": {
+    "hp": 31,
+    "max_hp": 31,
+    "level": 5,
+    "x": 20,
+    "y": 10,
+    "z": 10,
+    "attributes": {
+     "Strength": 15,
+     "Agility": 16,
+     "Toughness": 18,
+     "Intelligence": 17,
+     "Willpower": 18,
+     "Ego": 22
+    },
+    "skills": [
+     "Tactics"
+    ],
+    "mutations": [
+     {
+      "name": "Clairvoyance",
+      "class": "Clairvoyance",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Light Manipulation",
+      "class": "LightManipulation",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Stunning Force",
+      "class": "StunningForce",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Teleport Other",
+      "class": "TeleportOther",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     }
+    ],
+    "calling": "Apostle",
+    "subtype": "Apostle",
+    "genotype": "Mutated Human",
+    "is_sprinting": false,
+    "hostiles_nearby": true,
+    "hostiles_adjacent": false,
+    "water_drams": 4,
+    "hunger_level": "Satisfied",
+    "is_hungry": false,
+    "is_famished": false,
+    "has_food": true,
+    "food_count": 4,
+    "is_swimming": false,
+    "is_on_fire": false,
+    "effects": [],
+    "abilities": [
+     {
+      "name": "Sprint",
+      "command": "CommandToggleRunning",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Intimidate",
+      "command": "CommandIntimidate",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Proselytize",
+      "command": "CommandProselytize",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Lase (4 charges)",
+      "command": "CommandLase",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Stunning Force",
+      "command": "CommandStunningForce",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Teleport Other",
+      "command": "CommandTeleportOther",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     }
+    ],
+    "has_missile_weapon": false,
+    "missile_ammo": 0,
+    "missile_max_ammo": 0,
+    "inventory_ammo": 0,
+    "zone_id": "JoppaWorld.11.20.0.0.12",
+    "zone_name": "desert canyon, surface",
+    "is_settlement": false,
+    "has_companion": true,
+    "companions": [
+     {
+      "name": "goat",
+      "hp": 22,
+      "max_hp": 22,
+      "dist": 2,
+      "dir": "E",
+      "tx": 22,
+      "ty": 10
+     }
+    ],
+    "visible_entities": [
+     {
+      "name": "baboon",
+      "blueprint": "Baboon",
+      "dist": 4,
+      "dir": "E",
+      "tx": 24,
+      "ty": 10,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 5,
+      "difficulty": "Average",
+      "is_stationary": false,
+      "corpse_chance": 25
+     },
+     {
+      "name": "goat",
+      "blueprint": "Goat",
+      "dist": 2,
+      "dir": "E",
+      "tx": 22,
+      "ty": 10,
+      "is_enemy": false,
+      "is_companion": true,
+      "can_proselytize": false,
+      "has_los": true,
+      "level": 3,
+      "difficulty": "Average",
+      "is_stationary": false,
+      "corpse_chance": 25
+     }
+    ],
+    "surroundings": {
+     "N": "Empty ground",
+     "S": "Empty ground",
+     "E": "[COMPANION: goat]",
+     "W": "Empty ground",
+     "NE": "Empty ground",
+     "NW": "Empty ground",
+     "SE": "Empty ground",
+     "SW": "Empty ground",
+     "NW2": "Empty ground",
+     "NNW": "Empty ground",
+     "NN": "Empty ground",
+     "NNE": "Empty ground",
+     "NE2": "Empty ground",
+     "WNW": "Empty ground",
+     "ENE": "Empty ground",
+     "WW": "Empty ground",
+     "EE": "Empty ground",
+     "WSW": "Empty ground",
+     "ESE": "Empty ground",
+     "SW2": "Empty ground",
+     "SSW": "Empty ground",
+     "SS": "Empty ground",
+     "SSE": "Empty ground",
+     "SE2": "Empty ground"
+    },
+    "standing_on_stairs_down": false,
+    "standing_on_stairs_up": false,
+    "stairs_down": [],
+    "stairs_up": []
+   },
+   "enemies": [
+    {
+     "name": "baboon",
+     "blueprint": "Baboon",
+     "dist": 4,
+     "dir": "E",
+     "tx": 24,
+     "ty": 10,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 5,
+     "difficulty": "Average",
+     "is_stationary": false,
+     "corpse_chance": 25
+    }
+   ],
+   "checks": {
+    "must_not": [
+     "USE_ABILITY:CommandLase:E",
+     "USE_ABILITY:CommandLase",
+     "REST"
+    ],
+    "should_any": []
+   }
+  },
+  {
+   "id": "recruit_chance",
+   "description": "HP 31/31, no companion, a lone goat (a proselytizable beast) adjacent to the north; Proselytize ready.",
+   "why": "A free companion is worth taking: Proselytize it.",
+   "source": "",
+   "state": {
+    "hp": 31,
+    "max_hp": 31,
+    "level": 5,
+    "x": 20,
+    "y": 10,
+    "z": 10,
+    "attributes": {
+     "Strength": 15,
+     "Agility": 16,
+     "Toughness": 18,
+     "Intelligence": 17,
+     "Willpower": 18,
+     "Ego": 22
+    },
+    "skills": [
+     "Tactics"
+    ],
+    "mutations": [
+     {
+      "name": "Clairvoyance",
+      "class": "Clairvoyance",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Light Manipulation",
+      "class": "LightManipulation",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Stunning Force",
+      "class": "StunningForce",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Teleport Other",
+      "class": "TeleportOther",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     }
+    ],
+    "calling": "Apostle",
+    "subtype": "Apostle",
+    "genotype": "Mutated Human",
+    "is_sprinting": false,
+    "hostiles_nearby": true,
+    "hostiles_adjacent": true,
+    "water_drams": 4,
+    "hunger_level": "Satisfied",
+    "is_hungry": false,
+    "is_famished": false,
+    "has_food": true,
+    "food_count": 4,
+    "is_swimming": false,
+    "is_on_fire": false,
+    "effects": [],
+    "abilities": [
+     {
+      "name": "Sprint",
+      "command": "CommandToggleRunning",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Proselytize",
+      "command": "CommandProselytize",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Intimidate",
+      "command": "CommandIntimidate",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     }
+    ],
+    "has_missile_weapon": false,
+    "missile_ammo": 0,
+    "missile_max_ammo": 0,
+    "inventory_ammo": 0,
+    "zone_id": "JoppaWorld.11.20.0.0.12",
+    "zone_name": "desert canyon, surface",
+    "is_settlement": false,
+    "has_companion": false,
+    "companions": [],
+    "visible_entities": [
+     {
+      "name": "goat",
+      "blueprint": "Goat",
+      "dist": 1,
+      "dir": "N",
+      "tx": 20,
+      "ty": 9,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 2,
+      "difficulty": "Easy",
+      "is_stationary": false,
+      "corpse_chance": 25
+     }
+    ],
+    "surroundings": {
+     "N": "[ENEMY: goat]",
+     "S": "Empty ground",
+     "E": "Empty ground",
+     "W": "Empty ground",
+     "NE": "Empty ground",
+     "NW": "Empty ground",
+     "SE": "Empty ground",
+     "SW": "Empty ground",
+     "NW2": "Empty ground",
+     "NNW": "Empty ground",
+     "NN": "Empty ground",
+     "NNE": "Empty ground",
+     "NE2": "Empty ground",
+     "WNW": "Empty ground",
+     "ENE": "Empty ground",
+     "WW": "Empty ground",
+     "EE": "Empty ground",
+     "WSW": "Empty ground",
+     "ESE": "Empty ground",
+     "SW2": "Empty ground",
+     "SSW": "Empty ground",
+     "SS": "Empty ground",
+     "SSE": "Empty ground",
+     "SE2": "Empty ground"
+    },
+    "standing_on_stairs_down": false,
+    "standing_on_stairs_up": false,
+    "stairs_down": [],
+    "stairs_up": []
+   },
+   "enemies": [
+    {
+     "name": "goat",
+     "blueprint": "Goat",
+     "dist": 1,
+     "dir": "N",
+     "tx": 20,
+     "ty": 9,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 2,
+     "difficulty": "Easy",
+     "is_stationary": false,
+     "corpse_chance": 25
+    }
+   ],
+   "checks": {
+    "must_not": [
+     "REST",
+     "WAIT"
+    ],
+    "should_any": [
+     "USE_ABILITY:CommandProselytize"
+    ]
+   }
+  },
+  {
+   "id": "low_hp_enemy_closing",
+   "description": "HP 6/31, a baboon (Average) seven tiles away walking toward him, the pet goat nearby.",
+   "why": "At 19% HP with a hostile closing, resting where he stands is the wrong call.",
+   "source": "Gen 12 style death",
+   "state": {
+    "hp": 6,
+    "max_hp": 31,
+    "level": 5,
+    "x": 20,
+    "y": 10,
+    "z": 10,
+    "attributes": {
+     "Strength": 15,
+     "Agility": 16,
+     "Toughness": 18,
+     "Intelligence": 17,
+     "Willpower": 18,
+     "Ego": 22
+    },
+    "skills": [
+     "Tactics"
+    ],
+    "mutations": [
+     {
+      "name": "Clairvoyance",
+      "class": "Clairvoyance",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Light Manipulation",
+      "class": "LightManipulation",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Stunning Force",
+      "class": "StunningForce",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Teleport Other",
+      "class": "TeleportOther",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     }
+    ],
+    "calling": "Apostle",
+    "subtype": "Apostle",
+    "genotype": "Mutated Human",
+    "is_sprinting": false,
+    "hostiles_nearby": true,
+    "hostiles_adjacent": false,
+    "water_drams": 4,
+    "hunger_level": "Satisfied",
+    "is_hungry": false,
+    "is_famished": false,
+    "has_food": true,
+    "food_count": 4,
+    "is_swimming": false,
+    "is_on_fire": false,
+    "effects": [],
+    "abilities": [
+     {
+      "name": "Sprint",
+      "command": "CommandToggleRunning",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Intimidate",
+      "command": "CommandIntimidate",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Proselytize",
+      "command": "CommandProselytize",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Lase (4 charges)",
+      "command": "CommandLase",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Stunning Force",
+      "command": "CommandStunningForce",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Teleport Other",
+      "command": "CommandTeleportOther",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     }
+    ],
+    "has_missile_weapon": false,
+    "missile_ammo": 0,
+    "missile_max_ammo": 0,
+    "inventory_ammo": 0,
+    "zone_id": "JoppaWorld.11.20.0.0.12",
+    "zone_name": "desert canyon, surface",
+    "is_settlement": false,
+    "has_companion": true,
+    "companions": [
+     {
+      "name": "goat",
+      "hp": 22,
+      "max_hp": 22,
+      "dist": 2,
+      "dir": "SW",
+      "tx": 19,
+      "ty": 12
+     }
+    ],
+    "visible_entities": [
+     {
+      "name": "baboon",
+      "blueprint": "Baboon",
+      "dist": 7,
+      "dir": "E",
+      "tx": 27,
+      "ty": 10,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 5,
+      "difficulty": "Average",
+      "is_stationary": false,
+      "corpse_chance": 25
+     },
+     {
+      "name": "goat",
+      "blueprint": "Goat",
+      "dist": 2,
+      "dir": "SW",
+      "tx": 19,
+      "ty": 12,
+      "is_enemy": false,
+      "is_companion": true,
+      "can_proselytize": false,
+      "has_los": true,
+      "level": 3,
+      "difficulty": "Average",
+      "is_stationary": false,
+      "corpse_chance": 25
+     }
+    ],
+    "surroundings": {
+     "N": "Empty ground",
+     "S": "Empty ground",
+     "E": "Empty ground",
+     "W": "Empty ground",
+     "NE": "Empty ground",
+     "NW": "Empty ground",
+     "SE": "Empty ground",
+     "SW": "[COMPANION: goat]",
+     "NW2": "Empty ground",
+     "NNW": "Empty ground",
+     "NN": "Empty ground",
+     "NNE": "Empty ground",
+     "NE2": "Empty ground",
+     "WNW": "Empty ground",
+     "ENE": "Empty ground",
+     "WW": "Empty ground",
+     "EE": "Empty ground",
+     "WSW": "Empty ground",
+     "ESE": "Empty ground",
+     "SW2": "Empty ground",
+     "SSW": "Empty ground",
+     "SS": "Empty ground",
+     "SSE": "Empty ground",
+     "SE2": "Empty ground"
+    },
+    "standing_on_stairs_down": false,
+    "standing_on_stairs_up": false,
+    "stairs_down": [],
+    "stairs_up": []
+   },
+   "enemies": [
+    {
+     "name": "baboon",
+     "blueprint": "Baboon",
+     "dist": 7,
+     "dir": "E",
+     "tx": 27,
+     "ty": 10,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 5,
+     "difficulty": "Average",
+     "is_stationary": false,
+     "corpse_chance": 25
+    }
+   ],
+   "checks": {
+    "must_not": [
+     "REST"
+    ],
+    "should_any": []
+   }
+  },
+  {
+   "id": "two_easy_adjacent",
+   "description": "HP 20/31, two snapjaw scavengers (Easy) adjacent, east and north; Stunning Force and Lase ready.",
+   "why": "Policy: below Tough, fight rather than flee, even with two attackers.",
+   "source": "",
+   "state": {
+    "hp": 20,
+    "max_hp": 31,
+    "level": 5,
+    "x": 20,
+    "y": 10,
+    "z": 10,
+    "attributes": {
+     "Strength": 15,
+     "Agility": 16,
+     "Toughness": 18,
+     "Intelligence": 17,
+     "Willpower": 18,
+     "Ego": 22
+    },
+    "skills": [
+     "Tactics"
+    ],
+    "mutations": [
+     {
+      "name": "Clairvoyance",
+      "class": "Clairvoyance",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Light Manipulation",
+      "class": "LightManipulation",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Stunning Force",
+      "class": "StunningForce",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     },
+     {
+      "name": "Teleport Other",
+      "class": "TeleportOther",
+      "level": 3,
+      "cap": 3,
+      "can_level": false
+     }
+    ],
+    "calling": "Apostle",
+    "subtype": "Apostle",
+    "genotype": "Mutated Human",
+    "is_sprinting": false,
+    "hostiles_nearby": true,
+    "hostiles_adjacent": true,
+    "water_drams": 4,
+    "hunger_level": "Satisfied",
+    "is_hungry": false,
+    "is_famished": false,
+    "has_food": true,
+    "food_count": 4,
+    "is_swimming": false,
+    "is_on_fire": false,
+    "effects": [],
+    "abilities": [
+     {
+      "name": "Sprint",
+      "command": "CommandToggleRunning",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Intimidate",
+      "command": "CommandIntimidate",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Proselytize",
+      "command": "CommandProselytize",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Lase (4 charges)",
+      "command": "CommandLase",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Stunning Force",
+      "command": "CommandStunningForce",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     },
+     {
+      "name": "Teleport Other",
+      "command": "CommandTeleportOther",
+      "cooldown": 0,
+      "usable": true,
+      "active": false
+     }
+    ],
+    "has_missile_weapon": false,
+    "missile_ammo": 0,
+    "missile_max_ammo": 0,
+    "inventory_ammo": 0,
+    "zone_id": "JoppaWorld.11.20.0.0.12",
+    "zone_name": "desert canyon, surface",
+    "is_settlement": false,
+    "has_companion": false,
+    "companions": [],
+    "visible_entities": [
+     {
+      "name": "snapjaw scavenger",
+      "blueprint": "SnapjawScavenger",
+      "dist": 1,
+      "dir": "E",
+      "tx": 21,
+      "ty": 10,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 2,
+      "difficulty": "Easy",
+      "is_stationary": false,
+      "corpse_chance": 25
+     },
+     {
+      "name": "snapjaw scavenger",
+      "blueprint": "SnapjawScavenger",
+      "dist": 1,
+      "dir": "N",
+      "tx": 20,
+      "ty": 9,
+      "is_enemy": true,
+      "is_companion": false,
+      "can_proselytize": true,
+      "has_los": true,
+      "level": 2,
+      "difficulty": "Easy",
+      "is_stationary": false,
+      "corpse_chance": 25
+     }
+    ],
+    "surroundings": {
+     "N": "[ENEMY: snapjaw scavenger]",
+     "S": "Empty ground",
+     "E": "[ENEMY: snapjaw scavenger]",
+     "W": "Empty ground",
+     "NE": "Empty ground",
+     "NW": "Empty ground",
+     "SE": "Empty ground",
+     "SW": "Empty ground",
+     "NW2": "Empty ground",
+     "NNW": "Empty ground",
+     "NN": "Empty ground",
+     "NNE": "Empty ground",
+     "NE2": "Empty ground",
+     "WNW": "Empty ground",
+     "ENE": "Empty ground",
+     "WW": "Empty ground",
+     "EE": "Empty ground",
+     "WSW": "Empty ground",
+     "ESE": "Empty ground",
+     "SW2": "Empty ground",
+     "SSW": "Empty ground",
+     "SS": "Empty ground",
+     "SSE": "Empty ground",
+     "SE2": "Empty ground"
+    },
+    "standing_on_stairs_down": false,
+    "standing_on_stairs_up": false,
+    "stairs_down": [],
+    "stairs_up": []
+   },
+   "enemies": [
+    {
+     "name": "snapjaw scavenger",
+     "blueprint": "SnapjawScavenger",
+     "dist": 1,
+     "dir": "E",
+     "tx": 21,
+     "ty": 10,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 2,
+     "difficulty": "Easy",
+     "is_stationary": false,
+     "corpse_chance": 25
+    },
+    {
+     "name": "snapjaw scavenger",
+     "blueprint": "SnapjawScavenger",
+     "dist": 1,
+     "dir": "N",
+     "tx": 20,
+     "ty": 9,
+     "is_enemy": true,
+     "is_companion": false,
+     "can_proselytize": true,
+     "has_los": true,
+     "level": 2,
+     "difficulty": "Easy",
+     "is_stationary": false,
+     "corpse_chance": 25
+    }
+   ],
+   "checks": {
+    "must_not": [
+     "SPRINT_",
+     "REST",
+     "WAIT"
+    ],
+    "should_any": [
+     "USE_ABILITY:",
+     "MOVE_E",
+     "MOVE_N"
+    ]
+   }
+  }
+ ]
+}

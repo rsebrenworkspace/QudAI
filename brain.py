@@ -1857,6 +1857,10 @@ def is_ignorable_stationary_enemy(e):
     return False
 
 
+# Model lab hook (HANDOFF issue 65): when tools/model_lab.py sets this to a dict, query_llm_decision records what it offered and what came back.
+LLM_PROBE = None
+
+
 def query_llm_decision(game_state, enemies, valid_moves, abilities, template=None, took_damage=False):
     """Invokes LM Studio for high-level tactical combat decisions tailored to the character class."""
     global active_model_id
@@ -2295,12 +2299,18 @@ VALID ACTIONS:
         "temperature": 0.1,
         "max_tokens": 128
     }
+    if LLM_PROBE is not None:
+        LLM_PROBE.update({"choices": list(action_choices), "prompt_chars": len(system_prompt) + len(user_prompt), "raw": None, "error": None, "http_status": None})
 
     try:
         t0 = time.time()
         res = requests.post(LM_STUDIO_URL, json=payload, timeout=LM_STUDIO_TIMEOUT)
+        if LLM_PROBE is not None:
+            LLM_PROBE.update({"latency": time.time() - t0, "http_status": res.status_code})
         if res.status_code == 200:
             content = res.json()["choices"][0]["message"]["content"]
+            if LLM_PROBE is not None:
+                LLM_PROBE["raw"] = content
             # Clean possible markdown fence
             clean = re.sub(r"^```json\s*", "", content.strip(), flags=re.IGNORECASE)
             clean = re.sub(r"^```\s*", "", clean)
@@ -2308,6 +2318,8 @@ VALID ACTIONS:
             data = json.loads(clean)
             raw_action = data.get("action", "").strip()
             thought = data.get("thought", "").strip()
+            if LLM_PROBE is not None:
+                LLM_PROBE["parsed_action"] = raw_action
 
             # Sanitize action (e.g. "MOVE_N (Melee Attack snapjaw)" -> "MOVE_N")
             action = raw_action.split()[0] if raw_action else ""
@@ -2350,8 +2362,13 @@ VALID ACTIONS:
 
             if action:
                 dt = time.time() - t0
+                if LLM_PROBE is not None:
+                    LLM_PROBE["final_action"] = action
                 return {"action": action, "thought": f"[LLM in {dt:.2f}s] {thought}"}
     except Exception as e:
+        if LLM_PROBE is not None:
+            LLM_PROBE["error"] = f"{type(e).__name__}: {e}"
+            LLM_PROBE.setdefault("latency", time.time() - t0)
         print(f"[LLM Error / Timeout] {e}")
 
     return None
