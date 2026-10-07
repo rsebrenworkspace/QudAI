@@ -6,6 +6,8 @@ import brain
 # Never write test decisions into the real exit log (memory/exit_choices.jsonl).
 brain.EXIT_LOG_PATH = os.path.join(tempfile.mkdtemp(), "exit_choices_dry_run.jsonl")
 brain.DECISION_TRACE_PATH = os.path.join(tempfile.mkdtemp(), "decision_trace_dry_run.jsonl")
+import danger_ledger
+danger_ledger.LEDGER_PATH = os.path.join(tempfile.mkdtemp(), "danger_ledger_dry_run.json"); danger_ledger.reset_cache()
 import build_templates
 import item_evaluator
 
@@ -4415,3 +4417,50 @@ assert _os.path.basename(_path) == "Postmortem_Gen16_Test_Pilgrim_123.md" and "b
 # no data at all must not crash
 assert "No decision trace found" in _pm.build_postmortem({}, None, [])
 print("  [OK] Test 83 Passed: the post-mortem lists the hostiles and their ratings, the HP drops, the decision mix and the heuristic observations.")
+
+
+# ---------------------------------------------------------------------------
+# Test 84: the danger ledger raises the rating of creatures that proved dangerous (HANDOFF issue 64)
+# ---------------------------------------------------------------------------
+import danger_ledger as _dl
+_dl.LEDGER_PATH = _os.path.join(_tempfile.mkdtemp(), "ledger84.json"); _dl.reset_cache()
+_amb = lambda dist=1, **k: dict({"name": "giant amoeba", "blueprint": "GiantAmoeba", "is_enemy": True, "dist": dist, "dir": "SW", "difficulty": "Average", "has_los": True}, **k)
+_gs = lambda hp, mx=18, ents=None, **k: dict({"hp": hp, "max_hp": mx, "visible_entities": ents if ents is not None else [_amb()], "effects": []}, **k)
+assert _dl.rating_for("GiantAmoeba", 18) is None, "Unknown creature: no rating"
+assert _dl.record_turn_damage(_gs(1), 18), "17 HP lost next to one amoeba is recorded"
+assert _dl.rating_for("GiantAmoeba", 18) is None, "One observation can be a freak: not rated yet"
+_dl.record_turn_damage(_gs(2), 19)
+assert _dl.rating_for("GiantAmoeba", 18) == "Impossible", "Two big hits against 18 max HP: Impossible"
+assert _dl.rating_for("GiantAmoeba", 31) == "Very Tough" and _dl.rating_for("GiantAmoeba", 100) is None, "Rated against the CURRENT max HP"
+# what must not be recorded
+_n_before = _dl._load()["GiantAmoeba"]["hits"]
+assert not _dl.record_turn_damage(_gs(10, ents=[_amb(), _amb(blueprint="Baboon", name="baboon")]), 25), "Two kinds adjacent: cannot attribute"
+assert not _dl.record_turn_damage(_gs(10, effects=["bleeding"]), 25), "Bleeding is not the creature"
+assert not _dl.record_turn_damage(_gs(10, is_on_fire=True), 25), "Fire is not the creature"
+assert not _dl.record_turn_damage(_gs(30), 25), "HP went up"
+assert not _dl.record_turn_damage(_gs(10, ents=[_amb(dist=3)]), 25), "Not adjacent: not attributed"
+assert _dl._load()["GiantAmoeba"]["hits"] == _n_before
+# kills count at once and are credited to the creature named in the death message
+assert _dl.record_death({"visible_entities": [_amb(blueprint="Baboon", name="baboon"), _amb()]}, "You were @@killed by a giant amoeba## with a slimy pseudopod##.") == "GiantAmoeba"
+assert _dl._load()["GiantAmoeba"]["kills"] == 1
+assert _dl.record_death({"visible_entities": []}, "x") is None
+# apply: only ever raises, keeps the engine's rating, leaves strangers alone
+_out = _dl.apply([_amb(), _amb(blueprint="Baboon", name="baboon"), _amb(difficulty="Impossible")], 31)
+assert _out[0]["difficulty"] == "Very Tough" and _out[0]["difficulty_engine"] == "Average" and "max hit" in _out[0]["ledger_note"]
+assert _out[1]["difficulty"] == "Average" and "difficulty_engine" not in _out[1], "No entry: untouched"
+assert _out[2]["difficulty"] == "Impossible", "Never lowered"
+# in the full decision: an Average-rated amoeba with a bad record sends a low-HP character back through the arrival border
+_dl._load()["GiantAmoeba"]["max_hit"] = 25
+brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_DOWN.clear(); brain.RETREAT_TARGET_LEVEL = None
+brain.LAST_ZONE_ENTRY = {"from_zone": "X.prev", "to_zone": dungeon_stratum11_zone, "entry_pos": (15, 0), "reverse_dir": "N"}
+_st = dict(delve_state_nearby); _st["x"], _st["y"] = 15, 0; _st["max_hp"] = 28; _st["hp"] = 28
+_foe = _amb(dist=3, tx=12, ty=2)
+_st["visible_entities"] = [_foe]; _st["surroundings"] = {"N": "[ZONE_EXIT: N]", "S": "dirt floor", "E": "dirt floor", "W": "dirt floor"}
+_dec = brain.query_decision(dict(_st), took_damage=False, enemies=[_foe])
+assert _dec["action"] == "MOVE_N" and "Danger retreat" in _dec["reason"], f"The ledger makes the amoeba Impossible for this character, got {_dec}"
+_dl.LEDGER_PATH = _os.path.join(_tempfile.mkdtemp(), "ledger84b.json"); _dl.reset_cache()
+_dec = brain.query_decision(dict(_st), took_damage=False, enemies=[_foe])
+assert "Danger retreat" not in _dec["reason"], "Without the record the engine's Average rating stands"
+brain.LAST_ZONE_ENTRY = None
+_dl.LEDGER_PATH = _os.path.join(_tempfile.mkdtemp(), "danger_ledger_dry_run.json"); _dl.reset_cache()
+print("  [OK] Test 84 Passed: the ledger learns from hits and kills, rates against current max HP, only ever raises a rating, and feeds the existing retreat rules.")

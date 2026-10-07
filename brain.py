@@ -11,6 +11,7 @@ import twitch_bot
 import build_templates
 import mutation_policy
 import ability_registry
+import danger_ledger
 
 # Paths
 # QUDAI_EXCHANGE_DIR overrides the folder (tests point it at a temp dir so they can never touch the real game files).
@@ -2950,6 +2951,8 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     is_town = is_town_zone(game_state)
 
     enemies = filter_hostile_enemies(enemies, companions)
+    # Experience across characters (danger_ledger.py, HANDOFF issue 64): a creature that has hit hard relative to this character's HP is rated higher.
+    enemies = danger_ledger.apply(enemies, game_state.get("max_hp"))
     adj_threats = get_adjacent_threats(surroundings, companions=companions, cur_pos=(game_state.get("x", 0), game_state.get("y", 0)))
     close_threats = get_close_threats(enemies, game_state)
     abilities = filter_corpse_burners(game_state, abilities, enemies, hp_ratio)
@@ -3525,6 +3528,7 @@ def main():
                             last_state_for_pm = json.load(lsf, strict=False)
                     except Exception:
                         pass
+                    danger_ledger.record_death(last_state_for_pm, death_data.get("death_reason"))
                     chronicler.process_death_event(death_data, list(recent_actions), active_model_id, last_state=last_state_for_pm, trace_path=DECISION_TRACE_PATH)
             except Exception as ex:
                 print(f"[Death Processing Error] {ex}")
@@ -3568,6 +3572,7 @@ def main():
                 hp = game_state.get("hp", 0)
                 max_hp = game_state.get("max_hp", 1)
                 took_damage = (last_hp is not None and hp < last_hp)
+                danger_ledger.record_turn_damage(game_state, last_hp)
                 last_hp = hp
 
                 visit_counts[cur_pos] += 1
