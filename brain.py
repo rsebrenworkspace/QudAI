@@ -359,12 +359,13 @@ def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
 # to it sets no new minimum for SECTOR_STALL_LIMIT turns, it is written off like any other unreachable target.
 SECTOR_STALL_LIMIT = 14
 SECTOR_PROGRESS = {"key": None, "best": None, "stall": 0}
+STAIRS_GIVEUP = set()       # (zone_id, stairs xy) the greedy fallback could not approach: delving to them is skipped
 SECTOR_GIVEUP = set()       # zone ids where even the nearest-unexplored-cell chase stalled: stop the water traversal there
 
 
 def sector_target_ok(zone_id, target, cur_pos, kind="centroid"):
     """Records this turn's distance to the committed sector target. False (and blacklisted) once progress has stalled."""
-    key = (zone_id, tuple(target)) if kind == "centroid" else (zone_id, kind)   # the nearest cell moves every step
+    key = (zone_id, tuple(target)) if kind in ("centroid", "stairs") else (zone_id, kind)   # the nearest cell moves every step
     dist = max(abs(target[0] - cur_pos[0]), abs(target[1] - cur_pos[1]))
     if SECTOR_PROGRESS["key"] != key:
         SECTOR_PROGRESS.update({"key": key, "best": dist, "stall": 0})
@@ -375,12 +376,124 @@ def sector_target_ok(zone_id, target, cur_pos, kind="centroid"):
     SECTOR_PROGRESS["stall"] += 1
     if SECTOR_PROGRESS["stall"] >= SECTOR_STALL_LIMIT:
         UNREACHABLE_SECTORS.add((zone_id, tuple(target)))
-        if kind != "centroid":
+        if kind == "stairs":
+            STAIRS_GIVEUP.add((zone_id, tuple(target)))
+        elif kind != "centroid":
             SECTOR_GIVEUP.add(zone_id)
         SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
         print(f"[SECTOR] No progress toward {tuple(target)} in {SECTOR_STALL_LIMIT} turns (closest {dist}). Writing it off.")
         return False
     return True
+
+
+# Lase and food (HANDOFF issue 34 part C, design decision 2026-10-04: "make him earn his dinner"). Fire and Light damage turn a corpse into
+# a burnt, non-butcherable one [verified in code, ENGINE_INTERNALS 12.1b]. When he can butcher and needs food, and the fight is safe, the
+# corpse-burning abilities are taken off the table for this decision so melee and the clean abilities (Stunning Force, Sunder Mind) are used.
+# C# exports `corpse_chance` per creature (the engine's own number); a creature with 0 or no number is never protected.
+CORPSE_BURNER_FAMILY = "corpse_burners"
+LASE_POLICY_STATE = {"withheld": False}
+
+
+def withhold_corpse_burners(game_state, hostiles, hp_ratio):
+    """(True, reason) when Lase-like abilities should be withheld this turn."""
+    if not game_state.get("can_butcher"):
+        return False, ""
+    needs_food = game_state.get("is_hungry") or game_state.get("is_famished") or game_state.get("food_count", 0) < FOOD_RESTOCK_THRESHOLD
+    if not needs_food:
+        return False, ""
+    if hp_ratio < 0.5 or len(hostiles) >= 3:
+        return False, ""
+    if any(e.get("difficulty") in ("Tough", "Very Tough", "Impossible") for e in hostiles):
+        return False, ""
+    nearest = min(hostiles, key=lambda e: e.get("dist", 999), default=None)
+    if not nearest or not (nearest.get("corpse_chance") or 0) > 0:
+        return False, ""
+    return True, f"{nearest.get('name', 'the target')} may leave a corpse ({nearest.get('corpse_chance')}%) and he needs food"
+
+
+def filter_corpse_burners(game_state, abilities, hostiles, hp_ratio):
+    """The ability list without the corpse-burning abilities when the policy withholds them (logged on change only)."""
+    withhold, why = withhold_corpse_burners(game_state, hostiles, hp_ratio)
+    if withhold != LASE_POLICY_STATE["withheld"]:
+        LASE_POLICY_STATE["withheld"] = withhold
+        print(f"[FOOD POLICY] {'Withholding Lase/fire abilities: ' + why if withhold else 'Lase and fire abilities available again.'}")
+    if not withhold:
+        return abilities
+    return [a for a in abilities if not ability_registry.in_family(a, CORPSE_BURNER_FAMILY)]
+
+
+# Reacting to being on fire (HANDOFF issue 32). Engine facts [verified in code, ENGINE_INTERNALS 12.1g]: `Burning` deals damage every turn
+# and removes itself once the creature is no longer aflame; contact with liquid cools it (`LiquidVolume.ProcessExposure` /
+# `GetLiquidCooling`). So: step into deep water if it is adjacent; otherwise move away from burning cells; otherwise let it burn out.
+# Bounded (R6): after FIRE_REACTION_MAX consecutive reaction turns the normal logic takes over, so this can never become a loop.
+FIRE_REACTION = {"turns": 0}
+FIRE_REACTION_MAX = 10
+
+
+def fire_reaction(game_state, surroundings, valid_moves):
+    """Decision when the character is on fire, or None."""
+    if not game_state.get("is_on_fire"):
+        FIRE_REACTION["turns"] = 0
+        return None
+    if game_state.get("is_swimming") or FIRE_REACTION["turns"] >= FIRE_REACTION_MAX:
+        return None
+    swim = [m for m in valid_moves if is_swim_move(m, surroundings)]
+    if swim:
+        FIRE_REACTION["turns"] += 1
+        return {"action": swim[0], "reason": f"ON FIRE: stepping into the water {swim[0][5:]} to put it out"}
+    hazards = [CARDINAL_OFFSETS[d] for d in CARDINAL_OFFSETS if "[hazard: fire" in surroundings.get(d, "").lower()]
+    if not hazards:
+        return None
+    best = None
+    for m in valid_moves:
+        mx, my = CARDINAL_OFFSETS[m[5:]]
+        score = sum((mx - hx) ** 2 + (my - hy) ** 2 for hx, hy in hazards)
+        if best is None or score > best[0]:
+            best = (score, m)
+    if best is None:
+        return None
+    FIRE_REACTION["turns"] += 1
+    return {"action": best[1], "reason": f"ON FIRE: moving {best[1][5:]} away from the flames ({len(hazards)} burning cells adjacent)"}
+
+
+# Autolevel circuit breaker (HANDOFF issue 56). Two AUTOLEVEL decisions in a row that leave the points unchanged stop autolevel so a purchase
+# the game refuses cannot freeze the loop. It used to stay off until the points changed, and points only change on a level-up: a character
+# sat on 134 unspent SP for a whole session. Now it retries after AUTOLEVEL_RETRY_TURNS.
+AUTOLEVEL_RETRY_TURNS = 100
+
+
+class AutolevelBreaker:
+    def __init__(self):
+        self.failed = 0
+        self.last_points = None
+        self.tripped_at = None
+
+    def suppressed(self, points):
+        if self.failed >= 2 and points == self.last_points:
+            if self.tripped_at is not None and TURN_CLOCK - self.tripped_at >= AUTOLEVEL_RETRY_TURNS:
+                self.failed = 0
+                self.tripped_at = None
+                return False
+            return True
+        return False
+
+    def note_autolevel(self, points):
+        """Called when the decision is an AUTOLEVEL action. True when the breaker trips on this attempt."""
+        if points == self.last_points:
+            self.failed += 1
+        else:
+            self.last_points = points
+            self.failed = 1
+        if self.failed >= 2:
+            self.tripped_at = TURN_CLOCK
+            return True
+        return False
+
+    def note_other(self, points):
+        if points != self.last_points:
+            self.failed = 0
+            self.last_points = points
+            self.tripped_at = None
 
 
 # Burrowing Claws policy (HANDOFF issue 54, BACKLOG B7 promoted by the human 2026-10-06). The toggle (`CommandToggleBurrowingClaws`) is the
@@ -1578,8 +1691,10 @@ def is_ignorable_stationary_enemy(e):
     if diff in ("Tough", "Very Tough", "Impossible"):
         return False
 
-    # If stationary and trivial/easy/average, ignore for combat lock at distance > 3
-    if is_stat and dist > 3 and diff in ("Trivial", "Easy", "Average", ""):
+    # A stationary creature (the engine says it cannot move, or it is a plant) only reaches adjacent cells, so beyond one tile it is not
+    # a threat. The old limit of 3 let a wall-dwelling jilted lover at distance 3 lock the brain into combat for 100+ turns (HANDOFF issue 57).
+    # Turrets and anything Tough or worse were already excluded above; damage taken still forces combat in the caller.
+    if is_stat and dist > 1 and diff in ("Trivial", "Easy", "Average", ""):
         return True
 
     # Aquatic creatures swimming in isolated pools (glowfish, etc.) cannot traverse dry land.
@@ -2655,6 +2770,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     enemies = filter_hostile_enemies(enemies, companions)
     adj_threats = get_adjacent_threats(surroundings, companions=companions, cur_pos=(game_state.get("x", 0), game_state.get("y", 0)))
     close_threats = get_close_threats(enemies, game_state)
+    abilities = filter_corpse_burners(game_state, abilities, enemies, hp_ratio)
     engine_hostiles = (game_state.get("hostiles_adjacent", False) and bool(adj_threats)) or (game_state.get("hostiles_nearby", False) and bool(close_threats))
     is_in_combat = took_damage or bool(adj_threats) or bool(close_threats) or engine_hostiles
 
@@ -2686,6 +2802,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         standing_on_sd = True
     if not standing_on_su and ("stairs_up" in center_tile or "[stairs_up" in center_tile or ("stair" in center_tile and "up" in center_tile)):
         standing_on_su = True
+
+    fire_decision = fire_reaction(game_state, surroundings, valid_moves)
+    if fire_decision:
+        return fire_decision
 
     # ==========================================================
     # EMERGENCY TACTICAL RETREAT TO STAIRS UP (Underground Defense)
@@ -2906,11 +3026,18 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             sd_pos = (sd_info["tx"], sd_info["ty"])
             # In dungeons, if zone is cleared (or subterranean with no visible threats), route to stairs down
             if is_zone_cleared or (is_subterranean and cur_pos != sd_pos and max(abs(px - sd_pos[0]), abs(py - sd_pos[1])) <= 6):
-                best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
-                if best_m:
+                # The engine pathfinder, not a greedy step: a wall between him and the stairs made the greedy step flip back and
+                # forth for 40+ turns (HANDOFF issue 55, R6). A PATH_BLOCKED report puts the stairs in UNREACHABLE_SECTORS and
+                # delving is skipped until another route opens up.
+                if cur_pos != sd_pos and (zone_id, sd_pos) not in STAIRS_GIVEUP:
                     delve_type = "Dungeon Delving" if is_subterranean else "Dungeon Entry"
                     rec_str = f"Level {cur_lvl} >= Req {req_depth_lvl}" if cur_lvl >= req_depth_lvl else f"Level {cur_lvl} < Rec {req_depth_lvl}"
-                    return {"action": best_m, "reason": f"{delve_type}: Navigating to stairs down at {sd_pos} to delve stratum {cur_z + 1} ({rec_str})"}
+                    if (zone_id, sd_pos) not in UNREACHABLE_SECTORS:
+                        return {"action": f"NAVIGATE_TO_CELL:{sd_pos[0]},{sd_pos[1]}", "reason": f"{delve_type}: Navigating to stairs down at {sd_pos} to delve stratum {cur_z + 1} ({rec_str})"}
+                    # The engine pathfinder reported no route (it may not swim). Greedy steps only as a guarded fallback.
+                    best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
+                    if best_m and sector_target_ok(zone_id, sd_pos, cur_pos, "stairs"):
+                        return {"action": best_m, "reason": f"{delve_type}: no engine route to the stairs at {sd_pos}; stepping {best_m[5:]} toward them ({rec_str})"}
 
         # 6. Inward Border Navigation & Zone Hopping Prevention
         rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
@@ -3168,8 +3295,7 @@ def main():
     remove_stale_flag()
     twitch_manager = twitch_bot.start_twitch_in_background()
 
-    autolevel_failed_attempts = 0
-    last_autolevel_points = None
+    autolevel_breaker = AutolevelBreaker()
 
     print("==================================================")
     print(" Caves of Qud Autonomous Agent (Hierarchical)")
@@ -3320,28 +3446,20 @@ def main():
                 print(f"SURROUNDINGS (5x5):\n{grid_display}\n")
 
                 cur_points = (game_state.get("ap", 0), game_state.get("sp", 0), game_state.get("mp", 0), len(game_state.get("skills", [])))
-                suppress_auto = (autolevel_failed_attempts >= 2 and cur_points == last_autolevel_points)
+                suppress_auto = autolevel_breaker.suppressed(cur_points)
 
                 decision = query_decision(game_state, took_damage, enemies, suppress_autolevel=suppress_auto)
                 action = decision.get("action", "WAIT")
                 reason = decision.get("reason", "None given")
 
                 if action.startswith("AUTOLEVEL"):
-                    if cur_points == last_autolevel_points:
-                        autolevel_failed_attempts += 1
-                    else:
-                        last_autolevel_points = cur_points
-                        autolevel_failed_attempts = 1
-
-                    if autolevel_failed_attempts >= 2:
-                        print(f"[AUTOLEVEL CIRCUIT BREAKER] Unspent points {cur_points} failed to allocate after {autolevel_failed_attempts} attempts. Suppressing autolevel to prevent loop freeze.")
+                    if autolevel_breaker.note_autolevel(cur_points):
+                        print(f"[AUTOLEVEL CIRCUIT BREAKER] Unspent points {cur_points} (AP, SP, MP, skills) failed to allocate ({action}). Suppressing autolevel for {AUTOLEVEL_RETRY_TURNS} turns.")
                         decision = query_decision(game_state, took_damage, enemies, suppress_autolevel=True)
                         action = decision.get("action", "WAIT")
                         reason = decision.get("reason", "None given")
                 else:
-                    if cur_points != last_autolevel_points:
-                        autolevel_failed_attempts = 0
-                        last_autolevel_points = cur_points
+                    autolevel_breaker.note_other(cur_points)
 
                 # No instant companion registration here: a Proselytize/Beguile attempt can fail, and the next
                 # state.json reports the real result (`is_companion`, `companions`). AGENTS.md R2.

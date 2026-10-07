@@ -63,6 +63,9 @@ Proselytize/Beguile, Sunder Mind, Stunning Force, Lase (Light Manipulation), Fre
 - `fired` counts a change of the ability label (charges, toggle state), not only the cooldown. Lase showed 14 attempts and 0 fired before this. `[verified in memory/ability_stats.json]`
 - Burrowing Claws are handled by `claws_toggle_action` (off in settlements, on elsewhere), not by a family.
 
+## 6c. T-1.28
+- `corpse_burners` (Lase, Flaming Ray, Pyrokinesis) is a policy family, withheld from the decision when food is at stake in a safe fight (Test 73). Reason: Fire and Light kills leave a non-butcherable `Charred Corpse` (ENGINE_INTERNALS 12.1b).
+
 ## 7. Still open
 
 

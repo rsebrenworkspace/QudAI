@@ -390,6 +390,30 @@ namespace QudAIBrain
             catch { return false; }
         }
 
+        // A creature that cannot move at all (engine `GameObject.IsMobile()`), e.g. the wall-dwelling jilted lover (`Brain Mobile="false"`,
+        // `LivesOnWalls="true"`, 5 HP, kills only at radius 1). Such a creature rendered as a red wall segment and locked the brain into
+        // combat mode at distance 3 (HANDOFF issue 57). Engine truth instead of a name list (R2/R3).
+        public static bool IsImmobile(GameObject o)
+        {
+            try { return o != null && o.Brain != null && !o.IsMobile(); }
+            catch { return false; }
+        }
+
+        // Chance (percent) that a dead creature leaves a corpse at all (Corpse.CorpseChance); 0 when it has no Corpse part.
+        // Fire and Light damage replace it by a burnt, non-butcherable one (ENGINE_INTERNALS 12.1b). Read by reflection so the
+        // mod does not depend on the field's declared type. Python only learns whether food is at stake, not any engine rule.
+        public static int CorpseChanceOf(GameObject o)
+        {
+            try
+            {
+                var part = o != null ? o.GetPart("Corpse") : null;
+                if (part == null) return 0;
+                var f = part.GetType().GetField("CorpseChance");
+                return f == null ? 0 : Convert.ToInt32(f.GetValue(part));
+            }
+            catch { return 0; }
+        }
+
         public static bool IsOnFire(GameObject player)
         {
             if (player == null) return false;
@@ -1456,9 +1480,9 @@ namespace QudAIBrain
                                     try { objLevel = obj.Stat("Level", 1); } catch { }
                                     int levelDiff = objLevel - playerLevel;
                                     string diffStr = levelDiff <= -5 ? "Trivial" : levelDiff <= -2 ? "Easy" : levelDiff <= 2 ? "Average" : levelDiff <= 5 ? "Tough" : levelDiff <= 9 ? "Very Tough" : "Impossible";
-                                    bool isStationary = obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasTag("Immobile") || obj.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
+                                    bool isStationary = IsImmobile(obj) || obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasTag("Immobile") || obj.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
 
-                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}, \"can_proselytize\": {(canProselytize ? "true" : "false")}, \"has_los\": {(hasLOS ? "true" : "false")}, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}}}");
+                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}, \"can_proselytize\": {(canProselytize ? "true" : "false")}, \"has_los\": {(hasLOS ? "true" : "false")}, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}, \"corpse_chance\": {CorpseChanceOf(obj)}}}");
                                 }
                             }
                         }
@@ -1491,8 +1515,8 @@ namespace QudAIBrain
                                     try { objLevel = currentTarget.Stat("Level", 1); } catch { }
                                     int levelDiff = objLevel - playerLevel;
                                     string diffStr = levelDiff <= -5 ? "Trivial" : levelDiff <= -2 ? "Easy" : levelDiff <= 2 ? "Average" : levelDiff <= 5 ? "Tough" : levelDiff <= 9 ? "Very Tough" : "Impossible";
-                                    bool isStationary = currentTarget.HasPart("Plant") || currentTarget.HasPart("Fungus") || currentTarget.HasTag("Immobile") || currentTarget.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
-                                    entityEntries.Insert(0, $"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {tx}, \"ty\": {ty}, \"is_enemy\": true, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}}}");
+                                    bool isStationary = IsImmobile(currentTarget) || currentTarget.HasPart("Plant") || currentTarget.HasPart("Fungus") || currentTarget.HasTag("Immobile") || currentTarget.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
+                                    entityEntries.Insert(0, $"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {tx}, \"ty\": {ty}, \"is_enemy\": true, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}, \"corpse_chance\": {CorpseChanceOf(currentTarget)}}}");
                                 }
                             }
                         }

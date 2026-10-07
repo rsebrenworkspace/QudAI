@@ -284,7 +284,7 @@ fully_explored_state["visible_entities"] = [
 dec_zone_done = brain.query_decision(fully_explored_state, took_damage=False, enemies=[])
 print("\n--- Test 11: Zone Fully Explored -> Navigate to Stairs Down ---")
 print(f"Action: {dec_zone_done['action']} | Reason: {dec_zone_done['reason']}")
-assert dec_zone_done['action'] == "MOVE_N", f"Expected MOVE_N towards stairs down, got {dec_zone_done['action']}"
+assert dec_zone_done['action'] == "NAVIGATE_TO_CELL:10,9", f"Expected the engine path to the stairs down, got {dec_zone_done['action']}"
 # Test 11 told the brain (as the engine) that this zone ID is fully explored. Later scenarios reuse the ID as a fresh zone,
 # so forget what the engine said here (T-1.15: the brain now remembers the engine's explored flag across turns).
 brain.EXPLORED_ZONE_SET.clear()
@@ -700,7 +700,7 @@ state_surface_lvl3_cleared = {
 dec_route = brain.query_decision(state_surface_lvl3_cleared, took_damage=False, enemies=[])
 print(f"Level 3 cleared zone decision: {dec_route['action']} | Reason: {dec_route['reason']}")
 # From (10, 10) towards (15, 12), best move is SE or E
-assert dec_route["action"] in ("MOVE_SE", "MOVE_E", "MOVE_S"), f"Expected movement towards stairs down, got {dec_route['action']}"
+assert dec_route["action"] == "NAVIGATE_TO_CELL:15,12", f"Expected the engine path to the stairs down, got {dec_route['action']}"
 assert "Navigating to stairs down" in dec_route["reason"] or "Dungeon" in dec_route["reason"]
 
 # Scenario 21.3: Standing on stairs down at Level 3 -> Descend!
@@ -1215,7 +1215,7 @@ swim_explore_state = {
 # Scenario 26.3: Water Traversal across River toward Known Stairs Down
 dec_swim_stairs = brain.query_decision(swim_explore_state, took_damage=False, enemies=[])
 print(f"River stairs crossing decision: {dec_swim_stairs['action']} | Reason: {dec_swim_stairs['reason']}")
-assert dec_swim_stairs["action"] == "MOVE_N", f"Expected character to swim across water MOVE_N towards stairs at (15, 12)! Got: {dec_swim_stairs['action']}"
+assert dec_swim_stairs["action"] == "NAVIGATE_TO_CELL:15,12", f"Expected the engine path to the stairs at (15, 12)! Got: {dec_swim_stairs['action']}"
 assert "Navigating to stairs down" in dec_swim_stairs["reason"]
 
 # Scenario 26.4: Water Traversal across River to Unvisited Frontier
@@ -2136,7 +2136,7 @@ delve_state_nearby["surroundings"] = {
 }
 dec_nearby = brain.query_decision(delve_state_nearby, took_damage=False, enemies=[])
 print(f"Nearby dungeon stairs navigation decision: {dec_nearby['action']} | Reason: {dec_nearby['reason']}")
-assert dec_nearby["action"] == "MOVE_N", f"Expected character to move N towards stairs down at (15, 12)! Got: {dec_nearby['action']}"
+assert dec_nearby["action"] == "NAVIGATE_TO_CELL:15,12", f"Expected the engine path to the stairs down at (15, 12)! Got: {dec_nearby['action']}"
 assert "Dungeon Delving: Navigating to stairs down" in dec_nearby["reason"]
 
 # =====================================================================
@@ -3374,7 +3374,7 @@ explored_reset()
 dec = brain.query_decision(zone_state(ZB, engine_explored=True, unexplored=0), took_damage=False, enemies=[])
 print(f"  engine-explored turn: {dec['action']} | {dec['reason'][:90]}")
 assert ZB in brain.EXPLORED_ZONE_SET, "The engine's own explored flag must be remembered"
-assert "Zone fully explored" in dec["reason"] or dec["action"].startswith(("NAVIGATE_ZONE_EXIT", "MOVE_")), f"Unexpected decision {dec}"
+assert "Zone fully explored" in dec["reason"] or dec["action"].startswith(("NAVIGATE_ZONE_EXIT", "NAVIGATE_TO_CELL", "MOVE_")), f"Unexpected decision {dec}"
 
 # (e) Leaving a zone: the OLD zone's flag decides, not the new zone's (game_state describes the new zone after the hop)
 explored_reset()
@@ -4081,3 +4081,116 @@ assert brain.claws_toggle_action(_claw(True), False) is None, "Already on outsid
 assert brain.claws_toggle_action([], True) is None and brain.claws_toggle_action(_claw(True, usable=False), True) is None
 brain.TURN_CLOCK = 0; brain.CLAWS_LAST_TOGGLE["turn"] = -10_000
 print("  [OK] Test 71 Passed: claws off in towns, on elsewhere, with a flicker guard; no claws means no action.")
+
+# ---------------------------------------------------------------------------
+# Test 72: reacting to being on fire (HANDOFF issue 32), bounded so it can never loop
+# ---------------------------------------------------------------------------
+_sur = lambda **k: dict({d: "ground" for d in brain.CARDINAL_OFFSETS}, **k)
+_mv = lambda s: [f"MOVE_{d}" for d, t in s.items() if d in brain.CARDINAL_OFFSETS and "[hazard" not in t.lower()]
+brain.FIRE_REACTION["turns"] = 0
+_s = _sur(E="[SWIM: salty water]"); _st = {"is_on_fire": True}
+_d = brain.fire_reaction(_st, _s, _mv(_s))
+assert _d and _d["action"] == "MOVE_E" and "water" in _d["reason"], "Adjacent deep water must be preferred"
+brain.FIRE_REACTION["turns"] = 0
+_s = _sur(E="[HAZARD: fire] grass", NE="[HAZARD: fire] grass", SE="[HAZARD: fire] grass")
+_d = brain.fire_reaction(_st, _s, _mv(_s))
+assert _d and _d["action"] in ("MOVE_W", "MOVE_NW", "MOVE_SW"), f"Must flee away from fire on the east side, got {_d}"
+assert brain.fire_reaction({"is_on_fire": False}, _s, _mv(_s)) is None and brain.FIRE_REACTION["turns"] == 0
+assert brain.fire_reaction({"is_on_fire": True, "is_swimming": True}, _sur(E="[SWIM: x]"), ["MOVE_E"]) is None, "Already in water: nothing to do"
+assert brain.fire_reaction(_st, _sur(), _mv(_sur())) is None, "Burning with no fire or water nearby: let it burn out, no invented action"
+# multi-turn: never more than FIRE_REACTION_MAX consecutive reaction turns while the fire keeps burning
+brain.FIRE_REACTION["turns"] = 0
+_n = sum(1 for _ in range(40) if brain.fire_reaction(_st, _s, _mv(_s)))
+assert _n == brain.FIRE_REACTION_MAX, _n
+assert brain.fire_reaction({"is_on_fire": False}, _s, []) is None and brain.FIRE_REACTION["turns"] == 0, "Counter resets when the fire is out"
+print("  [OK] Test 72 Passed: water first, then away from flames, otherwise nothing; bounded at FIRE_REACTION_MAX turns.")
+
+# ---------------------------------------------------------------------------
+# Test 73: Lase is withheld when food is at stake and the fight is safe (HANDOFF issue 34 part C)
+# ---------------------------------------------------------------------------
+_bab = {"name": "baboon", "tx": 18, "ty": 10, "dist": 8, "dir": "E", "is_enemy": True, "difficulty": "Average", "corpse_chance": 40}
+_abl = [{"name": "Lase (4 charges)", "command": "CommandLase", "cooldown": 0, "usable": True},
+        {"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 0, "usable": True}]
+_need = {"can_butcher": True, "is_hungry": True, "food_count": 1}
+brain.LASE_POLICY_STATE["withheld"] = False
+_f = brain.filter_corpse_burners(_need, _abl, [_bab], 0.9)
+assert [a["command"] for a in _f] == ["CommandStunningForce"], "Lase must be withheld from a hungry butcher facing a corpse-yielding animal"
+_tmpl = build_templates.BUILD_TEMPLATES["esper_ited_away"]
+_dec = brain.fallback_esper(_need, [_bab], {}, ["MOVE_W"], ["MOVE_W"], _f, _tmpl, (10, 10), 10, 10, 18, 18, False, False, 0, 0, 0)
+assert "CommandLase" not in _dec["action"], f"Fallback must not use Lase while it is withheld: {_dec['action']}"
+# each reason to keep Lase
+assert brain.filter_corpse_burners({"can_butcher": False, "is_hungry": True}, _abl, [_bab], 0.9) == _abl, "Cannot butcher: burning costs nothing"
+assert brain.filter_corpse_burners({"can_butcher": True, "food_count": 6}, _abl, [_bab], 0.9) == _abl, "Well fed: no need"
+assert brain.filter_corpse_burners(_need, _abl, [_bab], 0.4) == _abl, "Low HP: survive first"
+assert brain.filter_corpse_burners(_need, _abl, [dict(_bab, difficulty="Tough")], 0.9) == _abl, "A tough enemy: survive first"
+assert brain.filter_corpse_burners(_need, _abl, [_bab] * 3, 0.9) == _abl, "Three hostiles: survive first"
+assert brain.filter_corpse_burners(_need, _abl, [dict(_bab, corpse_chance=0)], 0.9) == _abl, "No corpse at stake: Lase freely"
+_nokey = dict(_bab); del _nokey["corpse_chance"]
+assert brain.filter_corpse_burners(_need, _abl, [_nokey], 0.9) == _abl, "Unknown corpse data (older mod): never withhold"
+# with Lase available the old behaviour is unchanged
+_dec = brain.fallback_esper(_need, [dict(_bab, corpse_chance=0)], {}, ["MOVE_W"], ["MOVE_W"], _abl[:1], _tmpl, (10, 10), 10, 10, 18, 18, False, False, 0, 0, 0)
+assert _dec["action"].startswith("USE_ABILITY:CommandLase"), _dec["action"]
+brain.LASE_POLICY_STATE["withheld"] = False
+print("  [OK] Test 73 Passed: Lase withheld only for a hungry butcher in a safe fight against a corpse-yielding animal.")
+
+# ---------------------------------------------------------------------------
+# Test 74: delving to the stairs uses the engine path; a wall between him and the stairs can no longer flip him forever (issue 55)
+# ---------------------------------------------------------------------------
+_sd = (15, 12)
+brain.KNOWN_STAIRS_DOWN[dungeon_stratum11_zone] = {"tx": 15, "ty": 12, "name": "hole in the ground"}; brain.RETREAT_TARGET_LEVEL = None
+brain.UNREACHABLE_SECTORS.discard((dungeon_stratum11_zone, _sd)); brain.STAIRS_GIVEUP.clear(); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+brain.last_action = ""
+_dec = brain.query_decision(dict(delve_state_nearby), took_damage=False, enemies=[])
+assert _dec["action"] == "NAVIGATE_TO_CELL:15,12", _dec
+# the engine reports no route: greedy steps are a fallback, and only while they get closer
+brain.UNREACHABLE_SECTORS.add((dungeon_stratum11_zone, _sd))
+_acts = []
+for _i in range(brain.SECTOR_STALL_LIMIT + 6):
+    _st = dict(delve_state_nearby); _st["x"], _st["y"] = (15, 15) if _i % 2 == 0 else (14, 16)   # flipping, never closer than 3
+    brain.last_action = ""
+    _acts.append(brain.query_decision(_st, took_damage=False, enemies=[])["action"])
+assert (dungeon_stratum11_zone, _sd) in brain.STAIRS_GIVEUP, "A stairs target that is never approached must be given up"
+assert not any(a.startswith("MOVE_") and "stairs" in a for a in _acts[-3:]), "After the give-up no delve step may remain"
+# honest progress is never cut off
+brain.STAIRS_GIVEUP.clear(); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+assert all(brain.sector_target_ok(dungeon_stratum11_zone, _sd, (15, 40 - i), "stairs") for i in range(25))
+brain.UNREACHABLE_SECTORS.discard((dungeon_stratum11_zone, _sd)); brain.STAIRS_GIVEUP.clear(); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
+print("  [OK] Test 74 Passed: delving uses the engine path; with no route the greedy fallback gives up after 14 turns without progress.")
+
+# ---------------------------------------------------------------------------
+# Test 75: the autolevel circuit breaker retries; unspent points can no longer sit for a whole session (issue 56)
+# ---------------------------------------------------------------------------
+_br = brain.AutolevelBreaker(); _pts = (0, 134, 3, 13); brain.TURN_CLOCK = 100
+assert not _br.suppressed(_pts)
+assert not _br.note_autolevel(_pts), "First attempt does not trip"
+assert _br.note_autolevel(_pts), "Second identical attempt trips the breaker"
+assert _br.suppressed(_pts), "Suppressed right after tripping"
+brain.TURN_CLOCK = 100 + brain.AUTOLEVEL_RETRY_TURNS - 1
+assert _br.suppressed(_pts), "Still suppressed just before the retry time"
+brain.TURN_CLOCK = 100 + brain.AUTOLEVEL_RETRY_TURNS
+assert not _br.suppressed(_pts), "Retries once the wait is over, with the points unchanged"
+assert not _br.note_autolevel(_pts), "A retry gets a fresh first attempt"
+assert _br.note_autolevel(_pts), "and trips again if it still fails"
+_br.note_other((0, 34, 3, 14))
+assert not _br.suppressed((0, 34, 3, 14)) and _br.failed == 0, "Changed points (the purchase worked) reset the breaker"
+brain.TURN_CLOCK = 0
+print("  [OK] Test 75 Passed: the circuit breaker suppresses, retries after AUTOLEVEL_RETRY_TURNS, and resets on progress.")
+
+# ---------------------------------------------------------------------------
+# Test 76: a wall-dwelling, immobile hostile at distance 3 no longer locks him into combat (HANDOFF issue 57)
+# ---------------------------------------------------------------------------
+_lover = {"name": "jilted lover", "blueprint": "Jilted Lover", "dist": 3, "dir": "SE", "tx": 18, "ty": 18, "is_enemy": True, "is_companion": False,
+          "can_proselytize": True, "has_los": True, "level": 1, "difficulty": "Easy", "is_stationary": True, "corpse_chance": 2}
+assert brain.is_ignorable_stationary_enemy(_lover), "A stationary Easy hostile two or more tiles away is not a threat"
+assert not brain.is_ignorable_stationary_enemy(dict(_lover, dist=1)), "Adjacent: never ignored"
+assert not brain.is_ignorable_stationary_enemy(dict(_lover, difficulty="Tough")), "Tough: never ignored"
+assert not brain.is_ignorable_stationary_enemy(dict(_lover, name="turret", is_stationary=True)), "Turrets: never ignored"
+assert not brain.is_ignorable_stationary_enemy(dict(_lover, is_stationary=False, name="baboon")), "A mobile creature is a threat"
+brain.KNOWN_STAIRS_DOWN[dungeon_stratum11_zone] = {"tx": 15, "ty": 12, "name": "hole in the ground"}; brain.RETREAT_TARGET_LEVEL = None
+brain.UNREACHABLE_SECTORS.discard((dungeon_stratum11_zone, (15, 12))); brain.STAIRS_GIVEUP.clear()
+_st = dict(delve_state_nearby); _st["visible_entities"] = [_lover]; _st["zone_fully_explored"] = True
+_dec = brain.query_decision(_st, took_damage=False, enemies=[_lover])
+assert _dec["action"] == "NAVIGATE_TO_CELL:15,12", f"With only an immobile vine in view he must carry on to the stairs, got {_dec}"
+_dec = brain.query_decision(_st, took_damage=False, enemies=[dict(_lover, is_stationary=False, name="baboon", blueprint="Baboon")])
+assert not _dec["action"].startswith("NAVIGATE_TO_CELL"), f"A mobile hostile at distance 3 must still be fought, got {_dec}"
+print("  [OK] Test 76 Passed: stationary hostiles beyond one tile do not force combat; adjacent, tough and mobile ones still do.")
