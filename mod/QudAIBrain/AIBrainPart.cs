@@ -399,6 +399,129 @@ namespace QudAIBrain
             catch { return false; }
         }
 
+        // ---- Inventory (HANDOFF issue 66, stage 2) ----
+        // Export: every carried or worn item (natural weapons excluded) with its object id, so Python can score it (item_scoring.py) and name it in a command.
+        // Commands: DROP_ITEMS:<id>,<id> (whole items, never equipped, never in a settlement or with hostiles near) and EQUIP_ITEM:<id> (the engine's own AutoEquip).
+        // A drop mirrors what the engine's drop does (Inventory CommandDropObject: take it out of the pack, put it on the cell, mark DroppedByPlayer so autoget
+        // never picks it up again) without its quantity popup, which the mod could not answer. Every step is verified and undone if it fails.
+        private const int MaxInventoryExport = 90;
+        private const int MaxDropsPerCommand = 5;
+        private static int invActionSeq = 0;
+        private static string lastInvActionJson = "null";
+
+        private static string LastInvActionJson() { return "\"last_inventory_action\": " + lastInvActionJson + ","; }
+
+        private static string BuildInventoryJson(GameObject player)
+        {
+            var entries = new List<string>();
+            try
+            {
+                var items = new List<GameObject>();
+                try { items.AddRange(player.GetInventory()); } catch { }
+                try
+                {
+                    foreach (GameObject worn in player.GetEquippedObjects())
+                        if (worn != null && !items.Contains(worn)) items.Add(worn);
+                }
+                catch { }
+                foreach (GameObject it in items)
+                {
+                    if (it == null) continue;
+                    try { if (it.HasPart("NaturalEquipment")) continue; } catch { }
+                    string bp = it.Blueprint ?? "";
+                    bool eq = false; try { eq = it.Equipped != null; } catch { }
+                    int n = 1; try { n = it.Count; } catch { }
+                    int w = 0; try { w = it.Weight; } catch { }
+                    bool ident = true; try { ident = it.Understood(); } catch { }
+                    entries.Add("{\"id\": \"" + EscapeJson(it.ID ?? "") + "\", \"blueprint\": \"" + EscapeJson(bp) + "\", \"name\": \"" +
+                                EscapeJson(StripQudFormatting(it.DisplayNameOnly ?? bp)) + "\", \"count\": " + n + ", \"weight\": " + w +
+                                ", \"equipped\": " + (eq ? "true" : "false") + ", \"identified\": " + (ident ? "true" : "false") + "}");
+                    if (entries.Count >= MaxInventoryExport) break;
+                }
+            }
+            catch { }
+            return "[" + string.Join(",", entries) + "]";
+        }
+
+        private static void RecordInventoryAction(string kind, List<string> okNames, List<string> failed, GameObject player)
+        {
+            invActionSeq++;
+            string zone = ""; int x = -1, y = -1;
+            try { zone = player.CurrentCell.ParentZone.ZoneID ?? ""; x = player.CurrentCell.X; y = player.CurrentCell.Y; } catch { }
+            lastInvActionJson = "{\"seq\": " + invActionSeq + ", \"kind\": \"" + kind + "\", \"ok\": [" + string.Join(",", okNames.Select(s => "\"" + EscapeJson(s) + "\"")) +
+                                "], \"failed\": [" + string.Join(",", failed.Select(s => "\"" + EscapeJson(s) + "\"")) + "], \"zone\": \"" + EscapeJson(zone) + "\", \"x\": " + x + ", \"y\": " + y + "}";
+            UnityEngine.Debug.Log("[QudAI Inventory] " + kind + " ok=" + okNames.Count + " failed=" + failed.Count);
+        }
+
+        private static GameObject FindInventoryItem(GameObject player, string id)
+        {
+            try
+            {
+                foreach (GameObject o in player.GetInventory())
+                    if (o != null && o.ID == id) return o;
+            }
+            catch { }
+            return null;
+        }
+
+        private static void ExecuteDropItems(GameObject player, string idList)
+        {
+            var ok = new List<string>(); var failed = new List<string>();
+            try
+            {
+                Cell cell = player.CurrentCell;
+                Zone zone = cell != null ? cell.ParentZone : null;
+                bool refuse = cell == null || zone == null || zone.IsWorldMap() || IsSettlementZone(zone);
+                try { if (player.AreHostilesNearby()) refuse = true; } catch { }
+                var ids = (idList ?? "").Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Take(MaxDropsPerCommand).ToList();
+                foreach (string raw in ids)
+                {
+                    string id = raw.Trim();
+                    GameObject item = FindInventoryItem(player, id);
+                    if (refuse) { failed.Add(id + ":refused here"); continue; }
+                    if (item == null) { failed.Add(id + ":not in pack"); continue; }
+                    bool worn = false; try { worn = item.Equipped != null; } catch { }
+                    if (worn) { failed.Add(id + ":equipped"); continue; }
+                    string name = StripQudFormatting(item.DisplayNameOnly ?? item.Blueprint ?? "");
+                    try
+                    {
+                        item.RemoveFromContext(null);
+                        cell.AddObject(item, NoStack: true);
+                        try { item.SetIntProperty("DroppedByPlayer", 1); } catch { }
+                        if (FindInventoryItem(player, id) == null) ok.Add(id + "|" + name);
+                        else failed.Add(id + ":still in pack");
+                    }
+                    catch (Exception ex)
+                    {
+                        failed.Add(id + ":" + ex.GetType().Name);
+                        try { if (item.CurrentCell == null && FindInventoryItem(player, id) == null) player.TakeObject(item); } catch { }   // never lose an item to a failed drop
+                    }
+                }
+            }
+            catch (Exception ex) { failed.Add("error:" + ex.GetType().Name); }
+            RecordInventoryAction("drop", ok, failed, player);
+        }
+
+        private static void ExecuteEquipItem(GameObject player, string id)
+        {
+            var ok = new List<string>(); var failed = new List<string>();
+            try
+            {
+                GameObject item = FindInventoryItem(player, (id ?? "").Trim());
+                if (item == null) failed.Add(id + ":not in pack");
+                else
+                {
+                    string name = StripQudFormatting(item.DisplayNameOnly ?? item.Blueprint ?? "");
+                    bool done = false;
+                    try { done = player.AutoEquip(item, true, false, true); } catch { }
+                    bool worn = false; try { worn = item.Equipped != null; } catch { }
+                    if (done || worn) ok.Add(id + "|" + name); else failed.Add(id + ":AutoEquip refused");
+                }
+            }
+            catch (Exception ex) { failed.Add("error:" + ex.GetType().Name); }
+            RecordInventoryAction("equip", ok, failed, player);
+        }
+
         // ---- Loot (HANDOFF issue 59, BACKLOG B6, human decision 2026-10-06: "take everything unowned") ----
         // Engine facts (ENGINE_INTERNALS 14.9): the game's own autoexplore treats unowned, unopened containers as goals
         // (GameObject.ShouldAutoexploreAsChest) and ground items through CanAutoget/ShouldAutoget. Opening a chest with the "Open"
@@ -1227,6 +1350,9 @@ namespace QudAIBrain
                     }
                 }
                 catch { }
+                string inventoryJson = BuildInventoryJson(player);
+                int carryNow = 0, carryMax = 0;
+                try { carryNow = player.GetCarriedWeight(); carryMax = player.GetMaxCarriedWeight(); } catch { }
                 bool canButcher = !isSwimming && player.HasSkill("CookingAndGathering_Butchery") && corpsesNearby > 0;
                 bool canHarvest = !isSwimming && player.HasSkill("CookingAndGathering_Harvestry") && harvestableNearby > 0;
 
@@ -1386,6 +1512,8 @@ namespace QudAIBrain
                 sb.Append($"\"corpses_nearby\": {corpsesNearby},");
                 sb.Append($"\"food_sources\": [{string.Join(",", foodSourceEntries)}],");
                 sb.Append($"\"loot_sources\": [{string.Join(",", lootSourceEntries)}],");
+                sb.Append($"\"inventory\": {inventoryJson},");
+                sb.Append($"\"carry_weight\": {carryNow}, \"max_carry_weight\": {carryMax},");
                 sb.Append($"\"harvestable_nearby\": {harvestableNearby},");
                 sb.Append($"\"campfire_nearby\": {(campfireNearby ? "true" : "false")},");
                 sb.Append($"\"can_make_camp\": {(canMakeCamp ? "true" : "false")},");
@@ -1461,6 +1589,7 @@ namespace QudAIBrain
                 sb.Append(LastBurrowJson());
                 sb.Append(LastAbilityUseJson());
                 sb.Append(LastLootJson());
+                sb.Append(LastInvActionJson());
 
                 string reachableEdges = "";
                 try
@@ -2188,6 +2317,24 @@ namespace QudAIBrain
                 {
                     player.UseEnergy(1000, "Movement");
                 }
+                return;
+            }
+
+            if (act.StartsWith("DROP_ITEMS:"))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                ExecuteDropItems(player, action.Substring(11));
+                player.UseEnergy(1000, "Inventory");
+                return;
+            }
+
+            if (act.StartsWith("EQUIP_ITEM:"))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                ExecuteEquipItem(player, action.Substring(11));
+                player.UseEnergy(1000, "Inventory");
                 return;
             }
 

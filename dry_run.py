@@ -4667,9 +4667,19 @@ assert _chain_mail in _names and _scrap in _names, "Under pressure junk goes too
 assert _wedge not in _names and _lune not in _names, "Weightless items and equipped gear are never dropped"
 # stackable supplies are capped, dropping only the extra
 _fk = next(k for k, v in _cat.items() if v["group"] == "food" and v.get("loot"))
-_d = _is.choose_drops([{"blueprint": _fk, "count": 11}], _P["gunkin"], carried_weight=10, capacity=200)
-assert _d and _d[0][2] == 11 - _is.MAX_KEPT["food"], _d
-assert not _is.choose_drops([{"blueprint": _fk, "count": 11}], _P["gunkin"], carried_weight=10, capacity=200, hungry=True), "Hungry: keep the food"
+assert not _is.choose_drops([{"blueprint": _fk, "count": 11}], _P["gunkin"], carried_weight=10, capacity=200), "Stage 2 is conservative: food is never dropped automatically"
+# conservative whitelist (human, 2026-10-06): only gear that is outclassed or harmful, scrap and corpses are ever dropped; everything else is kept and re-evaluated later
+_book = next(k for k, v in _cat.items() if v["group"] == "book" and v.get("loot")); _trade = next(k for k, v in _cat.items() if v["group"] == "trade_good" and v.get("loot"))
+_other = next(k for k, v in _cat.items() if v["group"] == "other" and v.get("loot") and (v.get("weight") or 0) > 0)
+_junk = [x[0]["blueprint"] for x in _is.choose_drops([{"blueprint": _book}, {"blueprint": _trade}, {"blueprint": _other}, {"blueprint": _scrap}], _P["gunkin"], carried_weight=199, capacity=200)]
+assert _junk == [_scrap], f"Books, trade goods and unknown items are deferred even under pressure; scrap is not: {_junk}"
+# reputation trophies, quest items and relics carry a protect flag from the game's own parts and are never dropped
+_rep = next(k for k, v in _cat.items() if v.get("loot") and any(str(p).startswith("reputation") for p in v.get("protect", [])))
+assert _cat[_rep].get("protect"), "Catalog marks AddsRep items as protected"
+_prot = dict(_cat[_rep]); _prot["group"] = "scrap"      # even in a droppable group the flag wins
+_inv_p = [{"blueprint": _rep, "weight": 5, "group": "scrap"}]
+assert not _is.choose_drops(_inv_p, _P["gunkin"], carried_weight=199, capacity=200), "A reputation trophy is never dropped"
+assert _is.catalog()["_meta"]["counts"]["loot_items"] > 900 and _is.catalog()["_meta"]["protected_loot_items"] >= 30
 # quest items and equipped things are never dropped, whatever the pressure
 _q = next(k for k, v in _cat.items() if v["group"] == "quest_item" and v.get("loot"))
 assert not _is.choose_drops([{"blueprint": _q}, {"blueprint": _scrap, "equipped": True}], _P["gunkin"], carried_weight=199, capacity=200)
@@ -4688,3 +4698,76 @@ _shotgun = _find("pump shotgun")[0]
 assert _shotgun not in [x[0]["blueprint"] for x in _is.choose_drops([{"blueprint": _shotgun}, {"blueprint": _scrap}], _P["gunkin"], **_press)], "The only firearm of a firing build stays"
 assert _scrap not in [x[0]["blueprint"] for x in _is.choose_drops([{"blueprint": _scrap, "identified": False}], _P["gunkin"], **_press)], "Anything unidentified stays"
 print("  [OK] Test 87 Passed: scores follow the build's skills and stats, equip fills slots and replaces only clear upgrades, junk is dropped by relative merit and pressure.")
+
+
+# ---------------------------------------------------------------------------
+# Test 88: inventory management wired into the brain (HANDOFF issue 66, stage 2)
+# ---------------------------------------------------------------------------
+import tempfile as _tf88
+def _inv_reset():
+    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.INV_LAST_SEQ["seq"] = 0
+_inv_reset()
+_old_log = brain.ITEM_DROP_LOG_PATH
+brain.ITEM_DROP_LOG_PATH = _os.path.join(_tf88.mkdtemp(), "item_drops.jsonl")
+_tm88 = build_templates.BUILD_TEMPLATES["auspicious_beginnings"]
+_boots88 = _find("flawless crysteel boots")[0]; _lune88 = _find("zetachrome lune")[0]; _mail88 = _find("chain mail")[0]; _scrap88 = _find("bent metal sheet")[0]
+_row = lambda i, bp, eq=False, n=1, w=5, ident=True: {"id": i, "blueprint": bp, "name": bp, "count": n, "weight": w, "equipped": eq, "identified": ident}
+_gs88 = lambda inv, cw=40, **k: dict({"inventory": inv, "carry_weight": cw, "max_carry_weight": 200}, **k)
+# 1. an empty slot and a clear upgrade: one equip, naming the item by its id
+_d = brain.choose_inventory_action(_gs88([_row("a1", _boots88), _row("a2", _mail88, eq=True)]), _tm88, False)
+assert _d and _d["action"] == "EQUIP_ITEM:a1", _d
+# 2. after the game reports success the next look finds nothing more to do, and does not ask again while nothing changes
+_both = _gs88([_row("a1", _boots88, eq=True), _row("a2", _mail88, eq=True)])
+_both["last_inventory_action"] = {"seq": 1, "kind": "equip", "ok": ["a1|boots"], "failed": [], "zone": "Z", "x": 3, "y": 4}
+brain.note_inventory_action(_both); brain.note_inventory_action(_both)
+assert brain.INV_LAST_SEQ["seq"] == 1, "The report is read once"
+assert brain.choose_inventory_action(_both, _tm88, False) is None and brain.INV_STATE["sig"] is not None
+assert brain.choose_inventory_action(_both, _tm88, False) is None, "Unchanged inventory: nothing to recompute"
+# 3. a refusal twice stops the retries (R4: a command the game refuses must not loop)
+_inv_reset()
+_again = _gs88([_row("a1", _boots88), _row("a2", _mail88, eq=True)])
+for _seq in (1, 2):
+    assert brain.choose_inventory_action(_again, _tm88, False)["action"] == "EQUIP_ITEM:a1"
+    _again["last_inventory_action"] = {"seq": _seq, "kind": "equip", "ok": [], "failed": ["a1:AutoEquip refused"], "zone": "Z", "x": 1, "y": 1}
+    brain.note_inventory_action(_again)
+assert brain.INV_STATE["fails"]["a1"] == 2 and brain.choose_inventory_action(_again, _tm88, False) is None, "After two refusals the item is left alone"
+# 4. junk under weight pressure: dropped, logged with where it was left; protected, weightless and unidentified things stay
+_inv_reset()
+_rep88 = next(k for k, v in _cat.items() if v.get("loot") and v.get("protect") and v["group"] not in _is.EQUIPMENT_GROUPS)
+_pile = _gs88([_row("g1", _lune88, eq=True), _row("g2", _mail88), _row("s1", _scrap88, n=3, w=4), _row("p1", _rep88, w=6), _row("u1", _scrap88, w=9, ident=False), _row("z1", _find("cybernetics credit wedge")[0], w=0)], cw=190)
+_d = brain.choose_inventory_action(_pile, _tm88, False)
+_ids = _d["action"].split(":", 1)[1].split(",")
+assert _d["action"].startswith("DROP_ITEMS:") and "g2" in _ids and "s1" in _ids, _d
+assert not ({"g1", "p1", "u1", "z1"} & set(_ids)), f"Equipped, protected, unidentified and weightless items stay: {_ids}"
+_pile["last_inventory_action"] = {"seq": 5, "kind": "drop", "ok": [f"{i}|{i}" for i in _ids], "failed": [], "zone": "JoppaWorld.1.2.3", "x": 12, "y": 7}
+with _ctx.redirect_stdout(_io.StringIO()):
+    brain.note_inventory_action(_pile)
+_logged = [json.loads(l) for l in open(brain.ITEM_DROP_LOG_PATH, encoding="utf-8")]
+assert len(_logged) == len(_ids) and all(r["zone"] == "JoppaWorld.1.2.3" and r["x"] == 12 and r["y"] == 7 and r["reason"] for r in _logged), "Every drop is logged with where it was left and why"
+# 5. never in a settlement, never swimming, never an unidentified upgrade, nothing without an inventory
+_inv_reset()
+assert brain.choose_inventory_action(_gs88([_row("a1", _boots88)]), _tm88, True) is None, "Not in a settlement"
+assert brain.choose_inventory_action(_gs88([_row("a1", _boots88)], is_swimming=True), _tm88, False) is None
+assert brain.choose_inventory_action(_gs88([_row("a1", _boots88, ident=False)]), _tm88, False) is None, "An unidentified item is not equipped"
+assert brain.choose_inventory_action({"inventory": []}, _tm88, False) is None and brain.choose_inventory_action({}, _tm88, False) is None
+# 6. in the full decision it comes before exploring and before the ammo top-off
+_inv_reset()
+brain.KNOWN_STAIRS_DOWN.clear(); brain.RETREAT_TARGET_LEVEL = None; brain.LAST_ZONE_ENTRY = None
+_st = dict(delve_state_nearby); _st["zone_fully_explored"] = True; _st["visible_entities"] = []; _st["loot_sources"] = []
+_st.update(_gs88([_row("a1", _boots88), _row("a2", _mail88, eq=True)]))
+_dec = brain.query_decision(dict(_st), took_damage=False, enemies=[])
+assert _dec["action"].startswith("EQUIP_ITEM:") and "Inventory" in _dec["reason"], _dec
+# 7. with a hostile in view the decision is a combat one: the inventory step is Phase A only
+_inv_reset()
+_foe = {"name": "baboon", "blueprint": "Baboon", "is_enemy": True, "dist": 1, "dir": "E", "difficulty": "Average", "has_los": True, "tx": 16, "ty": 15}
+_st2 = dict(_st); _st2["visible_entities"] = [_foe]; _st2["surroundings"] = {"N": "dirt floor", "S": "dirt floor", "E": "[ENEMY: baboon]", "W": "dirt floor"}
+assert not brain.query_decision(_st2, took_damage=False, enemies=[_foe])["action"].startswith(("EQUIP_ITEM", "DROP_ITEMS")), "Never reorganise the pack in a fight"
+# 8. a gun build equips its firearm, and does not put a dagger in the hand that holds it
+_gk = build_templates.BUILD_TEMPLATES["gunkin"]; _pistol88 = _find("chain pistol")[0]; _dag88 = _find("steel dagger")[0]
+_inv_reset()
+_d = brain.choose_inventory_action(_gs88([_row("g1", _pistol88), _row("d1", _dag88)]), _gk, False)
+assert _d and _d["action"] == "EQUIP_ITEM:g1", _d
+_inv_reset()
+assert brain.choose_inventory_action(_gs88([_row("g1", _pistol88, eq=True), _row("d1", _dag88)]), _gk, False) is None, "No dagger swap while holding the pistol"
+brain.ITEM_DROP_LOG_PATH = _old_log; _inv_reset()
+print("  [OK] Test 88 Passed: equip clear upgrades, drop only whitelisted junk under pressure with a log of where it was left, never loop on a refusal, never in a fight or a town.")

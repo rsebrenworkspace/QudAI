@@ -37,6 +37,9 @@ KEEP_FLOOR = 3.0                             # an unequipped item scoring below 
 BURDEN_DROP_RATIO = 0.70                     # carried weight / capacity above which junk is dropped
 DOMINATED_MARGIN = 2.0                       # an item must beat the one it replaces by this much to be worth equipping
 EQUIPMENT_GROUPS = ("armor", "shield", "melee_weapon", "missile_weapon")
+# Stage 2 is conservative (human, 2026-10-06: some "junk" raises factions or may be a quest item, to be re-evaluated later): only these groups are ever
+# dropped automatically. Everything else (books, data disks, trade goods, keys, cybernetics, trinkets, tools, consumables...) is kept.
+DROPPABLE_GROUPS = ("armor", "shield", "melee_weapon", "missile_weapon", "scrap", "corpse")
 MAX_KEPT = {"food": 6, "tonic": 8, "medication": 6, "power_cell": 3, "grenade": 4, "thrown_weapon": 4, "water_container": 1, "light_source": 1}
 
 SKILL_ROOTS = {"Axe": "Axe", "Cudgel": "Cudgel", "Pistol": "Pistol", "Rifles": "Rifle", "Rifle": "Rifle", "LongBlades": "LongBlades", "LongBlade": "LongBlades",
@@ -290,12 +293,20 @@ def choose_equips(inventory, profile):
         best = cands[0]
         if not best[1].get("equipped") and (not worn or best[0] >= worn[0][0] + DOMINATED_MARGIN):
             actions.append((best[1], slot, f"scores {best[0]:g} vs {worn[0][0]:g} worn" if worn else f"scores {best[0]:g}, slot empty"))
+    holds_firearm = profile["ranged"] and any(_entry(it).get("group") == "missile_weapon" and _entry(it).get("skill") in profile["weapon_skills"] for it in inventory)
     weapons = [(score_item(_entry(it), profile)[0], it) for it in inventory if _entry(it).get("group") in ("melee_weapon",)]
-    if weapons:
+    if weapons and not holds_firearm:      # a build that shoots carries a firearm to hold: no dagger swaps until it has none
         weapons.sort(key=lambda c: -c[0])
         worn = [c for c in weapons if c[1].get("equipped")]
         if not weapons[0][1].get("equipped") and (not worn or weapons[0][0] >= worn[0][0] + DOMINATED_MARGIN):
             actions.append((weapons[0][1], "Hand", f"scores {weapons[0][0]:g}" + (f" vs {worn[0][0]:g} wielded" if worn else "")))
+    if profile["ranged"]:
+        guns = [(score_item(_entry(it), profile)[0], it) for it in inventory if _entry(it).get("group") == "missile_weapon" and _entry(it).get("skill") in profile["weapon_skills"]]
+        if guns:
+            guns.sort(key=lambda c: -c[0])
+            worn = [c for c in guns if c[1].get("equipped")]
+            if not guns[0][1].get("equipped") and (not worn or guns[0][0] >= worn[0][0] + DOMINATED_MARGIN):
+                actions.append((guns[0][1], "Missile", f"firearm scores {guns[0][0]:g}" + (f" vs {worn[0][0]:g} held" if worn else "")))
     if profile["wants_shield"]:
         shields = [(score_item(_entry(it), profile)[0], it) for it in inventory if _entry(it).get("group") == "shield"]
         if shields:
@@ -332,6 +343,10 @@ def choose_drops(inventory, profile, carried_weight=None, capacity=None, hungry=
         g = e.get("group")
         if it.get("equipped") or g in ("quest_item", "artifact") or it.get("never_drop") or e.get("escape") or it.get("identified") is False or it.get("unidentified"):
             continue                      # never: worn gear, quest items, artifacts, escape gear, anything not yet identified
+        if e.get("protect"):
+            continue                      # reputation trophies, quest items, faction deeds, relics (catalog `protect`)
+        if g not in DROPPABLE_GROUPS:
+            continue                      # conservative: only the whitelisted groups are ever dropped automatically
         if g == "light_source" and n_light <= 1:
             continue                      # the only light source
         if g == "missile_weapon" and n_ranged <= 1 and profile["ranged"]:

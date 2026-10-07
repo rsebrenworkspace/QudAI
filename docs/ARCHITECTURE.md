@@ -21,8 +21,8 @@
 | Tests | `dry_run.py` | Single-decision snapshot tests. Cannot see C# behavior or multi-turn loops. |
 | Deploy | `sync_mod.py` | Copies the mod into Qud's mod folder. |
 
-<!-- tests-max: 87 -->
-`dry_run.py` currently holds Tests 1-87. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
+<!-- tests-max: 88 -->
+`dry_run.py` currently holds Tests 1-88. [verified in code @3e3c105] Update the marker above when a test is added; `tools/check_docs.py` compares it to the highest `Test N` in `dry_run.py`.
 
 ## 2. IPC protocol
 
@@ -112,6 +112,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 - `ATTACK_WALL:<dir>` (aliases `FORCE_ATTACK:`, `ATTACK_CELL:`): melee a destructible obstacle; refused in settlements
 - `USE_STAIRS_DOWN`, `USE_STAIRS_UP`
 - `GET_ITEM`
+- `DROP_ITEMS:<id>,<id>` (up to 5 whole items by object id): takes each out of the pack and puts it on the player's cell with `DroppedByPlayer` set (so autoget never re-takes it); refuses equipped items, settlements and hostiles nearby; verifies each item left the pack and gives it back if the drop failed. `EQUIP_ITEM:<id>`: the engine's `AutoEquip(item, forced)`. Both cost a turn and report in `last_inventory_action`.
 - `LOOT`: takes one unowned ground item, or empties one unowned chest, on his cell or an adjacent one (`TryLootNearby`); never in a settlement, never with hostiles nearby, at most 80 actions per zone; the same step also runs at the start of every `AUTOEXPLORE` turn
 - `EAT`, `MAKE_CAMP`, `COOK_MEAL`, `BUTCHER`, `HARVEST`: programmatic, no UI modals
 - `AUTOLEVEL`, `AUTOLEVEL_STAT:<stat>`, `AUTOLEVEL_SKILL:<class>`, `AUTOLEVEL_MUTATION:<name>`, `AUTOLEVEL_BUY_MUTATION[:<name>]`
@@ -151,6 +152,7 @@ overloads do not match. Add the startup self-check (HANDOFF, Next steps).
 - **Move feedback:** `last_move_failed`, `last_failed_dir` (a direction, or `PATH_BLOCKED`)
 - **Survival:** `hunger_level`, `is_hungry`, `is_famished`, `has_food`, `food_count`, `food_items`, `corpses_nearby`,
   `harvestable_nearby`, `food_sources` (up to 8 butcherable corpses/harvestable plants within 15 tiles: `kind`, `name`, `tx`, `ty`, `dist`; a corpse is an object with a `Butcherable` part, never a living creature; empty while swimming), `campfire_nearby`, `can_make_camp/cook/butcher/harvest` (`can_make_camp` is false when a plant or fire is within 2 cells, T-1.12), `is_swimming`, `is_on_fire`, `water_drams`
+- **Inventory (T-1.44):** `inventory` (every carried or worn item except natural weapons: `id`, `blueprint`, `name`, `count`, `weight` (per unit), `equipped`, `identified`), `carry_weight`, `max_carry_weight` and `last_inventory_action` (`seq`, `kind` equip or drop, `ok` as `id|name`, `failed` as `id:reason`, `zone`, `x`, `y`). Python `choose_inventory_action` (Phase A step 3C, after loot) equips one clear upgrade per turn (never an unidentified item), then drops whitelisted junk in batches of 5; `note_inventory_action` stops retrying an id the game refused twice and writes every drop to `memory/item_drops.jsonl` with the zone and cell where it was left. Whitelist (`item_scoring.DROPPABLE_GROUPS`): outclassed or harmful armor, shields and weapons, scrap and corpses; never anything equipped, protected (reputation trophies, quest items, faction deeds, relics: catalog `protect`), unidentified, weightless, an escape item, the sole light source or the sole firearm of a firing build. Everything else is deferred to a later stage.
 - **Loot (T-1.34):** `loot_sources` (up to 8 within 14 tiles: `kind` `item` or `chest`, `name`, `tx`, `ty`, `dist`; unowned only, empty outside settlements; an item is one the engine would autoget (`CanAutoget`, `ShouldAutoget`), not a corpse, within the weight guard; a chest is `ShouldAutoexploreAsChest` with contents and no `Brain`/`Mimic`) and `last_loot` (`seq`, `kind`, `name`, `count`, `left`). Python `choose_loot_action` (Phase A step 3B, after resting) walks to the nearest source with pursuit and blacklist guards and sends `LOOT` when adjacent; `note_loot` prints `[LOOT] ...`.
 - **Combat:** `hostiles_nearby`, `hostiles_adjacent`, `effects`, `abilities`, `is_sprinting`, `has_missile_weapon`,
   `missile_ammo`, `missile_max_ammo`, `inventory_ammo`

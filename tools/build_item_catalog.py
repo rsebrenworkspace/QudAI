@@ -142,6 +142,18 @@ def group_of(chain, parts, tags, category=""):
     return "other"
 
 
+# Parts that make an item matter beyond its stats: faction reputation trophies (`AddsRep`), quest items, faction deeds, Sultanate relics.
+PROTECT_PARTS = {"AddsRep": "reputation", "CompleteQuestOnTaken": "quest", "QuestStepFinisher": "quest", "QuestStarter": "quest", "FactionDeed": "faction",
+                 "SultanMask": "relic"}
+
+
+def protect_reasons(parts):
+    out = sorted({why for p, why in PROTECT_PARTS.items() if p in parts})
+    if "AddsRep" in parts and parts["AddsRep"].get("Faction"):
+        out = [f"reputation:{parts['AddsRep']['Faction']}" if w == "reputation" else w for w in out]
+    return out
+
+
 def num(v, default=None):
     try:
         return float(v) if "." in str(v) else int(v)
@@ -163,6 +175,9 @@ def build_entry(cat, name):
          "loot": loot, "natural": natural, "projectile": projectile, "takeable": takeable,
          "rare": any(k.startswith("StaticObjectsTable:") for k in tags),      # placed unique items (quest rewards, story artifacts), not random loot
          "escape": any("Teleport" in p for p in parts)}                        # recoilers and other teleporting gear: how the character gets out of trouble
+    why = protect_reasons(parts)
+    if why:
+        e["protect"] = why
     if grp in ("armor", "shield"):
         a = parts.get("Armor") or parts.get("Shield") or {}
         e.update({"slot": a.get("WornOn", ""), "av": num(a.get("AV"), 0), "dv": num(a.get("DV"), 0), "ma": num(a.get("MA")), "armor_attrs": a})
@@ -207,6 +222,7 @@ def main():
                    "not_takeable": sum(1 for v in out.values() if not v["takeable"])},
         "rare_loot_items": sum(1 for v in loot.values() if v["rare"]),
         "escape_loot_items": sum(1 for v in loot.values() if v["escape"]),
+        "protected_loot_items": sum(1 for v in loot.values() if v.get("protect")),
         "loot_by_group": dict(by_group.most_common()),
         "loot_by_physics_category": dict(by_cat.most_common()),
         "loot_by_tier": dict(sorted(by_tier.items())),

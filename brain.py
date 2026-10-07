@@ -12,6 +12,7 @@ import build_templates
 import mutation_policy
 import ability_registry
 import danger_ledger
+import item_scoring
 
 # Paths
 # QUDAI_EXCHANGE_DIR overrides the folder (tests point it at a temp dir so they can never touch the real game files).
@@ -541,6 +542,86 @@ class AutolevelBreaker:
             self.failed = 0
             self.last_points = points
             self.tripped_at = None
+
+
+# Inventory management (HANDOFF issue 66, stage 2). The mod exports `inventory` (id, blueprint, count, weight, equipped, identified), `carry_weight` and
+# `max_carry_weight`; item_scoring.py decides. One equip per turn (the engine's AutoEquip chooses the body part), then drops in batches of up to
+# INV_MAX_DROPS. Conservative by the human's decision (2026-10-06): only outclassed or harmful gear, scrap and corpses are dropped, and never anything
+# protected (reputation trophies, quest items, relics), unidentified, equipped or weightless. Every drop is logged WITH WHERE it was left, so it can be fetched.
+INV_MAX_DROPS = 5
+INV_FAIL_LIMIT = 2
+INV_STATE = {"sig": None, "pending": None, "fails": {}, "profiles": {}}
+INV_LAST_SEQ = {"seq": 0}
+ITEM_DROP_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "item_drops.jsonl")
+
+
+def _inv_profile(template):
+    name = template.get("name", "")
+    if name not in INV_STATE["profiles"]:
+        INV_STATE["profiles"][name] = item_scoring.build_profile(template)
+    return INV_STATE["profiles"][name]
+
+
+def choose_inventory_action(game_state, template, is_town):
+    """EQUIP_ITEM (one clear upgrade) or DROP_ITEMS (junk) decision, or None. Phase A only: the caller guarantees no combat."""
+    inv = game_state.get("inventory")
+    if is_town or game_state.get("is_swimming") or not isinstance(inv, list) or not inv:
+        return None
+    sig = tuple(sorted((i.get("id"), bool(i.get("equipped")), i.get("count", 1)) for i in inv)) + (game_state.get("carry_weight"),)
+    if sig == INV_STATE["sig"]:
+        return None                                   # nothing changed since the last time we found nothing to do
+    items = [dict(i, blueprint=i.get("blueprint")) for i in inv if i.get("id") and not INV_STATE["fails"].get(i.get("id"), 0) >= INV_FAIL_LIMIT]
+    profile = _inv_profile(template)
+    # 1. equip: one clear upgrade per turn, never an unidentified item (its real stats are unknown)
+    for it, slot, why in item_scoring.choose_equips([i for i in items if i.get("identified") is not False or i.get("equipped")], profile):
+        INV_STATE["pending"] = {"kind": "equip", "ids": [it["id"]], "reasons": {it["id"]: why}, "names": {it["id"]: it.get("name")}}
+        return {"action": f"EQUIP_ITEM:{it['id']}", "reason": f"Inventory: equipping {it.get('name')} in {slot} ({why})"}
+    # 2. drop junk
+    carried, cap = game_state.get("carry_weight"), game_state.get("max_carry_weight")
+    drops = item_scoring.choose_drops(items, profile, carried_weight=carried, capacity=cap, hungry=bool(game_state.get("is_hungry")))
+    drops = [d for d in drops if d[2] >= (d[0].get("count") or 1)][:INV_MAX_DROPS]       # whole stacks only: the engine's partial drop asks a quantity popup
+    if drops:
+        ids = [d[0]["id"] for d in drops]
+        INV_STATE["pending"] = {"kind": "drop", "ids": ids, "reasons": {d[0]["id"]: d[1] for d in drops}, "names": {d[0]["id"]: d[0].get("name") for d in drops}}
+        names = ", ".join(str(d[0].get("name")) for d in drops)
+        return {"action": "DROP_ITEMS:" + ",".join(ids), "reason": f"Inventory: dropping {names} ({drops[0][1]})"}
+    INV_STATE["sig"] = sig
+    return None
+
+
+def log_item_drop(record):
+    """One JSON line per dropped item: what, why, and the zone and cell where it was left. Never raises."""
+    try:
+        with open(ITEM_DROP_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + chr(10))
+    except Exception:
+        pass
+
+
+def note_inventory_action(game_state):
+    """Reads the mod's report of the last equip or drop once: logs drops, and stops retrying an id the game refused twice. Never raises."""
+    try:
+        la = game_state.get("last_inventory_action")
+        if not la or la.get("seq", 0) <= INV_LAST_SEQ["seq"]:
+            return
+        INV_LAST_SEQ["seq"] = la.get("seq", 0)
+        pend = INV_STATE.get("pending") or {}
+        INV_STATE["sig"] = None                      # something happened: look again
+        for item in la.get("ok", []):
+            iid, _, name = str(item).partition("|")
+            INV_STATE["fails"].pop(iid, None)
+            if la.get("kind") == "drop":
+                log_item_drop({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "zone": la.get("zone"), "x": la.get("x"), "y": la.get("y"), "id": iid, "name": name,
+                               "reason": (pend.get("reasons") or {}).get(iid, "")})
+                print(f"[INVENTORY] dropped {name} at ({la.get('x')}, {la.get('y')}): {(pend.get('reasons') or {}).get(iid, '')}")
+            else:
+                print(f"[INVENTORY] equipped {name}: {(pend.get('reasons') or {}).get(iid, '')}")
+        for item in la.get("failed", []):
+            iid = str(item).split(":", 1)[0]
+            INV_STATE["fails"][iid] = INV_STATE["fails"].get(iid, 0) + 1
+            print(f"[INVENTORY] {la.get('kind')} refused for {item} (attempt {INV_STATE['fails'][iid]} of {INV_FAIL_LIMIT})")
+    except Exception:
+        pass
 
 
 # Burrowing Claws policy (HANDOFF issue 54, BACKLOG B7 promoted by the human 2026-10-06). The toggle (`CommandToggleBurrowingClaws`) is the
@@ -3213,6 +3294,11 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         if loot_decision:
             return loot_decision
 
+        # 3C. Inventory: equip clear upgrades, drop junk (issue 66). Phase A only, so never with a hostile around.
+        inv_decision = choose_inventory_action(game_state, template, is_town)
+        if inv_decision:
+            return inv_decision
+
         # 4. Top-off ammo while area is secure (only if we have spare ammo in inventory!)
         if has_missile and max_ammo > 0 and ammo < max_ammo and inv_ammo > 0:
             return {"action": "RELOAD", "reason": f"Safe top-off: reloading rifle ({ammo}/{max_ammo}, Inv: {inv_ammo})"}
@@ -3624,6 +3710,7 @@ def main():
                 note_burrow_progress(game_state)
                 note_ability_use(game_state)
                 note_loot(game_state)
+                note_inventory_action(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
 
