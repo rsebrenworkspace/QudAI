@@ -456,6 +456,46 @@ def fire_reaction(game_state, surroundings, valid_moves):
     return {"action": best[1], "reason": f"ON FIRE: moving {best[1][5:]} away from the flames ({len(hazards)} burning cells adjacent)"}
 
 
+# Autolevel circuit breaker (HANDOFF issue 56). Two AUTOLEVEL decisions in a row that leave the points unchanged stop autolevel so a purchase
+# the game refuses cannot freeze the loop. It used to stay off until the points changed, and points only change on a level-up: a character
+# sat on 134 unspent SP for a whole session. Now it retries after AUTOLEVEL_RETRY_TURNS.
+AUTOLEVEL_RETRY_TURNS = 100
+
+
+class AutolevelBreaker:
+    def __init__(self):
+        self.failed = 0
+        self.last_points = None
+        self.tripped_at = None
+
+    def suppressed(self, points):
+        if self.failed >= 2 and points == self.last_points:
+            if self.tripped_at is not None and TURN_CLOCK - self.tripped_at >= AUTOLEVEL_RETRY_TURNS:
+                self.failed = 0
+                self.tripped_at = None
+                return False
+            return True
+        return False
+
+    def note_autolevel(self, points):
+        """Called when the decision is an AUTOLEVEL action. True when the breaker trips on this attempt."""
+        if points == self.last_points:
+            self.failed += 1
+        else:
+            self.last_points = points
+            self.failed = 1
+        if self.failed >= 2:
+            self.tripped_at = TURN_CLOCK
+            return True
+        return False
+
+    def note_other(self, points):
+        if points != self.last_points:
+            self.failed = 0
+            self.last_points = points
+            self.tripped_at = None
+
+
 # Burrowing Claws policy (HANDOFF issue 54, BACKLOG B7 promoted by the human 2026-10-06). The toggle (`CommandToggleBurrowingClaws`) is the
 # "Digging" mode: with it on, the engine pathfinder (PathAsBurrower) and bumping walls dig through them [verified in code strings; the
 # mechanism of the bump is inferred from 94 stationary NAVIGATE turns]. That is good in procedural dungeons and forbidden in a settlement (R7).
@@ -3253,8 +3293,7 @@ def main():
     remove_stale_flag()
     twitch_manager = twitch_bot.start_twitch_in_background()
 
-    autolevel_failed_attempts = 0
-    last_autolevel_points = None
+    autolevel_breaker = AutolevelBreaker()
 
     print("==================================================")
     print(" Caves of Qud Autonomous Agent (Hierarchical)")
@@ -3405,28 +3444,20 @@ def main():
                 print(f"SURROUNDINGS (5x5):\n{grid_display}\n")
 
                 cur_points = (game_state.get("ap", 0), game_state.get("sp", 0), game_state.get("mp", 0), len(game_state.get("skills", [])))
-                suppress_auto = (autolevel_failed_attempts >= 2 and cur_points == last_autolevel_points)
+                suppress_auto = autolevel_breaker.suppressed(cur_points)
 
                 decision = query_decision(game_state, took_damage, enemies, suppress_autolevel=suppress_auto)
                 action = decision.get("action", "WAIT")
                 reason = decision.get("reason", "None given")
 
                 if action.startswith("AUTOLEVEL"):
-                    if cur_points == last_autolevel_points:
-                        autolevel_failed_attempts += 1
-                    else:
-                        last_autolevel_points = cur_points
-                        autolevel_failed_attempts = 1
-
-                    if autolevel_failed_attempts >= 2:
-                        print(f"[AUTOLEVEL CIRCUIT BREAKER] Unspent points {cur_points} failed to allocate after {autolevel_failed_attempts} attempts. Suppressing autolevel to prevent loop freeze.")
+                    if autolevel_breaker.note_autolevel(cur_points):
+                        print(f"[AUTOLEVEL CIRCUIT BREAKER] Unspent points {cur_points} (AP, SP, MP, skills) failed to allocate ({action}). Suppressing autolevel for {AUTOLEVEL_RETRY_TURNS} turns.")
                         decision = query_decision(game_state, took_damage, enemies, suppress_autolevel=True)
                         action = decision.get("action", "WAIT")
                         reason = decision.get("reason", "None given")
                 else:
-                    if cur_points != last_autolevel_points:
-                        autolevel_failed_attempts = 0
-                        last_autolevel_points = cur_points
+                    autolevel_breaker.note_other(cur_points)
 
                 # No instant companion registration here: a Proselytize/Beguile attempt can fail, and the next
                 # state.json reports the real result (`is_companion`, `companions`). AGENTS.md R2.

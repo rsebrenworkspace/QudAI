@@ -4156,3 +4156,22 @@ brain.STAIRS_GIVEUP.clear(); brain.SECTOR_PROGRESS.update({"key": None, "best": 
 assert all(brain.sector_target_ok(dungeon_stratum11_zone, _sd, (15, 40 - i), "stairs") for i in range(25))
 brain.UNREACHABLE_SECTORS.discard((dungeon_stratum11_zone, _sd)); brain.STAIRS_GIVEUP.clear(); brain.SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
 print("  [OK] Test 74 Passed: delving uses the engine path; with no route the greedy fallback gives up after 14 turns without progress.")
+
+# ---------------------------------------------------------------------------
+# Test 75: the autolevel circuit breaker retries; unspent points can no longer sit for a whole session (issue 56)
+# ---------------------------------------------------------------------------
+_br = brain.AutolevelBreaker(); _pts = (0, 134, 3, 13); brain.TURN_CLOCK = 100
+assert not _br.suppressed(_pts)
+assert not _br.note_autolevel(_pts), "First attempt does not trip"
+assert _br.note_autolevel(_pts), "Second identical attempt trips the breaker"
+assert _br.suppressed(_pts), "Suppressed right after tripping"
+brain.TURN_CLOCK = 100 + brain.AUTOLEVEL_RETRY_TURNS - 1
+assert _br.suppressed(_pts), "Still suppressed just before the retry time"
+brain.TURN_CLOCK = 100 + brain.AUTOLEVEL_RETRY_TURNS
+assert not _br.suppressed(_pts), "Retries once the wait is over, with the points unchanged"
+assert not _br.note_autolevel(_pts), "A retry gets a fresh first attempt"
+assert _br.note_autolevel(_pts), "and trips again if it still fails"
+_br.note_other((0, 34, 3, 14))
+assert not _br.suppressed((0, 34, 3, 14)) and _br.failed == 0, "Changed points (the purchase worked) reset the breaker"
+brain.TURN_CLOCK = 0
+print("  [OK] Test 75 Passed: the circuit breaker suppresses, retries after AUTOLEVEL_RETRY_TURNS, and resets on progress.")
