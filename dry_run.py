@@ -4588,6 +4588,22 @@ try:
     _res5 = _lab.run_lab(["lab-good", "lab-garbage"], _scn[:2], base=_base, repeat=1, timeout=5.0, unload=False, manage_models=False, out_dir=_od, log=lambda *a: None, do_warm=False)
     assert "| lab-good |" in _res5["markdown"] and "Scenario by scenario" in _res5["markdown"]
     assert sorted(f.split(".")[-1] for f in _os.listdir(_od)) == ["json", "md"]
+    # `lms` prints UTF-8 progress characters: decoding them with the Windows default code page crashed the first managed run
+    import sys as _sys
+    _r = _lab.run_cmd([_sys.executable, "-c", "import sys; sys.stdout.buffer.write('ok \\u2713 \\u2588 and a stray byte \\x8f'.encode('utf-8')[:-1] + b'\\x8f')"], 30)
+    assert _r is not None and _r.returncode == 0 and _r.stdout.startswith("ok") and "\u2713" in _r.stdout, _r
+    assert _lab.run_cmd(["definitely-not-a-command-xyz"], 5) is None, "A missing command is None, not an exception"
+    # a command that produced no output must not crash the load helper
+    _real_lms = _lab._lms
+    class _NoOut:
+        returncode = 1; stdout = None; stderr = None
+    _lab._lms = lambda *a, **k: _NoOut()
+    try:
+        _okx, _sx, _mx = _lab.lms_load("m", 8192)
+        assert _okx is False and _mx == "", (_okx, _mx)
+        assert _lab.lms_ps() == []
+    finally:
+        _lab._lms = _real_lms
     # helpers
     assert _lab.norm_action("USE_ABILITY:CommandLase:SE (beam)") == "USE_ABILITY:CommandLase" and _lab.norm_action("MOVE_E (Melee Attack x)") == "MOVE_E"
     assert _lab.policy_verdict("REST", {"must_not": ["REST"]})[0] is False and _lab.policy_verdict("MOVE_E", {"should_any": ["MOVE_"]})[0] is True

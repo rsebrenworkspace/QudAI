@@ -87,7 +87,8 @@ def gpu_used_mib():
     if not exe:
         return None
     try:
-        out = subprocess.run([exe, "--query-gpu=memory.used", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=8).stdout.strip().splitlines()
+        r = run_cmd([exe, "--query-gpu=memory.used", "--format=csv,noheader,nounits"], 8)
+        out = (r.stdout or "").strip().splitlines() if r else []
         return int(out[0]) if out else None
     except Exception:
         return None
@@ -119,14 +120,20 @@ def find_lms():
     return guess if os.path.exists(guess) else None
 
 
+def run_cmd(argv, timeout):
+    """subprocess.run with UTF-8 output decoding. `lms` prints UTF-8 progress characters, and Python's default on Windows (cp1252) crashed the reader
+    thread on them and returned no output at all (found in the first real managed run, 2026-10-06)."""
+    try:
+        return subprocess.run(argv, capture_output=True, encoding="utf-8", errors="replace", timeout=timeout)
+    except Exception:
+        return None
+
+
 def _lms(args, timeout=600):
     exe = find_lms()
     if not exe:
         return None
-    try:
-        return subprocess.run([exe] + args, capture_output=True, text=True, timeout=timeout)
-    except Exception:
-        return None
+    return run_cmd([exe] + args, timeout)
 
 
 def lms_ps():
@@ -135,7 +142,7 @@ def lms_ps():
     out = []
     if not r or r.returncode != 0:
         return out
-    for line in r.stdout.splitlines():
+    for line in (r.stdout or "").splitlines():
         cols = re.split(r"\s{2,}", line.strip())
         if len(cols) >= 6 and cols[2] in ("IDLE", "GENERATING", "LOADING", "READY"):
             out.append({"identifier": cols[0], "model": cols[1], "context": int(cols[4]) if cols[4].isdigit() else None,
@@ -157,7 +164,7 @@ def lms_load(model, ctx, parallel=1, gpu="max", ttl=1800):
     r = _lms(args + ["-y"], 900)
     if r is None:
         return False, time.time() - t0, "the lms command is not available"
-    return r.returncode == 0, time.time() - t0, (r.stdout + r.stderr).strip()[-300:]
+    return r.returncode == 0, time.time() - t0, ((r.stdout or "") + (r.stderr or "")).strip()[-300:]
 
 
 def list_models(base):
