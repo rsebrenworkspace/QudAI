@@ -523,6 +523,12 @@ If unspent points cannot be allocated (e.g. missing stat prerequisites), the age
 - Observed: with the toggle on, `NAVIGATE_TO_CELL` turns that leave the position unchanged for 2-3 turns (94 in one run) while no `ATTACK_WALL` was issued, i.e. the engine digging on its route (`PathAsBurrower`). `[verified in game 2026-10-06]` by the message log: nine consecutive "You hit (x1/x2) for 50 damage with your claw!" lines, then "The shale is destroyed!". One wall took about 9 hits at claws level 3.
 - Whether the engine refuses to dig owned or settlement walls is `[unknown]`; the policy therefore turns the claws off in towns (R7).
 
+### 14.9 Autoexplore objects, chests, autoget and death drops (2026-10-06, `[verified in code]`; see docs/tasks/R-2-loot-and-chests-research.md)
+- The engine's autoexplore treats unowned, not-yet-explored containers as goals (`GameObject.ShouldAutoexploreAsChest`) and runs the open-and-take half itself in `ActionManager.RunSegment` (`FindAutoexploreObjectToOpen`, `FindAutoexploreObjectToProcess`, `ShouldTakeAll`, `TakeObject`). Objects name their adjacent action through `AutoexploreObjectEvent` (`Action`, `Command`, `AllowRetry`, `AutogetOnlyMode`).
+- `GameObject.CanAutoget` needs a takeable, real, visible, non-temporary object without `NoAutoget` that is not `DroppedByPlayer`.
+- Death drops: `Inventory` handles `DropOnDeath`/`GetDropInventory`, `Body` honours `NoDropOnDeath`. Where items land and which ones drop is `[unverified]`.
+- The mod only takes autoexplore's movement step and suppresses objects it cannot step into (int properties `Autoexplored`, `AutoexploreSuppressed`, `AutoexploreSuppression`); that is the likely reason chests are never opened. `[inferred]`
+
 ### 14.4 Tooling notes (2026-10-04)
 - **Reading IL string constants:** in `dnfile`, scan a method body for `0x72` (`ldstr`) with `raw[i+4] == 0x70`; the string offset is the token's low 24 bits (`int.from_bytes(raw[i+1:i+4], 'little')`); `pe.net.user_strings.get(offset).value` returned the string (in this `dnfile` version `get_us(...)` raised errors). Example: `scratch/inspect_corpse.py`. Field/method tokens: `0x7b/0x7c` (ldfld/ldsfld), `0x28/0x6f` (call/callvirt); table `4` = Field, `6` = MethodDef, `10` = MemberRef.
 - **Blueprint XML** lives in `CoQ_Data/StreamingAssets/Base/ObjectBlueprints/*.xml` (`Creatures.xml`, `Items.xml`, `Furniture.xml`, ...). Resolve `Inherits` chains by hand: many parts (e.g. `Physics Category`) are set on a base blueprint.
