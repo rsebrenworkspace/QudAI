@@ -53,6 +53,7 @@ Why: new features are where new loop bugs come from (equip/unequip loops, accide
 Trading (task 7.3), water and hydration economy (7.2), world map navigation and the first quest chain (8.1 and 8.2), OBS stream overlay (9.2).
 
 ### B6. Opening chests and containers
+- **Item scoring and junk dropping (2026-10-06, promoted by the human, "then eventually town and merchants"):** stage 1 built in T-1.43 (catalog, scorer, equip and drop decisions, report); stage 2 (C# inventory export, `DROP_ITEM` and equip commands, wiring into `brain.py`) is next; selling to merchants is explicitly later.
 - **Status (2026-10-06): promoted by the human, option 1 + "take everything unowned"; built in T-1.34 (`task/1.29-loot-chests`), awaiting a game test.** Research: docs/tasks/R-2-loot-and-chests-research.md. Unlocked or trapped chests are not distinguished (the data shows no lock part on a plain `Chest`); the first real run is the test.
 - **Your words:** he walks by a ton of chests to be opened, and we have not addressed that yet (2026-10-05, during a dungeon run).
 - **Exists today:** nothing opens containers. `CanSafelyLoot` deliberately refuses chests, crates, barrels, baskets and other "containers" so the agent never picks up furniture `[verified in code @4d25aea]`; the loop breakers also *suppress* adjacent chests as points of interest so autoexplore stops circling them `[verified in code]`; Python's non-hostile entity list names `chest` among things to ignore `[verified in code]`. AGENTS R7 forbids looting owned items and anything in peaceful settlements.
