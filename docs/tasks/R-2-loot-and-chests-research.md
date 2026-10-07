@@ -3,7 +3,7 @@
 - **Backlog item:** B6 (docs/BACKLOG.md), promoted by the human 2026-10-06 ("Items, chest and getting the character to see if there is loot on defeated enemies")
 - **Branch:** `research/2-loot-and-chests` (notes only; no feature code, nothing from `scratch/` is merged)
 - **Owner:** Claude Code did the headless part (below); the in-game experiments need the human
-- **Status:** Headless research done 2026-10-06; three human experiments pending; implementation not started
+- **Status:** Headless research done 2026-10-06; implementation done in T-1.34 with the human's choice (option 1, take everything unowned), but via public engine predicates and a direct take from the chest's `Inventory`, not the engine's non-public `AutoexploreObject`/"Open" path (see the follow-up below); experiments E1-E3 were not run
 
 ## Purpose
 Answer how the engine already handles chests, ground items and death drops, so the work can be a small change instead of a new UI flow.
@@ -33,3 +33,8 @@ Answer how the engine already handles chests, ground items and death drops, so t
 
 ## Result
 - **Surprise:** the engine already contains the whole chest and loot flow. The mod disables it by suppressing the objects it cannot step into.
+
+## Follow-up (T-1.34, same day)
+- **Why not fire the engine's "Open" event.** `Container.AttemptOpen` (the handler of "Open" with an `Opener`) shows the **trade screen** (`ShowTradeScreen`) for the player, plus a yes/no popup when the container is owned, plus another when it is empty. The mod answers popups, not that screen: it would hang an unattended run. `[verified in code]`
+- **What was built instead:** `LootKind` uses the same predicates the engine does (`ShouldAutoexploreAsChest`, `CanAutoget`, `ShouldAutoget`, unowned) and `TryLootNearby` takes the contents straight from the chest's `Inventory` part (`GetObjectsDirect` then `TakeObject`), marking the chest `Autoexplored` so neither the engine nor we revisit it. Items on the ground are taken with `TakeObject`. Weight guard: nothing over 25, nothing that would leave less than 10 spare capacity. Corpses (blueprint ending in `Corpse`, or a `Butcherable` part) are never taken: they are food sources for the butchery logic.
+- **Still unverified in game:** that `TakeObject` from a chest's inventory works without a UI; that `ShouldAutoexploreAsChest` is true for a plain `Chest`; whether native autoexplore walks to ground items by itself (E2) and whether death drops land where `loot_sources` can see them (E3).

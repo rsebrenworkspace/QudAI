@@ -399,6 +399,123 @@ namespace QudAIBrain
             catch { return false; }
         }
 
+        // ---- Loot (HANDOFF issue 59, BACKLOG B6, human decision 2026-10-06: "take everything unowned") ----
+        // Engine facts (ENGINE_INTERNALS 14.9): the game's own autoexplore treats unowned, unopened containers as goals
+        // (GameObject.ShouldAutoexploreAsChest) and ground items through CanAutoget/ShouldAutoget. Opening a chest with the "Open"
+        // event raises a modal trade screen (Container.AttemptOpen) that the mod cannot answer, so containers are emptied directly from
+        // their Inventory part instead. Never in settlements, never anything owned (AGENTS R7).
+        private const int LootRadius = 14;
+        private const int LootMaxActionsPerZone = 80;
+        private static int lootSeq = 0;
+        private static string lastLootJson = "null";
+        private static string lootZoneId = "";
+        private static int lootActionsInZone = 0;
+
+        private static string LastLootJson() { return "\"last_loot\": " + lastLootJson + ","; }
+
+        private static bool LootWeightOk(GameObject o, GameObject player)
+        {
+            try
+            {
+                var phys = o.GetPart<Physics>();
+                int w = phys != null ? phys.Weight : 0;
+                if (w > 25) return false;
+                return player.GetCarriedWeight() + w <= player.GetMaxCarriedWeight() - 10;
+            }
+            catch { return true; }
+        }
+
+        // "item" (a ground item the engine would autoget), "chest" (an unowned container that still holds something) or null.
+        public static string LootKind(GameObject o, GameObject player)
+        {
+            try
+            {
+                if (o == null || o == player || o.IsPlayer() || o.CurrentCell == null) return null;
+                if (o.HasPart("Brain") || o.HasPart("Mimic") || o.HasPart("Combat")) return null;
+                if (o.IsOwned() || !string.IsNullOrEmpty(o.Owner)) return null;
+                if (o.HasProperty("Owned") || o.HasProperty("OwnedBy")) return null;
+                if (o.GetIntProperty("AutoexploreSuppressed", 0) > 0) return null;
+                if (o.ShouldAutoexploreAsChest())
+                {
+                    var inv = o.GetPart<Inventory>();
+                    var contents = inv != null ? inv.GetObjectsDirect() : null;
+                    return (contents != null && contents.Count > 0) ? "chest" : null;
+                }
+                string bp = o.Blueprint ?? "";
+                if (bp.EndsWith("Corpse") || IsButcherableCorpse(o)) return null;
+                if (o.HasPart("Door") || o.HasPart("StairsUp") || o.HasPart("StairsDown")) return null;
+                if (!o.CanAutoget(true) || !o.ShouldAutoget()) return null;
+                if (!LootWeightOk(o, player)) return null;
+                return "item";
+            }
+            catch { return null; }
+        }
+
+        private static void RecordLoot(string kind, string name, int count, int left)
+        {
+            lootSeq++;
+            lastLootJson = "{\"seq\": " + lootSeq + ", \"kind\": \"" + kind + "\", \"name\": \"" + EscapeJson(name) + "\", \"count\": " + count + ", \"left\": " + left + "}";
+            UnityEngine.Debug.Log("[QudAI Loot] " + kind + " '" + name + "': took " + count + ", left " + left);
+        }
+
+        // Takes one unowned item, or empties one unowned chest, on the player's cell or an adjacent one. True when a turn's worth of work was done.
+        public static bool TryLootNearby(GameObject player)
+        {
+            try
+            {
+                Cell cell = player != null ? player.CurrentCell : null;
+                Zone zone = cell != null ? cell.ParentZone : null;
+                if (cell == null || zone == null || zone.IsWorldMap() || IsSettlementZone(zone)) return false;
+                try { if (player.AreHostilesNearby()) return false; } catch { }
+                string zid = zone.ZoneID ?? "";
+                if (zid != lootZoneId) { lootZoneId = zid; lootActionsInZone = 0; }
+                if (lootActionsInZone >= LootMaxActionsPerZone) return false;
+
+                var cells = new List<Cell> { cell };
+                var adj = cell.GetLocalAdjacentCells();
+                if (adj != null) cells.AddRange(adj);
+                foreach (Cell c in cells)
+                {
+                    if (c == null || c.Objects == null) continue;
+                    foreach (GameObject o in c.Objects.ToList())
+                    {
+                        string kind = LootKind(o, player);
+                        if (kind == null) continue;
+                        string name = StripQudFormatting(o.DisplayNameOnly ?? o.Blueprint ?? "");
+                        lootActionsInZone++;
+                        if (kind == "item")
+                        {
+                            bool ok = false;
+                            try { ok = player.TakeObject(o); } catch { }
+                            if (!ok)
+                            {
+                                try { o.SetIntProperty("AutoexploreSuppressed", 1); } catch { }
+                                continue;
+                            }
+                            try { player.FireEvent(Event.New("CommandAutoEquip")); } catch { }
+                            RecordLoot("item", name, 1, 0);
+                            return true;
+                        }
+                        int taken = 0, left = 0;
+                        var contents = o.GetPart<Inventory>().GetObjectsDirect().ToList();
+                        foreach (GameObject it in contents)
+                        {
+                            bool ok = false;
+                            if (LootWeightOk(it, player)) { try { ok = player.TakeObject(it); } catch { } }
+                            if (ok) taken++; else left++;
+                        }
+                        try { o.SetIntProperty("Autoexplored", 1); } catch { }
+                        try { o.SetIntProperty("AutoexploreSuppressed", 1); } catch { }
+                        if (taken > 0) { try { player.FireEvent(Event.New("CommandAutoEquip")); } catch { } }
+                        RecordLoot("chest", name, taken, left);
+                        return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
         // Chance (percent) that a dead creature leaves a corpse at all (Corpse.CorpseChance); 0 when it has no Corpse part.
         // Fire and Light damage replace it by a burnt, non-butcherable one (ENGINE_INTERNALS 12.1b). Read by reflection so the
         // mod does not depend on the field's declared type. Python only learns whether food is at stake, not any engine rule.
@@ -1089,6 +1206,27 @@ namespace QudAIBrain
                     }
                 }
                 catch { }
+                var lootSourceEntries = new List<string>();
+                try
+                {
+                    Zone lsZone = currentCell?.ParentZone;
+                    if (lsZone != null && !isSwimming && !lsZone.IsWorldMap() && !IsSettlementZone(lsZone))
+                    {
+                        var lsFound = new List<Tuple<int, string>>();
+                        foreach (GameObject lsObj in GetSafeZoneObjects(lsZone))
+                        {
+                            if (lsObj == null || lsObj.CurrentCell == null) continue;
+                            int lsDist = Math.Max(Math.Abs(lsObj.CurrentCell.X - currentCell.X), Math.Abs(lsObj.CurrentCell.Y - currentCell.Y));
+                            if (lsDist > LootRadius) continue;
+                            string lsKind = LootKind(lsObj, player);
+                            if (lsKind == null) continue;
+                            string lsName = EscapeJson(StripQudFormatting(lsObj.DisplayNameOnly ?? lsObj.Blueprint ?? ""));
+                            lsFound.Add(Tuple.Create(lsDist, "{\"kind\": \"" + lsKind + "\", \"name\": \"" + lsName + "\", \"tx\": " + lsObj.CurrentCell.X + ", \"ty\": " + lsObj.CurrentCell.Y + ", \"dist\": " + lsDist + "}"));
+                        }
+                        foreach (var lsItem in lsFound.OrderBy(lsKey => lsKey.Item1).Take(8)) lootSourceEntries.Add(lsItem.Item2);
+                    }
+                }
+                catch { }
                 bool canButcher = !isSwimming && player.HasSkill("CookingAndGathering_Butchery") && corpsesNearby > 0;
                 bool canHarvest = !isSwimming && player.HasSkill("CookingAndGathering_Harvestry") && harvestableNearby > 0;
 
@@ -1247,6 +1385,7 @@ namespace QudAIBrain
                 sb.Append($"\"food_items\": [{string.Join(",", foodItemNames)}],");
                 sb.Append($"\"corpses_nearby\": {corpsesNearby},");
                 sb.Append($"\"food_sources\": [{string.Join(",", foodSourceEntries)}],");
+                sb.Append($"\"loot_sources\": [{string.Join(",", lootSourceEntries)}],");
                 sb.Append($"\"harvestable_nearby\": {harvestableNearby},");
                 sb.Append($"\"campfire_nearby\": {(campfireNearby ? "true" : "false")},");
                 sb.Append($"\"can_make_camp\": {(canMakeCamp ? "true" : "false")},");
@@ -1321,6 +1460,7 @@ namespace QudAIBrain
                 sb.Append(BuildFrontierJson(player, currentCell, isAutoexploreStuck || isZoneFullyExplored));
                 sb.Append(LastBurrowJson());
                 sb.Append(LastAbilityUseJson());
+                sb.Append(LastLootJson());
 
                 string reachableEdges = "";
                 try
@@ -2048,6 +2188,15 @@ namespace QudAIBrain
                 {
                     player.UseEnergy(1000, "Movement");
                 }
+                return;
+            }
+
+            if (act == "LOOT")
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                TryLootNearby(player);
+                player.UseEnergy(1000, "Loot");
                 return;
             }
 
@@ -3070,6 +3219,15 @@ namespace QudAIBrain
                 }
             }
             catch { }
+
+            // 1b. Engine-style loot step (issue 59): take unowned items and empty unowned chests next to him before walking on.
+            if (TryLootNearby(player))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                if (player.Energy != null) player.UseEnergy(1000, "Loot");
+                return;
+            }
 
             // 2. Oscillation & cycling detection: track recent coordinates
             int curX = player.CurrentCell.X;
