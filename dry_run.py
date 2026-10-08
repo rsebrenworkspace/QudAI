@@ -4868,6 +4868,16 @@ try:
     assert _w91 == {1: True, 2: False}, _w91
 finally:
     _chr.WISDOM_FILE = _old_wf91
+_th = _cl.threat_summary({"visible_entities": [{"is_enemy": True, "name": "snapjaw warrior", "difficulty": "Tough", "dist": 3},
+                                               {"is_enemy": True, "name": "jilted lover", "difficulty": "Easy", "dist": 1, "is_stationary": True},
+                                               {"is_enemy": False, "name": "table", "dist": 1}]})
+assert (_th[1] == "danger" and _th[0].index("jilted lover") < _th[0].index("snapjaw") and "!! snapjaw warrior [Tough]" in _th[0] and "(rooted)" in _th[0]), _th
+assert _cl.threat_summary({"visible_entities": []}) == ("No hostiles in view.", "calm") and _cl.threat_summary({"visible_entities": [{"is_enemy": True, "name": "x", "difficulty": "Easy", "dist": 2}]})[1] == "watch"
+assert _cl.feed_tag({"action": "MOVE_E", "reason": "[Loop Breaker] Oscillation"}, 10) == "loop" and _cl.feed_tag({"action": "REST", "reason": "", "hp": 7}, 10) == "hp"
+assert _cl.feed_tag({"action": "NAVIGATE_ZONE_EXIT:N", "reason": ""}, None) == "flee" and _cl.feed_tag({"action": "USE_ABILITY:CommandLase:W", "reason": "", "hp": 10}, 10) == "ability"
+assert _cl.feed_tag({"action": "LOOT", "reason": "Loot: taking"}, None) == "loot" and _cl.feed_tag({"action": "MOVE_E", "reason": ""}, None) == ""
+open(_jl, "w", encoding="utf-8").write(json.dumps({"t": 1, "hp": 9, "action": "REST", "reason": ""}) + chr(10) + json.dumps({"t": 2, "hp": 5, "action": "REST", "reason": ""}) + chr(10))
+assert [tag for _, tag in _cl.feed_rows(_jl, 10)] == ["", "hp"]
 _cs = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
 assert "stdin=subprocess.PIPE" in _cs and "pause_resume_bytes" in _cs and "active.flag" not in _cs, "pause goes through the brain's stdin, never by touching the flag"
-print("  [OK] Test 91 Passed: console logic parses the build and player logs (last compile only), tails a trace past a half-written line, reads the flag, renders the state, and approves lessons through chronicler.")
+print("  [OK] Test 91 Passed: console logic (also the threat strip and the coloured live feed) parses the build and player logs (last compile only), tails a trace past a half-written line, reads the flag, renders the state, and approves lessons through chronicler.")

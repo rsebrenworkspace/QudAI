@@ -46,8 +46,11 @@ class Console(tk.Tk):
 
     # ------------------------------------------------------------------ layout
     def _build(self):
-        nb = ttk.Notebook(self)
-        nb.pack(fill="both", expand=True)
+        root = ttk.PanedWindow(self, orient="vertical")
+        root.pack(fill="both", expand=True)
+        nb = ttk.Notebook(root)
+        root.add(nb, weight=3)
+        root.add(self._build_bottom(root), weight=2)
         self.tab_control, self.tab_health, self.tab_live, self.tab_review, self.tab_items = (ttk.Frame(nb) for _ in range(5))
         for tab, name in ((self.tab_control, "Control"), (self.tab_health, "Mod health"), (self.tab_live, "Live"), (self.tab_review, "Review"), (self.tab_items, "Items")):
             nb.add(tab, text=name)
@@ -102,34 +105,46 @@ class Console(tk.Tk):
         self.health.pack(fill="both", expand=True, padx=12, pady=4)
         ttk.Label(f, text="The game compiles the mod at launch. If 'Mod compile' is red, the error text is in build_log.txt; paste it to Claude.", wraplength=1000).pack(anchor="w", padx=12, pady=6)
 
-    def _build_live(self):
-        f = self.tab_live
-        paned = ttk.PanedWindow(f, orient="horizontal")
-        paned.pack(fill="both", expand=True)
-        left = ttk.Frame(paned)
-        right = ttk.PanedWindow(paned, orient="vertical")
-        paned.add(left, weight=3)
-        paned.add(right, weight=2)
-        bar = ttk.Frame(left)
-        bar.pack(fill="x")
-        ttk.Label(bar, text="Brain console   filter:").pack(side="left", padx=4)
+    def _build_bottom(self, parent):
+        """Always visible under every tab: what he is doing right now, who is near, and the brain's own console."""
+        f = ttk.Frame(parent)
+        self.threat_var = tk.StringVar(value="No state yet.")
+        self.threat_label = tk.Label(f, textvariable=self.threat_var, anchor="w", justify="left", font=("Segoe UI", 10, "bold"), padx=8, pady=4)
+        self.threat_label.pack(fill="x")
         self.filter_var = tk.StringVar()
+        nb = ttk.Notebook(f)
+        nb.pack(fill="both", expand=True)
+        feed_tab, console_tab = ttk.Frame(nb), ttk.Frame(nb)
+        nb.add(feed_tab, text="Live actions")
+        nb.add(console_tab, text="Brain console")
+        self.feed = self._text(feed_tab)
+        for tag, colour in (("hp", "#cf222e"), ("loop", "#bc4c00"), ("flee", "#8250df"), ("ability", "#0969da"), ("loot", "#1a7f37")):
+            self.feed.tag_configure(tag, foreground=colour)
+        ttk.Label(feed_tab, text="red = lost HP   orange = loop breaker (erratic movement)   purple = fleeing   blue = ability   green = loot").pack(anchor="w", padx=6)
+        bar = ttk.Frame(console_tab)
+        bar.pack(fill="x")
+        ttk.Label(bar, text="filter:").pack(side="left", padx=4)
         e = ttk.Entry(bar, textvariable=self.filter_var, width=24)
         e.pack(side="left")
         e.bind("<KeyRelease>", lambda _e: self._redraw_console())
         ttk.Button(bar, text="Clear", command=self._clear_console).pack(side="left", padx=6)
-        self.console = self._text(left)
+        self.console = self._text(console_tab)
         for tag, colour in (("[INVENTORY]", "#0969da"), ("[AVOID]", "#8250df"), ("[LOOT]", "#1a7f37"), ("[STAND AND FIGHT]", "#bc4c00"), ("[Loop Breaker]", "#9a6700"),
                             ("[AI ENGAGED]", "#1a7f37"), ("[AI PAUSED]", "#9a6700"), ("Traceback", "#cf222e"), ("Error", "#cf222e")):
             self.console.tag_configure(tag, foreground=colour)
-        top = ttk.Frame(right)
-        bot = ttk.Frame(right)
-        right.add(top, weight=1)
-        right.add(bot, weight=1)
-        ttk.Label(top, text="Last state").pack(anchor="w", padx=4)
-        self.state_text = self._text(top)
-        ttk.Label(bot, text="Decision trace (latest turns)").pack(anchor="w", padx=4)
-        self.trace_text = self._text(bot)
+        return f
+
+    def _build_live(self):
+        f = self.tab_live
+        paned = ttk.PanedWindow(f, orient="horizontal")
+        paned.pack(fill="both", expand=True)
+        left, right = ttk.Frame(paned), ttk.Frame(paned)
+        paned.add(left, weight=2)
+        paned.add(right, weight=3)
+        ttk.Label(left, text="Last state").pack(anchor="w", padx=4)
+        self.state_text = self._text(left)
+        ttk.Label(right, text="Decision trace (latest turns)").pack(anchor="w", padx=4)
+        self.trace_text = self._text(right)
 
     def _build_review(self):
         f = self.tab_review
@@ -314,17 +329,34 @@ class Console(tk.Tk):
             state_path = os.path.join(EX, "last_state.json")
             if self._changed("state", state_path):
                 state = cl.read_json(state_path, {})
+                self._draw_threats(state)
                 self._set(self.state_text, cl.describe_state(state))
                 inv = [f"{'*' if i.get('equipped') else ' '} {i.get('name')} x{i.get('count', 1)}   {i.get('weight', 0)} lb" for i in (state or {}).get("inventory") or []]
                 self._set(self.inv_text, "\n".join(inv) or "No inventory in the last state.")
             if self._changed("trace", TRACE):
                 self._set(self.trace_text, cl.trace_text(TRACE))
                 self.trace_text.see("end")
+                self._draw_feed()
             if self._changed("drops", DROPS):
                 self._set(self.drop_text, cl.drop_log_text(DROPS))
         except Exception as e:  # a refresh must never kill the window
             self.status_var.set(f"refresh error: {e}")
         self.after(2000, self._tick)
+
+    def _draw_feed(self):
+        at_end = self.feed.yview()[1] >= 0.98
+        self.feed.delete("1.0", "end")
+        for text, tag in cl.feed_rows(TRACE, 60):
+            self.feed.insert("end", text + "\n", tag)
+        if at_end:
+            self.feed.see("end")
+
+    def _draw_threats(self, state):
+        text, worst = cl.threat_summary(state)
+        hp = f"HP {state.get('hp', '?')}/{state.get('max_hp', '?')}   " if state else ""
+        self.threat_var.set(hp + text)
+        bg, fg = {"danger": ("#ffebe9", "#82071e"), "watch": ("#fff8c5", "#4d2d00"), "calm": ("#dafbe1", "#116329")}[worst]
+        self.threat_label.configure(bg=bg, fg=fg)
 
     # ----------------------------------------------------------------- health
     def refresh_health(self):

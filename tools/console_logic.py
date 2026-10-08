@@ -191,6 +191,54 @@ def trace_text(path, n=150):
     return "\n".join(format_trace_row(r) for r in tail_jsonl(path, n)) or "No decision trace yet."
 
 
+DANGEROUS = ("Tough", "Very Tough", "Impossible")
+
+
+def threat_summary(state, limit=5):
+    """One line about the hostiles in view: name, difficulty relative to his level (the mod's own Trivial..Impossible scale), distance.
+    -> (text, worst) where worst is 'danger' when any is Tough or worse, 'calm' when none are in view, else 'watch'."""
+    ents = [e for e in (state or {}).get("visible_entities") or [] if e.get("is_enemy")]
+    if not ents:
+        return "No hostiles in view.", "calm"
+    ents.sort(key=lambda e: e.get("dist", 999))
+    parts = []
+    for e in ents[:limit]:
+        diff = e.get("difficulty", "?")
+        parts.append(f"{'!! ' if diff in DANGEROUS else ''}{e.get('name', '?')} [{diff}] {e.get('dist', '?')} tiles{' (rooted)' if e.get('is_stationary') else ''}")
+    more = f"  (+{len(ents) - limit} more)" if len(ents) > limit else ""
+    worst = "danger" if any(e.get("difficulty") in DANGEROUS for e in ents) else "watch"
+    return "Hostiles: " + "  |  ".join(parts) + more, worst
+
+
+def feed_tag(row, prev_hp=None):
+    """Colour class of one decision row in the live feed: what an observer wants to notice. 'hp' (he lost HP), 'loop' (the loop breaker stepped in:
+    erratic movement), 'flee' (leaving or retreating), 'ability', 'loot', or ''."""
+    action = str(row.get("action") or "")
+    reason = str(row.get("reason") or "")
+    hp = row.get("hp")
+    if "Loop Breaker" in reason:
+        return "loop"
+    if isinstance(hp, (int, float)) and isinstance(prev_hp, (int, float)) and hp < prev_hp:
+        return "hp"
+    if action.startswith("NAVIGATE_ZONE_EXIT") or "retreat" in reason.lower() or "flee" in reason.lower():
+        return "flee"
+    if action.startswith("USE_ABILITY"):
+        return "ability"
+    if action == "LOOT" or reason.startswith("Loot:"):
+        return "loot"
+    return ""
+
+
+def feed_rows(path, n=60):
+    """The latest n decision rows as (text, tag) pairs; the tag needs the previous row's HP."""
+    rows = tail_jsonl(path, n + 1)
+    out, prev = [], None
+    for r in rows:
+        out.append((format_trace_row(r), feed_tag(r, prev)))
+        prev = r.get("hp")
+    return out[-n:]
+
+
 def colour_tag(line):
     """Which colour tag a brain console line gets in the GUI."""
     for tag in ("[INVENTORY]", "[AVOID]", "[LOOT]", "[STAND AND FIGHT]", "[Loop Breaker]", "[AI ENGAGED]", "[AI PAUSED]", "Traceback", "Error"):
