@@ -78,5 +78,13 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Size (my guess):** research small, implementation medium (a new movement mode).
 - **Risks:** a new movement mode means new loop bugs; being unable to travel while burrowed; flying over hazards he cannot leave; fire and water interactions.
 
+### B8. Merchants and trading, starting with Kuyukas the legendary gunsmith (human, 2026-10-07)
+- **Your words:** merchants and selling are "down the road"; on 2026-10-07 the run reached a sleeping legendary gunsmith, Kuyukas, in a hidden workshop (stratum 11 of JoppaWorld.11.21.0.0). "Kuyukas, legendary gunsmith. Kuyukas snores loudly is the only prompt right now."
+- **Exists today `[verified in game data]`:** Kuyukas is the `Gunsmith` blueprint (inherits `BaseMerchant`, level 18-20, 70 HP, stock `GunsmithInventory_Legendary`, one hired guard; the guards read as peaceful creatures such as worms of the earth). His conversation is flavour only ("Live and drink."): trading is the interaction, not a quest. His workbench is owned by the Merchants faction, which is why the loot code correctly skips the chests there. A sleeping creature has the `Asleep` effect, does not respond to conversation, and offers a peaceful `Wake` interaction (ENGINE_INTERNALS 14.13). The character carries about 62 water drams plus waterskins (currency, see memory note), and no trade code exists.
+- **Unknown `[unknown]`:** how the trade screen is driven without the UI (is there a headless buy/sell API, or does it need the popup patches?); how prices and the waterskin/dram currency work; what the sleeper's Wake menu key is in the human's setup; how the legendary stock looks; how selling interacts with the junk dropper and the protected quest/reputation items.
+- **Depends on:** the inventory milestone (stage 2 verified in game: equip works, drops not yet seen), item scoring (a "sell" list instead of a "drop" list), and the popup handlers staying stable.
+- **Size (my guess):** research small (the trade API), implementation medium; first a read-only "list his stock" export, then buy/sell.
+- **Risks:** the AI auto-answers popups, so an open trade screen could buy or sell unintended items; owned items must never be taken without paying (ethics policy B6); selling protected items.
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.
