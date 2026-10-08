@@ -4939,3 +4939,13 @@ finally:
 _bsrc = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 assert "autoexplore_retry_due(zone_id or current_zone_id, game_state)" in _bsrc and "STUCK_RETRY.pop(_zid_now, None)" in _bsrc and "record_position(cur_pos)" in _bsrc
 print("  [OK] Test 92 Passed: standing still no longer counts as oscillation (the real Kuyukas sequence), a ping-pong still does, and a latched zone gets a native autoexplore retry with backoff unless the engine says stuck or explored.")
+
+
+# ---------------------------------------------------------------------------
+# Test 93: a carried firearm is kept as a trade asset even in a heavy pack (human, 2026-10-07)
+# ---------------------------------------------------------------------------
+_rifle93 = next(k for k, v in _is.catalog()["items"].items() if v.get("name") == "Issachar rifle" and v.get("group") == "missile_weapon")
+_inv93 = [{"id": "r1", "blueprint": _rifle93, "count": 1, "weight": 15, "equipped": False, "identified": True}]
+assert not _is.choose_drops(_inv93, _P["esper_ited_away"], carried_weight=200, capacity=200), "an unused rifle must survive pack pressure"
+assert not _is.choose_drops(_inv93, _P["esper_ited_away"], carried_weight=10, capacity=200)
+print("  [OK] Test 93 Passed: a firearm in the pack is never auto-dropped, even at 100% of capacity, so a gifted or bought gun stays a trade asset.")

@@ -39,7 +39,9 @@ DOMINATED_MARGIN = 2.0                       # an item must beat the one it repl
 EQUIPMENT_GROUPS = ("armor", "shield", "melee_weapon", "missile_weapon")
 # Stage 2 is conservative (human, 2026-10-06: some "junk" raises factions or may be a quest item, to be re-evaluated later): only these groups are ever
 # dropped automatically. Everything else (books, data disks, trade goods, keys, cybernetics, trinkets, tools, consumables...) is kept.
-DROPPABLE_GROUPS = ("armor", "shield", "melee_weapon", "missile_weapon", "scrap", "corpse")
+# Firearms and bows are NOT dropped (human, 2026-10-07: the jewel-encrusted Issachar rifle from Kuyukas stays "as a trade asset"; the blueprint value used here is far
+# below what a modded one sells for, so the scorer cannot judge it). Re-evaluate when live item values are exported (BACKLOG B8).
+DROPPABLE_GROUPS = ("armor", "shield", "melee_weapon", "scrap", "corpse")
 MAX_KEPT = {"food": 6, "tonic": 8, "medication": 6, "power_cell": 3, "grenade": 4, "thrown_weapon": 4, "light_source": 1}   # no water cap: waterskins are trade currency (human, 2026-10-07)
 
 SKILL_ROOTS = {"Axe": "Axe", "Cudgel": "Cudgel", "Pistol": "Pistol", "Rifles": "Rifle", "Rifle": "Rifle", "LongBlades": "LongBlades", "LongBlade": "LongBlades",
