@@ -5026,3 +5026,30 @@ finally:
     brain.ZONE_STEP_COUNT, brain.CURRENT_ZONE_CHOSEN_EXIT, brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE, brain.RETREAT_TARGET_LEVEL = _saved94[3:]
     brain.DEAD_END_ZONES.clear(); brain.recent_positions.clear()
 print("  [OK] Test 94 Passed (also after a restart, from the dead-end memory alone): a cleared, worked stratum with no way down is left by USE_STAIRS_UP (walking there only when the engine reports no reachable edge), the stairs down above are given up so he does not descend again, and a usable way down still belongs to the delve logic.")
+
+
+# ---------------------------------------------------------------------------
+# Test 95: the lethal-adjacent guard (HANDOFF issue 75): a Very Tough mobile hostile next to him gets a control answer, not whatever the model chose
+# ---------------------------------------------------------------------------
+_ab95 = [{"name": "Lase (1 charges)", "command": "CommandLase", "cooldown": 0, "usable": True, "active": False},
+         {"name": "Intimidate", "command": "CommandIntimidate", "cooldown": 0, "usable": True, "active": False},
+         {"name": "Teleport Other", "command": "CommandTeleportOther", "cooldown": 0, "usable": True, "active": False},
+         {"name": "Force Bubble", "command": "CommandForceBubble", "cooldown": 0, "usable": True, "active": False}]
+_puma = {"name": "wet chitinous puma", "dist": 1, "dir": "SE", "difficulty": "Very Tough", "level": 12, "is_enemy": True, "is_stationary": False}
+_lase = {"action": "USE_ABILITY:CommandLase:SE", "reason": "[LLM] Lase"}
+_g = brain.lethal_adjacent_guard(_lase, {"SE": "wet chitinous puma"}, [_puma], _ab95)
+assert _g["action"] == "USE_ABILITY:CommandTeleportOther:SE" and "Lethal guard" in _g["reason"], _g           # the real death: Lase was chosen with these three ready
+_cool = lambda name: [dict(a, cooldown=40, usable=False) if a["name"] == name else a for a in _ab95]
+assert brain.lethal_adjacent_guard(_lase, {"SE": "x"}, [_puma], _cool("Teleport Other"))["action"] == "USE_ABILITY:CommandForceBubble"
+_two = [dict(a, cooldown=40, usable=False) if a["name"] in ("Teleport Other", "Force Bubble") else a for a in _ab95]
+assert brain.lethal_adjacent_guard(_lase, {"SE": "x"}, [_puma], _two)["action"] == "USE_ABILITY:CommandIntimidate"
+_none = [dict(a, cooldown=40, usable=False) if a["name"] in ("Teleport Other", "Force Bubble", "Intimidate") else a for a in _ab95]
+assert brain.lethal_adjacent_guard(_lase, {"SE": "x"}, [_puma], _none) == _lase, "nothing ready: the model's choice stands"
+for _keep in ("USE_ABILITY:CommandTeleportOther:SE", "USE_ABILITY:CommandForceBubble", "USE_ABILITY:CommandIntimidate", "USE_STAIRS_UP"):
+    assert brain.lethal_adjacent_guard({"action": _keep}, {"SE": "x"}, [_puma], _ab95)["action"] == _keep
+assert brain.lethal_adjacent_guard(dict(_lase, flee_ok=True), {"SE": "x"}, [_puma], _ab95)["action"] == _lase["action"]
+for _other in (dict(_puma, difficulty="Tough"), dict(_puma, difficulty="Average"), dict(_puma, is_stationary=True), dict(_puma, dist=2), dict(_puma, is_companion=True)):
+    assert brain.lethal_adjacent_guard(_lase, {"SE": "x"}, [_other], _ab95) == _lase, _other
+assert brain.lethal_adjacent_guard(_lase, {}, [_puma], _ab95) == _lase
+assert brain.lethal_adjacent_guard(_lase, {"SE": "x"}, [dict(_puma, difficulty="Impossible")], _ab95)["action"].startswith("USE_ABILITY:CommandTeleportOther")
+print("  [OK] Test 95 Passed: a mobile Very Tough or Impossible hostile next to him is answered with Teleport Other, else Force Bubble, else Intimidate (the real Gen 19 death), and Tough and below, rooted, distant, companion, escape and nothing-ready cases are untouched.")

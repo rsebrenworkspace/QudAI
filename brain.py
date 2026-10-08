@@ -3124,10 +3124,43 @@ def enforce_stand_and_fight(decision, game_state, adj_threats, enemies, abilitie
     return new
 
 
+# Lethal adjacent threats (HANDOFF issue 75). A level 5 Esper died to a Very Tough puma (level 12): for three turns it stood next to him and the model answered
+# Lase five times while Teleport Other, Force Bubble and Intimidate were all ready and "the pet" it relied on was two tiles away; two hits (15 and 7) ended the run.
+# The deterministic fallback has a close-contact answer, but the model is asked first. So, before the stand-and-fight rule, an adjacent MOBILE hostile rated Very Tough
+# or Impossible gets the first ready of these answers instead of whatever the model chose (Tough and below stay with the model).
+LETHAL_DIFFICULTIES = ("Very Tough", "Impossible")
+LETHAL_GUARD_FAMILIES = ("teleport_other", "force_shield", "intimidate")
+LETHAL_GUARD_KEEP = ("USE_ABILITY:CommandTeleportOther", "USE_ABILITY:CommandForceBubble", "USE_ABILITY:CommandIntimidate", "USE_STAIRS", "USE_ABILITY:CommandTeleport")
+
+
+def lethal_adjacent_guard(decision, adj_threats, enemies, abilities):
+    """Replaces the decision by the first ready control answer when a mobile Very Tough or Impossible hostile is adjacent. Other decisions pass through."""
+    if (decision or {}).get("flee_ok"):
+        return decision
+    action = (decision or {}).get("action", "")
+    if action.startswith(LETHAL_GUARD_KEEP):
+        return decision                              # the model (or a rule) already chose an escape or a control answer
+    adj = [e for e in enemies if e.get("dist") == 1 and e.get("dir") in (adj_threats or {})
+           and e.get("difficulty") in LETHAL_DIFFICULTIES and not e.get("is_stationary") and not e.get("is_companion")]
+    if not adj:
+        return decision
+    ab = first_ready_by_priority(abilities, LETHAL_GUARD_FAMILIES)
+    if not ab or not ab.get("command"):
+        return decision
+    target = adj[0]
+    d = target.get("dir")
+    needs_dir = ab["command"] == "CommandTeleportOther"
+    new = {"action": f"USE_ABILITY:{ab['command']}" + (f":{d}" if needs_dir else ""),
+           "reason": f"Lethal guard: {target.get('name', 'a hostile')} ({target.get('difficulty')}, level {target.get('level', '?')}) is adjacent ({d}); {ab.get('name', 'an ability')} instead of {action or 'the planned action'}"}
+    print(f"[LETHAL GUARD] {action} -> {new['action']} ({target.get('name', '?')}, {target.get('difficulty')})")
+    return new
+
+
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
-    """The decision for this turn: `_query_decision` plus the stand-and-fight rule."""
+    """The decision for this turn: `_query_decision`, the lethal-adjacent guard, then the stand-and-fight rule."""
     STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
     decision = _query_decision(game_state, took_damage, enemies, suppress_autolevel)
+    decision = lethal_adjacent_guard(decision, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
     return enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
 
 
