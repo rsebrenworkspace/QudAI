@@ -34,6 +34,7 @@ Why: new features are where new loop bugs come from (equip/unequip loops, accide
 - **First research card:** `docs/tasks/R-1-cooking-recipes-research.md`.
 
 ### B2. Random quests
+- **Research 2026-10-07 (first pass, data and code only): docs/tasks/R-3-quests-research.md.** Two layers: 28 authored quests in `Quests.xml` (the story and side chains, levels 1 to 40) and procedural village quests fabricated at world generation (find a site, find a specific item, interact with an object; giver property `GivesDynamicQuest`), plus relic and sultan-dungeon managers. The engine's own pointer to them is the conversation choice "I'm looking for work." (`QuestSignpost`). Next: a read-only quest log export, then try the choice by hand; no agent behaviour yet.
 - **Your words:** random quests that can be acquired.
 - **Exists today:** nothing implemented. `PROJECT_HISTORY.md` lists three named quests as a plan (Red Rock watervine, Barathrum wire retrieval, Golgotha) `[from docs]`. The mod auto-answers Yes to every yes/no popup `[verified in code @c50b3c2]`, so an NPC offer that arrives as a yes/no popup could be accepted without the agent knowing `[unverified: hazard to test before adding any NPC conversation]`.
 - **Unknown `[unknown]`:** how quests are stored and read (objectives, status); how the agent talks to NPCs without UI; how to tell a random quest from a story quest; quest types (fetch, kill, escort, delivery) and what each needs.
