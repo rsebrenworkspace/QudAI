@@ -3131,6 +3131,61 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     return enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
 
 
+DEAD_END_MIN_STEPS = 40         # a cleared stratum must have been worked for this many steps before the brain leaves it by the stairs up
+DEAD_END_ZONES = set()
+
+
+def upper_zone_id(zone_id):
+    """The zone one stratum up: the last dot-separated part of a zone id is its z level (JoppaWorld.11.21.0.0.11 -> ...0.10)."""
+    parts = str(zone_id or "").split(".")
+    if len(parts) < 2 or not parts[-1].isdigit():
+        return None
+    return ".".join(parts[:-1] + [str(int(parts[-1]) - 1)])
+
+
+def stairs_given_up(zone_id):
+    sd = KNOWN_STAIRS_DOWN.get(zone_id)
+    return bool(sd and (zone_id, (sd.get("tx"), sd.get("ty"))) in STAIRS_GIVEUP)
+
+
+def dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared):
+    """A stratum with no way down is a dead end: leave it by the stairs up instead of circling its walls (HANDOFF issue 73).
+
+    The engine's own edge route led him to the stairs-up cell (the only exit of the Kuyukas workshop stratum, `reachable_edges` said NSEW) and the brain then
+    stepped off it: nothing but the emergency retreat ever used `USE_STAIRS_UP`. Fires when the stratum is cleared, has been worked for DEAD_END_MIN_STEPS and
+    no usable stairs down are known here: standing on the stairs up he ascends; away from them he walks there only when the engine reports no reachable
+    edge at all (otherwise the edge logic runs first, and its route may end on the stairs). Going up writes the stairs down of the stratum above into
+    STAIRS_GIVEUP so he is not sent straight back down. Returns a decision dict or None."""
+    if cur_z <= 10 or not zone_id:
+        return None
+    sd = KNOWN_STAIRS_DOWN.get(zone_id)
+    if sd:
+        sd_key = (zone_id, (sd.get("tx"), sd.get("ty")))
+        if sd_key not in STAIRS_GIVEUP and sd_key not in UNREACHABLE_SECTORS:
+            return None                 # a way down exists: the delve logic owns the decision
+    if not (is_zone_cleared and ZONE_STEP_COUNT >= DEAD_END_MIN_STEPS):
+        return None
+    if standing_on_su:
+        DEAD_END_ZONES.add(zone_id)
+        up = upper_zone_id(zone_id)
+        usd = KNOWN_STAIRS_DOWN.get(up) if up else None
+        if usd:
+            STAIRS_GIVEUP.add((up, (usd.get("tx"), usd.get("ty"))))
+        return {"action": "USE_STAIRS_UP", "reason": f"Dead end: no way down from stratum {cur_z}; ascending the stairs up to leave it"}
+    if game_state.get("reachable_edges"):
+        return None                     # the engine says an edge is reachable: the zone-exit logic goes first
+    su = KNOWN_STAIRS_UP.get(zone_id)
+    if not su:
+        ups = [s for s in (game_state.get("stairs_up") or []) if s.get("tx") is not None]
+        su = ups[0] if ups else None
+    if not su:
+        return None
+    su_pos = (su.get("tx"), su.get("ty"))
+    if cur_pos == su_pos or (zone_id, su_pos) in STAIRS_GIVEUP or (zone_id, su_pos) in UNREACHABLE_SECTORS:
+        return None
+    return {"action": f"NAVIGATE_TO_CELL:{su_pos[0]},{su_pos[1]}", "reason": f"Dead end: no way down from stratum {cur_z}; walking to the stairs up at {su_pos}"}
+
+
 def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     global last_action, consecutive_kites, RETREAT_TARGET_LEVEL, CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS, TURN_CLOCK
     TURN_CLOCK += 1
@@ -3444,7 +3499,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             is_subterranean or (cur_lvl >= req_depth_lvl)
         )
 
-        if standing_on_sd:
+        if standing_on_sd and not stairs_given_up(zone_id):
             if can_delve:
                 if cur_lvl >= req_depth_lvl:
                     return {"action": "USE_STAIRS_DOWN", "reason": f"Stratum Progression: Descending stairs down to stratum {cur_z + 1} (Level {cur_lvl} >= Req {req_depth_lvl})"}
@@ -3477,6 +3532,10 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
                     if best_m and sector_target_ok(zone_id, sd_pos, cur_pos, "stairs"):
                         return {"action": best_m, "reason": f"{delve_type}: no engine route to the stairs at {sd_pos}; stepping {best_m[5:]} toward them ({rec_str})"}
+
+        dead_end = dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared)
+        if dead_end:
+            return dead_end
 
         # 6. Inward Border Navigation & Zone Hopping Prevention
         rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None

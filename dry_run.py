@@ -4949,3 +4949,68 @@ _inv93 = [{"id": "r1", "blueprint": _rifle93, "count": 1, "weight": 15, "equippe
 assert not _is.choose_drops(_inv93, _P["esper_ited_away"], carried_weight=200, capacity=200), "an unused rifle must survive pack pressure"
 assert not _is.choose_drops(_inv93, _P["esper_ited_away"], carried_weight=10, capacity=200)
 print("  [OK] Test 93 Passed: a firearm in the pack is never auto-dropped, even at 100% of capacity, so a gifted or bought gun stays a trade asset.")
+
+
+# ---------------------------------------------------------------------------
+# Test 94: a stratum with no way down is left by the stairs up (HANDOFF issue 73)
+# ---------------------------------------------------------------------------
+_up94 = "JoppaWorld.11.21.0.0.10"
+_dn94 = "JoppaWorld.11.21.0.0.11"
+assert brain.upper_zone_id(_dn94) == _up94 and brain.upper_zone_id("") is None and brain.upper_zone_id("nodots") is None
+_saved94 = (dict(brain.KNOWN_STAIRS_DOWN), dict(brain.KNOWN_STAIRS_UP), set(brain.STAIRS_GIVEUP), brain.ZONE_STEP_COUNT, brain.CURRENT_ZONE_CHOSEN_EXIT,
+            brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE, brain.RETREAT_TARGET_LEVEL)
+try:
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.KNOWN_STAIRS_UP.clear(); brain.STAIRS_GIVEUP.clear()
+    brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None; brain.RETREAT_TARGET_LEVEL = None
+    brain.KNOWN_STAIRS_DOWN[_up94] = {"tx": 56, "ty": 3, "z": 10, "name": "stairs down", "req_level": 3}
+    _st94 = {"reachable_edges": "", "stairs_up": [{"name": "stairs up", "blueprint": "StairsUp", "tx": 56, "ty": 3}]}
+    brain.ZONE_STEP_COUNT = 100
+    # cleared, worked long enough, no way down: walk to the stairs up (from the state, then from memory)
+    _d = brain.dead_end_ascent(_st94, _dn94, 11, (52, 8), False, True)
+    assert _d and _d["action"] == "NAVIGATE_TO_CELL:56,3", _d
+    brain.KNOWN_STAIRS_UP[_dn94] = {"tx": 56, "ty": 3, "z": 11, "name": "stairs up"}
+    assert brain.dead_end_ascent({}, _dn94, 11, (52, 8), False, True)["action"] == "NAVIGATE_TO_CELL:56,3"
+    # not on the surface, not before the stratum is cleared and worked, not at the stairs cell for the walk
+    assert brain.dead_end_ascent(_st94, _up94, 10, (52, 8), False, True) is None
+    assert brain.dead_end_ascent(_st94, _dn94, 11, (52, 8), False, False) is None
+    brain.ZONE_STEP_COUNT = 5
+    assert brain.dead_end_ascent(_st94, _dn94, 11, (52, 8), False, True) is None
+    brain.ZONE_STEP_COUNT = 100
+    # the engine reports reachable edges (as it did in the workshop stratum, NSEW): no walk to the stairs, the edge logic goes first...
+    _edges = dict(_st94, reachable_edges="NSEW")
+    assert brain.dead_end_ascent(_edges, _dn94, 11, (52, 8), False, True) is None
+    # ...but when its route ends ON the stairs-up cell (cleared, worked, no way down) he ascends
+    _d = brain.dead_end_ascent(_edges, _dn94, 11, (56, 3), True, True)
+    assert _d and _d["action"] == "USE_STAIRS_UP", _d
+    assert (_up94, (56, 3)) in brain.STAIRS_GIVEUP and _dn94 in brain.DEAD_END_ZONES, "going up must stop him walking straight back down"
+    brain.STAIRS_GIVEUP.clear(); brain.DEAD_END_ZONES.clear()
+    # never on arrival or while the stratum is still being explored, even standing on the stairs
+    brain.ZONE_STEP_COUNT = 5
+    assert brain.dead_end_ascent(_edges, _dn94, 11, (56, 3), True, True) is None
+    brain.ZONE_STEP_COUNT = 100
+    assert brain.dead_end_ascent(_edges, _dn94, 11, (56, 3), True, False) is None
+    # stairs down known and usable: the delve logic owns the decision
+    brain.KNOWN_STAIRS_DOWN[_dn94] = {"tx": 20, "ty": 10, "z": 11, "name": "stairs down", "req_level": 3}
+    assert brain.dead_end_ascent(_st94, _dn94, 11, (52, 8), False, True) is None
+    brain.STAIRS_GIVEUP.add((_dn94, (20, 10)))
+    assert brain.dead_end_ascent(_st94, _dn94, 11, (52, 8), False, True) is not None, "stairs down that were given up no longer count as a way down"
+    # the stratum above: standing on the stairs down he must NOT descend again once they were given up (and does when they were not)
+    brain.KNOWN_STAIRS_DOWN.pop(_dn94, None)
+    brain.STAIRS_GIVEUP.clear()
+    _surface94 = {"hp": 31, "max_hp": 31, "x": 56, "y": 3, "z": 10, "level": 5, "zone_id": _up94, "zone_name": "salt marsh", "zone_fully_explored": False,
+                  "hostiles_nearby": False, "hostiles_adjacent": False, "unexplored_cells": 400,
+                  "surroundings": {"C": "stairs down", "N": "grass", "S": "grass", "E": "grass", "W": "grass", "NE": "grass", "NW": "grass", "SE": "grass", "SW": "grass"},
+                  "stairs_down": [{"name": "stairs down", "blueprint": "StairsDown", "tx": 56, "ty": 3}], "standing_on_stairs_down": True, "visible_entities": []}
+    brain.recent_positions.clear()
+    assert brain.query_decision(dict(_surface94), took_damage=False, enemies=[])["action"] == "USE_STAIRS_DOWN", "control: without a give-up he descends"
+    brain.STAIRS_GIVEUP.add((_up94, (56, 3)))
+    brain.recent_positions.clear()
+    _after = brain.query_decision(dict(_surface94), took_damage=False, enemies=[])
+    assert _after["action"] != "USE_STAIRS_DOWN", _after
+finally:
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.KNOWN_STAIRS_DOWN.update(_saved94[0])
+    brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_UP.update(_saved94[1])
+    brain.STAIRS_GIVEUP.clear(); brain.STAIRS_GIVEUP.update(_saved94[2])
+    brain.ZONE_STEP_COUNT, brain.CURRENT_ZONE_CHOSEN_EXIT, brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE, brain.RETREAT_TARGET_LEVEL = _saved94[3:]
+    brain.DEAD_END_ZONES.clear(); brain.recent_positions.clear()
+print("  [OK] Test 94 Passed: a cleared, worked stratum with no way down is left by USE_STAIRS_UP (walking there only when the engine reports no reachable edge), the stairs down above are given up so he does not descend again, and a usable way down still belongs to the delve logic.")
