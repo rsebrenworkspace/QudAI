@@ -399,6 +399,127 @@ namespace QudAIBrain
             catch { return false; }
         }
 
+        // ---- Quest log export (HANDOFF issue 76, BACKLOG B2 stage 1): READ ONLY ----
+        // The player's quests live in `The.Game.Quests` (name to Quest) and the finished ones in `The.Game.FinishedQuests`. Everything is read by reflection (field or
+        // property, public or not) so a renamed member can only blank the export, never stop the mod from compiling or the game from loading.
+        private const int MaxQuestsExport = 40;
+        private const int MaxQuestStepsExport = 12;
+        private const int MaxFinishedQuestsExport = 80;
+
+        private static object QuestMember(object o, string name)
+        {
+            if (o == null) return null;
+            try
+            {
+                BindingFlags bf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+                Type t = o.GetType();
+                FieldInfo f = t.GetField(name, bf);
+                if (f != null) return f.GetValue(o);
+                PropertyInfo p = t.GetProperty(name, bf);
+                if (p != null && p.GetIndexParameters().Length == 0) return p.GetValue(o, null);
+            }
+            catch { }
+            return null;
+        }
+
+        private static string QuestText(object o, string name, int max)
+        {
+            string s = "";
+            try { s = StripQudFormatting(Convert.ToString(QuestMember(o, name)) ?? ""); } catch { }
+            if (s.Length > max) s = s.Substring(0, max);
+            return EscapeJson(s);
+        }
+
+        private static int QuestInt(object o, string name)
+        {
+            try { return Convert.ToInt32(QuestMember(o, name)); } catch { return 0; }
+        }
+
+        private static bool QuestBool(object o, string name)
+        {
+            try { return Convert.ToBoolean(QuestMember(o, name)); } catch { return false; }
+        }
+
+        private static int QuestStepFlag(object step, string flagName)
+        {
+            try
+            {
+                FieldInfo f = step.GetType().GetField(flagName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance);
+                return f != null ? Convert.ToInt32(f.GetValue(null)) : 0;
+            }
+            catch { return 0; }
+        }
+
+        private static string BuildQuestsJson(out string finishedJson)
+        {
+            finishedJson = "[]";
+            try
+            {
+                object game = The.Game;
+                if (game == null) return "[]";
+                var sb = new StringBuilder("[");
+                int n = 0;
+                var quests = QuestMember(game, "Quests") as System.Collections.IDictionary;
+                if (quests != null)
+                {
+                    foreach (object q in quests.Values)
+                    {
+                        if (q == null || n >= MaxQuestsExport) continue;
+                        if (n > 0) sb.Append(",");
+                        n++;
+                        sb.Append("{\"id\": \"" + QuestText(q, "ID", 80) + "\", \"name\": \"" + QuestText(q, "Name", 120) + "\", \"level\": " + QuestInt(q, "Level")
+                            + ", \"finished\": " + (QuestBool(q, "Finished") ? "true" : "false")
+                            + ", \"giver\": \"" + QuestText(q, "QuestGiverName", 80) + "\", \"giver_place\": \"" + QuestText(q, "QuestGiverLocationName", 120)
+                            + "\", \"giver_zone\": \"" + QuestText(q, "QuestGiverLocationZoneID", 80) + "\", \"steps\": [");
+                        var steps = QuestMember(q, "StepsByID") as System.Collections.IDictionary;
+                        int k = 0;
+                        if (steps != null)
+                        {
+                            int finishedFlag = 0, failedFlag = 0, optionalFlag = 0, hiddenFlag = 0;
+                            foreach (object st in steps.Values)
+                            {
+                                if (st == null || k >= MaxQuestStepsExport) continue;
+                                if (k == 0)
+                                {
+                                    finishedFlag = QuestStepFlag(st, "FLAG_FINISHED"); failedFlag = QuestStepFlag(st, "FLAG_FAILED");
+                                    optionalFlag = QuestStepFlag(st, "FLAG_OPTIONAL"); hiddenFlag = QuestStepFlag(st, "FLAG_HIDDEN");
+                                }
+                                if (k > 0) sb.Append(",");
+                                k++;
+                                int flags = QuestInt(st, "Flags");
+                                sb.Append("{\"name\": \"" + QuestText(st, "Name", 120) + "\", \"text\": \"" + QuestText(st, "Text", 240) + "\", \"xp\": " + QuestInt(st, "XP")
+                                    + ", \"finished\": " + (finishedFlag != 0 && (flags & finishedFlag) != 0 ? "true" : "false")
+                                    + ", \"failed\": " + (failedFlag != 0 && (flags & failedFlag) != 0 ? "true" : "false")
+                                    + ", \"optional\": " + (optionalFlag != 0 && (flags & optionalFlag) != 0 ? "true" : "false")
+                                    + ", \"hidden\": " + (hiddenFlag != 0 && (flags & hiddenFlag) != 0 ? "true" : "false") + "}");
+                            }
+                        }
+                        sb.Append("]}");
+                    }
+                }
+                sb.Append("]");
+                var fin = new StringBuilder("[");
+                int m = 0;
+                object finishedObj = QuestMember(game, "FinishedQuests");
+                var finDict = finishedObj as System.Collections.IDictionary;
+                System.Collections.IEnumerable finSeq = finDict != null ? (System.Collections.IEnumerable)finDict.Keys : finishedObj as System.Collections.IEnumerable;
+                if (finSeq != null && !(finishedObj is string))
+                {
+                    foreach (object key in finSeq)
+                    {
+                        if (key == null || m >= MaxFinishedQuestsExport) continue;
+                        if (m > 0) fin.Append(",");
+                        m++;
+                        fin.Append("\"" + EscapeJson(StripQudFormatting(Convert.ToString(key) ?? "")) + "\"");
+                    }
+                }
+                fin.Append("]");
+                finishedJson = fin.ToString();
+                return sb.ToString();
+            }
+            catch { return "[]"; }
+        }
+
         // ---- Steering around immobile hostiles (HANDOFF issue 69) ----
         // A rooted hostile such as the wall-dwelling jilted lover (5 HP, grabs at radius 1) cannot follow, but the engine's autoexplore and path steps walk straight past
         // it and into its reach. The engine's own `AvoidMovingNearby` part (a Weight that GetNavigationWeightEvent and GetAdjacentNavigationWeightEvent add to the
@@ -1396,6 +1517,8 @@ namespace QudAIBrain
                 }
                 catch { }
                 TagImmobileHostilesForAvoidance(player, currentCell?.ParentZone);
+                string finishedQuestsJson;
+                string questsJson = BuildQuestsJson(out finishedQuestsJson);
                 string inventoryJson = BuildInventoryJson(player);
                 int carryNow = 0, carryMax = 0;
                 try { carryNow = player.GetCarriedWeight(); carryMax = player.GetMaxCarriedWeight(); } catch { }
@@ -1561,6 +1684,7 @@ namespace QudAIBrain
                 sb.Append($"\"inventory\": {inventoryJson},");
                 sb.Append($"\"carry_weight\": {carryNow}, \"max_carry_weight\": {carryMax},");
                 sb.Append($"\"avoid_tagged\": {avoidTaggedTotal},");
+                sb.Append($"\"quests\": {questsJson}, \"finished_quests\": {finishedQuestsJson},");
                 sb.Append($"\"harvestable_nearby\": {harvestableNearby},");
                 sb.Append($"\"campfire_nearby\": {(campfireNearby ? "true" : "false")},");
                 sb.Append($"\"can_make_camp\": {(canMakeCamp ? "true" : "false")},");

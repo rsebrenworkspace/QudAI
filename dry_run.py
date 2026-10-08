@@ -4827,3 +4827,260 @@ for _needle in ("AvoidMovingNearby", "TagImmobileHostilesForAvoidance(player", "
     assert _needle in _csrc, f"the mod must contain {_needle}"
 assert _csrc.count("{") == _csrc.count("}"), "C# braces"
 print("  [OK] Test 90 Passed: the brain announces newly avoided immobile hostiles once; the mod source tags them with the engine's AvoidMovingNearby part and flushes the navigation cache.")
+
+
+# ---------------------------------------------------------------------------
+# Test 91: the console's logic (tools/console_logic.py): mod health parsing, flag, readable views, tailing, lessons
+# ---------------------------------------------------------------------------
+import sys as _sys91
+_sys91.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools"))
+import console_logic as _cl
+_good = "[t] Compiling 1 file...\n[t] Success :)\n[t] Location: x.dll\n"
+assert _cl.parse_build_log(_good)[0] == "ok"
+assert _cl.parse_build_log("[t] Compiling 1 file...\n[t] error CS1002: ; expected\n")[0] == "bad"
+assert _cl.parse_build_log("[t] Compiling 1 file...\n[t] error CS0103: x\n[t] Compiling 1 file...\n[t] Success :)\n")[0] == "ok", "only the LAST compile counts"
+assert _cl.parse_build_log("")[0] == "unknown" and _cl.parse_build_log("[t] Compiling 1 file...\n")[0] == "warn"
+_pl = "[QudAI] PlayerTurn patch ACTIVE\n[QudAI] Patch check: 10/10 applied\n[QudAI Inventory] equip ok=1 failed=0\n"
+_rows = dict((n, s) for n, s, _ in _cl.parse_player_log(_pl))
+assert _rows == {"PlayerTurn patch": "ok", "Harmony patches": "ok", "Mod errors": "ok"}, _rows
+_rows = dict((n, s) for n, s, _ in _cl.parse_player_log("[QudAI] Patch check: 8/10 applied\n[QudAI X] Exception: boom\n"))
+assert _rows["PlayerTurn patch"] == "bad" and _rows["Harmony patches"] == "bad" and _rows["Mod errors"] == "warn", _rows
+_ex = tempfile.mkdtemp()
+assert not _cl.flag_on(_ex)
+open(_os.path.join(_ex, "active.flag"), "w").write("active")
+assert _cl.flag_on(_ex)
+_jl = _os.path.join(_ex, "t.jsonl")
+open(_jl, "w", encoding="utf-8").write(json.dumps({"t": 1, "hp": 5, "action": "REST", "reason": "[LLM in 3.0s] hello"}) + chr(10) + "{half written")
+_tr = _cl.tail_jsonl(_jl, 10)
+assert len(_tr) == 1 and "hello" in _cl.format_trace_row(_tr[0]) and "LLM in" not in _cl.format_trace_row(_tr[0])
+assert _cl.colour_tag("[INVENTORY] dropped x") == "[INVENTORY]" and _cl.colour_tag("plain") == ""
+assert _cl.filter_lines(["a Lase", "b rest"], "LASE") == ["a Lase"]
+_txt = _cl.describe_state({"hp": 4, "max_hp": 28, "level": 3, "genotype": "Mutated Human", "calling": "Apostle", "carry_weight": 54, "max_carry_weight": 225,
+                           "abilities": [{"name": "Lase", "cooldown": 0}, {"name": "Intimidate", "cooldown": 18}], "inventory": [{"name": "staff", "equipped": True, "count": 1, "weight": 3}]})
+assert "HP 4/28" in _txt and "Intimidate: cooldown 18" in _txt and "* staff" in _txt and _cl.describe_state({}).startswith("No state")
+assert _cl.pause_resume_bytes() == b"\n"
+_old_wf91 = _chr.WISDOM_FILE
+_chr.WISDOM_FILE = _os.path.join(tempfile.mkdtemp(), "ancestral_wisdom.json")
+try:
+    _chr.save_ancestral_wisdom([{"generation": 1, "lesson": "a"}, {"generation": 2, "lesson": "b", "approved": True}])
+    assert _cl.set_approval([1], True) == [1] and _cl.set_approval([2], False) == [2] and _cl.set_approval([99], True) == []
+    _w91 = {w["generation"]: w.get("approved") for w in _cl.lessons()}
+    assert _w91 == {1: True, 2: False}, _w91
+finally:
+    _chr.WISDOM_FILE = _old_wf91
+_th = _cl.threat_summary({"visible_entities": [{"is_enemy": True, "name": "snapjaw warrior", "difficulty": "Tough", "dist": 3},
+                                               {"is_enemy": True, "name": "jilted lover", "difficulty": "Easy", "dist": 1, "is_stationary": True},
+                                               {"is_enemy": False, "name": "table", "dist": 1}]})
+assert (_th[1] == "danger" and _th[0].index("jilted lover") < _th[0].index("snapjaw") and "!! snapjaw warrior [Tough]" in _th[0] and "(rooted)" in _th[0]), _th
+assert _cl.threat_summary({"visible_entities": []}) == ("No hostiles in view.", "calm") and _cl.threat_summary({"visible_entities": [{"is_enemy": True, "name": "x", "difficulty": "Easy", "dist": 2}]})[1] == "watch"
+assert _cl.feed_tag({"action": "MOVE_E", "reason": "[Loop Breaker] Oscillation"}, 10) == "loop" and _cl.feed_tag({"action": "REST", "reason": "", "hp": 7}, 10) == "hp"
+assert _cl.feed_tag({"action": "NAVIGATE_ZONE_EXIT:N", "reason": ""}, None) == "flee" and _cl.feed_tag({"action": "USE_ABILITY:CommandLase:W", "reason": "", "hp": 10}, 10) == "ability"
+assert _cl.feed_tag({"action": "LOOT", "reason": "Loot: taking"}, None) == "loot" and _cl.feed_tag({"action": "MOVE_E", "reason": ""}, None) == ""
+open(_jl, "w", encoding="utf-8").write(json.dumps({"t": 1, "hp": 9, "action": "REST", "reason": ""}) + chr(10) + json.dumps({"t": 2, "hp": 5, "action": "REST", "reason": ""}) + chr(10))
+assert [tag for _, tag in _cl.feed_rows(_jl, 10)] == ["", "hp"]
+_cs = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
+assert "stdin=subprocess.PIPE" in _cs and "pause_resume_bytes" in _cs and "active.flag" not in _cs, "pause goes through the brain's stdin, never by touching the flag"
+print("  [OK] Test 91 Passed: console logic (also the threat strip and the coloured live feed) parses the build and player logs (last compile only), tails a trace past a half-written line, reads the flag, renders the state, and approves lessons through chronicler.")
+
+
+# ---------------------------------------------------------------------------
+# Test 92: standing still is not an oscillation; a stuck-autoexplore latch gets retried (HANDOFF issue 71)
+# ---------------------------------------------------------------------------
+# The real sequence from the second stratum of the Kuyukas workshop (turns 338-342, 2026-10-07): two turns at a lead slug (LOOT, then AUTOEXPLORE's first
+# step), two autoexplore steps, back to the slug's cell. The old window counted (60, 15) three times and the loop breaker latched the whole level as stuck.
+brain.recent_positions.clear()
+_seq = [(60, 15), (60, 15), (61, 14), (61, 15), (60, 15)]
+_old_freq = 0
+_old_window = []
+for _p in _seq:
+    _old_window.append(_p)
+    _old_freq = _old_window.count(_p)
+assert _old_freq >= 3, "the old counting would have flagged this as an oscillation"
+for _p in _seq:
+    _freq, _uniq = brain.record_position(_p)
+assert _freq == 2 and _uniq == 3, (_freq, _uniq)
+# a real ping-pong is still caught
+brain.recent_positions.clear()
+for _p in [(50, 4), (51, 5), (50, 4), (51, 5), (50, 4)]:
+    _freq, _ = brain.record_position(_p)
+assert _freq >= 3, _freq
+# standing for many turns (resting, looting) never inflates the count
+brain.recent_positions.clear()
+for _ in range(10):
+    _freq, _ = brain.record_position((5, 5))
+assert _freq == 1
+brain.recent_positions.clear()
+
+# the latch: the first retry is due after AUTOEXPLORE_RETRY_GAP turns, then the gap doubles up to the maximum
+brain.STUCK_RETRY.clear()
+_gs = {"unexplored_cells": 1525, "autoexplore_stuck": False}
+_t0 = brain.TURN_CLOCK
+try:
+    brain.TURN_CLOCK = 1000
+    assert brain.autoexplore_retry_due("Z1", _gs) is False                      # just latched: not yet
+    brain.TURN_CLOCK = 1000 + brain.AUTOEXPLORE_RETRY_GAP
+    assert brain.autoexplore_retry_due("Z1", _gs) is True                       # one native step now
+    assert brain.STUCK_RETRY["Z1"]["gap"] == 2 * brain.AUTOEXPLORE_RETRY_GAP
+    brain.TURN_CLOCK += 1
+    assert brain.autoexplore_retry_due("Z1", _gs) is False                      # backed off
+    for _ in range(10):
+        brain.TURN_CLOCK = brain.STUCK_RETRY["Z1"]["next"]
+        assert brain.autoexplore_retry_due("Z1", _gs) is True
+    assert brain.STUCK_RETRY["Z1"]["gap"] == brain.AUTOEXPLORE_RETRY_MAX_GAP
+    # never when the engine itself says stuck or explored, or when little is left
+    brain.TURN_CLOCK = brain.STUCK_RETRY["Z1"]["next"] + 1
+    assert brain.autoexplore_retry_due("Z1", dict(_gs, autoexplore_stuck=True)) is False
+    assert brain.autoexplore_retry_due("Z1", dict(_gs, zone_fully_explored=True)) is False
+    assert brain.autoexplore_retry_due("Z1", dict(_gs, unexplored_cells=20)) is False
+    assert brain.autoexplore_retry_due("", _gs) is False
+finally:
+    brain.TURN_CLOCK = _t0
+    brain.STUCK_RETRY.clear()
+_bsrc = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "autoexplore_retry_due(zone_id or current_zone_id, game_state)" in _bsrc and "STUCK_RETRY.pop(_zid_now, None)" in _bsrc and "record_position(cur_pos)" in _bsrc
+print("  [OK] Test 92 Passed: standing still no longer counts as oscillation (the real Kuyukas sequence), a ping-pong still does, and a latched zone gets a native autoexplore retry with backoff unless the engine says stuck or explored.")
+
+
+# ---------------------------------------------------------------------------
+# Test 93: a carried firearm is kept as a trade asset even in a heavy pack (human, 2026-10-07)
+# ---------------------------------------------------------------------------
+_rifle93 = next(k for k, v in _is.catalog()["items"].items() if v.get("name") == "Issachar rifle" and v.get("group") == "missile_weapon")
+_inv93 = [{"id": "r1", "blueprint": _rifle93, "count": 1, "weight": 15, "equipped": False, "identified": True}]
+assert not _is.choose_drops(_inv93, _P["esper_ited_away"], carried_weight=200, capacity=200), "an unused rifle must survive pack pressure"
+assert not _is.choose_drops(_inv93, _P["esper_ited_away"], carried_weight=10, capacity=200)
+print("  [OK] Test 93 Passed: a firearm in the pack is never auto-dropped, even at 100% of capacity, so a gifted or bought gun stays a trade asset.")
+
+
+# ---------------------------------------------------------------------------
+# Test 94: a stratum with no way down is left by the stairs up (HANDOFF issue 73)
+# ---------------------------------------------------------------------------
+_up94 = "JoppaWorld.11.21.0.0.10"
+_dn94 = "JoppaWorld.11.21.0.0.11"
+assert brain.upper_zone_id(_dn94) == _up94 and brain.upper_zone_id("") is None and brain.upper_zone_id("nodots") is None
+_saved94 = (dict(brain.KNOWN_STAIRS_DOWN), dict(brain.KNOWN_STAIRS_UP), set(brain.STAIRS_GIVEUP), brain.ZONE_STEP_COUNT, brain.CURRENT_ZONE_CHOSEN_EXIT,
+            brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE, brain.RETREAT_TARGET_LEVEL)
+try:
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.KNOWN_STAIRS_UP.clear(); brain.STAIRS_GIVEUP.clear()
+    brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None; brain.RETREAT_TARGET_LEVEL = None
+    brain.KNOWN_STAIRS_DOWN[_up94] = {"tx": 56, "ty": 3, "z": 10, "name": "stairs down", "req_level": 3}
+    _st94 = {"reachable_edges": "", "stairs_up": [{"name": "stairs up", "blueprint": "StairsUp", "tx": 56, "ty": 3}]}
+    brain.ZONE_STEP_COUNT = 100
+    # cleared, worked long enough, no way down: walk to the stairs up (from the state, then from memory)
+    _d = brain.dead_end_ascent(_st94, _dn94, 11, (52, 8), False, True)
+    assert _d and _d["action"] == "NAVIGATE_TO_CELL:56,3", _d
+    brain.KNOWN_STAIRS_UP[_dn94] = {"tx": 56, "ty": 3, "z": 11, "name": "stairs up"}
+    assert brain.dead_end_ascent({}, _dn94, 11, (52, 8), False, True)["action"] == "NAVIGATE_TO_CELL:56,3"
+    # not on the surface, not before the stratum is cleared and worked, not at the stairs cell for the walk
+    assert brain.dead_end_ascent(_st94, _up94, 10, (52, 8), False, True) is None
+    assert brain.dead_end_ascent(_st94, _dn94, 11, (52, 8), False, False) is None
+    brain.ZONE_STEP_COUNT = 5
+    assert brain.dead_end_ascent(_st94, _dn94, 11, (52, 8), False, True) is None
+    brain.ZONE_STEP_COUNT = 100
+    # the engine reports reachable edges (as it did in the workshop stratum, NSEW): no walk to the stairs, the edge logic goes first...
+    _edges = dict(_st94, reachable_edges="NSEW")
+    assert brain.dead_end_ascent(_edges, _dn94, 11, (52, 8), False, True) is None
+    # ...but when its route ends ON the stairs-up cell (cleared, worked, no way down) he ascends
+    _d = brain.dead_end_ascent(_edges, _dn94, 11, (56, 3), True, True)
+    assert _d and _d["action"] == "USE_STAIRS_UP", _d
+    assert (_up94, (56, 3)) in brain.STAIRS_GIVEUP and _dn94 in brain.DEAD_END_ZONES, "going up must stop him walking straight back down"
+    brain.STAIRS_GIVEUP.clear(); brain.DEAD_END_ZONES.clear()
+    # never on arrival or while the stratum is still being explored, even standing on the stairs
+    brain.ZONE_STEP_COUNT = 5
+    assert brain.dead_end_ascent(_edges, _dn94, 11, (56, 3), True, True) is None
+    brain.ZONE_STEP_COUNT = 100
+    assert brain.dead_end_ascent(_edges, _dn94, 11, (56, 3), True, False) is None
+    # stairs down known and usable: the delve logic owns the decision
+    brain.KNOWN_STAIRS_DOWN[_dn94] = {"tx": 20, "ty": 10, "z": 11, "name": "stairs down", "req_level": 3}
+    assert brain.dead_end_ascent(_st94, _dn94, 11, (52, 8), False, True) is None
+    brain.STAIRS_GIVEUP.add((_dn94, (20, 10)))
+    assert brain.dead_end_ascent(_st94, _dn94, 11, (52, 8), False, True) is not None, "stairs down that were given up no longer count as a way down"
+    # the stratum above: standing on the stairs down he must NOT descend again once they were given up (and does when they were not)
+    brain.KNOWN_STAIRS_DOWN.pop(_dn94, None)
+    brain.STAIRS_GIVEUP.clear()
+    _surface94 = {"hp": 31, "max_hp": 31, "x": 56, "y": 3, "z": 10, "level": 5, "zone_id": _up94, "zone_name": "salt marsh", "zone_fully_explored": False,
+                  "hostiles_nearby": False, "hostiles_adjacent": False, "unexplored_cells": 400,
+                  "surroundings": {"C": "stairs down", "N": "grass", "S": "grass", "E": "grass", "W": "grass", "NE": "grass", "NW": "grass", "SE": "grass", "SW": "grass"},
+                  "stairs_down": [{"name": "stairs down", "blueprint": "StairsDown", "tx": 56, "ty": 3}], "standing_on_stairs_down": True, "visible_entities": []}
+    brain.recent_positions.clear()
+    assert brain.query_decision(dict(_surface94), took_damage=False, enemies=[])["action"] == "USE_STAIRS_DOWN", "control: without a give-up he descends"
+    brain.STAIRS_GIVEUP.add((_up94, (56, 3)))
+    brain.recent_positions.clear()
+    _after = brain.query_decision(dict(_surface94), took_damage=False, enemies=[])
+    assert _after["action"] != "USE_STAIRS_DOWN", _after
+    # after a restart the stairs down of the stratum above were never seen: the dead-end memory alone must keep him from descending again
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.STAIRS_GIVEUP.clear(); brain.DEAD_END_ZONES.clear(); brain.ZONE_STEP_COUNT = 100
+    _d = brain.dead_end_ascent(dict(_st94, reachable_edges="NSEW"), _dn94, 11, (56, 3), True, True)
+    assert _d["action"] == "USE_STAIRS_UP" and not brain.STAIRS_GIVEUP and _dn94 in brain.DEAD_END_ZONES
+    brain.update_stair_records(dict(_surface94))               # he arrives on the stairs down and only now learns them
+    assert _up94 in brain.KNOWN_STAIRS_DOWN and brain.stairs_given_up(_up94)
+    brain.recent_positions.clear()
+    _again = brain.query_decision(dict(_surface94), took_damage=False, enemies=[])
+    assert _again["action"] != "USE_STAIRS_DOWN", _again
+    _far = dict(_surface94, x=30, y=10, standing_on_stairs_down=False, surroundings=dict(_surface94["surroundings"], C="grass"), zone_fully_explored=True, unexplored_cells=0)
+    brain.recent_positions.clear()
+    assert not brain.query_decision(_far, took_damage=False, enemies=[])["action"].startswith("NAVIGATE_TO_CELL:56,3"), "and he does not walk back to those stairs either"
+finally:
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.KNOWN_STAIRS_DOWN.update(_saved94[0])
+    brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_UP.update(_saved94[1])
+    brain.STAIRS_GIVEUP.clear(); brain.STAIRS_GIVEUP.update(_saved94[2])
+    brain.ZONE_STEP_COUNT, brain.CURRENT_ZONE_CHOSEN_EXIT, brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE, brain.RETREAT_TARGET_LEVEL = _saved94[3:]
+    brain.DEAD_END_ZONES.clear(); brain.recent_positions.clear()
+print("  [OK] Test 94 Passed (also after a restart, from the dead-end memory alone): a cleared, worked stratum with no way down is left by USE_STAIRS_UP (walking there only when the engine reports no reachable edge), the stairs down above are given up so he does not descend again, and a usable way down still belongs to the delve logic.")
+
+
+# ---------------------------------------------------------------------------
+# Test 95: the lethal-adjacent guard (HANDOFF issue 75): a Very Tough mobile hostile next to him gets a control answer, not whatever the model chose
+# ---------------------------------------------------------------------------
+_ab95 = [{"name": "Lase (1 charges)", "command": "CommandLase", "cooldown": 0, "usable": True, "active": False},
+         {"name": "Intimidate", "command": "CommandIntimidate", "cooldown": 0, "usable": True, "active": False},
+         {"name": "Teleport Other", "command": "CommandTeleportOther", "cooldown": 0, "usable": True, "active": False},
+         {"name": "Force Bubble", "command": "CommandForceBubble", "cooldown": 0, "usable": True, "active": False}]
+_puma = {"name": "wet chitinous puma", "dist": 1, "dir": "SE", "difficulty": "Very Tough", "level": 12, "is_enemy": True, "is_stationary": False}
+_lase = {"action": "USE_ABILITY:CommandLase:SE", "reason": "[LLM] Lase"}
+_g = brain.lethal_adjacent_guard(_lase, {"SE": "wet chitinous puma"}, [_puma], _ab95)
+assert _g["action"] == "USE_ABILITY:CommandTeleportOther:SE" and "Lethal guard" in _g["reason"], _g           # the real death: Lase was chosen with these three ready
+_cool = lambda name: [dict(a, cooldown=40, usable=False) if a["name"] == name else a for a in _ab95]
+assert brain.lethal_adjacent_guard(_lase, {"SE": "x"}, [_puma], _cool("Teleport Other"))["action"] == "USE_ABILITY:CommandForceBubble"
+_two = [dict(a, cooldown=40, usable=False) if a["name"] in ("Teleport Other", "Force Bubble") else a for a in _ab95]
+assert brain.lethal_adjacent_guard(_lase, {"SE": "x"}, [_puma], _two)["action"] == "USE_ABILITY:CommandIntimidate"
+_none = [dict(a, cooldown=40, usable=False) if a["name"] in ("Teleport Other", "Force Bubble", "Intimidate") else a for a in _ab95]
+assert brain.lethal_adjacent_guard(_lase, {"SE": "x"}, [_puma], _none) == _lase, "nothing ready: the model's choice stands"
+for _keep in ("USE_ABILITY:CommandTeleportOther:SE", "USE_ABILITY:CommandForceBubble", "USE_ABILITY:CommandIntimidate", "USE_STAIRS_UP"):
+    assert brain.lethal_adjacent_guard({"action": _keep}, {"SE": "x"}, [_puma], _ab95)["action"] == _keep
+assert brain.lethal_adjacent_guard(dict(_lase, flee_ok=True), {"SE": "x"}, [_puma], _ab95)["action"] == _lase["action"]
+for _other in (dict(_puma, difficulty="Tough"), dict(_puma, difficulty="Average"), dict(_puma, is_stationary=True), dict(_puma, dist=2), dict(_puma, is_companion=True)):
+    assert brain.lethal_adjacent_guard(_lase, {"SE": "x"}, [_other], _ab95) == _lase, _other
+assert brain.lethal_adjacent_guard(_lase, {}, [_puma], _ab95) == _lase
+assert brain.lethal_adjacent_guard(_lase, {"SE": "x"}, [dict(_puma, difficulty="Impossible")], _ab95)["action"].startswith("USE_ABILITY:CommandTeleportOther")
+print("  [OK] Test 95 Passed: a mobile Very Tough or Impossible hostile next to him is answered with Teleport Other, else Force Bubble, else Intimidate (the real Gen 19 death), and Tough and below, rooted, distant, companion, escape and nothing-ready cases are untouched.")
+
+
+# ---------------------------------------------------------------------------
+# Test 96: the read-only quest log (HANDOFF issue 76, BACKLOG B2 stage 1): brain messages, console view, mod export
+# ---------------------------------------------------------------------------
+_q0 = {"id": "What's Eating the Watervine?", "name": "What's Eating the Watervine?", "level": 1, "finished": False, "giver": "Mehmet", "giver_place": "Joppa", "giver_zone": "JoppaWorld.11.22.1.1.10",
+       "steps": [{"name": "Travel to Red Rock", "text": "Journey two parasangs north of Joppa to Red Rock.", "xp": 50, "finished": False, "failed": False, "optional": False, "hidden": False},
+                 {"name": "Find the Vermin", "text": "Find the creatures that are eating Joppa's watervine.", "xp": 100, "finished": False, "failed": False, "optional": False, "hidden": False}]}
+brain.QUEST_SEEN.update({"started": set(), "finished_steps": set(), "done": set(), "primed": False})
+_buf = _io.StringIO()
+with _ctx.redirect_stdout(_buf):
+    brain.note_quests({"quests": [_q0]})                                   # the first state only records what exists (a restart must not replay the log)
+    brain.note_quests({"quests": [_q0]})
+    _q1 = dict(_q0, steps=[dict(_q0["steps"][0], finished=True), _q0["steps"][1]])
+    brain.note_quests({"quests": [_q1]})                                   # a step finished
+    brain.note_quests({"quests": [_q1]})
+    _q2 = dict(_q1, finished=True)
+    brain.note_quests({"quests": [_q2, {"id": "Argyve", "name": "Fetch Argyve a Knickknack", "level": 3, "giver": "Argyve", "steps": []}]})   # finished, plus a new quest
+    brain.note_quests({}); brain.note_quests({"quests": "x"}); brain.note_quests(None)
+_lines = [l for l in _buf.getvalue().splitlines() if l.startswith("[QUEST]")]
+assert len(_lines) == 3 and "step finished" in _lines[0] and "Travel to Red Rock" in _lines[0] and "+50 XP" in _lines[0], _lines
+assert "quest finished" in _lines[1] and "new quest: Fetch Argyve a Knickknack" in _lines[2], _lines
+_txt96 = _cl.describe_quests({"quests": [_q1], "finished_quests": ["Fetch Argyve a Knickknack"]})
+assert "1/2 steps" in _txt96 and "[x] Travel to Red Rock" in _txt96 and "[ ] Find the Vermin" in _txt96 and "Finished: Fetch Argyve a Knickknack" in _txt96, _txt96
+assert _cl.describe_quests({}).startswith("No quests")
+_csrc96 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _needle in ("BuildQuestsJson(out finishedQuestsJson)", '\\"quests\\": {questsJson}', "finished_quests", '"Quests"', '"FinishedQuests"', '"StepsByID"', "FLAG_FINISHED"):
+    assert _needle in _csrc96, f"the mod must contain {_needle}"
+assert _csrc96.count("{") == _csrc96.count("}"), "C# braces"
+brain.QUEST_SEEN.update({"started": set(), "finished_steps": set(), "done": set(), "primed": False})
+print("  [OK] Test 96 Passed: the brain announces new quests, finished steps and finished quests once (and stays quiet on its first look), the console renders the quest log, and the mod exports it read-only by reflection.")

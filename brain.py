@@ -212,6 +212,38 @@ def engine_confirms_explored(game_state):
     return not (unexp is not None and unexp > 35 and not game_state.get("autoexplore_stuck", False))
 
 
+def record_position(cur_pos):
+    """Adds the cell to the oscillation window only when he actually changed cell, and returns (times this cell is in the window, distinct cells).
+
+    Standing still (looting, resting, a failed move) used to count every turn, so three turns around one lead slug read as an oscillation, the loop breaker
+    declared autoexplore stuck, and a whole level was explored by greedy moves (HANDOFF issue 71). A real ping-pong A-B-A-B still counts."""
+    if not recent_positions or recent_positions[-1] != cur_pos:
+        recent_positions.append(cur_pos)
+    return recent_positions.count(cur_pos), len(set(recent_positions))
+
+
+# The "autoexplore is stuck" latch is the brain's own guess (a loop-breaker oscillation or a failed step), and the engine's `autoexplore_stuck` may say
+# the opposite. While the latch is set, native autoexplore is never tried again and, because the mod only computes frontier targets when the ENGINE says
+# stuck, the brain explores by greedy moves. So every so often the latch lets one native step through; a success clears it, a failure backs the retry off.
+AUTOEXPLORE_RETRY_GAP = 25
+AUTOEXPLORE_RETRY_MAX_GAP = 200
+STUCK_RETRY = {}               # zone_id -> {"next": TURN_CLOCK to retry at, "gap": current backoff}
+
+
+def autoexplore_retry_due(zone_id, game_state):
+    """True on the turns when a latched zone should get one native autoexplore step again. Never when the engine itself reports stuck or explored (R2)."""
+    if not zone_id or game_state.get("autoexplore_stuck") or game_state.get("zone_fully_explored") or engine_confirms_explored(game_state):
+        return False
+    if (game_state.get("unexplored_cells") or 0) <= 35:
+        return False
+    rec = STUCK_RETRY.setdefault(zone_id, {"next": TURN_CLOCK + AUTOEXPLORE_RETRY_GAP, "gap": AUTOEXPLORE_RETRY_GAP})
+    if TURN_CLOCK < rec["next"]:
+        return False
+    rec["gap"] = min(rec["gap"] * 2, AUTOEXPLORE_RETRY_MAX_GAP)
+    rec["next"] = TURN_CLOCK + rec["gap"]
+    return True
+
+
 def update_zone_records(game_state):
     """
     Tracks zone transition history and detects rapid border ping-pong oscillations.
@@ -236,6 +268,7 @@ def update_zone_records(game_state):
             EXPLORED_ZONE_SET.add(leaving_zone)
         # A fresh visit gets a fresh autoexplore attempt: stale "stuck" marks must not carry over.
         stuck_autoexplore_zones.discard(zone_id)
+        STUCK_RETRY.pop(zone_id, None)
         CURRENT_ZONE_CHOSEN_EXIT = None
         CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 
@@ -589,6 +622,36 @@ def choose_inventory_action(game_state, template, is_town):
         return {"action": "DROP_ITEMS:" + ",".join(ids), "reason": f"Inventory: dropping {names} ({drops[0][1]})"}
     INV_STATE["sig"] = sig
     return None
+
+
+QUEST_SEEN = {"started": set(), "finished_steps": set(), "done": set(), "primed": False}
+
+
+def note_quests(game_state):
+    """Prints `[QUEST]` lines when the mod's read-only quest log shows a new quest, a finished step or a finished quest (BACKLOG B2 stage 1). Never acts, never raises.
+    The first state seen after the brain starts only records what already exists, so a restart does not replay the whole log."""
+    try:
+        quests = game_state.get("quests") or []
+        quiet = not QUEST_SEEN["primed"]
+        for q in quests:
+            qid = q.get("id") or q.get("name")
+            if qid and qid not in QUEST_SEEN["started"]:
+                QUEST_SEEN["started"].add(qid)
+                if not quiet:
+                    print(f"[QUEST] new quest: {q.get('name')} (level {q.get('level')}, giver {q.get('giver') or '?'})")
+            for st in q.get("steps") or []:
+                key = (qid, st.get("name"))
+                if st.get("finished") and key not in QUEST_SEEN["finished_steps"]:
+                    QUEST_SEEN["finished_steps"].add(key)
+                    if not quiet:
+                        print(f"[QUEST] step finished: {q.get('name')} / {st.get('name')} (+{st.get('xp')} XP)")
+            if q.get("finished") and qid not in QUEST_SEEN["done"]:
+                QUEST_SEEN["done"].add(qid)
+                if not quiet:
+                    print(f"[QUEST] quest finished: {q.get('name')}")
+        QUEST_SEEN["primed"] = True
+    except Exception:
+        pass
 
 
 AVOID_SEEN = {"n": 0}
@@ -3091,11 +3154,114 @@ def enforce_stand_and_fight(decision, game_state, adj_threats, enemies, abilitie
     return new
 
 
+# Lethal adjacent threats (HANDOFF issue 75). A level 5 Esper died to a Very Tough puma (level 12): for three turns it stood next to him and the model answered
+# Lase five times while Teleport Other, Force Bubble and Intimidate were all ready and "the pet" it relied on was two tiles away; two hits (15 and 7) ended the run.
+# The deterministic fallback has a close-contact answer, but the model is asked first. So, before the stand-and-fight rule, an adjacent MOBILE hostile rated Very Tough
+# or Impossible gets the first ready of these answers instead of whatever the model chose (Tough and below stay with the model).
+LETHAL_DIFFICULTIES = ("Very Tough", "Impossible")
+LETHAL_GUARD_FAMILIES = ("teleport_other", "force_shield", "intimidate")
+LETHAL_GUARD_KEEP = ("USE_ABILITY:CommandTeleportOther", "USE_ABILITY:CommandForceBubble", "USE_ABILITY:CommandIntimidate", "USE_STAIRS", "USE_ABILITY:CommandTeleport")
+
+
+def lethal_adjacent_guard(decision, adj_threats, enemies, abilities):
+    """Replaces the decision by the first ready control answer when a mobile Very Tough or Impossible hostile is adjacent. Other decisions pass through."""
+    if (decision or {}).get("flee_ok"):
+        return decision
+    action = (decision or {}).get("action", "")
+    if action.startswith(LETHAL_GUARD_KEEP):
+        return decision                              # the model (or a rule) already chose an escape or a control answer
+    adj = [e for e in enemies if e.get("dist") == 1 and e.get("dir") in (adj_threats or {})
+           and e.get("difficulty") in LETHAL_DIFFICULTIES and not e.get("is_stationary") and not e.get("is_companion")]
+    if not adj:
+        return decision
+    ab = first_ready_by_priority(abilities, LETHAL_GUARD_FAMILIES)
+    if not ab or not ab.get("command"):
+        return decision
+    target = adj[0]
+    d = target.get("dir")
+    needs_dir = ab["command"] == "CommandTeleportOther"
+    new = {"action": f"USE_ABILITY:{ab['command']}" + (f":{d}" if needs_dir else ""),
+           "reason": f"Lethal guard: {target.get('name', 'a hostile')} ({target.get('difficulty')}, level {target.get('level', '?')}) is adjacent ({d}); {ab.get('name', 'an ability')} instead of {action or 'the planned action'}"}
+    print(f"[LETHAL GUARD] {action} -> {new['action']} ({target.get('name', '?')}, {target.get('difficulty')})")
+    return new
+
+
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
-    """The decision for this turn: `_query_decision` plus the stand-and-fight rule."""
+    """The decision for this turn: `_query_decision`, the lethal-adjacent guard, then the stand-and-fight rule."""
     STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
     decision = _query_decision(game_state, took_damage, enemies, suppress_autolevel)
+    decision = lethal_adjacent_guard(decision, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
     return enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
+
+
+DEAD_END_MIN_STEPS = 40         # a cleared stratum must have been worked for this many steps before the brain leaves it by the stairs up
+DEAD_END_ZONES = set()
+
+
+def upper_zone_id(zone_id):
+    """The zone one stratum up: the last dot-separated part of a zone id is its z level (JoppaWorld.11.21.0.0.11 -> ...0.10)."""
+    parts = str(zone_id or "").split(".")
+    if len(parts) < 2 or not parts[-1].isdigit():
+        return None
+    return ".".join(parts[:-1] + [str(int(parts[-1]) - 1)])
+
+
+def lower_zone_id(zone_id):
+    """The zone one stratum down (the last dot-separated part is its z level)."""
+    parts = str(zone_id or "").split(".")
+    if len(parts) < 2 or not parts[-1].isdigit():
+        return None
+    return ".".join(parts[:-1] + [str(int(parts[-1]) + 1)])
+
+
+def stairs_given_up(zone_id):
+    """True when the stairs down of this zone must not be used: they were given up explicitly, or the stratum below is a known dead end.
+
+    The dead-end memory is what counts: right after a restart the brain may never have seen the stairs down of the stratum above, so a give-up entry written
+    at the moment of ascending would have nothing to attach to (HANDOFF issue 74: he went up and straight back down)."""
+    low = lower_zone_id(zone_id)
+    if low and low in DEAD_END_ZONES:
+        return True
+    sd = KNOWN_STAIRS_DOWN.get(zone_id)
+    return bool(sd and (zone_id, (sd.get("tx"), sd.get("ty"))) in STAIRS_GIVEUP)
+
+
+def dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared):
+    """A stratum with no way down is a dead end: leave it by the stairs up instead of circling its walls (HANDOFF issue 73).
+
+    The engine's own edge route led him to the stairs-up cell (the only exit of the Kuyukas workshop stratum, `reachable_edges` said NSEW) and the brain then
+    stepped off it: nothing but the emergency retreat ever used `USE_STAIRS_UP`. Fires when the stratum is cleared, has been worked for DEAD_END_MIN_STEPS and
+    no usable stairs down are known here: standing on the stairs up he ascends; away from them he walks there only when the engine reports no reachable
+    edge at all (otherwise the edge logic runs first, and its route may end on the stairs). Going up writes the stairs down of the stratum above into
+    STAIRS_GIVEUP so he is not sent straight back down. Returns a decision dict or None."""
+    if cur_z <= 10 or not zone_id:
+        return None
+    sd = KNOWN_STAIRS_DOWN.get(zone_id)
+    if sd:
+        sd_key = (zone_id, (sd.get("tx"), sd.get("ty")))
+        if sd_key not in STAIRS_GIVEUP and sd_key not in UNREACHABLE_SECTORS:
+            return None                 # a way down exists: the delve logic owns the decision
+    if not (is_zone_cleared and ZONE_STEP_COUNT >= DEAD_END_MIN_STEPS):
+        return None
+    if standing_on_su:
+        DEAD_END_ZONES.add(zone_id)
+        up = upper_zone_id(zone_id)
+        usd = KNOWN_STAIRS_DOWN.get(up) if up else None
+        if usd:
+            STAIRS_GIVEUP.add((up, (usd.get("tx"), usd.get("ty"))))
+        return {"action": "USE_STAIRS_UP", "reason": f"Dead end: no way down from stratum {cur_z}; ascending the stairs up to leave it"}
+    if game_state.get("reachable_edges"):
+        return None                     # the engine says an edge is reachable: the zone-exit logic goes first
+    su = KNOWN_STAIRS_UP.get(zone_id)
+    if not su:
+        ups = [s for s in (game_state.get("stairs_up") or []) if s.get("tx") is not None]
+        su = ups[0] if ups else None
+    if not su:
+        return None
+    su_pos = (su.get("tx"), su.get("ty"))
+    if cur_pos == su_pos or (zone_id, su_pos) in STAIRS_GIVEUP or (zone_id, su_pos) in UNREACHABLE_SECTORS:
+        return None
+    return {"action": f"NAVIGATE_TO_CELL:{su_pos[0]},{su_pos[1]}", "reason": f"Dead end: no way down from stratum {cur_z}; walking to the stairs up at {su_pos}"}
 
 
 def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
@@ -3114,6 +3280,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         if (last_action == "AUTOEXPLORE" and not game_state.get("last_move_failed", False)
                 and not game_state.get("autoexplore_stuck", False)):
             stuck_autoexplore_zones.discard(_zid_now)
+            STUCK_RETRY.pop(_zid_now, None)
             if not game_state.get("zone_fully_explored", False) and (game_state.get("unexplored_cells", 0) or 0) > 35:
                 EXPLORED_ZONE_SET.discard(_zid_now)
 
@@ -3399,6 +3566,8 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         is_retreating = (RETREAT_TARGET_LEVEL is not None and cur_lvl < RETREAT_TARGET_LEVEL)
 
         is_stuck_explore = (bool(zone_id and zone_id in stuck_autoexplore_zones) or (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones))
+        if is_stuck_explore and autoexplore_retry_due(zone_id or current_zone_id, game_state):
+            is_stuck_explore = False       # one native step to test the guess; the self-heal below clears the latch on success
         is_zone_cleared = game_state.get("zone_fully_explored", False) or is_stuck_explore or (game_state.get("unexplored_cells", 999) == 0)
 
         # In dungeons (cur_z > 10), healthy adventurers make the tough choice to keep diving deeper,
@@ -3408,7 +3577,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             is_subterranean or (cur_lvl >= req_depth_lvl)
         )
 
-        if standing_on_sd:
+        if standing_on_sd and not stairs_given_up(zone_id):
             if can_delve:
                 if cur_lvl >= req_depth_lvl:
                     return {"action": "USE_STAIRS_DOWN", "reason": f"Stratum Progression: Descending stairs down to stratum {cur_z + 1} (Level {cur_lvl} >= Req {req_depth_lvl})"}
@@ -3424,7 +3593,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             not is_peaceful_npc(e.get("name"), e.get("blueprint")) and not is_ignorable_stationary_enemy(e)
             for e in game_state.get("visible_entities", [])
         )
-        if can_delve and (is_zone_cleared or (is_subterranean and is_healthy and not has_visible_threats)) and (zone_id in KNOWN_STAIRS_DOWN):
+        if can_delve and (is_zone_cleared or (is_subterranean and is_healthy and not has_visible_threats)) and (zone_id in KNOWN_STAIRS_DOWN) and not stairs_given_up(zone_id):
             sd_info = KNOWN_STAIRS_DOWN[zone_id]
             sd_pos = (sd_info["tx"], sd_info["ty"])
             # In dungeons, if zone is cleared (or subterranean with no visible threats), route to stairs down
@@ -3441,6 +3610,10 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
                     if best_m and sector_target_ok(zone_id, sd_pos, cur_pos, "stairs"):
                         return {"action": best_m, "reason": f"{delve_type}: no engine route to the stairs at {sd_pos}; stepping {best_m[5:]} toward them ({rec_str})"}
+
+        dead_end = dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared)
+        if dead_end:
+            return dead_end
 
         # 6. Inward Border Navigation & Zone Hopping Prevention
         rev_dir = LAST_ZONE_ENTRY.get("reverse_dir") if LAST_ZONE_ENTRY else None
@@ -3769,6 +3942,7 @@ def main():
                 note_loot(game_state)
                 note_inventory_action(game_state)
                 note_avoid(game_state)
+                note_quests(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
 
@@ -3779,9 +3953,7 @@ def main():
                 last_hp = hp
 
                 visit_counts[cur_pos] += 1
-                recent_positions.append(cur_pos)
-                pos_frequency = recent_positions.count(cur_pos)
-                unique_positions = len(set(recent_positions))
+                pos_frequency, unique_positions = record_position(cur_pos)
 
                 companions = list(game_state.get("companions", []))
                 raw_entities = game_state.get("visible_entities", [])
