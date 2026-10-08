@@ -40,7 +40,7 @@ EQUIPMENT_GROUPS = ("armor", "shield", "melee_weapon", "missile_weapon")
 # Stage 2 is conservative (human, 2026-10-06: some "junk" raises factions or may be a quest item, to be re-evaluated later): only these groups are ever
 # dropped automatically. Everything else (books, data disks, trade goods, keys, cybernetics, trinkets, tools, consumables...) is kept.
 DROPPABLE_GROUPS = ("armor", "shield", "melee_weapon", "missile_weapon", "scrap", "corpse")
-MAX_KEPT = {"food": 6, "tonic": 8, "medication": 6, "power_cell": 3, "grenade": 4, "thrown_weapon": 4, "water_container": 1, "light_source": 1}
+MAX_KEPT = {"food": 6, "tonic": 8, "medication": 6, "power_cell": 3, "grenade": 4, "thrown_weapon": 4, "light_source": 1}   # no water cap: waterskins are trade currency (human, 2026-10-07)
 
 SKILL_ROOTS = {"Axe": "Axe", "Cudgel": "Cudgel", "Pistol": "Pistol", "Rifles": "Rifle", "Rifle": "Rifle", "LongBlades": "LongBlades", "LongBlade": "LongBlades",
                "ShortBlades": "ShortBlades", "ShortBlade": "ShortBlades", "HeavyWeapons": "HeavyWeapons", "Shield": "Shield", "Multiweapon": "MULTI"}
