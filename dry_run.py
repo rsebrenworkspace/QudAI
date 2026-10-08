@@ -5053,3 +5053,34 @@ for _other in (dict(_puma, difficulty="Tough"), dict(_puma, difficulty="Average"
 assert brain.lethal_adjacent_guard(_lase, {}, [_puma], _ab95) == _lase
 assert brain.lethal_adjacent_guard(_lase, {"SE": "x"}, [dict(_puma, difficulty="Impossible")], _ab95)["action"].startswith("USE_ABILITY:CommandTeleportOther")
 print("  [OK] Test 95 Passed: a mobile Very Tough or Impossible hostile next to him is answered with Teleport Other, else Force Bubble, else Intimidate (the real Gen 19 death), and Tough and below, rooted, distant, companion, escape and nothing-ready cases are untouched.")
+
+
+# ---------------------------------------------------------------------------
+# Test 96: the read-only quest log (HANDOFF issue 76, BACKLOG B2 stage 1): brain messages, console view, mod export
+# ---------------------------------------------------------------------------
+_q0 = {"id": "What's Eating the Watervine?", "name": "What's Eating the Watervine?", "level": 1, "finished": False, "giver": "Mehmet", "giver_place": "Joppa", "giver_zone": "JoppaWorld.11.22.1.1.10",
+       "steps": [{"name": "Travel to Red Rock", "text": "Journey two parasangs north of Joppa to Red Rock.", "xp": 50, "finished": False, "failed": False, "optional": False, "hidden": False},
+                 {"name": "Find the Vermin", "text": "Find the creatures that are eating Joppa's watervine.", "xp": 100, "finished": False, "failed": False, "optional": False, "hidden": False}]}
+brain.QUEST_SEEN.update({"started": set(), "finished_steps": set(), "done": set(), "primed": False})
+_buf = _io.StringIO()
+with _ctx.redirect_stdout(_buf):
+    brain.note_quests({"quests": [_q0]})                                   # the first state only records what exists (a restart must not replay the log)
+    brain.note_quests({"quests": [_q0]})
+    _q1 = dict(_q0, steps=[dict(_q0["steps"][0], finished=True), _q0["steps"][1]])
+    brain.note_quests({"quests": [_q1]})                                   # a step finished
+    brain.note_quests({"quests": [_q1]})
+    _q2 = dict(_q1, finished=True)
+    brain.note_quests({"quests": [_q2, {"id": "Argyve", "name": "Fetch Argyve a Knickknack", "level": 3, "giver": "Argyve", "steps": []}]})   # finished, plus a new quest
+    brain.note_quests({}); brain.note_quests({"quests": "x"}); brain.note_quests(None)
+_lines = [l for l in _buf.getvalue().splitlines() if l.startswith("[QUEST]")]
+assert len(_lines) == 3 and "step finished" in _lines[0] and "Travel to Red Rock" in _lines[0] and "+50 XP" in _lines[0], _lines
+assert "quest finished" in _lines[1] and "new quest: Fetch Argyve a Knickknack" in _lines[2], _lines
+_txt96 = _cl.describe_quests({"quests": [_q1], "finished_quests": ["Fetch Argyve a Knickknack"]})
+assert "1/2 steps" in _txt96 and "[x] Travel to Red Rock" in _txt96 and "[ ] Find the Vermin" in _txt96 and "Finished: Fetch Argyve a Knickknack" in _txt96, _txt96
+assert _cl.describe_quests({}).startswith("No quests")
+_csrc96 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _needle in ("BuildQuestsJson(out finishedQuestsJson)", '\\"quests\\": {questsJson}', "finished_quests", '"Quests"', '"FinishedQuests"', '"StepsByID"', "FLAG_FINISHED"):
+    assert _needle in _csrc96, f"the mod must contain {_needle}"
+assert _csrc96.count("{") == _csrc96.count("}"), "C# braces"
+brain.QUEST_SEEN.update({"started": set(), "finished_steps": set(), "done": set(), "primed": False})
+print("  [OK] Test 96 Passed: the brain announces new quests, finished steps and finished quests once (and stays quiet on its first look), the console renders the quest log, and the mod exports it read-only by reflection.")

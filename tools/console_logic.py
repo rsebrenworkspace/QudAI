@@ -182,6 +182,31 @@ def describe_state(s):
     return "\n".join(L)
 
 
+def describe_quests(state):
+    """The mod's read-only quest log (state `quests`, `finished_quests`) as readable text for the console."""
+    quests = (state or {}).get("quests") or []
+    done = (state or {}).get("finished_quests") or []
+    if not quests and not done:
+        return "No quests in the last state (none taken yet, or the game has not exported the log)."
+    L = []
+    for q in quests:
+        steps = q.get("steps") or []
+        fin = sum(1 for s in steps if s.get("finished"))
+        L.append(f"{'[done] ' if q.get('finished') else ''}{q.get('name')}  (level {q.get('level')}, {fin}/{len(steps)} steps"
+                 + (f", from {q.get('giver')}" if q.get("giver") else "") + ")")
+        for s in steps:
+            mark = "x" if s.get("finished") else ("!" if s.get("failed") else " ")
+            L.append(f"   [{mark}] {s.get('name')}  ({s.get('xp', 0)} XP){'  optional' if s.get('optional') else ''}")
+            if s.get("text") and not s.get("finished"):
+                L.append(f"        {s.get('text')}")
+        if q.get("giver_place"):
+            L.append(f"   given at {q.get('giver_place')} {q.get('giver_zone') or ''}")
+    if done:
+        L.append("")
+        L.append("Finished: " + ", ".join(str(d) for d in done))
+    return "\n".join(L)
+
+
 def format_trace_row(r):
     reason = re.sub(r"^\[LLM in [\d.]+s\]\s*", "", str(r.get("reason") or ""))
     return f"{r.get('t', '?'):>5}  HP{str(r.get('hp', '?')):>4}  {str(r.get('action', '')):<34} {reason[:110]}"

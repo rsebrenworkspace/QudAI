@@ -624,6 +624,36 @@ def choose_inventory_action(game_state, template, is_town):
     return None
 
 
+QUEST_SEEN = {"started": set(), "finished_steps": set(), "done": set(), "primed": False}
+
+
+def note_quests(game_state):
+    """Prints `[QUEST]` lines when the mod's read-only quest log shows a new quest, a finished step or a finished quest (BACKLOG B2 stage 1). Never acts, never raises.
+    The first state seen after the brain starts only records what already exists, so a restart does not replay the whole log."""
+    try:
+        quests = game_state.get("quests") or []
+        quiet = not QUEST_SEEN["primed"]
+        for q in quests:
+            qid = q.get("id") or q.get("name")
+            if qid and qid not in QUEST_SEEN["started"]:
+                QUEST_SEEN["started"].add(qid)
+                if not quiet:
+                    print(f"[QUEST] new quest: {q.get('name')} (level {q.get('level')}, giver {q.get('giver') or '?'})")
+            for st in q.get("steps") or []:
+                key = (qid, st.get("name"))
+                if st.get("finished") and key not in QUEST_SEEN["finished_steps"]:
+                    QUEST_SEEN["finished_steps"].add(key)
+                    if not quiet:
+                        print(f"[QUEST] step finished: {q.get('name')} / {st.get('name')} (+{st.get('xp')} XP)")
+            if q.get("finished") and qid not in QUEST_SEEN["done"]:
+                QUEST_SEEN["done"].add(qid)
+                if not quiet:
+                    print(f"[QUEST] quest finished: {q.get('name')}")
+        QUEST_SEEN["primed"] = True
+    except Exception:
+        pass
+
+
 AVOID_SEEN = {"n": 0}
 
 
@@ -3912,6 +3942,7 @@ def main():
                 note_loot(game_state)
                 note_inventory_action(game_state)
                 note_avoid(game_state)
+                note_quests(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
 

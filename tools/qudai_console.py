@@ -51,14 +51,17 @@ class Console(tk.Tk):
         nb = ttk.Notebook(root)
         root.add(nb, weight=3)
         root.add(self._build_bottom(root), weight=2)
-        self.tab_control, self.tab_health, self.tab_live, self.tab_review, self.tab_items = (ttk.Frame(nb) for _ in range(5))
-        for tab, name in ((self.tab_control, "Control"), (self.tab_health, "Mod health"), (self.tab_live, "Live"), (self.tab_review, "Review"), (self.tab_items, "Items")):
+        self.tab_control, self.tab_health, self.tab_live, self.tab_review, self.tab_items, self.tab_quests = (ttk.Frame(nb) for _ in range(6))
+        for tab, name in ((self.tab_control, "Control"), (self.tab_health, "Mod health"), (self.tab_live, "Live"), (self.tab_review, "Review"), (self.tab_items, "Items"),
+                          (self.tab_quests, "Quests")):
             nb.add(tab, text=name)
         self._build_control()
         self._build_health()
         self._build_live()
         self._build_review()
         self._build_items()
+        ttk.Label(self.tab_quests, text="Quest log (read-only, from the last state)").pack(anchor="w", padx=4)
+        self.quest_text = self._text(self.tab_quests)
 
     def _build_control(self):
         f = self.tab_control
@@ -333,6 +336,7 @@ class Console(tk.Tk):
                 self._set(self.state_text, cl.describe_state(state))
                 inv = [f"{'*' if i.get('equipped') else ' '} {i.get('name')} x{i.get('count', 1)}   {i.get('weight', 0)} lb" for i in (state or {}).get("inventory") or []]
                 self._set(self.inv_text, "\n".join(inv) or "No inventory in the last state.")
+                self._set(self.quest_text, cl.describe_quests(state))
             if self._changed("trace", TRACE):
                 self._set(self.trace_text, cl.trace_text(TRACE))
                 self.trace_text.see("end")
