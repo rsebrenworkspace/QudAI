@@ -4827,3 +4827,47 @@ for _needle in ("AvoidMovingNearby", "TagImmobileHostilesForAvoidance(player", "
     assert _needle in _csrc, f"the mod must contain {_needle}"
 assert _csrc.count("{") == _csrc.count("}"), "C# braces"
 print("  [OK] Test 90 Passed: the brain announces newly avoided immobile hostiles once; the mod source tags them with the engine's AvoidMovingNearby part and flushes the navigation cache.")
+
+
+# ---------------------------------------------------------------------------
+# Test 91: the console's logic (tools/console_logic.py): mod health parsing, flag, readable views, tailing, lessons
+# ---------------------------------------------------------------------------
+import sys as _sys91
+_sys91.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools"))
+import console_logic as _cl
+_good = "[t] Compiling 1 file...\n[t] Success :)\n[t] Location: x.dll\n"
+assert _cl.parse_build_log(_good)[0] == "ok"
+assert _cl.parse_build_log("[t] Compiling 1 file...\n[t] error CS1002: ; expected\n")[0] == "bad"
+assert _cl.parse_build_log("[t] Compiling 1 file...\n[t] error CS0103: x\n[t] Compiling 1 file...\n[t] Success :)\n")[0] == "ok", "only the LAST compile counts"
+assert _cl.parse_build_log("")[0] == "unknown" and _cl.parse_build_log("[t] Compiling 1 file...\n")[0] == "warn"
+_pl = "[QudAI] PlayerTurn patch ACTIVE\n[QudAI] Patch check: 10/10 applied\n[QudAI Inventory] equip ok=1 failed=0\n"
+_rows = dict((n, s) for n, s, _ in _cl.parse_player_log(_pl))
+assert _rows == {"PlayerTurn patch": "ok", "Harmony patches": "ok", "Mod errors": "ok"}, _rows
+_rows = dict((n, s) for n, s, _ in _cl.parse_player_log("[QudAI] Patch check: 8/10 applied\n[QudAI X] Exception: boom\n"))
+assert _rows["PlayerTurn patch"] == "bad" and _rows["Harmony patches"] == "bad" and _rows["Mod errors"] == "warn", _rows
+_ex = tempfile.mkdtemp()
+assert not _cl.flag_on(_ex)
+open(_os.path.join(_ex, "active.flag"), "w").write("active")
+assert _cl.flag_on(_ex)
+_jl = _os.path.join(_ex, "t.jsonl")
+open(_jl, "w", encoding="utf-8").write(json.dumps({"t": 1, "hp": 5, "action": "REST", "reason": "[LLM in 3.0s] hello"}) + chr(10) + "{half written")
+_tr = _cl.tail_jsonl(_jl, 10)
+assert len(_tr) == 1 and "hello" in _cl.format_trace_row(_tr[0]) and "LLM in" not in _cl.format_trace_row(_tr[0])
+assert _cl.colour_tag("[INVENTORY] dropped x") == "[INVENTORY]" and _cl.colour_tag("plain") == ""
+assert _cl.filter_lines(["a Lase", "b rest"], "LASE") == ["a Lase"]
+_txt = _cl.describe_state({"hp": 4, "max_hp": 28, "level": 3, "genotype": "Mutated Human", "calling": "Apostle", "carry_weight": 54, "max_carry_weight": 225,
+                           "abilities": [{"name": "Lase", "cooldown": 0}, {"name": "Intimidate", "cooldown": 18}], "inventory": [{"name": "staff", "equipped": True, "count": 1, "weight": 3}]})
+assert "HP 4/28" in _txt and "Intimidate: cooldown 18" in _txt and "* staff" in _txt and _cl.describe_state({}).startswith("No state")
+assert _cl.pause_resume_bytes() == b"\n"
+_old_wf91 = _chr.WISDOM_FILE
+_chr.WISDOM_FILE = _os.path.join(tempfile.mkdtemp(), "ancestral_wisdom.json")
+try:
+    _chr.save_ancestral_wisdom([{"generation": 1, "lesson": "a"}, {"generation": 2, "lesson": "b", "approved": True}])
+    assert _cl.set_approval([1], True) == [1] and _cl.set_approval([2], False) == [2] and _cl.set_approval([99], True) == []
+    _w91 = {w["generation"]: w.get("approved") for w in _cl.lessons()}
+    assert _w91 == {1: True, 2: False}, _w91
+finally:
+    _chr.WISDOM_FILE = _old_wf91
+_cs = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
+assert "stdin=subprocess.PIPE" in _cs and "pause_resume_bytes" in _cs and "active.flag" not in _cs, "pause goes through the brain's stdin, never by touching the flag"
+print("  [OK] Test 91 Passed: console logic parses the build and player logs (last compile only), tails a trace past a half-written line, reads the flag, renders the state, and approves lessons through chronicler.")
