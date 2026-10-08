@@ -5079,7 +5079,7 @@ _txt96 = _cl.describe_quests({"quests": [_q1], "finished_quests": ["Fetch Argyve
 assert "1/2 steps" in _txt96 and "[x] Travel to Red Rock" in _txt96 and "[ ] Find the Vermin" in _txt96 and "Finished: Fetch Argyve a Knickknack" in _txt96, _txt96
 assert _cl.describe_quests({}).startswith("No quests")
 _csrc96 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
-for _needle in ("BuildQuestsJson(out finishedQuestsJson)", '\\"quests\\": {questsJson}', "finished_quests", '"Quests"', '"FinishedQuests"', '"StepsByID"', "FLAG_FINISHED"):
+for _needle in ("[QudAI Quests] ", "QuestElements(", "QuestUnwrap(", "BuildQuestsJson(out finishedQuestsJson)", '\\"quests\\": {questsJson}', "finished_quests", '"Quests"', '"FinishedQuests"', '"StepsByID"', "FLAG_FINISHED"):
     assert _needle in _csrc96, f"the mod must contain {_needle}"
 assert _csrc96.count("{") == _csrc96.count("}"), "C# braces"
 brain.QUEST_SEEN.update({"started": set(), "finished_steps": set(), "done": set(), "primed": False})

@@ -450,20 +450,58 @@ namespace QudAIBrain
             catch { return 0; }
         }
 
+        // The elements of a quest collection: the values of a dictionary, or the items of any other sequence (a KeyValuePair is unwrapped to its Value).
+        private static System.Collections.IEnumerable QuestElements(object coll)
+        {
+            var d = coll as System.Collections.IDictionary;
+            if (d != null) return d.Values;
+            if (coll is string) return null;
+            return coll as System.Collections.IEnumerable;
+        }
+
+        private static object QuestUnwrap(object item)
+        {
+            try
+            {
+                if (item != null && item.GetType().Name.StartsWith("KeyValuePair")) return QuestMember(item, "Value");
+            }
+            catch { }
+            return item;
+        }
+
+        private static string lastQuestDiag = "";
+
+        // One line in Player.log whenever what the export found changes (never every turn), so an empty `quests` can be explained from the log.
+        private static void QuestDiag(string line)
+        {
+            try
+            {
+                if (line == lastQuestDiag) return;
+                lastQuestDiag = line;
+                UnityEngine.Debug.Log("[QudAI Quests] " + line);
+            }
+            catch { }
+        }
+
         private static string BuildQuestsJson(out string finishedJson)
         {
             finishedJson = "[]";
             try
             {
                 object game = The.Game;
-                if (game == null) return "[]";
+                if (game == null) { QuestDiag("The.Game is null"); return "[]"; }
                 var sb = new StringBuilder("[");
                 int n = 0;
-                var quests = QuestMember(game, "Quests") as System.Collections.IDictionary;
-                if (quests != null)
+                object questsObj = QuestMember(game, "Quests");
+                var questSeq = QuestElements(questsObj);
+                QuestDiag("game=" + game.GetType().Name + " Quests=" + (questsObj == null ? "null" : questsObj.GetType().Name) + " sequence=" + (questSeq != null)
+                    + " FinishedQuests=" + (QuestMember(game, "FinishedQuests") == null ? "null" : QuestMember(game, "FinishedQuests").GetType().Name)
+                    + " count=" + (questsObj is System.Collections.ICollection ? ((System.Collections.ICollection)questsObj).Count.ToString() : "?"));
+                if (questSeq != null)
                 {
-                    foreach (object q in quests.Values)
+                    foreach (object item in questSeq)
                     {
+                        object q = QuestUnwrap(item);
                         if (q == null || n >= MaxQuestsExport) continue;
                         if (n > 0) sb.Append(",");
                         n++;
@@ -471,13 +509,14 @@ namespace QudAIBrain
                             + ", \"finished\": " + (QuestBool(q, "Finished") ? "true" : "false")
                             + ", \"giver\": \"" + QuestText(q, "QuestGiverName", 80) + "\", \"giver_place\": \"" + QuestText(q, "QuestGiverLocationName", 120)
                             + "\", \"giver_zone\": \"" + QuestText(q, "QuestGiverLocationZoneID", 80) + "\", \"steps\": [");
-                        var steps = QuestMember(q, "StepsByID") as System.Collections.IDictionary;
+                        var stepSeq = QuestElements(QuestMember(q, "StepsByID"));
                         int k = 0;
-                        if (steps != null)
+                        if (stepSeq != null)
                         {
                             int finishedFlag = 0, failedFlag = 0, optionalFlag = 0, hiddenFlag = 0;
-                            foreach (object st in steps.Values)
+                            foreach (object stItem in stepSeq)
                             {
+                                object st = QuestUnwrap(stItem);
                                 if (st == null || k >= MaxQuestStepsExport) continue;
                                 if (k == 0)
                                 {
@@ -517,7 +556,11 @@ namespace QudAIBrain
                 finishedJson = fin.ToString();
                 return sb.ToString();
             }
-            catch { return "[]"; }
+            catch (Exception e)
+            {
+                QuestDiag("export failed: " + e.GetType().Name + ": " + e.Message);
+                return "[]";
+            }
         }
 
         // ---- Steering around immobile hostiles (HANDOFF issue 69) ----
