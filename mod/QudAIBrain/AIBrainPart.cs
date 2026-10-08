@@ -450,13 +450,32 @@ namespace QudAIBrain
             catch { return 0; }
         }
 
-        // The elements of a quest collection: the values of a dictionary, or the items of any other sequence (a KeyValuePair is unwrapped to its Value).
+        // The items of a quest collection, by plain enumeration. IDictionary.Values and .Keys are NOT used: the game's own dictionary threw
+        // NotSupportedException ("Specified method is not supported") from them (seen in game 2026-10-07). A KeyValuePair is unwrapped by QuestUnwrap/QuestKey.
         private static System.Collections.IEnumerable QuestElements(object coll)
         {
-            var d = coll as System.Collections.IDictionary;
-            if (d != null) return d.Values;
-            if (coll is string) return null;
+            if (coll == null || coll is string) return null;
             return coll as System.Collections.IEnumerable;
+        }
+
+        private static object QuestKey(object item)
+        {
+            try
+            {
+                if (item != null && item.GetType().Name.StartsWith("KeyValuePair")) return QuestMember(item, "Key");
+            }
+            catch { }
+            return item;
+        }
+
+        private static string QuestCount(object coll)
+        {
+            try
+            {
+                object c = QuestMember(coll, "Count");
+                return c == null ? "?" : Convert.ToString(c);
+            }
+            catch { return "?"; }
         }
 
         private static object QuestUnwrap(object item)
@@ -496,7 +515,7 @@ namespace QudAIBrain
                 var questSeq = QuestElements(questsObj);
                 QuestDiag("game=" + game.GetType().Name + " Quests=" + (questsObj == null ? "null" : questsObj.GetType().Name) + " sequence=" + (questSeq != null)
                     + " FinishedQuests=" + (QuestMember(game, "FinishedQuests") == null ? "null" : QuestMember(game, "FinishedQuests").GetType().Name)
-                    + " count=" + (questsObj is System.Collections.ICollection ? ((System.Collections.ICollection)questsObj).Count.ToString() : "?"));
+                    + " count=" + QuestCount(questsObj));
                 if (questSeq != null)
                 {
                     foreach (object item in questSeq)
@@ -540,12 +559,12 @@ namespace QudAIBrain
                 var fin = new StringBuilder("[");
                 int m = 0;
                 object finishedObj = QuestMember(game, "FinishedQuests");
-                var finDict = finishedObj as System.Collections.IDictionary;
-                System.Collections.IEnumerable finSeq = finDict != null ? (System.Collections.IEnumerable)finDict.Keys : finishedObj as System.Collections.IEnumerable;
-                if (finSeq != null && !(finishedObj is string))
+                System.Collections.IEnumerable finSeq = QuestElements(finishedObj);
+                if (finSeq != null)
                 {
-                    foreach (object key in finSeq)
+                    foreach (object finItem in finSeq)
                     {
+                        object key = QuestKey(finItem);
                         if (key == null || m >= MaxFinishedQuestsExport) continue;
                         if (m > 0) fin.Append(",");
                         m++;
