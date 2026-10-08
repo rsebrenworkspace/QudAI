@@ -5,6 +5,25 @@
 > Read this first, update it last. Newest session on top. Keep *Current state*, *Open issues*, and *Next steps* true;
 > move finished items into the session log. Tag confidence: `[verified in game DATE]`, `[verified in code @commit]`, `[unverified]`.
 
+## Verification ledger (2026-10-07): what has actually been seen working
+
+How to read it: **merged** means the code is on `main`; **seen in game** means the human or a log showed it working; **replay only** means a test or a replayed state, not the real game. The *Current state* section below is old (commit c50b3c2): trust this ledger and issues 66 to 76. Update the table whenever a test result comes in; a row that says "not yet" must not be described as working anywhere else.
+
+| # | What | In code | Seen in game | Not yet seen |
+|---|---|---|---|---|
+| 66 | Item catalog, scoring, inventory export, equip, junk drops | merged earlier | equip of the beaded bracelet (turn 1200, "equip ok=1"); `inventory` field in the state | any drop; the manual drop leaving the item on the ground |
+| 68, 69 | Fear and banish become attacks on rooted hostiles; vine avoidance | merged earlier | `[QudAI Avoid] tagged` lines, `avoid_tagged` in the state | that autoexplore detours around vines; a lover fight after the fix |
+| 70 | Console (start, pause, health, live feed, review, items) | this merge | start, Engage and Pause, bottom pane, lesson approval, used on live runs | the Quests tab (new in 76) |
+| 71 | Standing still no longer counts as oscillation; autoexplore latch retried | this merge | not exercised: the run that hit the bug used the old brain | a retry that actually clears a latch |
+| 73, 74 | Leave a dead-end stratum by the stairs up; do not go straight back down | this merge | `USE_STAIRS_UP` from the Kuyukas stratum (turn 122); on the surface he ignored the stairs after a restart | the cleared-and-worked rule firing after the brain restart; a second descent and ascent |
+| 72 | Firearms never auto-dropped | this merge | nothing | replay only (Test 93) |
+| 75 | Lethal adjacent guard | this merge | nothing: no `[LETHAL GUARD]` line seen yet | the guard firing on a real Very Tough creature, and Teleport Other working on it |
+| 76 | Read-only quest log export, `[QUEST]` lines, Quests tab | this merge (C# changed) | nothing: the game has not compiled it | build log `Success :)`; the `quests` field with a real quest |
+
+Docs that are research only (no behaviour): R-3 quests (`docs/tasks/R-3-quests-research.md`), ENGINE_INTERNALS 14.10 to 14.18 (water ritual, trade formula, XP curve, biomes), BACKLOG B8 to B10 (merchants, faction reputation export, steering). B0 (console) and B2 stage 1 (quest log) are the only items promoted since B6 and B7.
+
+Open decisions that need the human: Dig Down and Wings (BACKLOG B7); whether to promote B9 (faction reputation export); stage 2 of quests; which ancestral lessons to approve (`python tools/wisdom.py`).
+
 ## Current state (as of commit c50b3c2)
 
 - Agent explores, fights (LLM + fallbacks), levels, eats/camps, delves, recruits pets, and writes death chronicles.
