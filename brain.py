@@ -3143,7 +3143,22 @@ def upper_zone_id(zone_id):
     return ".".join(parts[:-1] + [str(int(parts[-1]) - 1)])
 
 
+def lower_zone_id(zone_id):
+    """The zone one stratum down (the last dot-separated part is its z level)."""
+    parts = str(zone_id or "").split(".")
+    if len(parts) < 2 or not parts[-1].isdigit():
+        return None
+    return ".".join(parts[:-1] + [str(int(parts[-1]) + 1)])
+
+
 def stairs_given_up(zone_id):
+    """True when the stairs down of this zone must not be used: they were given up explicitly, or the stratum below is a known dead end.
+
+    The dead-end memory is what counts: right after a restart the brain may never have seen the stairs down of the stratum above, so a give-up entry written
+    at the moment of ascending would have nothing to attach to (HANDOFF issue 74: he went up and straight back down)."""
+    low = lower_zone_id(zone_id)
+    if low and low in DEAD_END_ZONES:
+        return True
     sd = KNOWN_STAIRS_DOWN.get(zone_id)
     return bool(sd and (zone_id, (sd.get("tx"), sd.get("ty"))) in STAIRS_GIVEUP)
 
@@ -3515,7 +3530,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             not is_peaceful_npc(e.get("name"), e.get("blueprint")) and not is_ignorable_stationary_enemy(e)
             for e in game_state.get("visible_entities", [])
         )
-        if can_delve and (is_zone_cleared or (is_subterranean and is_healthy and not has_visible_threats)) and (zone_id in KNOWN_STAIRS_DOWN):
+        if can_delve and (is_zone_cleared or (is_subterranean and is_healthy and not has_visible_threats)) and (zone_id in KNOWN_STAIRS_DOWN) and not stairs_given_up(zone_id):
             sd_info = KNOWN_STAIRS_DOWN[zone_id]
             sd_pos = (sd_info["tx"], sd_info["ty"])
             # In dungeons, if zone is cleared (or subterranean with no visible threats), route to stairs down

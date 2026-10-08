@@ -5007,10 +5007,22 @@ try:
     brain.recent_positions.clear()
     _after = brain.query_decision(dict(_surface94), took_damage=False, enemies=[])
     assert _after["action"] != "USE_STAIRS_DOWN", _after
+    # after a restart the stairs down of the stratum above were never seen: the dead-end memory alone must keep him from descending again
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.STAIRS_GIVEUP.clear(); brain.DEAD_END_ZONES.clear(); brain.ZONE_STEP_COUNT = 100
+    _d = brain.dead_end_ascent(dict(_st94, reachable_edges="NSEW"), _dn94, 11, (56, 3), True, True)
+    assert _d["action"] == "USE_STAIRS_UP" and not brain.STAIRS_GIVEUP and _dn94 in brain.DEAD_END_ZONES
+    brain.update_stair_records(dict(_surface94))               # he arrives on the stairs down and only now learns them
+    assert _up94 in brain.KNOWN_STAIRS_DOWN and brain.stairs_given_up(_up94)
+    brain.recent_positions.clear()
+    _again = brain.query_decision(dict(_surface94), took_damage=False, enemies=[])
+    assert _again["action"] != "USE_STAIRS_DOWN", _again
+    _far = dict(_surface94, x=30, y=10, standing_on_stairs_down=False, surroundings=dict(_surface94["surroundings"], C="grass"), zone_fully_explored=True, unexplored_cells=0)
+    brain.recent_positions.clear()
+    assert not brain.query_decision(_far, took_damage=False, enemies=[])["action"].startswith("NAVIGATE_TO_CELL:56,3"), "and he does not walk back to those stairs either"
 finally:
     brain.KNOWN_STAIRS_DOWN.clear(); brain.KNOWN_STAIRS_DOWN.update(_saved94[0])
     brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_UP.update(_saved94[1])
     brain.STAIRS_GIVEUP.clear(); brain.STAIRS_GIVEUP.update(_saved94[2])
     brain.ZONE_STEP_COUNT, brain.CURRENT_ZONE_CHOSEN_EXIT, brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE, brain.RETREAT_TARGET_LEVEL = _saved94[3:]
     brain.DEAD_END_ZONES.clear(); brain.recent_positions.clear()
-print("  [OK] Test 94 Passed: a cleared, worked stratum with no way down is left by USE_STAIRS_UP (walking there only when the engine reports no reachable edge), the stairs down above are given up so he does not descend again, and a usable way down still belongs to the delve logic.")
+print("  [OK] Test 94 Passed (also after a restart, from the dead-end memory alone): a cleared, worked stratum with no way down is left by USE_STAIRS_UP (walking there only when the engine reports no reachable edge), the stairs down above are given up so he does not descend again, and a usable way down still belongs to the delve logic.")
