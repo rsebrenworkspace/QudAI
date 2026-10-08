@@ -4881,3 +4881,61 @@ assert [tag for _, tag in _cl.feed_rows(_jl, 10)] == ["", "hp"]
 _cs = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
 assert "stdin=subprocess.PIPE" in _cs and "pause_resume_bytes" in _cs and "active.flag" not in _cs, "pause goes through the brain's stdin, never by touching the flag"
 print("  [OK] Test 91 Passed: console logic (also the threat strip and the coloured live feed) parses the build and player logs (last compile only), tails a trace past a half-written line, reads the flag, renders the state, and approves lessons through chronicler.")
+
+
+# ---------------------------------------------------------------------------
+# Test 92: standing still is not an oscillation; a stuck-autoexplore latch gets retried (HANDOFF issue 71)
+# ---------------------------------------------------------------------------
+# The real sequence from the second stratum of the Kuyukas workshop (turns 338-342, 2026-10-07): two turns at a lead slug (LOOT, then AUTOEXPLORE's first
+# step), two autoexplore steps, back to the slug's cell. The old window counted (60, 15) three times and the loop breaker latched the whole level as stuck.
+brain.recent_positions.clear()
+_seq = [(60, 15), (60, 15), (61, 14), (61, 15), (60, 15)]
+_old_freq = 0
+_old_window = []
+for _p in _seq:
+    _old_window.append(_p)
+    _old_freq = _old_window.count(_p)
+assert _old_freq >= 3, "the old counting would have flagged this as an oscillation"
+for _p in _seq:
+    _freq, _uniq = brain.record_position(_p)
+assert _freq == 2 and _uniq == 3, (_freq, _uniq)
+# a real ping-pong is still caught
+brain.recent_positions.clear()
+for _p in [(50, 4), (51, 5), (50, 4), (51, 5), (50, 4)]:
+    _freq, _ = brain.record_position(_p)
+assert _freq >= 3, _freq
+# standing for many turns (resting, looting) never inflates the count
+brain.recent_positions.clear()
+for _ in range(10):
+    _freq, _ = brain.record_position((5, 5))
+assert _freq == 1
+brain.recent_positions.clear()
+
+# the latch: the first retry is due after AUTOEXPLORE_RETRY_GAP turns, then the gap doubles up to the maximum
+brain.STUCK_RETRY.clear()
+_gs = {"unexplored_cells": 1525, "autoexplore_stuck": False}
+_t0 = brain.TURN_CLOCK
+try:
+    brain.TURN_CLOCK = 1000
+    assert brain.autoexplore_retry_due("Z1", _gs) is False                      # just latched: not yet
+    brain.TURN_CLOCK = 1000 + brain.AUTOEXPLORE_RETRY_GAP
+    assert brain.autoexplore_retry_due("Z1", _gs) is True                       # one native step now
+    assert brain.STUCK_RETRY["Z1"]["gap"] == 2 * brain.AUTOEXPLORE_RETRY_GAP
+    brain.TURN_CLOCK += 1
+    assert brain.autoexplore_retry_due("Z1", _gs) is False                      # backed off
+    for _ in range(10):
+        brain.TURN_CLOCK = brain.STUCK_RETRY["Z1"]["next"]
+        assert brain.autoexplore_retry_due("Z1", _gs) is True
+    assert brain.STUCK_RETRY["Z1"]["gap"] == brain.AUTOEXPLORE_RETRY_MAX_GAP
+    # never when the engine itself says stuck or explored, or when little is left
+    brain.TURN_CLOCK = brain.STUCK_RETRY["Z1"]["next"] + 1
+    assert brain.autoexplore_retry_due("Z1", dict(_gs, autoexplore_stuck=True)) is False
+    assert brain.autoexplore_retry_due("Z1", dict(_gs, zone_fully_explored=True)) is False
+    assert brain.autoexplore_retry_due("Z1", dict(_gs, unexplored_cells=20)) is False
+    assert brain.autoexplore_retry_due("", _gs) is False
+finally:
+    brain.TURN_CLOCK = _t0
+    brain.STUCK_RETRY.clear()
+_bsrc = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "autoexplore_retry_due(zone_id or current_zone_id, game_state)" in _bsrc and "STUCK_RETRY.pop(_zid_now, None)" in _bsrc and "record_position(cur_pos)" in _bsrc
+print("  [OK] Test 92 Passed: standing still no longer counts as oscillation (the real Kuyukas sequence), a ping-pong still does, and a latched zone gets a native autoexplore retry with backoff unless the engine says stuck or explored.")

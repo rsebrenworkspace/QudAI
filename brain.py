@@ -212,6 +212,38 @@ def engine_confirms_explored(game_state):
     return not (unexp is not None and unexp > 35 and not game_state.get("autoexplore_stuck", False))
 
 
+def record_position(cur_pos):
+    """Adds the cell to the oscillation window only when he actually changed cell, and returns (times this cell is in the window, distinct cells).
+
+    Standing still (looting, resting, a failed move) used to count every turn, so three turns around one lead slug read as an oscillation, the loop breaker
+    declared autoexplore stuck, and a whole level was explored by greedy moves (HANDOFF issue 71). A real ping-pong A-B-A-B still counts."""
+    if not recent_positions or recent_positions[-1] != cur_pos:
+        recent_positions.append(cur_pos)
+    return recent_positions.count(cur_pos), len(set(recent_positions))
+
+
+# The "autoexplore is stuck" latch is the brain's own guess (a loop-breaker oscillation or a failed step), and the engine's `autoexplore_stuck` may say
+# the opposite. While the latch is set, native autoexplore is never tried again and, because the mod only computes frontier targets when the ENGINE says
+# stuck, the brain explores by greedy moves. So every so often the latch lets one native step through; a success clears it, a failure backs the retry off.
+AUTOEXPLORE_RETRY_GAP = 25
+AUTOEXPLORE_RETRY_MAX_GAP = 200
+STUCK_RETRY = {}               # zone_id -> {"next": TURN_CLOCK to retry at, "gap": current backoff}
+
+
+def autoexplore_retry_due(zone_id, game_state):
+    """True on the turns when a latched zone should get one native autoexplore step again. Never when the engine itself reports stuck or explored (R2)."""
+    if not zone_id or game_state.get("autoexplore_stuck") or game_state.get("zone_fully_explored") or engine_confirms_explored(game_state):
+        return False
+    if (game_state.get("unexplored_cells") or 0) <= 35:
+        return False
+    rec = STUCK_RETRY.setdefault(zone_id, {"next": TURN_CLOCK + AUTOEXPLORE_RETRY_GAP, "gap": AUTOEXPLORE_RETRY_GAP})
+    if TURN_CLOCK < rec["next"]:
+        return False
+    rec["gap"] = min(rec["gap"] * 2, AUTOEXPLORE_RETRY_MAX_GAP)
+    rec["next"] = TURN_CLOCK + rec["gap"]
+    return True
+
+
 def update_zone_records(game_state):
     """
     Tracks zone transition history and detects rapid border ping-pong oscillations.
@@ -236,6 +268,7 @@ def update_zone_records(game_state):
             EXPLORED_ZONE_SET.add(leaving_zone)
         # A fresh visit gets a fresh autoexplore attempt: stale "stuck" marks must not carry over.
         stuck_autoexplore_zones.discard(zone_id)
+        STUCK_RETRY.pop(zone_id, None)
         CURRENT_ZONE_CHOSEN_EXIT = None
         CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 
@@ -3114,6 +3147,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         if (last_action == "AUTOEXPLORE" and not game_state.get("last_move_failed", False)
                 and not game_state.get("autoexplore_stuck", False)):
             stuck_autoexplore_zones.discard(_zid_now)
+            STUCK_RETRY.pop(_zid_now, None)
             if not game_state.get("zone_fully_explored", False) and (game_state.get("unexplored_cells", 0) or 0) > 35:
                 EXPLORED_ZONE_SET.discard(_zid_now)
 
@@ -3399,6 +3433,8 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         is_retreating = (RETREAT_TARGET_LEVEL is not None and cur_lvl < RETREAT_TARGET_LEVEL)
 
         is_stuck_explore = (bool(zone_id and zone_id in stuck_autoexplore_zones) or (current_zone_id is not None and current_zone_id in stuck_autoexplore_zones))
+        if is_stuck_explore and autoexplore_retry_due(zone_id or current_zone_id, game_state):
+            is_stuck_explore = False       # one native step to test the guess; the self-heal below clears the latch on success
         is_zone_cleared = game_state.get("zone_fully_explored", False) or is_stuck_explore or (game_state.get("unexplored_cells", 999) == 0)
 
         # In dungeons (cur_z > 10), healthy adventurers make the tough choice to keep diving deeper,
@@ -3779,9 +3815,7 @@ def main():
                 last_hp = hp
 
                 visit_counts[cur_pos] += 1
-                recent_positions.append(cur_pos)
-                pos_frequency = recent_positions.count(cur_pos)
-                unique_positions = len(set(recent_positions))
+                pos_frequency, unique_positions = record_position(cur_pos)
 
                 companions = list(game_state.get("companions", []))
                 raw_entities = game_state.get("visible_entities", [])
