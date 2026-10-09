@@ -10,9 +10,37 @@ MEMORY_DIR = r"D:\QudAI\memory"
 RUNS_DIR = os.path.join(MEMORY_DIR, "runs")
 WISDOM_FILE = os.path.join(MEMORY_DIR, "ancestral_wisdom.json")
 CHRONICLES_DIR = r"D:\QudAI\chronicles"
+GENERATION_COUNTER_FILE = os.path.join(MEMORY_DIR, "generation_counter.json")
 
 os.makedirs(RUNS_DIR, exist_ok=True)
 os.makedirs(CHRONICLES_DIR, exist_ok=True)
+
+
+def next_generation(wisdom):
+    """The number of the next generation, never one that was used before.
+
+    It used to be `len(wisdom) + 1`, which breaks as soon as a lesson is archived or deleted (console Memory tab): the next death would reuse a number, so two
+    chronicles and two lessons would share a generation and approvals by number would be ambiguous. Now it is one more than the highest of: a persistent
+    high-water mark (GENERATION_COUNTER_FILE), the list length, every number in the list and every number in the archived lessons file."""
+    seen = 0
+    try:
+        with open(GENERATION_COUNTER_FILE, "r", encoding="utf-8") as f:
+            seen = int(json.load(f).get("highest", 0))
+    except (OSError, ValueError, TypeError, AttributeError):
+        seen = 0
+    numbers = [w.get("generation") for w in (wisdom or []) if isinstance(w, dict) and isinstance(w.get("generation"), int)]
+    try:
+        with open(os.path.join(os.path.dirname(WISDOM_FILE), "archive", "ancestral_wisdom_archived.json"), "r", encoding="utf-8") as f:
+            numbers += [w.get("generation") for w in json.load(f) if isinstance(w, dict) and isinstance(w.get("generation"), int)]
+    except (OSError, ValueError, TypeError):
+        pass
+    n = max([seen, len(wisdom or [])] + numbers) + 1
+    try:
+        with open(GENERATION_COUNTER_FILE, "w", encoding="utf-8") as f:
+            json.dump({"highest": n}, f)
+    except OSError:
+        pass
+    return n
 
 
 def load_ancestral_wisdom():
@@ -230,7 +258,7 @@ def process_death_event(death_data, recent_actions, active_model_id=None, last_s
 
     # 2. Update Ancestral Wisdom
     wisdom = load_ancestral_wisdom()
-    generation = len(wisdom) + 1
+    generation = next_generation(wisdom)
 
     lesson = distill_lesson(death_data, recent_actions, active_model_id)
 

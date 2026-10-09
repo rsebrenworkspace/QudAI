@@ -51,14 +51,15 @@ class Console(tk.Tk):
         nb = ttk.Notebook(root)
         root.add(nb, weight=3)
         root.add(self._build_bottom(root), weight=2)
-        self.tab_control, self.tab_health, self.tab_live, self.tab_review, self.tab_items, self.tab_quests = (ttk.Frame(nb) for _ in range(6))
-        for tab, name in ((self.tab_control, "Control"), (self.tab_health, "Mod health"), (self.tab_live, "Live"), (self.tab_review, "Review"), (self.tab_items, "Items"),
-                          (self.tab_quests, "Quests")):
+        self.tab_control, self.tab_health, self.tab_live, self.tab_review, self.tab_memory, self.tab_items, self.tab_quests = (ttk.Frame(nb) for _ in range(7))
+        for tab, name in ((self.tab_control, "Control"), (self.tab_health, "Mod health"), (self.tab_live, "Live"), (self.tab_review, "Review"), (self.tab_memory, "Memory"),
+                          (self.tab_items, "Items"), (self.tab_quests, "Quests")):
             nb.add(tab, text=name)
         self._build_control()
         self._build_health()
         self._build_live()
         self._build_review()
+        self._build_memory()
         self._build_items()
         ttk.Label(self.tab_quests, text="Quest log (read-only, from the last state)").pack(anchor="w", padx=4)
         self.quest_text = self._text(self.tab_quests)
@@ -182,6 +183,42 @@ class Console(tk.Tk):
         ttk.Label(right, text="Chronicle and post-mortem of the selected run").pack(anchor="w", padx=4)
         self.chron = self._text(right)
         self.reload_review()
+
+    def _build_memory(self):
+        f = self.tab_memory
+        paned = ttk.PanedWindow(f, orient="horizontal")
+        paned.pack(fill="both", expand=True)
+        left, right = ttk.Frame(paned), ttk.Frame(paned)
+        paned.add(left, weight=2)
+        paned.add(right, weight=3)
+        bar = ttk.Frame(left)
+        bar.pack(fill="x")
+        ttk.Label(bar, text="Everything stored (click one; Ctrl or Shift for several)").pack(side="left", padx=4)
+        ttk.Button(bar, text="Reload", command=self.reload_memory).pack(side="right", padx=4)
+        tree_wrap = ttk.Frame(left)
+        tree_wrap.pack(fill="both", expand=True)
+        self.mem_tree = ttk.Treeview(tree_wrap, show="tree", selectmode="extended")
+        ys = ttk.Scrollbar(tree_wrap, orient="vertical", command=self.mem_tree.yview)
+        self.mem_tree.configure(yscrollcommand=ys.set)
+        ys.pack(side="right", fill="y")
+        self.mem_tree.pack(side="left", fill="both", expand=True)
+        self.mem_tree.tag_configure("approved", foreground="#1a7f37")
+        self.mem_tree.tag_configure("data", foreground="#6e7781")
+        self.mem_tree.bind("<<TreeviewSelect>>", lambda _e: self.show_memory())
+        self.mem_head = tk.StringVar(value="Select a memory on the left.")
+        ttk.Label(right, textvariable=self.mem_head, font=("Segoe UI", 10, "bold"), wraplength=700, justify="left").pack(anchor="w", padx=4, pady=2)
+        self.mem_text = self._text(right)
+        btns = ttk.Frame(right)
+        btns.pack(fill="x", pady=6)
+        self.mem_approve = ttk.Button(btns, text="Approve", command=self.memory_approve, state="disabled")
+        self.mem_archive = ttk.Button(btns, text="Archive", command=self.memory_archive, state="disabled")
+        self.mem_delete = ttk.Button(btns, text="Delete", command=self.memory_delete, state="disabled")
+        for b in (self.mem_approve, self.mem_archive, self.mem_delete):
+            b.pack(side="left", padx=4)
+        self.mem_status = tk.StringVar(value="Archive keeps the memory in an archive folder; Delete removes it for good. Live data files are view-only.")
+        ttk.Label(right, textvariable=self.mem_status, wraplength=700, justify="left").pack(anchor="w", padx=4)
+        self._mem_items = {}
+        self.reload_memory()
 
     def _build_items(self):
         f = self.tab_items
@@ -432,7 +469,88 @@ class Console(tk.Tk):
             return
         changed = cl.set_approval(gens, approve)
         self.reload_review()
+        if hasattr(self, "mem_tree"):
+            self.reload_memory()
         self.status_var.set(f"{'Approved' if approve else 'Rejected'} generations {changed}. The brain reads this file when it builds the next prompt.")
+
+    # ----------------------------------------------------------------- memory tab
+    def reload_memory(self):
+        self.mem_tree.delete(*self.mem_tree.get_children())
+        self._mem_items = {}
+        items = cl.list_memory_items()
+        for kind in cl.MEMORY_KINDS:
+            group = [it for it in items if it["kind"] == kind]
+            gid = f"group:{kind}"
+            self.mem_tree.insert("", "end", iid=gid, text=f"{cl.MEMORY_KIND_NAMES[kind]} ({len(group)})", open=(kind == "lesson"))
+            for it in group:
+                self._mem_items[it["key"]] = it
+                tags = ("approved",) if it.get("approved") else (("data",) if kind == "data" else ())
+                self.mem_tree.insert(gid, "end", iid=it["key"], text=it["title"], tags=tags)
+        self.show_memory()
+
+    def _selected_memory(self):
+        return [self._mem_items[i] for i in self.mem_tree.selection() if i in self._mem_items]
+
+    def show_memory(self):
+        sel = self._selected_memory()
+        for b in (self.mem_approve, self.mem_archive, self.mem_delete):
+            b.configure(state="disabled")
+        if not sel:
+            self.mem_head.set("Select a memory on the left.")
+            self._set(self.mem_text, "")
+            return
+        first = sel[0]
+        self.mem_head.set(f"{len(sel)} selected: {', '.join(i['title'][:40] for i in sel[:3])}{' ...' if len(sel) > 3 else ''}" if len(sel) > 1 else first["title"])
+        self._set(self.mem_text, cl.memory_item_text(first))
+        safe = all(i.get("safe", True) for i in sel)
+        if safe:
+            self.mem_archive.configure(state="normal")
+            self.mem_delete.configure(state="normal")
+        if all(i["kind"] == "lesson" for i in sel):
+            self.mem_approve.configure(state="normal", text="Withdraw approval" if all(i.get("approved") for i in sel) else "Approve")
+        else:
+            self.mem_approve.configure(text="Approve")
+
+    def memory_approve(self):
+        sel = [i for i in self._selected_memory() if i["kind"] == "lesson"]
+        if not sel:
+            return
+        approve = not all(i.get("approved") for i in sel)
+        changed = cl.set_approval([i["gen"] for i in sel], approve)
+        self.mem_status.set(f"{'Approved' if approve else 'Withdrew approval for'} generations {changed}. The brain reads this file when it builds the next prompt.")
+        self.reload_memory()
+        self.reload_review()
+
+    def memory_archive(self):
+        sel = self._selected_memory()
+        if not sel or not messagebox.askyesno("Archive", f"Move {len(sel)} memor{'y' if len(sel) == 1 else 'ies'} to the archive folder?\nNothing is lost: they stay in an archive folder."):
+            return
+        done, errors = [], []
+        for it in sel:
+            try:
+                done.append(cl.archive_memory_item(it))
+            except Exception as e:
+                errors.append(f"{it['title'][:40]}: {e}")
+        self.mem_status.set(f"Archived {len(done)}." + (f" {len(errors)} failed: {'; '.join(errors[:2])}" if errors else ""))
+        self.reload_memory()
+        self.reload_review()
+
+    def memory_delete(self):
+        sel = self._selected_memory()
+        if not sel:
+            return
+        names = "\n".join(f"  {i['title'][:70]}" for i in sel[:6]) + ("\n  ..." if len(sel) > 6 else "")
+        if not messagebox.askyesno("Delete for good?", f"Permanently delete {len(sel)} memor{'y' if len(sel) == 1 else 'ies'}?\n\n{names}\n\nThis cannot be undone: git cannot bring back files it never tracked (chronicles, runs).\nChoose Archive if you are not sure.", default="no", icon="warning"):
+            return
+        done, errors = [], []
+        for it in sel:
+            try:
+                done.append(cl.delete_memory_item(it))
+            except Exception as e:
+                errors.append(f"{it['title'][:40]}: {e}")
+        self.mem_status.set(f"Deleted {len(done)}." + (f" {len(errors)} failed: {'; '.join(errors[:2])}" if errors else ""))
+        self.reload_memory()
+        self.reload_review()
 
     # ----------------------------------------------------------------- misc
     @staticmethod

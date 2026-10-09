@@ -22,6 +22,7 @@ Why: new features are where new loop bugs come from (equip/unequip loops, accide
 - **Your words:** a small Windows tool that launches the brain, pauses and reactivates it, shows the logs, mod health at launch, last state, and lets me approve runs, all in one application.
 - **Exists today:** `tools/qudai_console.py` with Control, Mod health, Live, Review and Items tabs `[verified in code]`; logic tested offline (Test 91); launch/engage/pause/stop of the real brain verified against a temp exchange folder `[verified 2026-10-07]`.
 - **Not yet done `[unverified]`:** a real session next to the game; the layout will want adjusting after use.
+- **Memory tab (human, 2026-10-08, built T-1.52):** see every stored memory, read it whole, and approve, archive or delete from the console; Review keeps the chronicle and post-mortem viewer.
 - **Grow later (human: "as the need grows"):** item scores beside the inventory, model-lab results and a picker backed by them, `game_log.txt` tab, docs tab (HANDOFF/BACKLOG), run-length trend across generations, danger ledger view.
 
 ### B1. Cooking and recipes
