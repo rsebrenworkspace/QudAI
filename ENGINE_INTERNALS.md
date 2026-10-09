@@ -748,6 +748,12 @@ Vanilla Caves of Qud's native pathfinder (`FasterDMapAutoexplore.FindAutoexplore
    - If `unexplored_cells < 35`: The zone's fog of war is fully cleared. Native autoexplore has already looted and uncovered the map. The driver **immediately navigates to the zone exit border** (`get_zone_exit_target`) and transitions out of the zone in ~10 turns.
 4. **Result:** Zone completion drops from 800+ erratic turns to ~60–100 clean, natural turns with zero spurious anti-oscillation triggers.
 
+### 14.23 How a melee hit becomes damage (2026-10-08, `[verified in code]`, decoded from the IL with `scratch/il.py`; constants marked unverified)
+- `Stat.RollDamagePenetrations(armor, bonus, max)` runs **three trials**. Each trial rolls `1d10 - 2` and, if the result is 8 (a natural 10), adds 8 and rolls again. The trial is a penetration if `roll + min(bonus, max) > armor`. So a hit has 0 to 3 penetrations.
+- `Combat.MeleeAttackWithWeaponInternal` then rolls the weapon's damage dice **once per penetration** and adds them up. So armour does not subtract damage: it removes whole rolls of the dice. Expected penetrations per hit (3 trials): AV 4, bonus 0 gives 1.2; AV 4, bonus 3 gives 2.1; AV 6, bonus 0 gives 0.6; AV 8, bonus 0 gives 0.24.
+- This explains the damage ledger: the puma's claws are 1d3 each, yet its two claws cost us about 8 per turn (dice alone say 4). `[verified in game 2026-10-07 for the ledger numbers]`
+- Not read yet: what the `bonus` sums (the locals added at the call are a combat skill value, the strength modifier, a weapon bonus and event-supplied `PenBonus`/`CapBonus`), the strength modifier divisor `(score - 16) / 2` `[unverified]`, and where the player's AV comes from. `Leveler.RollHP`/`AddHitpoints` belong to the player's level-ups (Toughness modifier, `Max`); no code was found that adds hit points to a spawned creature for its `Level`, so the catalogue's base hit points may be the real ones `[unverified]`.
+
 ---
 *End of Engine Internals Manual.*
 

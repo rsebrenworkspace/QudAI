@@ -16,14 +16,53 @@ CATALOG_PATH = os.path.join(ROOT, "data", "creatures.json")
 # --- guesses, tuned by tools/threat_calibration.py (change them there, not in the middle of a fight) ---
 HIT_CHANCE = 0.75             # share of attacks that land
 RANGED_DAMAGE = 7.0           # per shot when the catalogue knows the weapon's name but not its damage
-PENETRATION_FACTOR = 1.0      # observed damage per hit divided by the dice average; the ledger shows more than the dice (puma: 1d3 claws, 8 per hit)
+OUR_ARMOR = 4                 # AV of a starting character; the state does not export it yet (R3: C# should), so a guess
+WEAPON_PV = 2                 # penetration bonus a creature's natural weapon adds to its strength modifier; a guess, fitted to the damage ledger
 OUR_BASE_DAMAGE = 3.0         # what a starting character deals per swing before level
 OUR_DAMAGE_PER_LEVEL = 0.35
-ROOTED_DISCOUNT = 0.6         # a rooted shooter can be walked away from, so it is worth less than the same stats on legs
+APPROACH_TURNS = 4            # turns a shooter fires at us while we close the distance (a melee-only character cannot answer it)
 
 CLASSES = ((0.25, "trivial"), (0.6, "easy"), (1.0, "fair"), (1.6, "dangerous"), (float("inf"), "deadly"))
 
 _cache = {}
+
+
+def _exploding_distribution(depth=6):
+    """Distribution of the engine's penetration roll: 1d10 - 2, and a result of 8 (a natural 10) adds 8 and rolls again.
+    [verified in code: Stat.RollDamagePenetrations, decoded from the IL 2026-10-08]"""
+    res = {}
+
+    def rec(p, acc, k):
+        for face in range(1, 11):
+            r = face - 2
+            if r == 8 and k < depth:
+                rec(p / 10.0, acc + r, k + 1)
+            else:
+                res[acc + r] = res.get(acc + r, 0.0) + p / 10.0
+    rec(1.0, 0, 0)
+    return res
+
+
+_PEN_DIST = _exploding_distribution()
+
+
+def expected_penetrations(armor, bonus):
+    """The engine rolls three trials; each one that beats the target's AV (roll + min(bonus, cap)) is a penetration, and a hit deals
+    one roll of the weapon's damage dice PER penetration. So a hit is worth between 0 and 3 times the dice.
+    [verified in code: Stat.RollDamagePenetrations (3 trials) and Combat.MeleeAttackWithWeaponInternal (damage summed per penetration)]"""
+    p = sum(prob for v, prob in _PEN_DIST.items() if v + bonus > armor)
+    return 3.0 * p
+
+
+def strength_modifier(entry):
+    """(Strength - 16) // 2 from the catalogue's strength formula ('16,1d3,(t-1)d2' starts at 16 and the dice add about 2). [unverified: the divisor]"""
+    s = ((entry.get("stats") or {}).get("Strength") or {})
+    text = str(s.get("sValue") or s.get("Value") or "16")
+    m = re.match(r"\s*(\d+)", text)
+    base = int(m.group(1)) if m else 16
+    if re.search(r"1d3", text):
+        base += 2
+    return (base - 16) // 2
 
 
 def load_catalog(path=CATALOG_PATH):
@@ -94,7 +133,7 @@ def damage_per_turn(entry, observed_per_hit=None):
         except ValueError:
             count = 1
         melee += count * _dice_average(atk.get("damage"))
-    melee *= PENETRATION_FACTOR
+    melee *= expected_penetrations(OUR_ARMOR, strength_modifier(entry) + WEAPON_PV)
     if observed_per_hit:
         melee = max(melee, observed_per_hit * max(1, sum(int(a.get("count") or 1) for a in (entry.get("melee") or []))))
     ranged = RANGED_DAMAGE if entry.get("ranged") else 0.0
@@ -124,10 +163,12 @@ def threat(entry, our_level, our_hp, enemy_hp=None, observed_per_hit=None):
     ours = max(0.1, our_damage_per_turn(our_level))
     theirs = damage_per_turn(entry, observed_per_hit)
     ttk_it = hp / ours
+    if entry.get("ranged") or entry.get("is_ranged"):
+        our_hp = max(1, our_hp - theirs * APPROACH_TURNS)
+        notes.append("free shots while we close in")
     ttk_us = (our_hp / theirs) if theirs > 0 else 999.0
     ratio = ttk_it / ttk_us if ttk_us else 999.0
     if entry.get("rooted"):
-        ratio *= ROOTED_DISCOUNT
         notes.append("rooted")
     if entry.get("is_ranged") or entry.get("ranged"):
         notes.append("ranged")

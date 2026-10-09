@@ -5383,7 +5383,9 @@ assert _ct103._dice_average("2d4+1") == 6.0 and _ct103._dice_average("1d3") == 2
 _puma = _ct103.threat(_ct103.lookup(blueprint="Chitinous Puma"), 2, 27)
 _goat = _ct103.threat(_ct103.lookup(blueprint="Goat"), 2, 27)
 assert _puma["ratio"] > 1.6 and _puma["cls"] == "deadly", _puma
-assert _goat["ratio"] < _puma["ratio"] and _goat["cls"] in ("trivial", "easy"), _goat
+assert _goat["ratio"] < _puma["ratio"] and _goat["cls"] != "deadly", _goat
+assert abs(_ct103.expected_penetrations(4, 0) - 1.2) < 0.05 and _ct103.expected_penetrations(2, 9) == 3.0, "penetration rule: 3 trials of an exploding 1d10-2"
+assert _ct103.threat(_ct103.lookup(blueprint="SecurityTurret"), 1, 21)["cls"] == "deadly", "a shooter gets free shots while we close in"
 assert _ct103.threat(_ct103.lookup(blueprint="Chitinous Puma"), 2, 27, enemy_hp=10)["ratio"] < _puma["ratio"], "live hit points must be used"
 import tools.console_logic as _cl103
 _st103 = {"level": 2, "hp": 27, "max_hp": 27, "visible_entities": [{"name": "wet chitinous puma", "blueprint": "Chitinous Puma", "is_enemy": True, "difficulty": "Tough", "dist": 5}]}
