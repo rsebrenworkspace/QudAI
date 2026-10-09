@@ -927,9 +927,29 @@ namespace QudAIBrain
             return true;
         }
 
+        // GameObject.IsAlive is ORGANIC life: (IsCreature or LivePlant or LiveFungus or LiveAnimal) and IsOrganic (decoded from the engine, ENGINE_INTERNALS 14.22). A turret, a robot
+        // or a golem is "not alive" although it acts and can be shot. Where the question is "is it still there and can it be hit", ask for hit points instead.
+        private static bool IsStanding(GameObject o)
+        {
+            try { return o != null && o.hitpoints > 0; }
+            catch { return false; }
+        }
+
+        // A peaceful person who restocks and trades, gives reputation or offers quests: never a recruit. `ConversationScript` cannot tell them from an animal: 814 of the 845
+        // creatures in the game data carry one (a default per species), but only about 120 have GivesRep or GenericInventoryRestocker (data/creatures.json flags gives_rep,
+        // restocks), and quest givers carry the properties found in the engine's quest code.
+        private static bool IsServiceNpc(GameObject obj)
+        {
+            try
+            {
+                return obj.HasPart("GivesRep") || obj.HasPart("GenericInventoryRestocker") || obj.HasProperty("GivesDynamicQuest") || obj.HasProperty("NamedVillager") || obj.HasProperty("ParticipantVillager");
+            }
+            catch { return false; }
+        }
+
         public static bool IsCompanion(GameObject obj, GameObject player)
         {
-            if (obj == null || player == null || obj == player || obj.IsPlayer() || !obj.IsAlive) return false;
+            if (obj == null || player == null || obj == player || obj.IsPlayer() || !IsStanding(obj)) return false;
             try
             {
                 // 0. Registered companion ID cache. IDs are only added after a real engine check below. Never cache by display
@@ -995,6 +1015,7 @@ namespace QudAIBrain
             if (IsCompanion(obj, player)) return false;
             if (obj.Brain == null && !obj.HasPart("Brain")) return false;
             if (obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasPart("Robot")) return false;
+            try { if (IsServiceNpc(obj) && !obj.IsHostileTowards(player)) return false; } catch { }       // shopkeepers, quest givers and reputation NPCs stay where they are (HANDOFF issue 79)
             string bp = obj.Blueprint ?? "";
             string name = obj.DisplayName ?? "";
             if (bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -1135,7 +1156,7 @@ namespace QudAIBrain
                 if (turretHp > 0 && !IsCompanion(obj, player)) return true;
             }
 
-            if (!obj.IsAlive) return false;
+            if (!IsStanding(obj)) return false;          // hit points left, NOT IsAlive: that is organic life, and a hostile robot, golem or turret is "not alive" (HANDOFF issue 77)
             if (obj.Blueprint != null && obj.Blueprint.EndsWith("Corpse")) return false;
 
             try
@@ -1907,7 +1928,7 @@ namespace QudAIBrain
                     {
                         foreach (var c in comps)
                         {
-                            if (c != null && !c.IsPlayer() && c.IsAlive)
+                            if (c != null && !c.IsPlayer() && IsStanding(c))
                             {
                                 foundCompanions.Add(c);
                             }
@@ -1929,7 +1950,7 @@ namespace QudAIBrain
                                 if (zc?.Objects == null) continue;
                                 foreach (var zObj in zc.Objects)
                                 {
-                                    if (zObj != null && !zObj.IsPlayer() && zObj.IsAlive && IsCompanion(zObj, player))
+                                    if (zObj != null && !zObj.IsPlayer() && IsStanding(zObj) && IsCompanion(zObj, player))
                                     {
                                         foundCompanions.Add(zObj);
                                     }
