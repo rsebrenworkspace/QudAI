@@ -5368,3 +5368,24 @@ for _n in ("Goat", "Ctesiphus", "Giant Centipede", "Snapjaw Warrior 1", "Cave Sp
     assert not _serve(_n), _n
 assert 100 <= sum(1 for _n in _crea102 if _serve(_n)) <= 200
 print("  [OK] Test 102 Passed: companions and the enemy test use hit points instead of organic life (so a robot, golem or turret can be a companion or an enemy), the 7 remaining IsAlive uses are the intended ones, and shopkeepers, quest givers and reputation NPCs are protected from recruiting by the markers that separate them from animals.")
+
+
+# ---------------------------------------------------------------------------
+# Test 103: creature catalogue adapter and threat score (B12 stage 2, HANDOFF issue 84), display only
+# ---------------------------------------------------------------------------
+import creature_threat as _ct103
+_cat103 = _ct103.load_catalog()
+assert len(_cat103) > 800
+assert _ct103.lookup(name="wet chitinous puma")["level"] == 12, "adjectives must not defeat the lookup"
+assert _ct103.lookup(blueprint="SecurityTurret")["rooted"] is True
+assert _ct103.lookup(name="no such beast") is None and _ct103.threat(None, 1, 20)["cls"] == "unknown"
+assert _ct103._dice_average("2d4+1") == 6.0 and _ct103._dice_average("1d3") == 2.0
+_puma = _ct103.threat(_ct103.lookup(blueprint="Chitinous Puma"), 2, 27)
+_goat = _ct103.threat(_ct103.lookup(blueprint="Goat"), 2, 27)
+assert _puma["ratio"] > 1.6 and _puma["cls"] == "deadly", _puma
+assert _goat["ratio"] < _puma["ratio"] and _goat["cls"] in ("trivial", "easy"), _goat
+assert _ct103.threat(_ct103.lookup(blueprint="Chitinous Puma"), 2, 27, enemy_hp=10)["ratio"] < _puma["ratio"], "live hit points must be used"
+import tools.console_logic as _cl103
+_st103 = {"level": 2, "hp": 27, "max_hp": 27, "visible_entities": [{"name": "wet chitinous puma", "blueprint": "Chitinous Puma", "is_enemy": True, "difficulty": "Tough", "dist": 5}]}
+assert "~deadly" in _cl103.threat_summary(_st103)[0], _cl103.threat_summary(_st103)
+print("  [OK] Test 103 Passed: the catalogue adapter finds creatures by blueprint or by display name with adjectives, the threat race ranks a puma above a goat, uses live hit points when the state has them, and the console threat strip shows the catalogue class beside the engine's own difficulty.")

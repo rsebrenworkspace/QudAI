@@ -1,0 +1,135 @@
+"""Creature catalogue adapter and threat score (BACKLOG B12 stage 2, HANDOFF issue 84).
+
+Display only: nothing in brain.py acts on these numbers yet. The catalogue (data/creatures.json) is built from the game's own XML by
+tools/build_creature_catalog.py; this module looks a creature up and answers "how dangerous is it to the character we have now".
+
+The score is a race: turns we need to kill it against turns it needs to kill us. Every constant that is a guess is named below and
+is calibrated against the recorded deaths by tools/threat_calibration.py. [unverified] until that tool says otherwise.
+"""
+import json
+import os
+import re
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+CATALOG_PATH = os.path.join(ROOT, "data", "creatures.json")
+
+# --- guesses, tuned by tools/threat_calibration.py (change them there, not in the middle of a fight) ---
+HIT_CHANCE = 0.75             # share of attacks that land
+RANGED_DAMAGE = 7.0           # per shot when the catalogue knows the weapon's name but not its damage
+PENETRATION_FACTOR = 1.0      # observed damage per hit divided by the dice average; the ledger shows more than the dice (puma: 1d3 claws, 8 per hit)
+OUR_BASE_DAMAGE = 3.0         # what a starting character deals per swing before level
+OUR_DAMAGE_PER_LEVEL = 0.35
+ROOTED_DISCOUNT = 0.6         # a rooted shooter can be walked away from, so it is worth less than the same stats on legs
+
+CLASSES = ((0.25, "trivial"), (0.6, "easy"), (1.0, "fair"), (1.6, "dangerous"), (float("inf"), "deadly"))
+
+_cache = {}
+
+
+def load_catalog(path=CATALOG_PATH):
+    """{blueprint: entry} from the catalogue file; {} when the file is missing, so the console and the brain never break on it."""
+    if path in _cache:
+        return _cache[path]
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f).get("creatures", {})
+    except (OSError, ValueError):
+        data = {}
+    _cache[path] = data
+    return data
+
+
+_name_index = {}
+
+
+def _by_name(catalog):
+    """{lower-case display name: blueprint}, built once per catalogue."""
+    idx = _name_index.get(id(catalog))
+    if idx is None:
+        idx = {}
+        for bp, e in catalog.items():
+            idx.setdefault(str(e.get("name", "")).lower(), bp)
+        _name_index[id(catalog)] = idx
+    return idx
+
+
+def lookup(blueprint=None, name=None, catalog=None):
+    """The catalogue entry for a blueprint id, or failing that for a display name. A display name carries adjectives
+    ('wet chitinous puma', 'shrewd baboon'), so the longest trailing run of words that is a catalogue name wins."""
+    cat = catalog if catalog is not None else load_catalog()
+    if blueprint and blueprint in cat:
+        return cat[blueprint]
+    if not name:
+        return None
+    clean = re.sub(r"\{\{[^|]*\||\}\}|\[[^\]]*\]|[^a-zA-Z' -]", " ", str(name)).lower().split()
+    idx = _by_name(cat)
+    for i in range(len(clean)):
+        bp = idx.get(" ".join(clean[i:]))
+        if bp:
+            return cat[bp]
+    return None
+
+
+def _dice_average(text):
+    """Average of '2d4+1', '1d3', '5'; 0 when it is not dice."""
+    m = re.fullmatch(r"\s*(\d+)d(\d+)\s*([+-]\s*\d+)?\s*", str(text or ""))
+    if m:
+        n, s = int(m.group(1)), int(m.group(2))
+        bonus = int(m.group(3).replace(" ", "")) if m.group(3) else 0
+        return n * (s + 1) / 2.0 + bonus
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def damage_per_turn(entry, observed_per_hit=None):
+    """Expected damage the creature deals to us per turn. observed_per_hit (from memory/danger_ledger.json: total_damage / hits) beats the dice."""
+    if entry is None:
+        return 0.0
+    melee = 0.0
+    for atk in entry.get("melee") or []:
+        try:
+            count = int(atk.get("count") or 1)
+        except ValueError:
+            count = 1
+        melee += count * _dice_average(atk.get("damage"))
+    melee *= PENETRATION_FACTOR
+    if observed_per_hit:
+        melee = max(melee, observed_per_hit * max(1, sum(int(a.get("count") or 1) for a in (entry.get("melee") or []))))
+    ranged = RANGED_DAMAGE if entry.get("ranged") else 0.0
+    return max(melee, ranged) * HIT_CHANCE
+
+
+def our_damage_per_turn(level):
+    return (OUR_BASE_DAMAGE + OUR_DAMAGE_PER_LEVEL * max(1, level)) * HIT_CHANCE
+
+
+def classify(ratio):
+    for limit, label in CLASSES:
+        if ratio < limit:
+            return label
+    return "deadly"
+
+
+def threat(entry, our_level, our_hp, enemy_hp=None, observed_per_hit=None):
+    """-> {ratio, cls, turns_to_kill_it, turns_to_kill_us, their_dps, notes}. ratio > 1 means it wins the race.
+    enemy_hp is the live hit points when the state has them; otherwise the catalogue's base hit points (a floor: the engine adds hit points per level)."""
+    if entry is None:
+        return {"ratio": None, "cls": "unknown", "notes": ["not in the catalogue"]}
+    notes = []
+    hp = enemy_hp if enemy_hp else entry.get("hp") or 1
+    if not enemy_hp:
+        notes.append("base hit points")
+    ours = max(0.1, our_damage_per_turn(our_level))
+    theirs = damage_per_turn(entry, observed_per_hit)
+    ttk_it = hp / ours
+    ttk_us = (our_hp / theirs) if theirs > 0 else 999.0
+    ratio = ttk_it / ttk_us if ttk_us else 999.0
+    if entry.get("rooted"):
+        ratio *= ROOTED_DISCOUNT
+        notes.append("rooted")
+    if entry.get("is_ranged") or entry.get("ranged"):
+        notes.append("ranged")
+    return {"ratio": round(ratio, 2), "cls": classify(ratio), "turns_to_kill_it": round(ttk_it, 1),
+            "turns_to_kill_us": round(ttk_us, 1), "their_dps": round(theirs, 1), "notes": notes}

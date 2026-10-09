@@ -219,6 +219,20 @@ def trace_text(path, n=150):
 DANGEROUS = ("Tough", "Very Tough", "Impossible")
 
 
+def threat_class(entity, state):
+    """The catalogue's own threat class for one visible creature (creature_threat.py, display only), or '' when it is not in the catalogue."""
+    try:
+        import creature_threat as ct
+        entry = ct.lookup(blueprint=entity.get("blueprint"), name=entity.get("name"))
+        if entry is None:
+            return ""
+        s = state or {}
+        r = ct.threat(entry, int(s.get("level") or 1), int(s.get("hp") or s.get("max_hp") or 20), enemy_hp=entity.get("hp") or None)
+        return r["cls"]
+    except Exception:
+        return ""
+
+
 def threat_summary(state, limit=5):
     """One line about the hostiles in view: name, difficulty relative to his level (the mod's own Trivial..Impossible scale), distance.
     -> (text, worst) where worst is 'danger' when any is Tough or worse, 'calm' when none are in view, else 'watch'."""
@@ -229,7 +243,8 @@ def threat_summary(state, limit=5):
     parts = []
     for e in ents[:limit]:
         diff = e.get("difficulty", "?")
-        parts.append(f"{'!! ' if diff in DANGEROUS else ''}{e.get('name', '?')} [{diff}] {e.get('dist', '?')} tiles{' (rooted)' if e.get('is_stationary') else ''}")
+        est = threat_class(e, state)
+        parts.append(f"{'!! ' if diff in DANGEROUS else ''}{e.get('name', '?')} [{diff}]{' ~' + est if est else ''} {e.get('dist', '?')} tiles{' (rooted)' if e.get('is_stationary') else ''}")
     more = f"  (+{len(ents) - limit} more)" if len(ents) > limit else ""
     worst = "danger" if any(e.get("difficulty") in DANGEROUS for e in ents) else "watch"
     return "Hostiles: " + "  |  ".join(parts) + more, worst
