@@ -701,7 +701,7 @@ def choose_ground_pickup(game_state, template, is_town):
             continue                  # the engine reported no route to that cell
         cand = {"id": gid, "blueprint": g.get("blueprint"), "name": g.get("name"), "count": 1, "weight": g.get("weight") or 0, "equipped": False, "identified": True}
         wins = [(it, slot, why) for it, slot, why in item_scoring.choose_equips(items + [cand], profile) if it.get("id") == gid]
-        if not wins or item_scoring.score_item(item_scoring._entry(cand), profile)[0] < GROUND_MIN_SCORE:
+        if not wins or item_scoring.score_item(item_scoring._entry(cand), item_scoring.with_inventory(profile, items + [cand]))[0] < GROUND_MIN_SCORE:
             continue                  # not an upgrade, or an empty slot that a worthless item would "fill"
         why = wins[0][2]
         if GROUND_STATE["id"] != gid:

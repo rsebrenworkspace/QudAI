@@ -27,8 +27,8 @@ W_PEN = 1.5                                  # per point of penetration bonus
 SKILL_MATCH_BONUS = 6.0                      # a weapon the build trains
 SKILL_MATCH_MULT = 1.5
 OFF_SKILL_MULT = 0.45                        # an untrained weapon is still a weapon, but an inferior one
-CASTER_MELEE_MULT = 0.35
-TWO_HANDED_WITH_SHIELD = -5.0
+CASTER_MELEE_MULT = 0.7             # was 0.35 (human, 2026-10-09): the brain's stand-and-fight rule makes a caster melee anyway, with a 1d2 staff at level 5 (Gen 27)
+TWO_HANDED_WITH_SHIELD = -5.0       # only charged when he actually owns a shield (human, 2026-10-09; profile["owns_shield"], see with_inventory)
 SHIELD_BONUS = 4.0                           # for a build that trains Shield
 RANGED_BONUS = 8.0                           # a firearm for a build that trains that firearm skill
 WEIGHT_FREE = {"heavy": 40, "normal": 25, "light": 18}   # carried weight an item may have before it is penalised, by build type
@@ -202,9 +202,9 @@ def score_item(item, profile):
         else:
             base *= OFF_SKILL_MULT
             reasons.append(f"untrained skill {sk}: x{OFF_SKILL_MULT:g}")
-        if item.get("two_handed") and profile["wants_shield"]:
+        if item.get("two_handed") and profile["wants_shield"] and profile.get("owns_shield"):
             base += TWO_HANDED_WITH_SHIELD
-            reasons.append(f"two-handed with a shield build: {TWO_HANDED_WITH_SHIELD:g}")
+            reasons.append(f"two-handed while he owns a shield: {TWO_HANDED_WITH_SHIELD:g}")
         score += base
         pen = _weight_penalty(weight, profile)
         if pen:
@@ -279,10 +279,18 @@ def _entry(inv_item):
     return base
 
 
+def with_inventory(profile, inventory):
+    """The profile plus what the pack says about it: `owns_shield` (a shield is carried or worn), which decides whether a two-handed weapon costs him the shield hand.
+    Every caller that scores items against a pack goes through this, so the equip rule, the drop rule and the ground pickup agree."""
+    owns = any(_entry(it).get("group") == "shield" for it in (inventory or []))
+    return dict(profile, owns_shield=owns)
+
+
 def choose_equips(inventory, profile):
     """Equip actions: [(inventory item, slot, why)]. One best item per armor slot; one main weapon; a shield only for a build that wants one.
 
     An item is chosen only if it beats the equipped one in that slot by DOMINATED_MARGIN."""
+    profile = with_inventory(profile, inventory)
     actions = []
     by_slot = {}
     for it in inventory:
@@ -324,6 +332,7 @@ def choose_drops(inventory, profile, carried_weight=None, capacity=None, hungry=
 
     Dropped when (a) a better carried item of the same kind makes it redundant, or (b) it scores below KEEP_FLOOR AND the pack is under pressure
     (carried weight over BURDEN_DROP_RATIO of capacity). Quest items and artifacts are never dropped; stackable supplies are capped at MAX_KEPT."""
+    profile = with_inventory(profile, inventory)
     entries = [(it, _entry(it)) for it in inventory]
     n_light = sum(1 for _, e in entries if e.get("group") == "light_source")
     n_ranged = sum(1 for _, e in entries if e.get("group") == "missile_weapon")

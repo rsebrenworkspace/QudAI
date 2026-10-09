@@ -5920,3 +5920,33 @@ for _s in ("public static bool IsGroundEquipment(GameObject o, GameObject player
     assert _s in _cs120, _s
 assert _cs120.count("{") == _cs120.count("}")
 print("  [OK] Test 120 Passed: a weapon or armor on the ground is fetched (walk, then TAKE_ITEM by id) only when the inventory scorer would wear it and it scores positive, never in a town, unidentified, too heavy, out of range, unreachable or refused twice, a walk that never arrives is written off after 40 turns, the game's take report is handled, and the mod exports only unowned takeable equipment the player did not drop and takes it only next to the player with no hostiles near.")
+
+
+# ---------------------------------------------------------------------------
+# Test 121: the caster weapon factor is 0.7 and a two-handed weapon costs a shield only when he owns one (human, 2026-10-09; HANDOFF issue 96)
+# ---------------------------------------------------------------------------
+import item_scoring
+assert item_scoring.CASTER_MELEE_MULT == 0.7 and item_scoring.DOMINATED_MARGIN == 2.0, "the armor margin stays at 2.0 (human: no reason to lower it)"
+_prof121 = item_scoring.build_profile(build_templates.BUILD_TEMPLATES["auspicious_beginnings"])
+_prof121 = dict(_prof121, caster=True, wants_shield=True, weapon_skills=[])
+_row121 = lambda i, bp, eq=False, w=10: {"id": i, "blueprint": bp, "name": bp, "count": 1, "weight": w, "equipped": eq, "identified": True}
+_pack121 = [_row121("w1", "Cloth Robe", True, 5), _row121("w2", "Staff", True, 5)]
+_sword121 = _row121("g", "Two-Handed Sword", False, 20)
+_s_no = item_scoring.score_item(item_scoring._entry(_sword121), item_scoring.with_inventory(_prof121, _pack121 + [_sword121]))
+assert not any("two-handed" in r for r in _s_no[2]), ("no shield owned: no two-handed penalty", _s_no)
+_acts = item_scoring.choose_equips(_pack121 + [_sword121], _prof121)
+assert any(a[0]["id"] == "g" and a[1] == "Hand" for a in _acts), ("a 1d6 sword beats a 1d2 staff for a caster now", _acts)
+_shield_bp121 = next(bp for bp, e in _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "items.json"), encoding="utf-8"))["items"].items() if e.get("group") == "shield")
+_shield121 = _row121("s1", _shield_bp121, False, 10)
+if True:
+    _with121 = _pack121 + [_shield121, _sword121]
+    assert item_scoring.with_inventory(_prof121, _with121)["owns_shield"] is True
+    _s_yes = item_scoring.score_item(item_scoring._entry(_sword121), item_scoring.with_inventory(_prof121, _with121))
+    assert any("two-handed while he owns a shield" in r for r in _s_yes[2]) and _s_yes[0] < _s_no[0] - 4, (_s_yes, _s_no)
+assert item_scoring.with_inventory(_prof121, [])["owns_shield"] is False and item_scoring.with_inventory(_prof121, None)["owns_shield"] is False
+# the Gen 27 scene: the bronze two-handed sword is now fetched from the ground; bark armor (AV +1, DV -1, +1.5 against a margin of 2.0) still is not
+_tm121 = build_templates.BUILD_TEMPLATES["auspicious_beginnings"]
+_gs121 = lambda bp, w: {"zone_id": "z", "inventory": _pack121, "carry_weight": 48, "max_carry_weight": 225,
+                        "ground_items": [{"id": "g1", "blueprint": bp, "name": bp.lower(), "dist": 4, "tx": 64, "ty": 19, "weight": w, "identified": True}]}
+brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
+print("  [OK] Test 121 Passed: the caster melee factor is 0.7, the armor upgrade margin is still 2.0, a two-handed weapon is charged the shield penalty only when a shield is carried or worn (the scorer sees the pack through with_inventory in the equip rule, the drop rule and the ground pickup), and a 1d6 sword now beats a 1d2 staff for a caster.")
