@@ -890,6 +890,26 @@ def find_zone_unexplored_frontier(game_state, cur_pos, visit_counts):
     return None, None
 
 
+_MOVE_OFFSETS = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0), "NE": (1, -1), "NW": (-1, -1), "SE": (1, 1), "SW": (-1, 1)}
+
+
+def exit_move_crossings(move_dir, px, py):
+    """The zone borders a step off the map edge crosses, as cardinal letters: MOVE_NW from (38, 0) crosses only N, from (0, 0) both N and W, a cardinal step crosses its own.
+    The 'avoid explored zones' filter used to let every diagonal through ("diagonal exits are rare"), and two diagonal steps (MOVE_NW and MOVE_SW) carried him back and forth
+    between two explored zones for 60 turns (human run 2026-10-09, trace t2094-2153, HANDOFF issue 93)."""
+    dx, dy = _MOVE_OFFSETS.get(move_dir, (0, 0))
+    out = []
+    if py + dy < 0:
+        out.append("N")
+    elif py + dy > 24:
+        out.append("S")
+    if px + dx < 0:
+        out.append("W")
+    elif px + dx > 79:
+        out.append("E")
+    return out
+
+
 def _compute_adjacent_zone_id(zone_id, direction):
     """
     Compute the zone ID of the adjacent zone in the given cardinal direction.
@@ -982,7 +1002,7 @@ def check_exit_direction_failure(game_state, cur_pos, chosen_exit):
 
     # 2. If the engine provided verified reachable edges telemetry, trust it!
     reachable_val = game_state.get("reachable_edges", None)
-    if reachable_val is not None:
+    if reachable_val is not None and not (reachable_val == "" and (px in (0, 79) or py in (0, 24))):    # empty on a border cell is an engine artifact (HANDOFF issue 93); empty inside means sealed
         if chosen_exit not in reachable_val and not is_on_border:
             return True
         if chosen_exit in reachable_val:
@@ -1148,7 +1168,10 @@ def get_zone_exit_target(cur_pos, game_state=None):
 
     # If an exit was already chosen for this zone, check if it's still valid/reachable
     if CURRENT_ZONE_CHOSEN_EXIT and CURRENT_ZONE_CHOSEN_EXIT_ZONE == cur_zone:
-        if reachable_telemetry_present and (reachable_set is None or CURRENT_ZONE_CHOSEN_EXIT not in reachable_set):
+        # An EMPTY reading ("") while he stands ON a border cell is no evidence: the engine reports it there (trace t2094-2153), and treating it as "this exit is unreachable" wrote
+        # off every exit he was walking to until only the way back was left, which is a hopping loop (HANDOFF issue 93). In the interior an empty reading still means a sealed room.
+        on_border_cell = (px in (0, 79) or py in (0, 24))
+        if reachable_telemetry_present and (reachable_set is None or CURRENT_ZONE_CHOSEN_EXIT not in reachable_set) and not (reachable_set is None and on_border_cell):
             print(f"[ZONE EXIT INVALIDATED]: Previously chosen exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {cur_zone} is not in reachable edges '{reachable_val}'. Blacklisting.")
             note_exit_failure(cur_zone, CURRENT_ZONE_CHOSEN_EXIT)
             CURRENT_ZONE_CHOSEN_EXIT = None
@@ -4135,13 +4158,14 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 novel_exits = []
                 for m in forward_exits:
                     m_dir = m[5:]  # e.g. "N", "SE" etc.
-                    # Only check cardinal directions for zone transitions
-                    if m_dir in ("N", "S", "E", "W"):
-                        adj_zone = _compute_adjacent_zone_id(zone_id, m_dir)
+                    crossed = exit_move_crossings(m_dir, px, py)
+                    if len(crossed) == 1:
+                        # a cardinal step, or a diagonal one that leaves the zone through one border: the destination is that neighbour (HANDOFF issue 93)
+                        adj_zone = _compute_adjacent_zone_id(zone_id, crossed[0])
                         if adj_zone and adj_zone not in avoid_zones:
                             novel_exits.append(m)
                     else:
-                        novel_exits.append(m)  # Diagonal exits are rare; allow them
+                        novel_exits.append(m)  # a corner step (two borders) or an unreadable one: allowed
                 if novel_exits:
                     return {"action": novel_exits[0], "reason": f"{zone_label}: transitioning to novel zone via {novel_exits[0]} (avoiding {len(avoid_zones)} cycle/explored zones)"}
                 # All exits lead to cycle zones — fall through to step 11 which uses smart exit target
@@ -4163,7 +4187,20 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 
         # 12. Least-visited fallback
         if valid_moves:
-            ranked = sorted(valid_moves, key=lambda m: (
+            fallback_moves = valid_moves
+            if ZONE_HOPPING_DETECTED and zone_id:
+                # A cell beyond the map edge has never been visited, so it ranks first and this fallback walked him out of the zone into the explored neighbour it came
+                # from (the second half of the loop in the human run 2026-10-09, HANDOFF issue 93). While hopping is detected, leave out the steps that cross into an
+                # explored or recently visited zone; if that leaves nothing, keep them all (never strand him).
+                _avoid = set(list(RECENT_ZONES)[-max(ZONE_CYCLE_LENGTH, 2):]) | EXPLORED_ZONE_SET
+                _kept = []
+                for m in valid_moves:
+                    _crossed = exit_move_crossings(m[5:], px, py)
+                    if len(_crossed) == 1 and _compute_adjacent_zone_id(zone_id, _crossed[0]) in _avoid:
+                        continue
+                    _kept.append(m)
+                fallback_moves = _kept or valid_moves
+            ranked = sorted(fallback_moves, key=lambda m: (
                 visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],
                 1 if is_swim_move(m, surroundings) else 0
             ))

@@ -5717,3 +5717,80 @@ _body115 = _cs115[_cs115.index("private static void LogPathDiag(GameObject playe
 assert _body115.count("try") >= 3 and "catch { }" in _body115, "the diagnostic must be guarded"
 assert _cs115.count("{") == _cs115.count("}")
 print("  [OK] Test 115 Passed: the mod logs one guarded [QudAI PathDiag] line per target the engine cannot route to (target and neighbours: explored, passable, solid, wading, swimming, dangerous liquid, navigation weight), at most 40 per session.")
+
+
+# ---------------------------------------------------------------------------
+# Test 116: a diagonal step off the map edge is checked against the zone it really enters (human run 2026-10-09, trace t2094-2153; HANDOFF issue 93)
+# ---------------------------------------------------------------------------
+assert brain.exit_move_crossings("NW", 38, 0) == ["N"] and brain.exit_move_crossings("SW", 38, 24) == ["S"] and sorted(brain.exit_move_crossings("NW", 0, 0)) == ["N", "W"]
+assert brain.exit_move_crossings("N", 10, 0) == ["N"] and brain.exit_move_crossings("E", 79, 5) == ["E"] and brain.exit_move_crossings("NW", 20, 10) == []
+_A116, _B116 = "JoppaWorld.10.18.2.2.10", "JoppaWorld.10.19.2.0.10"        # B is directly south of A
+_saved116 = (brain.ZONE_HOPPING_DETECTED, set(brain.EXPLORED_ZONE_SET), list(brain.RECENT_ZONES), brain.LAST_ZONE_ENTRY, dict(brain.EXIT_SUPPRESS_UNTIL), brain.CURRENT_ZONE_CHOSEN_EXIT,
+             brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE, brain.ZONE_STEP_COUNT, brain.TURN_CLOCK, brain.exit_move_crossings, brain.current_zone_id, brain.CURRENT_TRACKED_ZONE)
+try:
+    def _state116():
+        # standing on B's north edge (y = 0): the diagonal NW step crosses north, back into A, which is explored and in the recent cycle
+        return {"hp": 28, "max_hp": 28, "x": 38, "y": 0, "z": 10, "zone_id": _B116, "level": 4, "ap": 0, "sp": 0, "mp": 0, "zone_fully_explored": True,
+                "hostiles_nearby": False, "hostiles_adjacent": False, "reachable_edges": "NSEW",
+                "surroundings": {"C": "grass", "N": "[ZONE_EXIT: N]", "NW": "[ZONE_EXIT: NW]", "NE": "[ZONE_EXIT: NE]", "W": "grass", "E": "grass", "S": "grass", "SE": "grass", "SW": "grass"},
+                "visible_entities": []}
+    def _prep116():
+        brain.EXPLORED_ZONE_SET.clear(); brain.EXPLORED_ZONE_SET.update({_A116, _B116})
+        brain.RECENT_ZONES.clear(); brain.RECENT_ZONES.extend([_A116, _B116, _A116, _B116])
+        brain.ZONE_HOPPING_DETECTED = True
+        brain.LAST_ZONE_ENTRY = {"from_zone": _A116, "to_zone": _B116, "reverse_dir": "S"}      # so the plain reverse-exit rule does not decide it
+        brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+        brain.current_zone_id = _B116          # not an arrival: the arrival grace (inward step) must not decide this
+        brain.CURRENT_TRACKED_ZONE = _B116
+        brain.ZONE_STEP_COUNT = 10; brain.TURN_CLOCK = 5000
+        brain.EXIT_SUPPRESS_UNTIL[_B116] = brain.TURN_CLOCK + 100        # the chooser is silent, so the exit-move branch decides
+    # the old rule (every diagonal is allowed): the loop's step is taken
+    brain.exit_move_crossings = lambda m_dir, px, py: []
+    _prep116()
+    _old116 = brain.query_decision(_state116(), took_damage=False, enemies=[])
+    assert _old116["action"] in ("MOVE_NW", "MOVE_NE") and "novel zone" in _old116["reason"], ("expected the old loop step", _old116)
+    # the fix: the step into the explored, recent zone is refused
+    brain.exit_move_crossings = _saved116[9]
+    _prep116()
+    _new116 = brain.query_decision(_state116(), took_damage=False, enemies=[])
+    assert not (_new116["action"] in ("MOVE_NW", "MOVE_NE", "MOVE_N") and "novel zone" in _new116["reason"]), ("the diagonal into an explored zone must not be taken as 'novel'", _new116)
+finally:
+    (brain.ZONE_HOPPING_DETECTED, _ex116, _rz116, brain.LAST_ZONE_ENTRY, _sup116, brain.CURRENT_ZONE_CHOSEN_EXIT, brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE, brain.ZONE_STEP_COUNT, brain.TURN_CLOCK, brain.exit_move_crossings, brain.current_zone_id, brain.CURRENT_TRACKED_ZONE) = _saved116
+    brain.EXPLORED_ZONE_SET.clear(); brain.EXPLORED_ZONE_SET.update(_ex116)
+    brain.RECENT_ZONES.clear(); brain.RECENT_ZONES.extend(_rz116)
+    brain.EXIT_SUPPRESS_UNTIL.clear(); brain.EXIT_SUPPRESS_UNTIL.update(_sup116)
+print("  [OK] Test 116 Passed: a diagonal step off the map edge is checked against the zone it enters (NW at the north edge is the north neighbour), so the hopping filter no longer lets two diagonal steps carry him between two explored zones; with the old rule the test reproduces the loop step.")
+
+
+# ---------------------------------------------------------------------------
+# Test 117: an empty reachable_edges reading on a border cell does not blacklist the exit he is walking to (human run 2026-10-09; HANDOFF issue 93)
+# ---------------------------------------------------------------------------
+_Z117 = "JoppaWorld.10.19.2.0.10"
+_saved117 = (set(brain.FAILED_ZONE_EXITS), brain.CURRENT_ZONE_CHOSEN_EXIT, brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE, dict(brain.EXIT_SUPPRESS_UNTIL), brain.LAST_ZONE_ENTRY, brain.current_zone_id)
+try:
+    brain.FAILED_ZONE_EXITS.clear(); brain.EXIT_SUPPRESS_UNTIL.clear(); brain.LAST_ZONE_ENTRY = None; brain.current_zone_id = _Z117
+    # the heuristic itself
+    assert brain.check_exit_direction_failure({"reachable_edges": ""}, (38, 0), "W") is False, "empty on a border cell is an artifact"
+    assert brain.check_exit_direction_failure({"reachable_edges": ""}, (0, 12), "N") is False
+    assert brain.check_exit_direction_failure({"reachable_edges": ""}, (36, 6), "N") is True, "empty inside the zone still means a sealed room"
+    assert brain.check_exit_direction_failure({"reachable_edges": "EW"}, (36, 6), "N") is True and brain.check_exit_direction_failure({"reachable_edges": "EW"}, (36, 6), "E") is False
+    # the chooser: walking to W, an empty reading on the border row must keep W
+    brain.CURRENT_ZONE_CHOSEN_EXIT = "W"; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = _Z117
+    _s = {"zone_id": _Z117, "z": 10, "x": 38, "y": 0, "reachable_edges": "", "surroundings": {}}
+    _pos, _tag, _dir = brain.get_zone_exit_target((38, 0), _s)
+    assert _dir == "W" and not brain.FAILED_ZONE_EXITS, (_dir, brain.FAILED_ZONE_EXITS)
+    # multi-turn: 40 readings alternating border-empty and interior-full never blacklist anything, and the chosen exit survives
+    for _t in range(40):
+        brain.TURN_CLOCK = 100 + _t
+        _empty = (_t % 2 == 0)
+        _st = {"zone_id": _Z117, "z": 10, "x": 38 if _empty else 20, "y": 0 if _empty else 5, "reachable_edges": "" if _empty else "NSEW", "surroundings": {}}
+        brain.get_zone_exit_target((_st["x"], _st["y"]), _st)
+    assert not brain.FAILED_ZONE_EXITS and brain.CURRENT_ZONE_CHOSEN_EXIT == "W", (brain.FAILED_ZONE_EXITS, brain.CURRENT_ZONE_CHOSEN_EXIT)
+    # a genuinely missing exit still invalidates: a non-empty list without W, in the interior
+    _st = {"zone_id": _Z117, "z": 10, "x": 20, "y": 5, "reachable_edges": "NSE", "surroundings": {}}
+    brain.get_zone_exit_target((20, 5), _st)
+    assert (_Z117, "W") in brain.FAILED_ZONE_EXITS, "a real report that W is unreachable must still count"
+finally:
+    brain.FAILED_ZONE_EXITS.clear(); brain.FAILED_ZONE_EXITS.update(_saved117[0]); brain.CURRENT_ZONE_CHOSEN_EXIT = _saved117[1]; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = _saved117[2]
+    brain.EXIT_SUPPRESS_UNTIL.clear(); brain.EXIT_SUPPRESS_UNTIL.update(_saved117[3]); brain.LAST_ZONE_ENTRY = _saved117[4]; brain.current_zone_id = _saved117[5]
+print("  [OK] Test 117 Passed: an empty reachable_edges reading on a border cell is treated as an engine artifact (it no longer blacklists the exit he is heading for; 40 alternating readings blacklist nothing), an empty reading inside the zone still means a sealed room, and a real report that the exit is missing still invalidates it.")
