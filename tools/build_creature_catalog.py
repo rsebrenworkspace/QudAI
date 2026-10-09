@@ -140,11 +140,32 @@ def build_entry(cat, name, reps=None):
     return {k: v for k, v in entry.items() if v not in (None, [], {}, "")} | {"likely_hostile": entry["likely_hostile"], "rooted": rooted, "is_ranged": entry["is_ranged"]}
 
 
+class MixinCatalog(bic.Catalog):
+    """The item catalog's resolver, plus <mixin Name="X"/>: a mixin is another blueprint merged into this one, below the blueprint's own elements and above what it inherits.
+    Without it every golem read as level 1 with 16 hit points in the Robots faction; the mixin BaseVehicleGolem says level 50, 500 hit points and the Barathrumites
+    (the first human test of the hover golem, 2026-10-08, HANDOFF issue 87). Only creatures use this subclass: the item catalog is unchanged."""
+
+    def chain(self, name):
+        if name in self._chain:
+            return self._chain[name]
+        out = []
+        for b in super().chain(name):
+            for m in self.raw[b][0].findall("mixin"):
+                mn = m.get("Name")
+                if mn in self.raw and mn not in out:
+                    for mb in super().chain(mn):
+                        if mb not in out:
+                            out.append(mb)
+            out.append(b)
+        self._chain[name] = out
+        return out
+
+
 def main():
     data = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DATA
     folder = os.path.join(data, "StreamingAssets", "Base", "ObjectBlueprints")
     raw = bic.load_blueprints(folder)
-    cat = bic.Catalog(raw)
+    cat = MixinCatalog(raw)
     reps = faction_start_reputation(folder)
     out = {}
     for name in raw:

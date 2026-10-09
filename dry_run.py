@@ -5507,3 +5507,16 @@ assert _cl107.llm_headroom(_tmp107)[0] == _cl107.WARN, "more than 60 percent of 
 _w107([{"llm": {"prompt_tokens": 900, "ctx": None}}])
 assert _cl107.llm_headroom(_tmp107)[0] == _cl107.UNKNOWN, "an unknown window size cannot be judged"
 print("  [OK] Test 107 Passed: the brain records prompt and completion tokens and the loaded context length on each model call, the trace row carries them, and the console health tab reports the largest prompt against the window (OK, WARN above 60 percent, UNKNOWN without data).")
+
+
+# ---------------------------------------------------------------------------
+# Test 108: the creature catalog applies mixins (HANDOFF issue 87: the first hover golem test)
+# ---------------------------------------------------------------------------
+_c108 = _ct103.load_catalog()
+_g108 = _c108["Hover Golem"]
+assert _g108["level"] == 50 and _g108["hp"] == 500 and "Barathrumites" in _g108["factions"] and not _g108["likely_hostile"], _g108
+assert _c108["Humanoid Robot Golem"]["level"] == 50 and _c108["Infrastructure Golem"]["hp"] == 1000, "the mixin's hit points, then the blueprint's own"
+assert _c108["Baboon"]["level"] == 5 and _c108["Scrapbot"]["factions"].startswith("Robots"), "creatures without a mixin are unchanged"
+_cs108 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "build_creature_catalog.py"), encoding="utf-8").read()
+assert "class MixinCatalog(bic.Catalog)" in _cs108 and "cat = MixinCatalog(raw)" in _cs108
+print("  [OK] Test 108 Passed: the creature catalog merges <mixin> blueprints, so a hover golem is level 50 with 500 hit points in the Barathrumites (not hostile), as the game reported, and creatures without a mixin are unchanged.")

@@ -1184,12 +1184,12 @@
   },
   "Antelope Golem": {
    "anatomy": "Quadruped",
-   "factions": "Antelopes-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
    "mutations": [
     "DarkVision"
@@ -1197,8 +1197,10 @@
    "name": "antelope golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "antelope",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -1416,15 +1418,15 @@
   },
   "Ape Golem": {
    "anatomy": "Humanoid",
-   "factions": "Apes-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
    "mutations": [
     "DarkVision"
@@ -1432,8 +1434,10 @@
    "name": "ape golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "ape",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -2608,24 +2612,26 @@
   },
   "Baboon Golem": {
    "anatomy": "Humanoid",
-   "factions": "Baboons-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 5,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "baboon golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "baboon",
-   "start_rep": -300,
    "stats": {
     "AV": {
      "Value": "2"
@@ -2834,7 +2840,7 @@
   },
   "Baetyl Golem": {
    "anatomy": "HoverRobot",
-   "factions": "Robots-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
@@ -2842,18 +2848,21 @@
     "robot"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
+    "DarkVision",
     "NightVision"
    ],
    "name": "baetyl golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "baetyl",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -3663,13 +3672,13 @@
   },
   "Bat Golem": {
    "anatomy": "Quadruped",
-   "factions": "Beasts-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision",
     "Wings"
@@ -3677,8 +3686,10 @@
    "name": "bat golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "bat",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -3814,24 +3825,26 @@
   },
   "Bear Golem": {
    "anatomy": "Quadruped",
-   "factions": "Bears-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 27,
+   "hp": 500,
    "is_ranged": false,
-   "level": 6,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "bear golem",
    "role": "Brute",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "bear",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "4"
@@ -3965,6 +3978,75 @@
      "sValue": "7,1d3,(t-1)d2-1"
     }
    },
+   "wanders": true
+  },
+  "Bed Golem": {
+   "anatomy": "Humanoid",
+   "factions": "Barathrumites-100",
+   "file": "Creatures.xml",
+   "has_ma": true,
+   "hp": 500,
+   "is_ranged": false,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision",
+    "SleepGasGeneration"
+   ],
+   "name": "bed golem",
+   "role": "Unspecified",
+   "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
+   "stats": {
+    "AV": {
+     "Value": "0"
+    },
+    "AcidResistance": {
+     "Value": "0"
+    },
+    "Agility": {
+     "Value": "16"
+    },
+    "ColdResistance": {
+     "Value": "0"
+    },
+    "DV": {
+     "Value": "0"
+    },
+    "Ego": {
+     "Value": "16"
+    },
+    "ElectricResistance": {
+     "Value": "0"
+    },
+    "HeatResistance": {
+     "Value": "0"
+    },
+    "Intelligence": {
+     "Value": "16"
+    },
+    "MA": {
+     "Value": "0"
+    },
+    "MoveSpeed": {
+     "Value": "100"
+    },
+    "Speed": {
+     "Value": "100"
+    },
+    "Strength": {
+     "Value": "16"
+    },
+    "Toughness": {
+     "Value": "16"
+    },
+    "Willpower": {
+     "Value": "16"
+    }
+   },
+   "tier": 0,
    "wanders": true
   },
   "Beekeeper": {
@@ -4440,7 +4522,7 @@
   },
   "Bipedal Robot Golem": {
    "anatomy": "BipedalRobot",
-   "factions": "Robots-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
@@ -4448,18 +4530,21 @@
     "robot"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
+    "DarkVision",
     "NightVision"
    ],
    "name": "bipedal robot golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "bipedal robot",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -4512,15 +4597,15 @@
   },
   "Bird Golem": {
    "anatomy": "Bird",
-   "factions": "Birds-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
    "mutations": [
     "Beak",
@@ -4530,7 +4615,9 @@
    "name": "bird golem",
    "role": "Unspecified",
    "rooted": false,
-   "start_rep": 0,
+   "skills": [
+    "Tactics_Run"
+   ],
    "stats": {
     "AV": {
      "Value": "0"
@@ -5694,21 +5781,26 @@
   },
   "Bush Golem": {
    "anatomy": "Bush",
-   "factions": "Beasts-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "bush golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "bush",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -6038,25 +6130,27 @@
   },
   "Cat Golem": {
    "anatomy": "Quadruped",
-   "factions": "Cats-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
     "pettable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "cat golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "cat",
-   "start_rep": -300,
    "stats": {
     "AV": {
      "Value": "0"
@@ -6651,6 +6745,74 @@
     }
    },
    "tier": 3,
+   "wanders": true
+  },
+  "Chair Golem": {
+   "anatomy": "Humanoid",
+   "factions": "Barathrumites-100",
+   "file": "Creatures.xml",
+   "has_ma": true,
+   "hp": 500,
+   "is_ranged": false,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
+   "name": "chair golem",
+   "role": "Unspecified",
+   "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
+   "stats": {
+    "AV": {
+     "Value": "0"
+    },
+    "AcidResistance": {
+     "Value": "0"
+    },
+    "Agility": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ColdResistance": {
+     "Value": "0"
+    },
+    "DV": {
+     "sValue": "0"
+    },
+    "Ego": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ElectricResistance": {
+     "Value": "0"
+    },
+    "HeatResistance": {
+     "Value": "0"
+    },
+    "Intelligence": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "MA": {
+     "Value": "0"
+    },
+    "MoveSpeed": {
+     "Value": "100"
+    },
+    "Speed": {
+     "Value": "100"
+    },
+    "Strength": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Toughness": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Willpower": {
+     "sValue": "14,1d3,(t-1)d1"
+    }
+   },
+   "tier": 0,
    "wanders": true
   },
   "Chef": {
@@ -8019,9 +8181,9 @@
    "factions": "Antelopes-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -8041,7 +8203,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -8096,9 +8258,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -8118,7 +8280,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -8173,9 +8335,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -8202,7 +8364,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -8257,9 +8419,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 5,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -8336,9 +8498,9 @@
     "robot"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -8356,7 +8518,7 @@
    "rooted": false,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -8408,9 +8570,9 @@
    "factions": "Barathrumites-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 80,
+   "hp": 25,
    "is_ranged": false,
-   "level": 20,
+   "level": 6,
    "likely_hostile": false,
    "mutations": [
     "Albino",
@@ -8423,7 +8585,7 @@
    "species": "urshiib",
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -8478,7 +8640,7 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 27,
+   "hp": 25,
    "is_ranged": false,
    "level": 6,
    "likely_hostile": true,
@@ -8507,7 +8669,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "4"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -8563,9 +8725,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -8586,7 +8748,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -8638,9 +8800,9 @@
    "factions": "Cannibals-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "name": "=creatureRegionAdjective= cannibal",
    "role": "Unspecified",
@@ -8649,7 +8811,7 @@
    "start_rep": -500,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -8705,9 +8867,9 @@
     "pettable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -8733,7 +8895,7 @@
    "start_rep": -300,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -8785,9 +8947,9 @@
    "factions": "Chavvah-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -8804,7 +8966,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -8859,9 +9021,9 @@
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "name": "Consortium =creatureRegionNoun=",
    "role": "Unspecified",
@@ -8870,7 +9032,7 @@
    "start_rep": -10,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -8925,9 +9087,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -8947,7 +9109,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9001,7 +9163,7 @@
    "has_ma": true,
    "hp": 25,
    "is_ranged": false,
-   "level": 20,
+   "level": 6,
    "likely_hostile": true,
    "name": "cragmensch =creatureRegionNoun=",
    "role": "Unspecified",
@@ -9067,9 +9229,9 @@
    "factions": "Daughters-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 85,
+   "hp": 25,
    "is_ranged": false,
-   "level": 24,
+   "level": 6,
    "likely_hostile": false,
    "name": "=creatureRegionAdjective= daughter",
    "role": "Unspecified",
@@ -9088,7 +9250,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "3"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9144,9 +9306,9 @@
     "pettable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -9166,7 +9328,7 @@
    "start_rep": 300,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9218,9 +9380,9 @@
    "factions": "Dromad-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 30,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "name": "dromad =creatureRegionNoun=",
    "role": "Unspecified",
@@ -9228,7 +9390,7 @@
    "species": "dromad",
    "stats": {
     "AV": {
-     "Value": "8"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9283,9 +9445,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -9304,7 +9466,7 @@
    "species": "star",
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9356,9 +9518,9 @@
    "factions": "Equines-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -9376,7 +9538,7 @@
    "rooted": false,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9431,7 +9593,7 @@
     "self_preserving"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
    "level": 18,
    "likely_hostile": false,
@@ -9442,7 +9604,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9497,9 +9659,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -9521,7 +9683,7 @@
    "start_rep": -400,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9576,9 +9738,9 @@
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -9595,7 +9757,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9650,9 +9812,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -9672,7 +9834,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9728,9 +9890,9 @@
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -9746,7 +9908,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9802,9 +9964,9 @@
     "swarmer"
    ],
    "has_ma": true,
-   "hp": 28,
+   "hp": 25,
    "is_ranged": false,
-   "level": 9,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -9845,7 +10007,7 @@
    "start_rep": -800,
    "stats": {
     "AV": {
-     "Value": "4"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9897,9 +10059,9 @@
    "factions": "Goatfolk-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 20,
+   "hp": 25,
    "is_ranged": false,
-   "level": 15,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -9923,7 +10085,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "3"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -9981,7 +10143,7 @@
    "has_ma": true,
    "hp": 25,
    "is_ranged": false,
-   "level": 14,
+   "level": 6,
    "likely_hostile": false,
    "name": "=creatureRegionNoun= of the Gyre",
    "role": "Unspecified",
@@ -9990,7 +10152,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10042,9 +10204,9 @@
    "factions": "Hermits-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "name": "=creatureRegionAdjective= hermit",
    "role": "Unspecified",
@@ -10053,7 +10215,7 @@
    "start_rep": -100,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10109,9 +10271,9 @@
     "self_preserving"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "mutations": [
     "HeightenedHearing",
@@ -10129,7 +10291,7 @@
    "start_rep": -200,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10184,9 +10346,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -10206,7 +10368,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10258,9 +10420,9 @@
    "factions": "Issachari-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "name": "Issachari =creatureRegionNoun=",
    "role": "Unspecified",
@@ -10269,7 +10431,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10321,9 +10483,9 @@
    "factions": "Mechanimists-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 8,
+   "level": 6,
    "likely_hostile": false,
    "name": "Mechanimist =creatureRegionNoun=",
    "role": "Unspecified",
@@ -10332,7 +10494,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "3"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10388,10 +10550,9 @@
     "self_preserving"
    ],
    "has_ma": true,
-   "hp": 70,
+   "hp": 25,
    "is_ranged": false,
-   "level": 18,
-   "level_max": 20,
+   "level": 6,
    "likely_hostile": false,
    "name": "=creatureRegionAdjective= trader",
    "role": "NPC",
@@ -10400,7 +10561,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "3"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10457,9 +10618,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -10479,7 +10640,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10534,9 +10695,9 @@
     "self_preserving"
    ],
    "has_ma": true,
-   "hp": 100,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "mutations": [
     "Carapace",
@@ -10550,7 +10711,7 @@
    "start_rep": 150,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10606,9 +10767,9 @@
     "swarmer"
    ],
    "has_ma": true,
-   "hp": 10,
+   "hp": 25,
    "is_ranged": false,
-   "level": 7,
+   "level": 6,
    "likely_hostile": true,
    "name": "Naphtaali =creatureRegionNoun=",
    "role": "Unspecified",
@@ -10673,16 +10834,16 @@
    "factions": "Newly Sentient Beings-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "name": "[Creature]",
    "role": "Unspecified",
    "rooted": false,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10738,9 +10899,9 @@
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -10760,7 +10921,7 @@
    "start_rep": -550,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10812,9 +10973,9 @@
    "factions": "Pariahs-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "name": "=creatureRegionNoun= and pariah to =subject.possessive= people",
    "role": "NPC",
@@ -10822,7 +10983,7 @@
    "species": "human",
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10874,9 +11035,9 @@
    "factions": "Prey-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -10899,7 +11060,7 @@
    "species": "goat",
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -10956,9 +11117,9 @@
     "robot"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "mutations": [
     "NightVision"
@@ -10969,7 +11130,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11026,9 +11187,9 @@
     "robot"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "mutations": [
     "NightVision"
@@ -11039,7 +11200,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11094,9 +11255,9 @@
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -11113,7 +11274,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11165,9 +11326,9 @@
    "factions": "Seekers-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 8,
+   "hp": 25,
    "is_ranged": false,
-   "level": 8,
+   "level": 6,
    "likely_hostile": true,
    "name": "=creatureRegionNoun= of the Sightless Way",
    "role": "Unspecified",
@@ -11176,7 +11337,7 @@
    "start_rep": -500,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11231,9 +11392,9 @@
    "factions": "Snapjaws-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 3,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -11253,7 +11414,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11305,9 +11466,9 @@
    "factions": "Strangers-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "name": "mysterious =creatureRegionNoun=",
    "role": "Unspecified",
@@ -11316,7 +11477,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11371,9 +11532,9 @@
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -11390,7 +11551,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11445,9 +11606,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "mutations": [
     "DarkVision"
@@ -11464,7 +11625,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "20"
@@ -11516,9 +11677,9 @@
    "factions": "Swine-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -11538,7 +11699,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11590,9 +11751,9 @@
    "factions": "Templar-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "name": "Templar =creatureRegionNoun=",
    "role": "Unspecified",
@@ -11608,7 +11769,7 @@
    "start_rep": -700,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11663,9 +11824,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -11686,7 +11847,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11743,7 +11904,7 @@
    "has_ma": true,
    "hp": 200,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -11760,7 +11921,7 @@
    "start_rep": -300,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11812,9 +11973,9 @@
    "factions": "Trolls-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "name": "troll =creatureRegionNoun=",
    "role": "Unspecified",
@@ -11827,7 +11988,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11884,9 +12045,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -11905,7 +12066,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -11961,9 +12122,9 @@
     "noswap"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -11983,7 +12144,7 @@
    "start_rep": -500,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -12038,9 +12199,9 @@
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -12060,7 +12221,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -12112,9 +12273,9 @@
    "factions": "Wardens-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "name": "=creatureRegionAdjective= warden",
    "role": "NPC",
@@ -12123,7 +12284,7 @@
    "start_rep": -150,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -12175,9 +12336,9 @@
    "factions": "Water-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "name": "=creatureRegionAdjective= baron",
    "role": "NPC",
@@ -12185,7 +12346,7 @@
    "species": "human",
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -12237,9 +12398,9 @@
    "factions": "Winged Mammals-100",
    "file": "HiddenObjects.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": false,
    "melee": [
     {
@@ -12260,7 +12421,7 @@
    "start_rep": 0,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -12315,9 +12476,9 @@
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 25,
    "is_ranged": false,
-   "level": 1,
+   "level": 6,
    "likely_hostile": true,
    "melee": [
     {
@@ -12337,7 +12498,7 @@
    "start_rep": -475,
    "stats": {
     "AV": {
-     "Value": "0"
+     "Value": "2"
     },
     "AcidResistance": {
      "Value": "0"
@@ -13369,24 +13530,26 @@
   },
   "Clam Golem": {
    "anatomy": "Clam",
-   "factions": "Mollusks-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "clam golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "clam",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -14139,24 +14302,26 @@
   },
   "Crab Golem": {
    "anatomy": "Crab",
-   "factions": "Crabs-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "crab golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "crab",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -14516,21 +14681,24 @@
   },
   "Cragmensch Golem": {
    "anatomy": "Humanoid",
-   "factions": "Cragmensch-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 25,
+   "hp": 500,
    "is_ranged": false,
-   "level": 20,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "cragmensch golem",
    "role": "Unspecified",
    "rooted": false,
    "skills": [
-    "Cudgel"
+    "Cudgel",
+    "Tactics_Run"
    ],
    "species": "cragmensch",
-   "start_rep": -500,
    "stats": {
     "AV": {
      "Value": "30"
@@ -15450,18 +15618,23 @@
   },
   "Crystal Golem": {
    "anatomy": "HumanoidOctohedron",
-   "factions": "Beasts-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "crystal golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "crystal",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -15470,16 +15643,16 @@
      "Value": "0"
     },
     "Agility": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "ColdResistance": {
      "Value": "0"
     },
     "DV": {
-     "Value": "0"
+     "sValue": "0"
     },
     "Ego": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "ElectricResistance": {
      "Value": "0"
@@ -15488,7 +15661,7 @@
      "Value": "0"
     },
     "Intelligence": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "MA": {
      "Value": "0"
@@ -15500,13 +15673,13 @@
      "Value": "100"
     },
     "Strength": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "Toughness": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "Willpower": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     }
    },
    "wanders": true
@@ -16081,16 +16254,16 @@
   },
   "Dawnglider Golem": {
    "anatomy": "Snake",
-   "factions": "Birds-100,Unshelled Reptiles-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 30,
+   "hp": 500,
    "is_ranged": false,
-   "level": 15,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -16107,8 +16280,10 @@
    "name": "dawnglider golem",
    "role": "Artillery",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "dawnglider",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "4"
@@ -16993,15 +17168,15 @@
   },
   "Dog Golem": {
    "anatomy": "Quadruped",
-   "factions": "Dogs-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "pettable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
    "mutations": [
     "DarkVision"
@@ -17009,8 +17184,10 @@
    "name": "dog golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "dog",
-   "start_rep": 300,
    "stats": {
     "AV": {
      "Value": "0"
@@ -17136,6 +17313,75 @@
      "sValue": "7,1d3,(t-1)d2-1"
     }
    },
+   "wanders": true
+  },
+  "Door Golem": {
+   "anatomy": "Humanoid",
+   "factions": "Barathrumites-100",
+   "file": "Creatures.xml",
+   "has_ma": true,
+   "hp": 500,
+   "is_ranged": false,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision",
+    "Phasing"
+   ],
+   "name": "door golem",
+   "role": "Unspecified",
+   "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
+   "stats": {
+    "AV": {
+     "Value": "0"
+    },
+    "AcidResistance": {
+     "Value": "0"
+    },
+    "Agility": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ColdResistance": {
+     "Value": "0"
+    },
+    "DV": {
+     "sValue": "0"
+    },
+    "Ego": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ElectricResistance": {
+     "Value": "0"
+    },
+    "HeatResistance": {
+     "Value": "0"
+    },
+    "Intelligence": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "MA": {
+     "Value": "0"
+    },
+    "MoveSpeed": {
+     "Value": "100"
+    },
+    "Speed": {
+     "Value": "100"
+    },
+    "Strength": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Toughness": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Willpower": {
+     "sValue": "14,1d3,(t-1)d1"
+    }
+   },
+   "tier": 1,
    "wanders": true
   },
   "Doyoba": {
@@ -17595,16 +17841,22 @@
   },
   "Dromad Golem": {
    "anatomy": "Humanoid",
-   "factions": "Dromad-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 30,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "dromad golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "dromad",
    "stats": {
     "AV": {
@@ -19817,20 +20069,22 @@
   },
   "Equine Golem": {
    "anatomy": "Quadruped",
-   "factions": "Beasts-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "equine golem",
    "role": "Unspecified",
    "rooted": false,
-   "start_rep": -475,
+   "skills": [
+    "Tactics_Run"
+   ],
    "stats": {
     "AV": {
      "Value": "0"
@@ -21842,16 +22096,16 @@
   },
   "Fish Golem": {
    "anatomy": "Fish",
-   "factions": "Fish-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
@@ -21859,9 +22113,9 @@
    "role": "Unspecified",
    "rooted": false,
    "skills": [
-    "Endurance_Swimming"
+    "Endurance_Swimming",
+    "Tactics_Run"
    ],
-   "start_rep": -400,
    "stats": {
     "AV": {
      "Value": "0"
@@ -21913,21 +22167,26 @@
   },
   "Flower Golem": {
    "anatomy": "Flower",
-   "factions": "Flowers-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "flower golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "flower",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -22275,21 +22534,26 @@
   },
   "Fractus Golem": {
    "anatomy": "Cactus",
-   "factions": "Succulents-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "fractus golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "fractus",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -22341,16 +22605,16 @@
   },
   "Frog Golem": {
    "anatomy": "Quadruped",
-   "factions": "Frogs-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
@@ -22359,10 +22623,10 @@
    "rooted": false,
    "skills": [
     "Acrobatics_Jump",
-    "Endurance_Swimming"
+    "Endurance_Swimming",
+    "Tactics_Run"
    ],
    "species": "frog",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -22649,21 +22913,26 @@
   },
   "Fungus Golem": {
    "anatomy": "Fungus",
-   "factions": "Fungi-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "fungus golem",
    "role": "Unspecified",
-   "rooted": true,
-   "start_rep": 0,
+   "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "stats": {
     "AV": {
      "Value": "0"
@@ -25042,12 +25311,12 @@
   },
   "Goat Golem": {
    "anatomy": "Quadruped",
-   "factions": "Prey-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
    "mutations": [
     "DarkVision",
@@ -25058,7 +25327,8 @@
    "rooted": false,
    "skills": [
     "Endurance",
-    "Shield"
+    "Shield",
+    "Tactics_Run"
    ],
    "species": "goat",
    "stats": {
@@ -25268,13 +25538,13 @@
   },
   "Goatfolk Golem": {
    "anatomy": "Humanoid",
-   "factions": "Goatfolk-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 20,
+   "hp": 500,
    "is_ranged": false,
-   "level": 15,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -25291,10 +25561,10 @@
    "rooted": false,
    "skills": [
     "Endurance",
-    "Shield"
+    "Shield",
+    "Tactics_Run"
    ],
    "species": "goatfolk",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "3"
@@ -28454,7 +28724,7 @@
   },
   "Hexapodal Robot Golem": {
    "anatomy": "HexapedalRobot",
-   "factions": "Robots-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
@@ -28462,18 +28732,21 @@
     "robot"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
+    "DarkVision",
     "NightVision"
    ],
    "name": "hexapodal robot golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "hexapedal robot",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -28752,18 +29025,19 @@
   },
   "Hindren Golem": {
    "anatomy": "Humanoid",
-   "factions": "Humanoids-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
     "self_preserving"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
+    "DarkVision",
     "HeightenedHearing",
     "Horns",
     "MultipleLegs",
@@ -28773,10 +29047,10 @@
    "role": "Unspecified",
    "rooted": false,
    "skills": [
-    "Acrobatics_Jump"
+    "Acrobatics_Jump",
+    "Tactics_Run"
    ],
    "species": "hindren",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -29452,7 +29726,7 @@
   },
   "Hover Golem": {
    "anatomy": "HoverRobot",
-   "factions": "Robots-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
@@ -29460,18 +29734,21 @@
     "robot"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
+    "DarkVision",
     "NightVision"
    ],
    "name": "hover golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "hover robot",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -29601,18 +29878,23 @@
   },
   "Human Golem": {
    "anatomy": "Humanoid",
-   "factions": "Humanoids-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "human golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "human",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30990,7 +31272,7 @@
   },
   "Humanoid Robot Golem": {
    "anatomy": "HumanoidRobot",
-   "factions": "Robots-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
@@ -30998,18 +31280,21 @@
     "robot"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
+    "DarkVision",
     "NightVision"
    ],
    "name": "humanoid robot golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "humanoid robot",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -31603,25 +31888,96 @@
    },
    "wanders": true
   },
+  "Infrastructure Golem": {
+   "anatomy": "Humanoid",
+   "factions": "Barathrumites-100",
+   "file": "Creatures.xml",
+   "has_ma": true,
+   "hp": 1000,
+   "is_ranged": false,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
+   "name": "infrastructure golem",
+   "role": "Unspecified",
+   "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
+   "species": "infrastructure",
+   "stats": {
+    "AV": {
+     "Value": "0"
+    },
+    "AcidResistance": {
+     "Value": "0"
+    },
+    "Agility": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ColdResistance": {
+     "Value": "0"
+    },
+    "DV": {
+     "sValue": "0"
+    },
+    "Ego": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ElectricResistance": {
+     "Value": "0"
+    },
+    "HeatResistance": {
+     "Value": "0"
+    },
+    "Intelligence": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "MA": {
+     "Value": "0"
+    },
+    "MoveSpeed": {
+     "Value": "100"
+    },
+    "Speed": {
+     "Value": "100"
+    },
+    "Strength": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Toughness": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Willpower": {
+     "sValue": "14,1d3,(t-1)d1"
+    }
+   },
+   "tier": 0,
+   "wanders": true
+  },
   "Insect Golem": {
    "anatomy": "Insect",
-   "factions": "Insects-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "insect golem",
    "role": "Unspecified",
    "rooted": false,
-   "start_rep": -475,
+   "skills": [
+    "Tactics_Run"
+   ],
    "stats": {
     "AV": {
      "Value": "0"
@@ -31895,6 +32251,75 @@
      "sValue": "20,1d4,(t-1)d3"
     }
    },
+   "wanders": true
+  },
+  "Iron Maiden Golem": {
+   "anatomy": "Humanoid",
+   "factions": "Barathrumites-100",
+   "file": "Creatures.xml",
+   "has_ma": true,
+   "hp": 500,
+   "is_ranged": false,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision",
+    "LifeDrain"
+   ],
+   "name": "iron maiden golem",
+   "role": "Unspecified",
+   "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
+   "stats": {
+    "AV": {
+     "Value": "0"
+    },
+    "AcidResistance": {
+     "Value": "0"
+    },
+    "Agility": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ColdResistance": {
+     "Value": "0"
+    },
+    "DV": {
+     "sValue": "0"
+    },
+    "Ego": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ElectricResistance": {
+     "Value": "0"
+    },
+    "HeatResistance": {
+     "Value": "0"
+    },
+    "Intelligence": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "MA": {
+     "Value": "0"
+    },
+    "MoveSpeed": {
+     "Value": "100"
+    },
+    "Speed": {
+     "Value": "100"
+    },
+    "Strength": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Toughness": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Willpower": {
+     "sValue": "14,1d3,(t-1)d1"
+    }
+   },
+   "tier": 2,
    "wanders": true
   },
   "Irritable Palm": {
@@ -32589,17 +33014,17 @@
   },
   "Jelly Golem": {
    "anatomy": "Jelly",
-   "factions": "Oozes-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
@@ -32609,10 +33034,10 @@
    "skills": [
     "Multiweapon_Expertise",
     "Multiweapon_Fighting",
-    "Multiweapon_Mastery"
+    "Multiweapon_Mastery",
+    "Tactics_Run"
    ],
    "species": "jelly",
-   "start_rep": -550,
    "stats": {
     "AV": {
      "Value": "0"
@@ -34513,22 +34938,27 @@
   },
   "Lichen Golem": {
    "anatomy": "Fungus",
-   "factions": "Fungi-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "lichen golem",
    "role": "Unspecified",
-   "rooted": true,
+   "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "lichen",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -40829,26 +41259,29 @@
   },
   "Mopango Charioteer Golem": {
    "anatomy": "WheeledCreature",
-   "factions": "Humanoids-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "self_preserving"
    ],
    "has_ma": true,
-   "hp": 100,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "Carapace",
+    "DarkVision",
     "LightManipulation",
     "Psychometry"
    ],
    "name": "mopango charioteer golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "mopango",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -40900,26 +41333,29 @@
   },
   "Mopango Golem": {
    "anatomy": "TailedBiped",
-   "factions": "Humanoids-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "self_preserving"
    ],
    "has_ma": true,
-   "hp": 100,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "Carapace",
+    "DarkVision",
     "LightManipulation",
     "Psychometry"
    ],
    "name": "mopango golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "mopango",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -42137,20 +42573,25 @@
   },
   "Nest Golem": {
    "anatomy": "Nest",
-   "factions": "Beasts-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "nest golem",
    "role": "Unspecified",
    "rooted": false,
-   "start_rep": -475,
+   "skills": [
+    "Tactics_Run"
+   ],
    "stats": {
     "AV": {
      "Value": "0"
@@ -42159,16 +42600,16 @@
      "Value": "0"
     },
     "Agility": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "ColdResistance": {
      "Value": "0"
     },
     "DV": {
-     "Value": "0"
+     "sValue": "0"
     },
     "Ego": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "ElectricResistance": {
      "Value": "0"
@@ -42177,7 +42618,7 @@
      "Value": "0"
     },
     "Intelligence": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "MA": {
      "Value": "0"
@@ -42189,13 +42630,13 @@
      "Value": "100"
     },
     "Strength": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "Toughness": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "Willpower": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     }
    },
    "wanders": true
@@ -42917,21 +43358,26 @@
   },
   "Oddity Golem": {
    "anatomy": "Oddity",
-   "factions": "Beasts-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "golem oddity",
    "role": "Unspecified",
-   "rooted": true,
+   "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "oddity",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -42940,16 +43386,16 @@
      "Value": "0"
     },
     "Agility": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "ColdResistance": {
      "Value": "0"
     },
     "DV": {
-     "Value": "0"
+     "sValue": "0"
     },
     "Ego": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "ElectricResistance": {
      "Value": "0"
@@ -42958,7 +43404,7 @@
      "Value": "0"
     },
     "Intelligence": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "MA": {
      "Value": "0"
@@ -42970,13 +43416,13 @@
      "Value": "100"
     },
     "Strength": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "Toughness": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     },
     "Willpower": {
-     "Value": "16"
+     "sValue": "14,1d3,(t-1)d1"
     }
    },
    "wanders": true
@@ -43067,25 +43513,27 @@
   },
   "Ooze Golem": {
    "anatomy": "Ooze",
-   "factions": "Oozes-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "ooze golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "ooze",
-   "start_rep": -550,
    "stats": {
     "AV": {
      "Value": "0"
@@ -46280,7 +46728,7 @@
   },
   "Quadrupedal Robot Golem": {
    "anatomy": "QuadrupedalRobot",
-   "factions": "Robots-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
@@ -46288,18 +46736,21 @@
     "robot"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
+    "DarkVision",
     "NightVision"
    ],
    "name": "quadrupedal robot golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "quadrupedal robot",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -47483,23 +47934,25 @@
   },
   "Reptile Golem": {
    "anatomy": "Quadruped",
-   "factions": "Unshelled Reptiles-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "reptile golem",
    "role": "Unspecified",
    "rooted": false,
-   "start_rep": -475,
+   "skills": [
+    "Tactics_Run"
+   ],
    "stats": {
     "AV": {
      "Value": "0"
@@ -48437,21 +48890,26 @@
   },
   "Root Golem": {
    "anatomy": "Bush",
-   "factions": "Beasts-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "root golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "root",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -50942,24 +51400,26 @@
   },
   "Slug Golem": {
    "anatomy": "Slug",
-   "factions": "Mollusks-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "slug golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "slug",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -51175,16 +51635,22 @@
   },
   "Slynth Golem": {
    "anatomy": "Humanoid",
-   "factions": "Newly Sentient Beings-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 100,
+   "hp": 500,
    "is_ranged": false,
-   "level": 24,
+   "level": 50,
    "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "slynth golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "slynth",
    "stats": {
     "AV": {
@@ -51299,16 +51765,16 @@
   },
   "Snail Golem": {
    "anatomy": "Snail",
-   "factions": "Mollusks-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "Carapace",
     "DarkVision"
@@ -51316,8 +51782,10 @@
    "name": "snail golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "snail",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -51914,13 +52382,13 @@
   },
   "Snapjaw Golem": {
    "anatomy": "Humanoid",
-   "factions": "Snapjaws-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 3,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -51930,13 +52398,16 @@
     }
    ],
    "mutations": [
+    "DarkVision",
     "HeightenedSmell"
    ],
    "name": "snapjaw golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "snapjaw",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -54107,24 +54578,26 @@
   },
   "Spider Golem": {
    "anatomy": "Spider",
-   "factions": "Arachnids-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "spider golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "spider",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -55422,21 +55895,26 @@
   },
   "Succulent Golem": {
    "anatomy": "Cactus",
-   "factions": "Succulents-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "succulent golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "succulent",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -55737,16 +56215,16 @@
   },
   "Svardym Golem": {
    "anatomy": "Svardym",
-   "factions": "Svardym-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
@@ -55756,10 +56234,10 @@
    "skills": [
     "Acrobatics_Jump",
     "Endurance_Swimming",
-    "Tactics_Charge"
+    "Tactics_Charge",
+    "Tactics_Run"
    ],
    "species": "svardym",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -56127,21 +56605,23 @@
   },
   "Swine Golem": {
    "anatomy": "Quadruped",
-   "factions": "Swine-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "swine golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "pig",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -56189,6 +56669,74 @@
      "sValue": "7,1d3,(t-1)d2-1"
     }
    },
+   "wanders": true
+  },
+  "Table Golem": {
+   "anatomy": "Humanoid",
+   "factions": "Barathrumites-100",
+   "file": "Creatures.xml",
+   "has_ma": true,
+   "hp": 500,
+   "is_ranged": false,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
+   "name": "table golem",
+   "role": "Unspecified",
+   "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
+   "stats": {
+    "AV": {
+     "Value": "0"
+    },
+    "AcidResistance": {
+     "Value": "0"
+    },
+    "Agility": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ColdResistance": {
+     "Value": "0"
+    },
+    "DV": {
+     "sValue": "0"
+    },
+    "Ego": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ElectricResistance": {
+     "Value": "0"
+    },
+    "HeatResistance": {
+     "Value": "0"
+    },
+    "Intelligence": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "MA": {
+     "Value": "0"
+    },
+    "MoveSpeed": {
+     "Value": "100"
+    },
+    "Speed": {
+     "Value": "100"
+    },
+    "Strength": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Toughness": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Willpower": {
+     "sValue": "14,1d3,(t-1)d1"
+    }
+   },
+   "tier": 0,
    "wanders": true
   },
   "Tam": {
@@ -57256,15 +57804,15 @@
   },
   "Tortoise Golem": {
    "anatomy": "Quadruped",
-   "factions": "Tortoises-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
+   "level": 50,
    "likely_hostile": false,
    "mutations": [
     "Carapace",
@@ -57273,8 +57821,10 @@
    "name": "tortoise golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "tortoise",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -57702,7 +58252,7 @@
   },
   "Tree Golem": {
    "anatomy": "Tree",
-   "factions": "Trees-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "mental_shield"
@@ -57710,13 +58260,18 @@
    "has_ma": true,
    "hp": 1500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "tree golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "tree",
-   "start_rep": -300,
    "stats": {
     "AV": {
      "Value": "0"
@@ -57925,7 +58480,7 @@
   },
   "Tripedal Robot Golem": {
    "anatomy": "TripedalRobot",
-   "factions": "Robots-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
@@ -57933,18 +58488,21 @@
     "robot"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
+    "DarkVision",
     "NightVision"
    ],
    "name": "tripedal robot golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "tripedal robot",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -58069,22 +58627,25 @@
   },
   "Troll Golem": {
    "anatomy": "Humanoid",
-   "factions": "Trolls-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "troll golem",
    "role": "Unspecified",
    "rooted": false,
    "skills": [
     "Cudgel",
-    "Endurance_Swimming"
+    "Endurance_Swimming",
+    "Tactics_Run"
    ],
    "species": "troll",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -58543,7 +59104,7 @@
   },
   "Turret Golem": {
    "anatomy": "Turret",
-   "factions": "Robots-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
@@ -58554,21 +59115,22 @@
     "turret"
    ],
    "has_ma": true,
-   "hp": 5,
+   "hp": 500,
    "is_ranged": false,
-   "level": 15,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
+    "DarkVision",
     "NightVision"
    ],
    "name": "turret golem",
    "role": "Skirmisher",
    "rooted": true,
    "skills": [
-    "HeavyWeapons_StrappingShoulders"
+    "HeavyWeapons_StrappingShoulders",
+    "Tactics_Run"
    ],
    "species": "turret",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -60077,26 +60639,28 @@
   },
   "Urchin Golem": {
    "anatomy": "Echinoid",
-   "factions": "Urchins-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
     "noswap"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision",
     "Quills"
    ],
    "name": "urchin golem",
    "role": "Unspecified",
-   "rooted": true,
+   "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "urchin",
-   "start_rep": -500,
    "stats": {
     "AV": {
      "Value": "0"
@@ -60306,23 +60870,26 @@
   },
   "Urshiib Golem": {
    "anatomy": "Humanoid",
-   "factions": "Humanoids-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "has_ma": true,
-   "hp": 80,
+   "hp": 500,
    "is_ranged": false,
-   "level": 20,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "Albino",
+    "DarkVision",
     "HeightenedAgility",
     "Quills"
    ],
    "name": "urshiib golem",
    "role": "NPC",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "urshiib",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -61403,21 +61970,26 @@
   },
   "Vine Golem": {
    "anatomy": "Vine",
-   "factions": "Vines-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "mental_shield"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
    "name": "vine golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "vine",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -61778,6 +62350,73 @@
     },
     "Willpower": {
      "sValue": "4,1d2,(t-1)d2-1"
+    }
+   },
+   "wanders": true
+  },
+  "Wall Golem": {
+   "anatomy": "Humanoid",
+   "factions": "Barathrumites-100",
+   "file": "Creatures.xml",
+   "has_ma": true,
+   "hp": 500,
+   "is_ranged": false,
+   "level": 50,
+   "likely_hostile": false,
+   "mutations": [
+    "DarkVision"
+   ],
+   "name": "wall golem",
+   "role": "Unspecified",
+   "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
+   "stats": {
+    "AV": {
+     "Value": "30"
+    },
+    "AcidResistance": {
+     "Value": "0"
+    },
+    "Agility": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ColdResistance": {
+     "Value": "0"
+    },
+    "DV": {
+     "sValue": "0"
+    },
+    "Ego": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "ElectricResistance": {
+     "Value": "0"
+    },
+    "HeatResistance": {
+     "Value": "0"
+    },
+    "Intelligence": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "MA": {
+     "Value": "0"
+    },
+    "MoveSpeed": {
+     "Value": "100"
+    },
+    "Speed": {
+     "Value": "100"
+    },
+    "Strength": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Toughness": {
+     "sValue": "14,1d3,(t-1)d1"
+    },
+    "Willpower": {
+     "sValue": "14,1d3,(t-1)d1"
     }
    },
    "wanders": true
@@ -62497,7 +63136,7 @@
   },
   "Wheeled Robot Golem": {
    "anatomy": "WheeledRobot",
-   "factions": "Robots-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable",
@@ -62505,18 +63144,21 @@
     "robot"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
+    "DarkVision",
     "NightVision"
    ],
    "name": "wheeled robot golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "wheeled robot",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -63083,24 +63725,26 @@
   },
   "Worm Golem": {
    "anatomy": "Worm",
-   "factions": "Worms-100",
+   "factions": "Barathrumites-100",
    "file": "Creatures.xml",
    "flags": [
     "hero_capable"
    ],
    "has_ma": true,
-   "hp": 16,
+   "hp": 500,
    "is_ranged": false,
-   "level": 1,
-   "likely_hostile": true,
+   "level": 50,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
    "name": "worm golem",
    "role": "Unspecified",
    "rooted": false,
+   "skills": [
+    "Tactics_Run"
+   ],
    "species": "worm",
-   "start_rep": -475,
    "stats": {
     "AV": {
      "Value": "0"
@@ -64199,30 +64843,30 @@
  },
  "meta": {
   "built": "2026-10-08",
-  "creatures": 845,
+  "creatures": 852,
   "level_bands": {
-   "0-4": 197,
-   "10-14": 53,
+   "0-4": 97,
+   "10-14": 52,
    "120-124": 1,
-   "15-19": 123,
-   "20-24": 83,
+   "15-19": 118,
+   "20-24": 77,
    "25-29": 85,
    "30-34": 105,
    "35-39": 26,
    "40-44": 72,
    "45-49": 5,
-   "5-9": 84,
-   "50-54": 8,
+   "5-9": 137,
+   "50-54": 74,
    "55-59": 1,
    "60-64": 1,
    "65-69": 1
   },
   "level_by_formula": 0,
-  "likely_hostile": 454,
+  "likely_hostile": 408,
   "ranged": 99,
-  "rooted": 61,
+  "rooted": 57,
   "source": "StreamingAssets/Base/ObjectBlueprints/*.xml",
-  "with_hp": 845,
-  "with_level": 845
+  "with_hp": 852,
+  "with_level": 852
  }
 }
