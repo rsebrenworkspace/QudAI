@@ -3503,31 +3503,41 @@ def stairs_given_up(zone_id):
     return bool(sd and (zone_id, (sd.get("tx"), sd.get("ty"))) in STAIRS_GIVEUP)
 
 
-def dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared):
+def dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared, down_gated=False):
     """A stratum with no way down is a dead end: leave it by the stairs up instead of circling its walls (HANDOFF issue 73).
 
     The engine's own edge route led him to the stairs-up cell (the only exit of the Kuyukas workshop stratum, `reachable_edges` said NSEW) and the brain then
     stepped off it: nothing but the emergency retreat ever used `USE_STAIRS_UP`. Fires when the stratum is cleared, has been worked for DEAD_END_MIN_STEPS and
     no usable stairs down are known here: standing on the stairs up he ascends; away from them he walks there only when the engine reports no reachable
     edge at all (otherwise the edge logic runs first, and its route may end on the stairs). Going up writes the stairs down of the stratum above into
-    STAIRS_GIVEUP so he is not sent straight back down. Returns a decision dict or None."""
+    STAIRS_GIVEUP so he is not sent straight back down. Returns a decision dict or None.
+
+    `down_gated`: the stairs down are known but held back by a level goal (RETREAT_TARGET_LEVEL, set by a retreat from the stratum below). Then nobody owned the decision:
+    the delve logic would not descend and this function stood aside, so in a cleared stratum he circled its walls for 60 turns (human run 2026-10-08, trace t2134-2253,
+    HANDOFF issue 90). Now he leaves by the stairs up to level elsewhere: no dead-end mark and no give-up entry (the level goal keeps the way down closed until he has
+    grown), and the walk to the stairs does not wait for the engine to report no reachable edge, because underground its edge route ends at a wall."""
     if cur_z <= 10 or not zone_id:
         return None
     sd = KNOWN_STAIRS_DOWN.get(zone_id)
+    waiting = False
     if sd:
         sd_key = (zone_id, (sd.get("tx"), sd.get("ty")))
         if sd_key not in STAIRS_GIVEUP and sd_key not in UNREACHABLE_SECTORS:
-            return None                 # a way down exists: the delve logic owns the decision
+            if not down_gated:
+                return None             # a way down exists: the delve logic owns the decision
+            waiting = True              # a way down exists but a level goal holds it shut: this stratum is a waiting room
     if not (is_zone_cleared and ZONE_STEP_COUNT >= DEAD_END_MIN_STEPS):
         return None
     if standing_on_su:
+        if waiting:
+            return {"action": "USE_STAIRS_UP", "reason": f"Level goal: the way down from stratum {cur_z} is held shut until level {RETREAT_TARGET_LEVEL}; leaving the cleared stratum by the stairs up to level elsewhere"}
         DEAD_END_ZONES.add(zone_id)
         up = upper_zone_id(zone_id)
         usd = KNOWN_STAIRS_DOWN.get(up) if up else None
         if usd:
             STAIRS_GIVEUP.add((up, (usd.get("tx"), usd.get("ty"))))
         return {"action": "USE_STAIRS_UP", "reason": f"Dead end: no way down from stratum {cur_z}; ascending the stairs up to leave it"}
-    if game_state.get("reachable_edges"):
+    if game_state.get("reachable_edges") and not waiting:
         return None                     # the engine says an edge is reachable: the zone-exit logic goes first
     su = KNOWN_STAIRS_UP.get(zone_id)
     if not su:
@@ -3538,6 +3548,8 @@ def dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone
     su_pos = (su.get("tx"), su.get("ty"))
     if cur_pos == su_pos or (zone_id, su_pos) in STAIRS_GIVEUP or (zone_id, su_pos) in UNREACHABLE_SECTORS:
         return None
+    if waiting:
+        return {"action": f"NAVIGATE_TO_CELL:{su_pos[0]},{su_pos[1]}", "reason": f"Level goal: the way down from stratum {cur_z} is held shut until level {RETREAT_TARGET_LEVEL}; walking to the stairs up at {su_pos} to level elsewhere"}
     return {"action": f"NAVIGATE_TO_CELL:{su_pos[0]},{su_pos[1]}", "reason": f"Dead end: no way down from stratum {cur_z}; walking to the stairs up at {su_pos}"}
 
 
@@ -3895,7 +3907,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     if best_m and sector_target_ok(zone_id, sd_pos, cur_pos, "stairs"):
                         return {"action": best_m, "reason": f"{delve_type}: no engine route to the stairs at {sd_pos}; stepping {best_m[5:]} toward them ({rec_str})"}
 
-        dead_end = dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared)
+        dead_end = dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared, is_retreating)
         if dead_end:
             return dead_end
 

@@ -5618,3 +5618,40 @@ assert brain.turret_decision(_gs112, [], 1.0, []) is None
 _gs112["visible_entities"] = [dict(_mus112)]
 assert brain.turret_decision(_gs112, [], 1.0, [])["action"] == "USE_STAIRS_UP"
 print("  [OK] Test 112 Passed: the catalogue carries the engine's shot damage (seed 1d3 pen 2, musket ball 1d8 pen 4), a nest whose expected damage while closing in is under half our HP is not fled (one vine at 40 HP), two vines or a lower HP or a musket turret still are, and an unknown turret keeps the old caution.")
+
+
+# ---------------------------------------------------------------------------
+# Test 113: a cleared stratum whose way down is held shut by a level goal is left by the stairs up (human run 2026-10-08, trace t2134-2253; HANDOFF issue 90)
+# ---------------------------------------------------------------------------
+_up113 = "JoppaWorld.11.20.1.1.10"
+_dn113 = "JoppaWorld.11.20.1.1.11"
+_saved113 = (dict(brain.KNOWN_STAIRS_DOWN), dict(brain.KNOWN_STAIRS_UP), set(brain.STAIRS_GIVEUP), set(brain.DEAD_END_ZONES), brain.ZONE_STEP_COUNT, brain.RETREAT_TARGET_LEVEL)
+try:
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.KNOWN_STAIRS_UP.clear(); brain.STAIRS_GIVEUP.clear(); brain.DEAD_END_ZONES.clear()
+    brain.KNOWN_STAIRS_DOWN[_dn113] = {"tx": 45, "ty": 23, "z": 11, "name": "stairs down", "req_level": 5}
+    brain.KNOWN_STAIRS_UP[_dn113] = {"tx": 20, "ty": 4, "z": 11, "name": "stairs up"}
+    brain.RETREAT_TARGET_LEVEL = 6
+    brain.ZONE_STEP_COUNT = 150
+    _edges113 = {"reachable_edges": "NSEW"}          # the engine claims every edge is reachable; underground its route ends at a wall
+    _d = brain.dead_end_ascent(_edges113, _dn113, 11, (62, 7), False, True, True)
+    assert _d and _d["action"] == "NAVIGATE_TO_CELL:20,4" and "Level goal" in _d["reason"], _d
+    assert brain.dead_end_ascent(_edges113, _dn113, 11, (62, 7), False, True, False) is None, "not gated: the delve logic owns it"
+    assert brain.dead_end_ascent(_edges113, _dn113, 11, (62, 7), False, False, True) is None, "still being explored"
+    brain.ZONE_STEP_COUNT = 5
+    assert brain.dead_end_ascent(_edges113, _dn113, 11, (62, 7), False, True, True) is None, "not worked long enough"
+    brain.ZONE_STEP_COUNT = 150
+    _u = brain.dead_end_ascent(_edges113, _dn113, 11, (20, 4), True, True, True)
+    assert _u and _u["action"] == "USE_STAIRS_UP" and "Level goal" in _u["reason"], _u
+    assert _dn113 not in brain.DEAD_END_ZONES and not brain.STAIRS_GIVEUP, "a waiting room is not a dead end: nothing is given up, the level goal holds the way down shut"
+    assert brain.dead_end_ascent(_edges113, _up113, 10, (62, 7), False, True, True) is None, "never on the surface"
+    # the same stratum with the stairs down given up is the old dead end
+    brain.STAIRS_GIVEUP.add((_dn113, (45, 23)))
+    _old = brain.dead_end_ascent({"reachable_edges": ""}, _dn113, 11, (62, 7), False, True, True)
+    assert _old and "Dead end" in _old["reason"], _old
+finally:
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.KNOWN_STAIRS_DOWN.update(_saved113[0]); brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_UP.update(_saved113[1])
+    brain.STAIRS_GIVEUP.clear(); brain.STAIRS_GIVEUP.update(_saved113[2]); brain.DEAD_END_ZONES.clear(); brain.DEAD_END_ZONES.update(_saved113[3])
+    brain.ZONE_STEP_COUNT = _saved113[4]; brain.RETREAT_TARGET_LEVEL = _saved113[5]
+_src113 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "is_zone_cleared, is_retreating)" in _src113, "the call site must pass the level-goal gate"
+print("  [OK] Test 113 Passed: in a cleared, worked stratum whose way down is held shut by a level goal he walks to the stairs up (even when the engine reports edges) and ascends without marking a dead end or giving up the stairs; with no gate, an unworked or uncleared stratum, or on the surface nothing changes, and the old dead end still fires when the stairs were given up.")
