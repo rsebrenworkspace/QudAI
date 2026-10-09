@@ -1095,6 +1095,27 @@ namespace QudAIBrain
             return isLootableType;
         }
 
+        private static readonly HashSet<string> turretDiagSeen = new HashSet<string>();
+
+        // A turret by the engine's own tag, by the tag's value, or by blueprint name (the tinker robot that PLACES turrets is not one). The first real run of the turret doctrine
+        // (HANDOFF issue 77, Gen 24) showed `HasTag("Turret")` alone was not enough: the turret stayed is_enemy false, so the Lase had "target none". One log line per blueprint
+        // says what each test answered, so the cause can be read from Player.log.
+        private static bool IsTurretObject(GameObject obj)
+        {
+            try
+            {
+                string bp = obj.Blueprint ?? "";
+                bool byTag = false, byValue = false;
+                try { byTag = obj.HasTag("Turret"); } catch { }
+                try { byValue = obj.GetTag("Turret", null) != null; } catch { }
+                bool byName = bp.IndexOf("Turret", StringComparison.OrdinalIgnoreCase) >= 0 && bp.IndexOf("Tinker", StringComparison.OrdinalIgnoreCase) < 0;
+                if (bp.IndexOf("Turret", StringComparison.OrdinalIgnoreCase) >= 0 && turretDiagSeen.Add(bp))
+                    UnityEngine.Debug.Log("[QudAI Turret] " + bp + ": HasTag=" + byTag + " GetTag=" + byValue + " byName=" + byName);
+                return byTag || byValue || byName;
+            }
+            catch { return false; }
+        }
+
         public static bool CheckIsEnemy(GameObject obj, GameObject player)
         {
             if (obj == null || player == null || obj == player || obj.IsPlayer()) return false;
@@ -1109,7 +1130,7 @@ namespace QudAIBrain
                 // 0b. Turrets (blueprint tag "Turret": security, rifle and tinker turrets) fire at the player although their Brain says Hostile="false", so the engine tests
                 // below can answer "not an enemy" while one kills him (HANDOFF issue 77: a musket turret listed with is_enemy false killed a level 3 character), and the
                 // ability targeting, which looks for the nearest enemy, would then find nothing to shoot. A turret the player placed is a companion and returned above.
-                if (obj.HasTag("Turret")) return true;
+                if (IsTurretObject(obj)) return true;
 
                 // 1. Explicit exclude tags
                 if (obj.HasTag("ExcludeFromHostiles")) return false;

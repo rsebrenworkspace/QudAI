@@ -5214,7 +5214,7 @@ assert _q98(_calm)["action"] == "REST"
 _frag = {"name": "x", "difficulty": "Impossible", "is_stationary": True, "max_hp": 5, "dist": 5, "dir": "NE"}
 assert brain.is_fragile_shooter(_frag)
 _csrc98 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
-for _needle in ('obj.HasTag("Turret")', '\\"max_hp\\": {objMaxHp}', "objMaxHp = obj.baseHitpoints"):
+for _needle in ("IsTurretObject(obj)", '\\"max_hp\\": {objMaxHp}', "objMaxHp = obj.baseHitpoints", "[QudAI Turret] "):
     assert _needle in _csrc98, f"the mod must contain {_needle}"
 assert _csrc98.count("{") == _csrc98.count("}"), "C# braces"
 brain.RETREAT_TARGET_LEVEL = None
