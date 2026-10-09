@@ -2,6 +2,7 @@
  "creatures": {
   "0lam": {
    "anatomy": "Clam",
+   "calm": true,
    "factions": "Entropic-100,Mollusks-50",
    "file": "Creatures.xml",
    "flags": [
@@ -12,7 +13,7 @@
    "hp": 9999,
    "is_ranged": false,
    "level": 66,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision",
     "LeyShifting"
@@ -68,8 +69,7 @@
     "Willpower": {
      "sValue": "2,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Addling Urchin": {
    "anatomy": "Echinoid",
@@ -138,8 +138,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Adiyy": {
    "anatomy": "Insect",
@@ -330,7 +329,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -796,8 +794,7 @@
     "Willpower": {
      "sValue": "15,1d4"
     }
-   },
-   "wanders": false
+   }
   },
   "Albino ape": {
    "anatomy": "Humanoid",
@@ -831,7 +828,6 @@
     "Cudgel_Bludgeon"
    ],
    "species": "ape",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "5"
@@ -944,8 +940,7 @@
     "Willpower": {
      "Value": "52"
     }
-   },
-   "wanders": false
+   }
   },
   "Aloysius": {
    "anatomy": "Humanoid",
@@ -1029,8 +1024,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "AmoebaFarmer": {
    "anatomy": "Humanoid",
@@ -1054,7 +1048,6 @@
     "CookingAndGathering_Butchery"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -1103,8 +1096,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Angohind": {
    "anatomy": "Humanoid",
@@ -1179,8 +1171,7 @@
     "Willpower": {
      "Value": "18"
     }
-   },
-   "wanders": false
+   }
   },
   "Antelope Golem": {
    "anatomy": "Quadruped",
@@ -1274,7 +1265,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "antelope",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -1413,8 +1403,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Ape Golem": {
    "anatomy": "Humanoid",
@@ -1514,7 +1503,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "ape",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -1590,7 +1578,6 @@
     "Physic_StaunchWounds"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -1639,8 +1626,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "AppleFarmer": {
    "anatomy": "Humanoid",
@@ -1663,7 +1649,6 @@
     "CookingAndGathering_Harvestry"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -1731,7 +1716,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -1804,7 +1788,6 @@
     "CookingAndGathering_Harvestry"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -1853,8 +1836,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Arachnids Cherub": {
    "anatomy": "Spider",
@@ -2078,8 +2060,7 @@
     "Willpower": {
      "sValue": "14,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Arconaut Still": {
    "anatomy": "Humanoid",
@@ -2149,8 +2130,7 @@
     "Willpower": {
      "sValue": "14,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Argyve": {
    "anatomy": "Humanoid",
@@ -2226,8 +2206,7 @@
      "Boost": "-2",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Armorer": {
    "anatomy": "Humanoid",
@@ -2249,7 +2228,6 @@
    "role": "Brute",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -2298,8 +2276,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Asphodel": {
    "anatomy": "Flower",
@@ -2368,8 +2345,7 @@
     "Willpower": {
      "sValue": "33"
     }
-   },
-   "wanders": false
+   }
   },
   "Asphodelyte": {
    "anatomy": "Flower",
@@ -2438,8 +2414,7 @@
     "Willpower": {
      "sValue": "16"
     }
-   },
-   "wanders": false
+   }
   },
   "Astral Tabby": {
    "anatomy": "Quadruped",
@@ -3012,7 +2987,6 @@
     "CookingAndGathering_Harvestry"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "5"
@@ -3215,8 +3189,7 @@
     "Willpower": {
      "sValue": "29"
     }
-   },
-   "wanders": false
+   }
   },
   "Barathrumite Arconaut": {
    "anatomy": "Humanoid",
@@ -3287,8 +3260,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "Barathrumite Arconaut Omonporch": {
    "anatomy": "Humanoid",
@@ -3359,8 +3331,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "Barathrumite Tinker": {
    "anatomy": "Humanoid",
@@ -3431,8 +3402,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "Barathrumite Tinker Omonporch": {
    "anatomy": "Humanoid",
@@ -3503,8 +3473,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "Barkbiter": {
    "anatomy": "Quadruped",
@@ -3620,7 +3589,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -4046,7 +4014,6 @@
      "Value": "16"
     }
    },
-   "tier": 0,
    "wanders": true
   },
   "Beekeeper": {
@@ -4071,7 +4038,6 @@
     "CookingAndGathering_Harvestry"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -4120,8 +4086,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "BeetleFarmer": {
    "anatomy": "Humanoid",
@@ -4145,7 +4110,6 @@
     "CookingAndGathering_Butchery"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -4194,8 +4158,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Beetlebum": {
    "anatomy": "Insect",
@@ -4313,7 +4276,6 @@
     "Tinkering_Tinker3"
    ],
    "species": "svardym",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "4"
@@ -4361,8 +4323,7 @@
     "Willpower": {
      "sValue": "4,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Bethsaida": {
    "anatomy": "Humanoid",
@@ -4449,6 +4410,7 @@
   },
   "Biographer": {
    "anatomy": "HumanoidRobot",
+   "calm": true,
    "factions": "Prey-100,Robots-25",
    "file": "Creatures.xml",
    "flags": [
@@ -4460,7 +4422,7 @@
    "hp": 150,
    "is_ranged": false,
    "level": 26,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "mutations": [
     "NightVision"
    ],
@@ -4517,8 +4479,7 @@
     "Willpower": {
      "sValue": "20,1d4,(t-1)d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Bipedal Robot Golem": {
    "anatomy": "BipedalRobot",
@@ -4695,7 +4656,6 @@
    "name": "bird cherub",
    "role": "Unspecified",
    "rooted": false,
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -4901,6 +4861,7 @@
   },
   "Bloated Leech": {
    "anatomy": "Worm",
+   "calm": true,
    "factions": "Worms-100",
    "file": "Creatures.xml",
    "flags": [
@@ -4910,7 +4871,7 @@
    "hp": 40,
    "is_ranged": false,
    "level": 8,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -5061,8 +5022,7 @@
      "Boost": "2",
      "sValue": "4,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Blue Jel": {
    "anatomy": "Ooze",
@@ -5326,7 +5286,6 @@
     "Survival_Trailblazer"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -5375,8 +5334,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Boosterbot": {
    "anatomy": "HumanoidRobot",
@@ -6222,7 +6180,6 @@
     "CookingAndGathering_Butchery"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -6271,8 +6228,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Cats Cherub": {
    "anatomy": "Quadruped",
@@ -6427,8 +6383,7 @@
     "Willpower": {
      "sValue": "14,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Cave Spider": {
    "anatomy": "Spider",
@@ -6812,7 +6767,6 @@
      "sValue": "14,1d3,(t-1)d1"
     }
    },
-   "tier": 0,
    "wanders": true
   },
   "Chef": {
@@ -6840,7 +6794,6 @@
     "CookingAndGathering_Spicer"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -6889,8 +6842,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "CherubimSpawn1A": {
    "anatomy": "Humanoid",
@@ -8200,7 +8152,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "antelope",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -8277,7 +8228,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "ape",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -8629,8 +8579,7 @@
     "Willpower": {
      "sValue": "14,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Chiliad Creature Bears": {
    "anatomy": "Quadruped",
@@ -8745,7 +8694,6 @@
    "name": "=creatureRegionAdjective= moa",
    "role": "Unspecified",
    "rooted": false,
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -8963,7 +8911,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "crystal",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -9247,7 +9194,6 @@
     "Tinkering_Tinker2"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -9295,8 +9241,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Chiliad Creature Dogs": {
    "anatomy": "Quadruped",
@@ -9601,7 +9546,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -9648,8 +9592,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Chiliad Creature Fish": {
    "anatomy": "Fish",
@@ -9754,7 +9697,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "flower",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -9905,7 +9847,6 @@
    "name": "=creatureRegionAdjective= fungus",
    "role": "Unspecified",
    "rooted": true,
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -10149,7 +10090,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -10491,7 +10431,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -10558,7 +10497,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -10607,8 +10545,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Chiliad Creature Mollusks": {
    "anatomy": "Clam",
@@ -11027,8 +10964,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Chiliad Creature Prey": {
    "anatomy": "Quadruped",
@@ -11474,7 +11410,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -11548,7 +11483,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "succulent",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -11844,7 +11778,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "tortoise",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -12188,8 +12121,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Chiliad Creature Vines": {
    "anatomy": "Vine",
@@ -12328,8 +12260,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Chiliad Creature Water": {
    "anatomy": "Humanoid",
@@ -12390,8 +12321,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Chiliad Creature Winged Mammals": {
    "anatomy": "Quadruped",
@@ -12418,7 +12348,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -14394,7 +14323,6 @@
     "CookingAndGathering_Butchery"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -14443,8 +14371,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Crabs Cherub": {
    "anatomy": "Crab",
@@ -15137,7 +15064,6 @@
     "Tactics_Juke"
    ],
    "species": "snapjaw",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -15184,8 +15110,7 @@
     "Willpower": {
      "sValue": "20"
     }
-   },
-   "wanders": false
+   }
   },
   "Crypt Ferret": {
    "anatomy": "Quadruped",
@@ -15461,8 +15386,7 @@
     "Willpower": {
      "sValue": "20,1d4,(t-1)d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Cryptic Girshling": {
    "anatomy": "Spider",
@@ -15686,6 +15610,7 @@
   },
   "Ctesiphus": {
    "anatomy": "Quadruped",
+   "calm": true,
    "factions": "Joppa-100",
    "file": "Creatures.xml",
    "flags": [
@@ -15801,7 +15726,6 @@
    "role": "Skirmisher",
    "rooted": false,
    "species": "gibbon",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -15930,8 +15854,7 @@
     "Willpower": {
      "sValue": "15,1d4"
     }
-   },
-   "wanders": false
+   }
   },
   "Dagasha": {
    "anatomy": "Hexapod",
@@ -16096,8 +16019,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "Daughter of Exile": {
    "anatomy": "Humanoid",
@@ -16122,7 +16044,6 @@
     "Tinkering_Tinker2"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -16170,8 +16091,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Dawnglider": {
    "anatomy": "Snake",
@@ -16370,7 +16290,6 @@
     "Multiweapon_Fighting"
    ],
    "species": "ape",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -16489,8 +16408,7 @@
     "Willpower": {
      "sValue": "20,1d4,(t-1)d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Deep Slumberling": {
    "anatomy": "Quadruped",
@@ -16724,8 +16642,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "DelegateBears": {
    "anatomy": "Humanoid",
@@ -16790,8 +16707,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Dervish of the Sightless Way": {
    "anatomy": "Humanoid",
@@ -17036,7 +16952,6 @@
     "Tinkering_Tinker2"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -17085,8 +17000,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Dog": {
    "anatomy": "Quadruped",
@@ -17463,8 +17377,7 @@
     "Willpower": {
      "sValue": "15,1d4"
     }
-   },
-   "wanders": false
+   }
   },
   "Dream Wren": {
    "anatomy": "Bird",
@@ -17495,7 +17408,6 @@
    "name": "dream wren",
    "role": "Unspecified",
    "rooted": false,
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -17574,7 +17486,6 @@
    "name": "dream wren",
    "role": "Unspecified",
    "rooted": false,
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -17643,7 +17554,6 @@
    "role": "Artillery",
    "rooted": true,
    "species": "bush",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -17974,8 +17884,7 @@
      "Boost": "2",
      "Value": "18"
     }
-   },
-   "wanders": false
+   }
   },
   "DromadTrader2": {
    "anatomy": "Humanoid",
@@ -18044,8 +17953,7 @@
      "Boost": "2",
      "Value": "34"
     }
-   },
-   "wanders": false
+   }
   },
   "DromadTrader3": {
    "anatomy": "Humanoid",
@@ -18114,8 +18022,7 @@
      "Boost": "2",
      "Value": "36"
     }
-   },
-   "wanders": false
+   }
   },
   "DromadTrader4": {
    "anatomy": "Humanoid",
@@ -18184,8 +18091,7 @@
      "Boost": "2",
      "Value": "38"
     }
-   },
-   "wanders": false
+   }
   },
   "DromadTrader5": {
    "anatomy": "Humanoid",
@@ -18254,8 +18160,7 @@
      "Boost": "2",
      "Value": "40"
     }
-   },
-   "wanders": false
+   }
   },
   "DromadTrader6": {
    "anatomy": "Humanoid",
@@ -18324,8 +18229,7 @@
      "Boost": "2",
      "Value": "42"
     }
-   },
-   "wanders": false
+   }
   },
   "DromadTrader7": {
    "anatomy": "Humanoid",
@@ -18394,8 +18298,7 @@
      "Boost": "2",
      "Value": "44"
     }
-   },
-   "wanders": false
+   }
   },
   "DromadTrader8": {
    "anatomy": "Humanoid",
@@ -18464,8 +18367,7 @@
      "Boost": "2",
      "Value": "46"
     }
-   },
-   "wanders": false
+   }
   },
   "DromadTrader_Village0": {
    "anatomy": "Humanoid",
@@ -18535,8 +18437,7 @@
      "Boost": "2",
      "Value": "18"
     }
-   },
-   "wanders": false
+   }
   },
   "Drowsing Urchin": {
    "anatomy": "Echinoid",
@@ -18605,8 +18506,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Ego Sap": {
    "anatomy": "Quadruped",
@@ -18633,7 +18533,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -19001,8 +18900,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "ElderConfusionBreather": {
    "anatomy": "Quadruped",
@@ -19838,6 +19736,7 @@
   },
   "Engine Crabs": {
    "anatomy": "Crab",
+   "calm": true,
    "factions": "Crabs-100",
    "file": "HiddenObjects.xml",
    "flags": [
@@ -19847,7 +19746,7 @@
    "hp": 12,
    "is_ranged": false,
    "level": 4,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
@@ -20229,7 +20128,6 @@
     "Survival_JungleSurvival"
    ],
    "species": "woodsprog",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "1"
@@ -20276,8 +20174,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Eskhind": {
    "anatomy": "Humanoid",
@@ -20362,8 +20259,7 @@
     "Willpower": {
      "sValue": "24"
     }
-   },
-   "wanders": false
+   }
   },
   "Euclid": {
    "anatomy": "Vine",
@@ -20793,7 +20689,6 @@
     "Multiweapon_Fighting"
    ],
    "species": "snail",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "6"
@@ -20874,7 +20769,6 @@
     "Multiweapon_Fighting"
    ],
    "species": "crab",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "7"
@@ -21035,7 +20929,6 @@
     "Cudgel"
    ],
    "species": "amoeba",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -21267,7 +21160,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "leech",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -21319,6 +21211,7 @@
   },
   "Farm Pig": {
    "anatomy": "Quadruped",
+   "calm": true,
    "factions": "Farmers-100",
    "file": "Creatures.xml",
    "flags": [
@@ -21347,7 +21240,6 @@
     "Cudgel"
    ],
    "species": "pig",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -21399,6 +21291,7 @@
   },
   "Farm Ray Cat": {
    "anatomy": "Quadruped",
+   "calm": true,
    "factions": "Cats-100",
    "file": "Creatures.xml",
    "flags": [
@@ -21410,7 +21303,7 @@
    "hp": 5,
    "is_ranged": false,
    "level": 1,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "2",
@@ -21582,7 +21475,6 @@
    "role": "Breeder",
    "rooted": true,
    "species": "lah",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -21629,8 +21521,7 @@
     "Willpower": {
      "sValue": "8,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Feral Lah Pod": {
    "anatomy": "Bush",
@@ -21648,7 +21539,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "lah",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -21695,8 +21585,7 @@
     "Willpower": {
      "sValue": "12,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Fire Ant Queen": {
    "anatomy": "Insect",
@@ -22260,7 +22149,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "flower",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -22327,7 +22215,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -22374,8 +22261,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Fork-Horned Gnu": {
    "anatomy": "Quadruped",
@@ -22405,7 +22291,6 @@
     "Cudgel"
    ],
    "species": "antelope",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -22833,8 +22718,7 @@
     "Willpower": {
      "sValue": "20,1d4,(t-1)d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Fungi Cherub": {
    "anatomy": "Fungus",
@@ -22860,7 +22744,6 @@
    "name": "mushroom cherub",
    "role": "Unspecified",
    "rooted": true,
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -23003,7 +22886,6 @@
    "role": "Unspecified",
    "rooted": true,
    "species": "goldpuff",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -23050,8 +22932,7 @@
     "Willpower": {
      "sValue": "16,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "FungusPuffer2": {
    "anatomy": "Fungus",
@@ -23074,7 +22955,6 @@
    "role": "Unspecified",
    "rooted": true,
    "species": "azurepuff",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -23121,8 +23001,7 @@
     "Willpower": {
      "sValue": "16,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "FungusPuffer3": {
    "anatomy": "Fungus",
@@ -23145,7 +23024,6 @@
    "role": "Unspecified",
    "rooted": true,
    "species": "rosepuff",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -23192,8 +23070,7 @@
     "Willpower": {
      "sValue": "16,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "FungusPuffer4": {
    "anatomy": "Fungus",
@@ -23216,7 +23093,6 @@
    "role": "Unspecified",
    "rooted": true,
    "species": "jadepuff",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -23263,8 +23139,7 @@
     "Willpower": {
      "sValue": "16,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Galgal": {
    "anatomy": "WheelRobot",
@@ -23460,7 +23335,6 @@
     "Tactics_Charge"
    ],
    "species": "svardym",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "4"
@@ -23509,8 +23383,7 @@
      "Boost": "3",
      "sValue": "4,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Gelatinous Antiprism": {
    "anatomy": "Ooze",
@@ -23882,7 +23755,6 @@
    "role": "Brute",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -23931,11 +23803,11 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Ghost Perch": {
    "anatomy": "Fish",
+   "calm": true,
    "factions": "Fish-100",
    "file": "Creatures.xml",
    "flags": [
@@ -23945,7 +23817,7 @@
    "hp": 5,
    "is_ranged": false,
    "level": 13,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -24012,8 +23884,7 @@
     "Willpower": {
      "sValue": "3,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Giant Beetle": {
    "anatomy": "Insect",
@@ -24308,6 +24179,7 @@
   },
   "Giant Clam": {
    "anatomy": "Clam",
+   "calm": true,
    "factions": "Mollusks-100",
    "file": "Creatures.xml",
    "flags": [
@@ -24317,7 +24189,7 @@
    "hp": 16,
    "is_ranged": false,
    "level": 1,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
@@ -24372,8 +24244,7 @@
     "Willpower": {
      "sValue": "2,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "GiantAmoeba": {
    "anatomy": "Ooze",
@@ -24870,7 +24741,6 @@
    "role": "Brute",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -24919,8 +24789,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Glowcrow": {
    "anatomy": "Bird",
@@ -24951,7 +24820,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "crow",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -25003,6 +24871,7 @@
   },
   "Glowfish": {
    "anatomy": "Fish",
+   "calm": true,
    "factions": "Fish-100",
    "file": "Creatures.xml",
    "flags": [
@@ -25012,7 +24881,7 @@
    "hp": 5,
    "is_ranged": false,
    "level": 1,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -25079,8 +24948,7 @@
     "Willpower": {
      "sValue": "3,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Glowmoth": {
    "anatomy": "Insect",
@@ -25182,7 +25050,6 @@
    "role": "Unspecified",
    "rooted": true,
    "species": "lilypad",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -25229,8 +25096,7 @@
     "Willpower": {
      "sValue": "8,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Goat": {
    "anatomy": "Quadruped",
@@ -25402,7 +25268,6 @@
     "CookingAndGathering_Butchery"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -25451,8 +25316,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Goatfolk Bully": {
    "anatomy": "Humanoid",
@@ -26278,8 +26142,7 @@
     "Willpower": {
      "Value": "16"
     }
-   },
-   "wanders": false
+   }
   },
   "Goek": {
    "anatomy": "Svardym",
@@ -26316,7 +26179,6 @@
     "Tactics_Charge"
    ],
    "species": "svardym",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "4"
@@ -26365,8 +26227,7 @@
      "Boost": "1",
      "sValue": "4,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "GolgothaSlog": {
    "anatomy": "Slug",
@@ -26747,8 +26608,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Great Magma Crab": {
    "anatomy": "Crab",
@@ -26861,7 +26721,6 @@
    "role": "Tank",
    "rooted": false,
    "species": "tortoise",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "17"
@@ -27103,7 +26962,6 @@
     "Tinkering_Tinker1"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -27152,8 +27010,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "GritGateChainLaserEmplacement": {
    "anatomy": "Turret",
@@ -27348,7 +27205,6 @@
    "role": "Brute",
    "rooted": false,
    "species": "dog",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -27501,7 +27357,6 @@
     "Pistol_Akimbo"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -27550,8 +27405,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Gutsmonger": {
    "anatomy": "Humanoid",
@@ -27578,7 +27432,6 @@
     "Tinkering_Tinker1"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -27627,8 +27480,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Gyamyo": {
    "anatomy": "TailedBiped",
@@ -27710,8 +27562,7 @@
     "Willpower": {
      "sValue": "15,1d4"
     }
-   },
-   "wanders": false
+   }
   },
   "Gyre Wight Apotheote": {
    "anatomy": "Humanoid",
@@ -27747,7 +27598,6 @@
     "ShortBlades_Bloodletter"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -27815,7 +27665,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -27881,7 +27730,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -27947,7 +27795,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -28013,7 +27860,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -28079,7 +27925,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -28145,7 +27990,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -28288,7 +28132,6 @@
    "role": "Brute",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -28337,11 +28180,11 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Haddas": {
    "anatomy": "Tree",
+   "calm": true,
    "factions": "Ezra-100,Trees-50",
    "file": "Creatures.xml",
    "flags": [
@@ -28353,7 +28196,7 @@
    "hp": 1000,
    "is_ranged": false,
    "level": 31,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "name": "Haddas",
    "role": "NPC",
    "rooted": true,
@@ -28414,11 +28257,11 @@
      "Boost": "2",
      "sValue": "20,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Hamilcrab": {
    "anatomy": "Crab",
+   "calm": true,
    "factions": "Crabs-100,Merchants-100",
    "file": "Creatures.xml",
    "flags": [
@@ -28429,7 +28272,7 @@
    "hp": 165,
    "is_ranged": false,
    "level": 40,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "2",
@@ -28498,8 +28341,7 @@
     "Willpower": {
      "sValue": "3,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Hatter": {
    "anatomy": "Humanoid",
@@ -28521,7 +28363,6 @@
    "role": "Brute",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -28570,8 +28411,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Herding Dog": {
    "anatomy": "Quadruped",
@@ -28600,7 +28440,6 @@
    "role": "Brute",
    "rooted": false,
    "species": "dog",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -28969,7 +28808,6 @@
     "Persuasion_SnakeOiler"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -29020,8 +28858,7 @@
      "Boost": "3",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Hindren Golem": {
    "anatomy": "Humanoid",
@@ -29721,8 +29558,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "Hover Golem": {
    "anatomy": "HoverRobot",
@@ -29965,7 +29801,6 @@
     "Physic_Nostrums"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30012,8 +29847,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanApothecary2": {
    "anatomy": "Humanoid",
@@ -30037,7 +29871,6 @@
     "Physic_StaunchWounds"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30084,8 +29917,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanApothecary3": {
    "anatomy": "Humanoid",
@@ -30109,7 +29941,6 @@
     "Physic_StaunchWounds"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30156,8 +29987,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanApothecary4": {
    "anatomy": "Humanoid",
@@ -30181,7 +30011,6 @@
     "Physic_StaunchWounds"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30228,8 +30057,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanApothecary5": {
    "anatomy": "Humanoid",
@@ -30254,7 +30082,6 @@
     "Physic_StaunchWounds"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30301,8 +30128,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanApothecary6": {
    "anatomy": "Humanoid",
@@ -30327,7 +30153,6 @@
     "Physic_StaunchWounds"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30374,8 +30199,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanApothecary7": {
    "anatomy": "Humanoid",
@@ -30400,7 +30224,6 @@
     "Physic_StaunchWounds"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30447,8 +30270,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanApothecary8": {
    "anatomy": "Humanoid",
@@ -30473,7 +30295,6 @@
     "Physic_StaunchWounds"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30520,8 +30341,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanApothecary_Village0": {
    "anatomy": "Humanoid",
@@ -30545,7 +30365,6 @@
     "Physic_StaunchWounds"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30592,8 +30411,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanTinker1": {
    "anatomy": "Humanoid",
@@ -30616,7 +30434,6 @@
     "Tinkering_Tinker1"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30663,8 +30480,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanTinker2": {
    "anatomy": "Humanoid",
@@ -30688,7 +30504,6 @@
     "Tinkering_Tinker1"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30735,8 +30550,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanTinker3": {
    "anatomy": "Humanoid",
@@ -30762,7 +30576,6 @@
     "Tinkering_Tinker1"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30809,8 +30622,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanTinker4": {
    "anatomy": "Humanoid",
@@ -30838,7 +30650,6 @@
     "Tinkering_Tinker2"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30885,8 +30696,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanTinker5": {
    "anatomy": "Humanoid",
@@ -30915,7 +30725,6 @@
     "Tinkering_Tinker2"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -30962,8 +30771,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanTinker6": {
    "anatomy": "Humanoid",
@@ -30993,7 +30801,6 @@
     "Tinkering_Tinker3"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -31040,8 +30847,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanTinker7": {
    "anatomy": "Humanoid",
@@ -31071,7 +30877,6 @@
     "Tinkering_Tinker3"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -31118,8 +30923,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanTinker8": {
    "anatomy": "Humanoid",
@@ -31149,7 +30953,6 @@
     "Tinkering_Tinker3"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -31196,8 +30999,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "HumanTinker_Village0": {
    "anatomy": "Humanoid",
@@ -31220,7 +31022,6 @@
     "Tinkering_Tinker1"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -31267,8 +31068,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Humanoid Robot Golem": {
    "anatomy": "HumanoidRobot",
@@ -31682,7 +31482,6 @@
    "role": "Skirmisher",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -31731,8 +31530,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Ickslug": {
    "anatomy": "Slug",
@@ -31954,7 +31752,6 @@
      "sValue": "14,1d3,(t-1)d1"
     }
    },
-   "tier": 0,
    "wanders": true
   },
   "Insect Golem": {
@@ -32129,7 +31926,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -32399,8 +32195,7 @@
     "Willpower": {
      "sValue": "16,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "IrritableTortoise": {
    "anatomy": "Quadruped",
@@ -32433,7 +32228,6 @@
     "Cudgel"
    ],
    "species": "tortoise",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "4"
@@ -32564,8 +32358,7 @@
     "Willpower": {
      "Value": "18"
     }
-   },
-   "wanders": false
+   }
   },
   "Iseppa": {
    "anatomy": "Humanoid",
@@ -32648,8 +32441,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "Issachari Raider": {
    "anatomy": "Humanoid",
@@ -32847,6 +32639,7 @@
   },
   "Ixlthyxl": {
    "anatomy": "Fish",
+   "calm": true,
    "factions": "Fish-100",
    "file": "Creatures.xml",
    "flags": [
@@ -32856,7 +32649,7 @@
    "hp": 100,
    "is_ranged": false,
    "level": 18,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -32922,8 +32715,7 @@
     "Willpower": {
      "sValue": "3,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Jacobo": {
    "anatomy": "Humanoid",
@@ -33009,8 +32801,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "Jelly Golem": {
    "anatomy": "Jelly",
@@ -33108,7 +32899,6 @@
    "role": "Skirmisher",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -33157,8 +32947,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Jilted Lover": {
    "anatomy": "Vine",
@@ -33232,11 +33021,11 @@
     "Willpower": {
      "sValue": "10,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Joppa Ray Cat": {
    "anatomy": "Quadruped",
+   "calm": true,
    "factions": "Cats-100",
    "file": "Creatures.xml",
    "flags": [
@@ -33249,7 +33038,7 @@
    "hp": 5,
    "is_ranged": false,
    "level": 1,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "2",
@@ -33414,7 +33203,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -33613,8 +33401,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Kah": {
    "anatomy": "Hexapod",
@@ -33846,8 +33633,7 @@
     "Willpower": {
      "Value": "20"
     }
-   },
-   "wanders": false
+   }
   },
   "Kesehind": {
    "anatomy": "Humanoid",
@@ -33928,8 +33714,7 @@
     "Willpower": {
      "Value": "14"
     }
-   },
-   "wanders": false
+   }
   },
   "Kipper": {
    "anatomy": "Humanoid",
@@ -33956,7 +33741,6 @@
     "CookingAndGathering_Spicer"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -34005,8 +33789,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Knight Commander of the Holy Temple": {
    "anatomy": "Humanoid",
@@ -34285,7 +34068,6 @@
     "Tactics_Charge"
    ],
    "species": "svardym",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "4"
@@ -34333,8 +34115,7 @@
      "Boost": "5",
      "sValue": "4,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Kyakukyan Convert": {
    "anatomy": "Humanoid",
@@ -34349,7 +34130,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -34396,8 +34176,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Kyakukyan Convert NoWander": {
    "anatomy": "Humanoid",
@@ -34412,7 +34191,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -34459,8 +34237,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Laser Turret Tinker": {
    "anatomy": "HexapedalRobot",
@@ -34692,8 +34469,7 @@
     "Willpower": {
      "sValue": "15,1d4"
     }
-   },
-   "wanders": false
+   }
   },
   "Leech": {
    "anatomy": "Worm",
@@ -34795,7 +34571,6 @@
     "CookingAndGathering_Butchery"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -34844,8 +34619,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Leering Stalker": {
    "anatomy": "QuadrupedalRobot",
@@ -35033,7 +34807,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -35160,8 +34933,7 @@
     "Willpower": {
      "sValue": "18"
     }
-   },
-   "wanders": false
+   }
   },
   "Lithofex": {
    "anatomy": "Quadruped",
@@ -35332,7 +35104,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -35538,8 +35309,7 @@
     "Willpower": {
      "Value": "20"
     }
-   },
-   "wanders": false
+   }
   },
   "Madpole": {
    "anatomy": "Fish",
@@ -35621,8 +35391,7 @@
     "Willpower": {
      "sValue": "3,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mafeo": {
    "anatomy": "Humanoid",
@@ -35705,8 +35474,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "MafeoCopy": {
    "anatomy": "Humanoid",
@@ -35789,8 +35557,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "Mak": {
    "anatomy": "Svardym",
@@ -35827,7 +35594,6 @@
     "Tactics_Charge"
    ],
    "species": "svardym",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "4"
@@ -35877,8 +35643,7 @@
      "Boost": "1",
      "sValue": "4,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mamon": {
    "anatomy": "Humanoid",
@@ -35998,7 +35763,6 @@
     "HeavyWeapons_Tank"
    ],
    "species": "wheeled robot",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "15"
@@ -36045,8 +35809,7 @@
     "Willpower": {
      "sValue": "20,1d4,(t-1)d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Mayor Nuntu": {
    "anatomy": "Humanoid",
@@ -36091,7 +35854,6 @@
     "Survival_JungleSurvival"
    ],
    "species": "ape",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "5"
@@ -36138,8 +35900,7 @@
     "Willpower": {
      "sValue": "22"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanical Antelopes Cherub": {
    "anatomy": "Quadruped",
@@ -36165,7 +35926,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "antelope",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -36243,7 +36003,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "ape",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -36642,7 +36401,6 @@
    "name": "mechanical bird cherub",
    "role": "Unspecified",
    "rooted": false,
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -37183,7 +36941,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "flower",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -37336,7 +37093,6 @@
    "name": "mechanical mushroom cherub",
    "role": "Unspecified",
    "rooted": true,
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -38100,7 +37856,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -38175,7 +37930,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "fractus",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -38329,7 +38083,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "tortoise",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "15"
@@ -38531,8 +38284,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanical Vines Cherub": {
    "anatomy": "Vine",
@@ -38634,7 +38386,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -38776,7 +38527,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -38842,7 +38592,6 @@
     "Cudgel"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "7"
@@ -38911,7 +38660,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -38974,7 +38722,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -39021,8 +38768,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanimist Convert Librarian": {
    "anatomy": "Humanoid",
@@ -39037,7 +38783,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -39084,8 +38829,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanimist Convert NoWander": {
    "anatomy": "Humanoid",
@@ -39146,8 +38890,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanimist Convert Pilgrim": {
    "anatomy": "Humanoid",
@@ -39162,7 +38905,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -39209,8 +38951,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanimist Convert Pilgrim Still": {
    "anatomy": "Humanoid",
@@ -39225,7 +38966,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -39272,8 +39012,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanimist Houndmaster": {
    "anatomy": "Humanoid",
@@ -39291,7 +39030,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -39359,7 +39097,6 @@
     "Discipline_Meditate"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -39406,8 +39143,7 @@
     "Willpower": {
      "sValue": "14,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanimist Pilgrim Still": {
    "anatomy": "Humanoid",
@@ -39427,7 +39163,6 @@
     "Discipline_Meditate"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -39494,7 +39229,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -39544,8 +39278,7 @@
      "Boost": "2",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanimist Preacher 2": {
    "anatomy": "Humanoid",
@@ -39564,7 +39297,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -39614,8 +39346,7 @@
      "Boost": "2",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanimist Preacher 3": {
    "anatomy": "Humanoid",
@@ -39634,7 +39365,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -39684,8 +39414,7 @@
      "Boost": "2",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanimist Preacher 4": {
    "anatomy": "Humanoid",
@@ -39704,7 +39433,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -39754,8 +39482,7 @@
      "Boost": "2",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mechanimist Priest 1": {
    "anatomy": "Humanoid",
@@ -39774,7 +39501,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -39846,7 +39572,6 @@
     "Shield_StaggeringBlock"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -39932,7 +39657,6 @@
     "SingleWeaponFighting"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -40001,7 +39725,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -40067,7 +39790,6 @@
     "Tinkering_Scavenger"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -40188,8 +39910,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Memory Eater": {
    "anatomy": "Fish",
@@ -40333,8 +40054,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Mercurial": {
    "anatomy": "Turret",
@@ -40493,8 +40213,7 @@
     "Willpower": {
      "sValue": "18"
     }
-   },
-   "wanders": false
+   }
   },
   "Microturret": {
    "anatomy": "Turret",
@@ -40652,8 +40371,7 @@
     "Willpower": {
      "sValue": "4,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Miner Mk I": {
    "anatomy": "QuadrupedalRobot",
@@ -41186,11 +40904,11 @@
     "Willpower": {
      "sValue": "12"
     }
-   },
-   "wanders": false
+   }
   },
   "Monad": {
    "anatomy": "Three-Pointed Star",
+   "calm": true,
    "factions": "Entropic-100",
    "file": "Creatures.xml",
    "flags": [
@@ -41647,8 +41365,7 @@
     "Willpower": {
      "sValue": "15,1d4"
     }
-   },
-   "wanders": false
+   }
   },
   "MopangoTombdweller": {
    "anatomy": "TailedBiped",
@@ -41809,8 +41526,7 @@
     "Willpower": {
      "sValue": "15,1d4"
     }
-   },
-   "wanders": false
+   }
   },
   "Mover": {
    "anatomy": "HumanoidRobot",
@@ -41833,7 +41549,6 @@
    "name": "mover",
    "role": "Unspecified",
    "rooted": false,
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "30"
@@ -41903,7 +41618,6 @@
     "Pistol_Akimbo"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -42482,8 +42196,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "Neelahind": {
    "anatomy": "Humanoid",
@@ -42568,8 +42281,7 @@
     "Willpower": {
      "Value": "16"
     }
-   },
-   "wanders": false
+   }
   },
   "Nest Golem": {
    "anatomy": "Nest",
@@ -42865,8 +42577,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Normality Bot": {
    "anatomy": "TreadedRobot",
@@ -43260,8 +42971,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Oboroqoru": {
    "anatomy": "Humanoid",
@@ -43306,7 +43016,6 @@
     "Multiweapon_Mastery"
    ],
    "species": "ape",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "14"
@@ -43353,8 +43062,7 @@
     "Willpower": {
      "sValue": "40"
     }
-   },
-   "wanders": false
+   }
   },
   "Oddity Golem": {
    "anatomy": "Oddity",
@@ -43461,7 +43169,6 @@
     "Multiweapon_Fighting"
    ],
    "species": "ape",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "7"
@@ -43740,8 +43447,7 @@
     "Willpower": {
      "Value": "24"
     }
-   },
-   "wanders": false
+   }
   },
   "OthoCopy": {
    "anatomy": "Humanoid",
@@ -43821,8 +43527,7 @@
     "Willpower": {
      "Value": "24"
     }
-   },
-   "wanders": false
+   }
   },
   "Panhumor": {
    "anatomy": "Ooze",
@@ -43956,8 +43661,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Pariah Still": {
    "anatomy": "Humanoid",
@@ -44018,8 +43722,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Pariah Still Unique": {
    "anatomy": "Humanoid",
@@ -44080,8 +43783,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "PariahKeh": {
    "anatomy": "Humanoid",
@@ -44161,8 +43863,7 @@
     "Willpower": {
      "Value": "20"
     }
-   },
-   "wanders": false
+   }
   },
   "PaxKlanq": {
    "anatomy": "Fungus",
@@ -44197,7 +43898,6 @@
     "Tinkering_Tinker2",
     "Tinkering_Tinker3"
    ],
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -44244,8 +43944,7 @@
     "Willpower": {
      "Value": "36"
     }
-   },
-   "wanders": false
+   }
   },
   "PaxKlanq2": {
    "anatomy": "Fungus",
@@ -44326,8 +44025,7 @@
     "Willpower": {
      "Value": "36"
     }
-   },
-   "wanders": false
+   }
   },
   "Phase Cannon Tinker": {
    "anatomy": "HexapedalRobot",
@@ -44481,8 +44179,7 @@
     "Willpower": {
      "sValue": "16"
     }
-   },
-   "wanders": false
+   }
   },
   "Phase Spider Coward": {
    "anatomy": "Spider",
@@ -44598,7 +44295,6 @@
     "Pistol_WeakSpotter"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -44726,6 +44422,7 @@
   },
   "Pig": {
    "anatomy": "Quadruped",
+   "calm": true,
    "factions": "Farmers-100",
    "file": "Creatures.xml",
    "flags": [
@@ -44754,7 +44451,6 @@
     "Cudgel"
    ],
    "species": "pig",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -44825,7 +44521,6 @@
     "CookingAndGathering_Butchery"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -45824,7 +45519,6 @@
    "role": "Unspecified",
    "rooted": true,
    "species": "prickler",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -45871,8 +45565,7 @@
     "Willpower": {
      "sValue": "8,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Prism Girshling": {
    "anatomy": "Spider",
@@ -46028,6 +45721,7 @@
   },
   "Prism Perch": {
    "anatomy": "Fish",
+   "calm": true,
    "factions": "Fish-100",
    "file": "Creatures.xml",
    "flags": [
@@ -46037,7 +45731,7 @@
    "hp": 25,
    "is_ranged": false,
    "level": 14,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -46104,8 +45798,7 @@
     "Willpower": {
      "sValue": "3,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "ProsperousHindrenTrader": {
    "anatomy": "Humanoid",
@@ -46201,7 +45894,6 @@
    "role": "Artillery",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -46391,8 +46083,7 @@
     "Willpower": {
      "sValue": "20,1d4,(t-1)d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Purple Jell": {
    "anatomy": "Ooze",
@@ -46564,8 +46255,7 @@
     "Willpower": {
      "sValue": "26"
     }
-   },
-   "wanders": false
+   }
   },
   "Qas": {
    "anatomy": "Quadruped",
@@ -47098,8 +46788,7 @@
     "Willpower": {
      "sValue": "10,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Quillipede": {
    "anatomy": "Insect",
@@ -47198,7 +46887,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -47245,8 +46933,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Random Turret Tinker": {
    "anatomy": "HexapedalRobot",
@@ -47473,6 +47160,7 @@
   },
   "Ray Cat": {
    "anatomy": "Quadruped",
+   "calm": true,
    "factions": "Cats-100",
    "file": "Creatures.xml",
    "flags": [
@@ -47484,7 +47172,7 @@
    "hp": 5,
    "is_ranged": false,
    "level": 1,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "2",
@@ -47629,8 +47317,7 @@
     "Willpower": {
      "sValue": "16,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Red Jell": {
    "anatomy": "Ooze",
@@ -47811,7 +47498,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -48809,8 +48495,7 @@
     "Willpower": {
      "sValue": "20,1d4,(t-1)d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Rokhas": {
    "anatomy": "Humanoid",
@@ -48837,7 +48522,6 @@
     "Survival_DesertCanyonSurvival"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -48885,8 +48569,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Root Golem": {
    "anatomy": "Bush",
@@ -49118,6 +48801,7 @@
   },
   "Salamander": {
    "anatomy": "Quadruped",
+   "calm": true,
    "factions": "Unshelled Reptiles-100",
    "file": "Creatures.xml",
    "flags": [
@@ -49127,7 +48811,7 @@
    "hp": 9,
    "is_ranged": false,
    "level": 1,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -49278,6 +48962,7 @@
   },
   "Saltwurm": {
    "anatomy": "Worm",
+   "calm": true,
    "factions": "Prey-100,Mollusks-50",
    "file": "Creatures.xml",
    "flags": [
@@ -49287,7 +48972,7 @@
    "hp": 1800,
    "is_ranged": false,
    "level": 40,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -49352,8 +49037,7 @@
     "Willpower": {
      "sValue": "2,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Santalalotze": {
    "anatomy": "Bush",
@@ -49666,6 +49350,7 @@
   },
   "Scrapbot": {
    "anatomy": "TreadedRobot",
+   "calm": true,
    "factions": "Robots-100",
    "file": "Creatures.xml",
    "flags": [
@@ -49677,7 +49362,7 @@
    "hp": 30,
    "is_ranged": false,
    "level": 10,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -49759,6 +49444,7 @@
   },
   "Scrapbot Mechanimist": {
    "anatomy": "TreadedRobot",
+   "calm": true,
    "factions": "Mechanimists-100",
    "file": "Creatures.xml",
    "flags": [
@@ -49799,7 +49485,6 @@
     "Multiweapon_Fighting"
    ],
    "species": "wheeled robot",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "5"
@@ -49875,7 +49560,6 @@
     "Survival_Trailblazer"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -49924,8 +49608,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "SecurityTurret": {
    "anatomy": "Turret",
@@ -50315,8 +49998,7 @@
     "Willpower": {
      "sValue": "3,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Shem -1": {
    "anatomy": "HumanoidRobot",
@@ -50402,6 +50084,7 @@
   },
   "Sheyd": {
    "anatomy": "Quadruped",
+   "calm": true,
    "factions": "Prey-100",
    "file": "HiddenObjects.xml",
    "flags": [
@@ -50498,7 +50181,6 @@
    "role": "Brute",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -50547,8 +50229,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Shrewd Baboon": {
    "anatomy": "Humanoid",
@@ -50728,7 +50409,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -50775,8 +50455,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "SixDayZealot": {
    "anatomy": "Humanoid",
@@ -50791,7 +50470,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -50918,8 +50596,7 @@
     "Willpower": {
      "sValue": "20,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Skybear": {
    "anatomy": "Humanoid",
@@ -51000,8 +50677,7 @@
     "Willpower": {
      "Value": "30"
     }
-   },
-   "wanders": false
+   }
   },
   "SkybearClone": {
    "anatomy": "Humanoid",
@@ -51078,8 +50754,7 @@
     "Willpower": {
      "Value": "30"
     }
-   },
-   "wanders": false
+   }
   },
   "SleepBreather": {
    "anatomy": "Quadruped",
@@ -51857,7 +51532,6 @@
     "CookingAndGathering_Butchery"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -51906,8 +51580,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Snailmother": {
    "anatomy": "Snail",
@@ -54491,8 +54164,7 @@
     "Willpower": {
      "sValue": "14,1d6"
     }
-   },
-   "wanders": false
+   }
   },
   "Spark Tick": {
    "anatomy": "Spider",
@@ -54727,6 +54399,7 @@
   },
   "Spoken Ionic": {
    "anatomy": "Tree",
+   "calm": true,
    "factions": "Strangers-100",
    "file": "HiddenObjects.xml",
    "flags": [
@@ -54741,7 +54414,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "4"
@@ -54788,11 +54460,11 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Star Kraken": {
    "anatomy": "Star",
+   "calm": true,
    "factions": "Strangers-100",
    "file": "Creatures.xml",
    "flags": [
@@ -54824,7 +54496,6 @@
     "Multiweapon_Mastery"
    ],
    "species": "star",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "16"
@@ -54872,8 +54543,7 @@
     "Willpower": {
      "sValue": "2,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Stat Sap": {
    "anatomy": "Quadruped",
@@ -54900,7 +54570,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -54966,7 +54635,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -55013,8 +54681,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Still Gyre Wight of Bethsaida": {
    "anatomy": "Humanoid",
@@ -55032,7 +54699,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -55079,8 +54745,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Still Gyre Wight of Qas": {
    "anatomy": "Humanoid",
@@ -55098,7 +54763,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -55145,8 +54809,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Still Gyre Wight of Qon": {
    "anatomy": "Humanoid",
@@ -55164,7 +54827,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -55211,8 +54873,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Still Gyre Wight of Rermadon": {
    "anatomy": "Humanoid",
@@ -55230,7 +54891,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -55277,8 +54937,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Still Gyre Wight of Shug'ruith": {
    "anatomy": "Humanoid",
@@ -55296,7 +54955,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -55343,8 +55001,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Stilt Warden": {
    "anatomy": "Humanoid",
@@ -55380,7 +55037,6 @@
     "SingleWeaponFighting"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -55430,8 +55086,7 @@
      "Boost": "2",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "StiltChef": {
    "anatomy": "Humanoid",
@@ -55458,7 +55113,6 @@
     "CookingAndGathering_Spicer"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -55507,8 +55161,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "StiltPigFarmer": {
    "anatomy": "Humanoid",
@@ -55531,7 +55184,6 @@
     "CookingAndGathering_Butchery"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -55579,8 +55231,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Strangers Cherub": {
    "anatomy": "Humanoid",
@@ -55603,7 +55254,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -55679,7 +55329,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -55988,7 +55637,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "fractus",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -56131,8 +55779,7 @@
     "Willpower": {
      "sValue": "4,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Svardym Eld": {
    "anatomy": "Svardym",
@@ -56451,6 +56098,7 @@
   },
   "Svardym Scrounge": {
    "anatomy": "Svardym",
+   "calm": true,
    "factions": "Svardym-100",
    "file": "Creatures.xml",
    "flags": [
@@ -56461,7 +56109,7 @@
    "hp": 100,
    "is_ranged": true,
    "level": 30,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "mutations": [
     "DarkVision"
    ],
@@ -56736,7 +56384,6 @@
      "sValue": "14,1d3,(t-1)d1"
     }
    },
-   "tier": 0,
    "wanders": true
   },
   "Tam": {
@@ -56808,8 +56455,7 @@
      "Boost": "2",
      "Value": "18"
     }
-   },
-   "wanders": false
+   }
   },
   "TauNoLonger": {
    "anatomy": "HumanoidOctohedron",
@@ -56902,8 +56548,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "TauWanderer": {
    "anatomy": "HumanoidOctohedron",
@@ -57132,8 +56777,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Thirst Thistle": {
    "anatomy": "Flower",
@@ -57155,7 +56799,6 @@
    "role": "Skirmisher",
    "rooted": true,
    "species": "flower",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "1"
@@ -57273,8 +56916,7 @@
     "Willpower": {
      "sValue": "16,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "TinkerTurret": {
    "anatomy": "Turret",
@@ -57413,8 +57055,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "TombCultistPeriod2": {
    "anatomy": "Humanoid",
@@ -57476,8 +57117,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "TombCultistPeriod3": {
    "anatomy": "Humanoid",
@@ -57539,8 +57179,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "TombCultistPeriod4": {
    "anatomy": "Humanoid",
@@ -57602,8 +57241,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "TombCultistPeriod5": {
    "anatomy": "Humanoid",
@@ -57665,8 +57303,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "TombCultistPeriod6": {
    "anatomy": "Humanoid",
@@ -57728,8 +57365,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Tongue Tyrant": {
    "anatomy": "Flower",
@@ -57751,7 +57387,6 @@
    "role": "Controller",
    "rooted": true,
    "species": "flower",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "8"
@@ -57799,8 +57434,7 @@
     "Willpower": {
      "sValue": "8,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Tortoise Golem": {
    "anatomy": "Quadruped",
@@ -57902,7 +57536,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "tortoise",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "15"
@@ -57978,7 +57611,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -59024,8 +58656,7 @@
     "Willpower": {
      "Value": "16"
     }
-   },
-   "wanders": false
+   }
   },
   "Tszappur": {
    "anatomy": "Humanoid",
@@ -59052,7 +58683,6 @@
     "Pistol_Akimbo"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -59099,8 +58729,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Turret Golem": {
    "anatomy": "Turret",
@@ -59348,8 +58977,7 @@
     "Willpower": {
      "sValue": "2,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "TutorialSnapjaw": {
    "anatomy": "Humanoid",
@@ -59761,8 +59389,7 @@
     "Willpower": {
      "sValue": "29"
     }
-   },
-   "wanders": false
+   }
   },
   "Unimax": {
    "anatomy": "Quadruped",
@@ -59918,6 +59545,7 @@
   },
   "Uplifted Glowfish": {
    "anatomy": "Fish",
+   "calm": true,
    "factions": "Fish-100",
    "file": "Creatures.xml",
    "flags": [
@@ -59927,7 +59555,7 @@
    "hp": 5,
    "is_ranged": false,
    "level": 1,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -59994,8 +59622,7 @@
     "Willpower": {
      "sValue": "3,1d2,(t-1)d2-1"
     }
-   },
-   "wanders": false
+   }
   },
   "Uplifted Glowpad": {
    "anatomy": "Flower",
@@ -60024,7 +59651,6 @@
    "role": "Unspecified",
    "rooted": true,
    "species": "lilypad",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -60071,8 +59697,7 @@
     "Willpower": {
      "sValue": "8,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Uplifted Knight Commander": {
    "anatomy": "Humanoid",
@@ -60174,7 +59799,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -60221,8 +59845,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Uplifted Still Gyre Wight of Bethsaida": {
    "anatomy": "Humanoid",
@@ -60240,7 +59863,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -60287,8 +59909,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Uplifted Still Gyre Wight of Qas": {
    "anatomy": "Humanoid",
@@ -60306,7 +59927,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -60353,8 +59973,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Uplifted Still Gyre Wight of Qon": {
    "anatomy": "Humanoid",
@@ -60372,7 +59991,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -60419,8 +60037,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Uplifted Still Gyre Wight of Rermadon": {
    "anatomy": "Humanoid",
@@ -60438,7 +60055,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -60485,8 +60101,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Uplifted Still Gyre Wight of Shug'ruith": {
    "anatomy": "Humanoid",
@@ -60504,7 +60119,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -60551,8 +60165,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Urchin Belcher": {
    "anatomy": "Fish",
@@ -60707,8 +60320,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Urchins Cherub": {
    "anatomy": "Echinoid",
@@ -60786,11 +60398,11 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Urn Porter": {
    "anatomy": "BipedalRobot",
+   "calm": true,
    "factions": "Prey-100,Robots-25",
    "file": "Creatures.xml",
    "flags": [
@@ -60802,7 +60414,7 @@
    "hp": 100,
    "is_ranged": false,
    "level": 26,
-   "likely_hostile": true,
+   "likely_hostile": false,
    "melee": [
     {
      "count": "1",
@@ -60937,8 +60549,7 @@
     "Willpower": {
      "sValue": "14,1d3"
     }
-   },
-   "wanders": false
+   }
   },
   "Vaam": {
    "anatomy": "Hexapod",
@@ -61061,7 +60672,6 @@
     "Tactics_Charge"
    ],
    "species": "mecha",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "15"
@@ -61158,7 +60768,6 @@
     "Tactics_Charge"
    ],
    "species": "mecha",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "15"
@@ -61255,7 +60864,6 @@
     "Tactics_Charge"
    ],
    "species": "mecha",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "15"
@@ -61352,7 +60960,6 @@
     "Tactics_Charge"
    ],
    "species": "mecha",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "15"
@@ -61446,7 +61053,6 @@
     "Rifles"
    ],
    "species": "mecha",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "15"
@@ -61540,7 +61146,6 @@
     "Rifles"
    ],
    "species": "mecha",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "15"
@@ -61634,7 +61239,6 @@
     "Rifles"
    ],
    "species": "mecha",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "15"
@@ -61728,7 +61332,6 @@
     "Rifles"
    ],
    "species": "mecha",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "15"
@@ -61823,7 +61426,6 @@
     "Rifles"
    ],
    "species": "mecha",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "20"
@@ -61918,7 +61520,6 @@
     "Rifles"
    ],
    "species": "mecha",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "20"
@@ -62136,7 +61737,6 @@
     "CookingAndGathering_Harvestry"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "3"
@@ -62185,8 +61785,7 @@
      "Boost": "1",
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Vivira": {
    "anatomy": "Turret",
@@ -62269,8 +61868,7 @@
      "sValue": "20,1d4,(t-1)d3"
     }
    },
-   "tier": 5,
-   "wanders": false
+   "tier": 5
   },
   "Voider": {
    "anatomy": "Spider",
@@ -62600,8 +62198,7 @@
     "Willpower": {
      "sValue": "22"
     }
-   },
-   "wanders": false
+   }
   },
   "Warden Indrix": {
    "anatomy": "Humanoid",
@@ -62775,8 +62372,7 @@
     "Willpower": {
      "sValue": "22"
     }
-   },
-   "wanders": false
+   }
   },
   "WatervineFarmer": {
    "anatomy": "Humanoid",
@@ -62797,7 +62393,6 @@
     "CookingAndGathering_Harvestry"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -63238,7 +62833,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "flamingo",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -63351,8 +62945,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Willpower Sap": {
    "anatomy": "Quadruped",
@@ -63379,7 +62972,6 @@
    "role": "Minion",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "2"
@@ -63454,7 +63046,6 @@
    "role": "Unspecified",
    "rooted": false,
    "species": "bat",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "12"
@@ -63594,7 +63185,6 @@
     "Survival_JungleSurvival"
    ],
    "species": "woodsprog",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "1"
@@ -64051,7 +63641,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -64098,8 +63687,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Yd Freeholder Sitting": {
    "anatomy": "Humanoid",
@@ -64114,7 +63702,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -64161,8 +63748,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Yd Freeholder Still": {
    "anatomy": "Humanoid",
@@ -64177,7 +63763,6 @@
    "role": "NPC",
    "rooted": false,
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -64224,8 +63809,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Yd Junk Dollar": {
    "anatomy": "Echinoid",
@@ -64247,7 +63831,6 @@
    "role": "Unspecified",
    "rooted": true,
    "species": "urchin",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -64294,8 +63877,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "Yla Haj": {
    "anatomy": "Humanoid",
@@ -64325,7 +63907,6 @@
     "Tinkering_Tinker2"
    ],
    "species": "human",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "0"
@@ -64372,8 +63953,7 @@
     "Willpower": {
      "sValue": "30"
     }
-   },
-   "wanders": false
+   }
   },
   "Yona": {
    "anatomy": "TailedBiped",
@@ -64455,8 +64035,7 @@
     "Willpower": {
      "sValue": "15,1d4"
     }
-   },
-   "wanders": false
+   }
   },
   "Yurl": {
    "anatomy": "Vine",
@@ -64534,8 +64113,7 @@
     "Willpower": {
      "sValue": "16"
     }
-   },
-   "wanders": false
+   }
   },
   "Zero Jell": {
    "anatomy": "Ooze",
@@ -64687,8 +64265,7 @@
     "Willpower": {
      "sValue": "14,1d3,(t)d1"
     }
-   },
-   "wanders": false
+   }
   },
   "k-Goninon": {
    "anatomy": "Ooze",
@@ -64790,7 +64367,6 @@
    "role": "Tank",
    "rooted": false,
    "species": "tortoise",
-   "start_rep": 0,
    "stats": {
     "AV": {
      "Value": "5"
@@ -64862,7 +64438,7 @@
    "65-69": 1
   },
   "level_by_formula": 0,
-  "likely_hostile": 408,
+  "likely_hostile": 388,
   "ranged": 99,
   "rooted": 57,
   "source": "StreamingAssets/Base/ObjectBlueprints/*.xml",

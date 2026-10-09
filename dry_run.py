@@ -5519,4 +5519,5 @@ assert _c108["Humanoid Robot Golem"]["level"] == 50 and _c108["Infrastructure Go
 assert _c108["Baboon"]["level"] == 5 and _c108["Scrapbot"]["factions"].startswith("Robots"), "creatures without a mixin are unchanged"
 _cs108 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "build_creature_catalog.py"), encoding="utf-8").read()
 assert "class MixinCatalog(bic.Catalog)" in _cs108 and "cat = MixinCatalog(raw)" in _cs108
+assert _c108["Scrapbot"]["calm"] is True and not _c108["Scrapbot"]["likely_hostile"] and _c108["Waydroid"]["likely_hostile"] and _c108["Baboon"]["likely_hostile"], "Calm=True means it does not start fights (the Scrapbot test, 2026-10-08); Hostile=false alone does not (baboons)"
 print("  [OK] Test 108 Passed: the creature catalog merges <mixin> blueprints, so a hover golem is level 50 with 500 hit points in the Barathrumites (not hostile), as the game reported, and creatures without a mixin are unchanged.")

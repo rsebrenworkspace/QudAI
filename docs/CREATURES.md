@@ -3,7 +3,7 @@
 Built 2026-10-08 from `StreamingAssets/Base/ObjectBlueprints/*.xml` by `tools/build_creature_catalog.py`; this page by `tools/creature_report.py`. Static facts for planning only: the live
 `state.json` is the truth for the creature in front of the character (heroes, mutated and legendary creatures differ from their blueprint).
 
-- **852** concrete creature blueprints; 852 with a level, 99 carry or use a ranged attack, 57 are rooted (turrets, plants, wall vines), 408 start hostile by their factions' starting reputation.
+- **852** concrete creature blueprints; 852 with a level, 99 carry or use a ranged attack, 57 are rooted (turrets, plants, wall vines), 388 start hostile by their factions' starting reputation.
 - Levels by band: 0-4: 97, 10-14: 52, 120-124: 1, 15-19: 118, 20-24: 77, 25-29: 85, 30-34: 105, 35-39: 26, 40-44: 72, 45-49: 5, 5-9: 137, 50-54: 74, 55-59: 1, 60-64: 1, 65-69: 1
 - Checked against the live game: the levels of the creatures named in past post-mortems (chitinous puma 12, irritable tortoise 5, a snapjaw 1, ...) all match.
 
@@ -36,7 +36,6 @@ Built 2026-10-08 from `StreamingAssets/Base/ObjectBlueprints/*.xml` by `tools/bu
 | [Creature] | `TombCultistPeriod5` | 1 | 16 | - | - |  | hostile |
 | [Creature] | `TombCultistPeriod6` | 1 | 16 | - | - |  | hostile |
 | boar | `Boar` | 1 | 13 | 1d3 | - |  | hostile |
-| salamander | `Salamander` | 1 | 9 | 1d3 | - |  | hostile |
 | giant dragonfly | `GiantDragonfly` | 1 | 6 | 1d3 | - |  | hostile |
 | snapjaw hunter | `Snapjaw Hunter 0` | 1 | 6 | 1d4 | Short Bow |  | hostile |
 | snapjaw hunter | `Snapjaw Hunter 1` | 1 | 6 | 1d4 | Short Bow |  | hostile |
@@ -44,11 +43,6 @@ Built 2026-10-08 from `StreamingAssets/Base/ObjectBlueprints/*.xml` by `tools/bu
 | snapjaw shotgunner | `Snapjaw Shotgunner 0` | 1 | 6 | 1d4 | Pump Shotgun |  | hostile |
 | snapjaw shotgunner | `Snapjaw Shotgunner 1` | 1 | 6 | 1d4 | Pump Shotgun |  | hostile |
 | snapjaw shotgunner | `Snapjaw Shotgunner 2` | 1 | 6 | 1d4 | Pump Shotgun |  | hostile |
-| ray cat | `Farm Ray Cat` | 1 | 5 | 1d2-1 x2 | - |  | hostile |
-| glowfish | `Glowfish` | 1 | 5 | 1d3 | - |  | hostile |
-| ray cat | `Joppa Ray Cat` | 1 | 5 | 1d2-1 x2 | - |  | hostile |
-| ray cat | `Ray Cat` | 1 | 5 | 1d2-1 x2 | - |  | hostile |
-| glowfish | `Uplifted Glowfish` | 1 | 5 | 1d3 | - |  | hostile |
 | snapjaw | `Snapjaw` | 1 | 3 | 1d4 | - |  | hostile |
 | snapjaw scavenger | `Snapjaw Scavenger 0` | 1 | 3 | 1d4 | - |  | hostile |
 | snapjaw scavenger | `Snapjaw Scavenger 1` | 1 | 3 | 1d4 | - |  | hostile |
@@ -56,7 +50,6 @@ Built 2026-10-08 from `StreamingAssets/Base/ObjectBlueprints/*.xml` by `tools/bu
 | snapjaw scavenger | `TutorialSnapjaw` | 1 | 3 | 1d4 | - |  | hostile |
 | cannibal | `Cannibal` | 3 | 14 | 1d2 | - |  | hostile |
 | croc | `Croc` | 3 | 13 | 1d4 | - |  | hostile |
-| engine crabs | `Engine Crabs` | 4 | 12 | - | - |  | hostile |
 | baboon hero | `Baboon Hero 1` | 5 | 20 | 1d2 | - |  | hostile |
 | shrewd baboon | `Shrewd Baboon` | 5 | 20 | 1d2 | - |  | hostile |
 | electrofuge | `Electrofuge` | 5 | 18 | 2d3 | - |  | hostile |
@@ -71,7 +64,14 @@ Built 2026-10-08 from `StreamingAssets/Base/ObjectBlueprints/*.xml` by `tools/bu
 | bear | `Bear` | 6 | 27 | 1d3 | - |  | hostile |
 | bear | `TutorialBear` | 6 | 27 | 1d3 | - |  | hostile |
 | =creatureRegionAdjective= scorpion | `Chiliad Creature Arachnids` | 6 | 25 | 1d4 | - |  | hostile |
-| ... 75 more | | | | | | | |
+| baboon =creatureRegionNoun= | `Chiliad Creature Baboons` | 6 | 25 | 1d4 | - |  | hostile |
+| =creatureRegionAdjective= bear | `Chiliad Creature Bears` | 6 | 25 | 1d4 | - |  | hostile |
+| =creatureRegionAdjective= cannibal | `Chiliad Creature Cannibals` | 6 | 25 | - | - |  | hostile |
+| =creatureRegionAdjective= cat | `Chiliad Creature Cats` | 6 | 25 | 1d4 | - |  | hostile |
+| =creatureRegionAdjective= crab | `Chiliad Creature Crabs` | 6 | 25 | 1d3 | - |  | hostile |
+| cragmensch =creatureRegionNoun= | `Chiliad Creature Cragmensch` | 6 | 25 | - | - |  | hostile |
+| =creatureRegionAdjective= fish | `Chiliad Creature Fish` | 6 | 25 | 1d4 | - |  | hostile |
+| ... 66 more | | | | | | | |
 
 ## Rooted shooters (turrets and the like): fragile ones first
 
@@ -80,7 +80,7 @@ Built 2026-10-08 from `StreamingAssets/Base/ObjectBlueprints/*.xml` by `tools/bu
 | musket turret | `SecurityTurret` | 15 | 5 | - | Musket | rooted | hostile |
 | seed-spitting vine | `Seed-Spitting Vine` | 1 | 5 | - | Seed Slingshot | rooted | hostile |
 | microturret | `Microturret` | 15 | 10 | - | Semi-Automatic Pistol | rooted | hostile |
-| thirst thistle | `Thirst Thistle` | 7 | 10 | - | Thistle Pitcher | rooted | calm |
+| thirst thistle | `Thirst Thistle` | 7 | 10 | - | Thistle Pitcher | rooted | ? |
 | rifle turret | `RifleTurret` | 15 | 15 | - | Desert Rifle | rooted | hostile |
 | chaingun turret | `ChaingunTurret` | 15 | 25 | - | Chaingun | rooted | hostile |
 | laser turret | `LaserTurret` | 15 | 45 | - | Laser Rifle | rooted | hostile |

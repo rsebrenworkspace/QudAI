@@ -136,8 +136,9 @@ def build_entry(cat, name, reps=None):
         "flags": flags, "has_ma": "MA" in st,
     }
     sr = entry.get("start_rep")
-    entry["likely_hostile"] = sr is not None and sr <= LIKELY_HOSTILE_REP
-    return {k: v for k, v in entry.items() if v not in (None, [], {}, "")} | {"likely_hostile": entry["likely_hostile"], "rooted": rooted, "is_ranged": entry["is_ranged"]}
+    entry["calm"] = str(brain.get("Calm", "")).lower() == "true"          # the Scrapbot (Calm="True", Robots faction, start_rep -475) did not attack in game (2026-10-08)
+    entry["likely_hostile"] = sr is not None and sr <= LIKELY_HOSTILE_REP and not entry["calm"]
+    return {k: v for k, v in entry.items() if v not in (None, [], {}, "", False)} | {"likely_hostile": entry["likely_hostile"], "rooted": rooted, "is_ranged": entry["is_ranged"]}
 
 
 class MixinCatalog(bic.Catalog):
