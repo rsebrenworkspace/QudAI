@@ -122,7 +122,7 @@ def _dice_average(text):
         return 0.0
 
 
-def damage_per_turn(entry, observed_per_hit=None):
+def damage_per_turn(entry, observed_per_hit=None, armor=None):
     """Expected damage the creature deals to us per turn. observed_per_hit (from memory/danger_ledger.json: total_damage / hits) beats the dice."""
     if entry is None:
         return 0.0
@@ -133,14 +133,26 @@ def damage_per_turn(entry, observed_per_hit=None):
         except ValueError:
             count = 1
         melee += count * _dice_average(atk.get("damage"))
-    melee *= expected_penetrations(OUR_ARMOR, strength_modifier(entry) + WEAPON_PV)
+    melee *= expected_penetrations(OUR_ARMOR if armor is None else armor, strength_modifier(entry) + WEAPON_PV)
     if observed_per_hit:
         melee = max(melee, observed_per_hit * max(1, sum(int(a.get("count") or 1) for a in (entry.get("melee") or []))))
     ranged = RANGED_DAMAGE if entry.get("ranged") else 0.0
     return max(melee, ranged) * HIT_CHANCE
 
 
-def our_damage_per_turn(level):
+def creature_armor(entry):
+    """The creature's AV from the catalogue (a fixed Value or the first number of a formula); 0 when unknown."""
+    s = ((entry or {}).get("stats") or {}).get("AV") or {}
+    m = re.match(r"\s*(-?\d+)", str(s.get("Value", s.get("sValue", "0"))))
+    return int(m.group(1)) if m else 0
+
+
+def our_damage_per_turn(level, us=None, target=None):
+    """What we deal per turn. With the state's own `melee` block (main-hand dice and penetration, exported by the mod) it is the engine's rule against the
+    target's AV; without it, a guess from our level."""
+    melee = (us or {}).get("melee") or {}
+    if melee.get("damage"):
+        return _dice_average(melee["damage"]) * expected_penetrations(creature_armor(target), int(melee.get("penetration") or 0)) * HIT_CHANCE
     return (OUR_BASE_DAMAGE + OUR_DAMAGE_PER_LEVEL * max(1, level)) * HIT_CHANCE
 
 
@@ -151,7 +163,7 @@ def classify(ratio):
     return "deadly"
 
 
-def threat(entry, our_level, our_hp, enemy_hp=None, observed_per_hit=None):
+def threat(entry, our_level, our_hp, enemy_hp=None, observed_per_hit=None, us=None):
     """-> {ratio, cls, turns_to_kill_it, turns_to_kill_us, their_dps, notes}. ratio > 1 means it wins the race.
     enemy_hp is the live hit points when the state has them; otherwise the catalogue's base hit points (a floor: the engine adds hit points per level)."""
     if entry is None:
@@ -160,8 +172,8 @@ def threat(entry, our_level, our_hp, enemy_hp=None, observed_per_hit=None):
     hp = enemy_hp if enemy_hp else entry.get("hp") or 1
     if not enemy_hp:
         notes.append("base hit points")
-    ours = max(0.1, our_damage_per_turn(our_level))
-    theirs = damage_per_turn(entry, observed_per_hit)
+    ours = max(0.1, our_damage_per_turn(our_level, us, entry))
+    theirs = damage_per_turn(entry, observed_per_hit, (us or {}).get("av"))
     ttk_it = hp / ours
     if entry.get("ranged") or entry.get("is_ranged"):
         our_hp = max(1, our_hp - theirs * APPROACH_TURNS)

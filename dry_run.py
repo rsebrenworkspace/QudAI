@@ -5391,3 +5391,19 @@ import tools.console_logic as _cl103
 _st103 = {"level": 2, "hp": 27, "max_hp": 27, "visible_entities": [{"name": "wet chitinous puma", "blueprint": "Chitinous Puma", "is_enemy": True, "difficulty": "Tough", "dist": 5}]}
 assert "~deadly" in _cl103.threat_summary(_st103)[0], _cl103.threat_summary(_st103)
 print("  [OK] Test 103 Passed: the catalogue adapter finds creatures by blueprint or by display name with adjectives, the threat race ranks a puma above a goat, uses live hit points when the state has them, and the console threat strip shows the catalogue class beside the engine's own difficulty.")
+
+
+# ---------------------------------------------------------------------------
+# Test 104: our own armour and main-hand weapon feed the threat score (B12 stage 2, HANDOFF issue 84)
+# ---------------------------------------------------------------------------
+_cs104 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _s in ('player.Stat("AV", 0)', 'player.Stat("DV", 0)', "player.GetPrimaryWeapon()", "mw.GetNormalPenetration(player)", '\\"av\\": {statAV}', '\\"melee\\": {{\\"weapon\\"', '\\"penetration\\": {meleePen}'):
+    assert _s in _cs104, _s
+_puma104 = _ct103.lookup(blueprint="Chitinous Puma")
+_weak104 = _ct103.threat(_puma104, 2, 27, us={"av": 4, "melee": {"damage": "1d2", "penetration": 0}})
+_strong104 = _ct103.threat(_puma104, 2, 27, us={"av": 7, "melee": {"damage": "2d6", "penetration": 3}})
+assert _strong104["ratio"] < _weak104["ratio"] / 5, (_weak104, _strong104)
+assert _strong104["their_dps"] < _weak104["their_dps"], "better armour must lower the damage we take"
+assert _ct103.creature_armor(_puma104) == 7 and _ct103.creature_armor(None) == 0
+assert _ct103.threat(_puma104, 2, 27)["ratio"] == _ct103.threat(_puma104, 2, 27, us={})["ratio"], "no export, no change: the guess is the fallback"
+print("  [OK] Test 104 Passed: the mod exports av, dv and the main-hand weapon (dice, penetration), and the threat score uses them: a stronger weapon and better armour lower the threat, and a state without them falls back to the guess.")

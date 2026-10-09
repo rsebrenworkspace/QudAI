@@ -1709,6 +1709,27 @@ namespace QudAIBrain
                 int statWil = player.Stat("Willpower", 10);
                 int statEgo = player.Stat("Ego", 10);
 
+                // What the combat score (creature_threat.py) needs from us: armour and dodge as the engine computes them now, and what our main hand does.
+                // Penetration: MeleeWeapon.GetNormalPenetration is the attacker's strength modifier and weapon bonus, the number the engine itself passes to the penetration roll.
+                int statAV = player.Stat("AV", 0);
+                int statDV = player.Stat("DV", 0);
+                string meleeDamage = "";
+                int meleePen = 0, meleeHit = 0;
+                string meleeName = "";
+                try
+                {
+                    GameObject mainHand = player.GetPrimaryWeapon();
+                    var mw = mainHand != null ? mainHand.GetPart<MeleeWeapon>() : null;
+                    if (mw != null)
+                    {
+                        meleeName = mainHand.DisplayNameOnlyStripped ?? "";
+                        meleeDamage = mw.BaseDamage ?? "";
+                        meleeHit = mw.HitBonus;
+                        meleePen = mw.GetNormalPenetration(player);
+                    }
+                }
+                catch (Exception ex) { UnityEngine.Debug.Log("[QudAI Combat] main weapon read failed: " + ex.Message); }
+
                 HashSet<string> learnedSkills = new HashSet<string>();
                 List<string> learnableSkillEntries = new List<string>();
                 try
@@ -1786,6 +1807,8 @@ namespace QudAIBrain
                 sb.Append($"\"ap\": {apPoints},");
                 sb.Append($"\"sp\": {spPoints},");
                 sb.Append($"\"mp\": {mpPoints},");
+                sb.Append($"\"av\": {statAV}, \"dv\": {statDV},");
+                sb.Append($"\"melee\": {{\"weapon\": \"{EscapeJson(meleeName)}\", \"damage\": \"{EscapeJson(meleeDamage)}\", \"penetration\": {meleePen}, \"hit_bonus\": {meleeHit}}},");
                 sb.Append($"\"attributes\": {{\"Strength\": {statStr}, \"Agility\": {statAgi}, \"Toughness\": {statTou}, \"Intelligence\": {statInt}, \"Willpower\": {statWil}, \"Ego\": {statEgo}}},");
                 sb.Append($"\"skills\": [{string.Join(",", learnedSkills)}],");
                 sb.Append($"\"learnable_skills\": [{string.Join(",", learnableSkillEntries)}],");

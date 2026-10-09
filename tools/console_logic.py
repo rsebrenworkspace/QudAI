@@ -227,7 +227,7 @@ def threat_class(entity, state):
         if entry is None:
             return ""
         s = state or {}
-        r = ct.threat(entry, int(s.get("level") or 1), int(s.get("hp") or s.get("max_hp") or 20), enemy_hp=entity.get("hp") or None)
+        r = ct.threat(entry, int(s.get("level") or 1), int(s.get("hp") or s.get("max_hp") or 20), enemy_hp=entity.get("hp") or None, us=s)
         return r["cls"]
     except Exception:
         return ""
