@@ -139,8 +139,29 @@ def mod_health(exchange_dir=None):
         rows.append(("Game state", OK if secs < 30 else WARN, f"last_state.json updated {age_text(st)}" + ("" if secs < 30 else "; the game is idle, paused or closed")))
     else:
         rows.append(("Game state", UNKNOWN, "no last_state.json yet"))
+    rows.append(("LLM context", *llm_headroom()))
     rows.append(("AI switch", OK if flag_on(ex) else WARN, "ENGAGED (active.flag present)" if flag_on(ex) else "paused (no active.flag): the game plays itself no more"))
     return rows
+
+
+def llm_headroom(trace_path=None, n=400):
+    """How full the model's context window gets, from the `llm` block of recent trace rows (brain.py LAST_LLM_USAGE): (status, text).
+    Warns when the largest prompt used more than 60 percent of the window."""
+    rows = tail_jsonl(trace_path or os.path.join(REPO, "memory", "decision_trace.jsonl"), n)
+    used = [(r["llm"].get("prompt_tokens"), r["llm"].get("ctx")) for r in rows if isinstance(r.get("llm"), dict) and r["llm"].get("prompt_tokens")]
+    if not used:
+        return UNKNOWN, "no model calls with token counts in the recent trace yet (restart the brain after updating it)"
+    toks = sorted(u[0] for u in used)
+    p95 = toks[min(len(toks) - 1, int(len(toks) * 0.95))]
+    ctx = next((u[1] for u in reversed(used) if u[1]), None)
+    text = f"{len(toks)} calls: largest prompt {toks[-1]} tokens, p95 {p95}, median {toks[len(toks) // 2]}"
+    if not ctx:
+        return UNKNOWN, text + "; the window size is not known (LM Studio did not report it)"
+    share = toks[-1] / float(ctx)
+    text += f"; window {ctx} tokens ({share:.0%} used at most)"
+    if share > 0.6:
+        return WARN, text + ". Raise the context length in LM Studio (reload the model) before adding more to the prompt."
+    return OK, text
 
 
 def flag_on(exchange_dir=None):
@@ -219,6 +240,20 @@ def trace_text(path, n=150):
 DANGEROUS = ("Tough", "Very Tough", "Impossible")
 
 
+def threat_class(entity, state):
+    """The catalogue's own threat class for one visible creature (creature_threat.py, display only), or '' when it is not in the catalogue."""
+    try:
+        import creature_threat as ct
+        entry = ct.lookup(blueprint=entity.get("blueprint"), name=entity.get("name"))
+        if entry is None:
+            return ""
+        s = state or {}
+        r = ct.threat(entry, int(s.get("level") or 1), int(s.get("hp") or s.get("max_hp") or 20), enemy_hp=entity.get("hp") or None, us=s)
+        return r["cls"]
+    except Exception:
+        return ""
+
+
 def threat_summary(state, limit=5):
     """One line about the hostiles in view: name, difficulty relative to his level (the mod's own Trivial..Impossible scale), distance.
     -> (text, worst) where worst is 'danger' when any is Tough or worse, 'calm' when none are in view, else 'watch'."""
@@ -229,7 +264,8 @@ def threat_summary(state, limit=5):
     parts = []
     for e in ents[:limit]:
         diff = e.get("difficulty", "?")
-        parts.append(f"{'!! ' if diff in DANGEROUS else ''}{e.get('name', '?')} [{diff}] {e.get('dist', '?')} tiles{' (rooted)' if e.get('is_stationary') else ''}")
+        est = threat_class(e, state)
+        parts.append(f"{'!! ' if diff in DANGEROUS else ''}{e.get('name', '?')} [{diff}]{' ~' + est if est else ''} {e.get('dist', '?')} tiles{' (rooted)' if e.get('is_stationary') else ''}")
     more = f"  (+{len(ents) - limit} more)" if len(ents) > limit else ""
     worst = "danger" if any(e.get("difficulty") in DANGEROUS for e in ents) else "watch"
     return "Hostiles: " + "  |  ".join(parts) + more, worst

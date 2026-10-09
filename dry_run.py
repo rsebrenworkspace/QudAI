@@ -5368,3 +5368,352 @@ for _n in ("Goat", "Ctesiphus", "Giant Centipede", "Snapjaw Warrior 1", "Cave Sp
     assert not _serve(_n), _n
 assert 100 <= sum(1 for _n in _crea102 if _serve(_n)) <= 200
 print("  [OK] Test 102 Passed: companions and the enemy test use hit points instead of organic life (so a robot, golem or turret can be a companion or an enemy), the 7 remaining IsAlive uses are the intended ones, and shopkeepers, quest givers and reputation NPCs are protected from recruiting by the markers that separate them from animals.")
+
+
+# ---------------------------------------------------------------------------
+# Test 103: creature catalogue adapter and threat score (B12 stage 2, HANDOFF issue 84), display only
+# ---------------------------------------------------------------------------
+import creature_threat as _ct103
+_cat103 = _ct103.load_catalog()
+assert len(_cat103) > 800
+assert _ct103.lookup(name="wet chitinous puma")["level"] == 12, "adjectives must not defeat the lookup"
+assert _ct103.lookup(blueprint="SecurityTurret")["rooted"] is True
+assert _ct103.lookup(name="no such beast") is None and _ct103.threat(None, 1, 20)["cls"] == "unknown"
+assert _ct103._dice_average("2d4+1") == 6.0 and _ct103._dice_average("1d3") == 2.0
+_puma = _ct103.threat(_ct103.lookup(blueprint="Chitinous Puma"), 2, 27)
+_goat = _ct103.threat(_ct103.lookup(blueprint="Goat"), 2, 27)
+assert _puma["ratio"] > 1.6 and _puma["cls"] == "deadly", _puma
+assert _goat["ratio"] < _puma["ratio"] and _goat["cls"] != "deadly", _goat
+assert abs(_ct103.expected_penetrations(4, 0) - 1.2) < 0.05 and _ct103.expected_penetrations(2, 9) == 3.0, "penetration rule: 3 trials of an exploding 1d10-2"
+assert _ct103.threat(_ct103.lookup(blueprint="SecurityTurret"), 1, 21)["cls"] == "deadly", "a shooter gets free shots while we close in"
+assert _ct103.threat(_ct103.lookup(blueprint="Chitinous Puma"), 2, 27, enemy_hp=10)["ratio"] < _puma["ratio"], "live hit points must be used"
+import tools.console_logic as _cl103
+_st103 = {"level": 2, "hp": 27, "max_hp": 27, "visible_entities": [{"name": "wet chitinous puma", "blueprint": "Chitinous Puma", "is_enemy": True, "difficulty": "Tough", "dist": 5}]}
+assert "~deadly" in _cl103.threat_summary(_st103)[0], _cl103.threat_summary(_st103)
+print("  [OK] Test 103 Passed: the catalogue adapter finds creatures by blueprint or by display name with adjectives, the threat race ranks a puma above a goat, uses live hit points when the state has them, and the console threat strip shows the catalogue class beside the engine's own difficulty.")
+
+
+# ---------------------------------------------------------------------------
+# Test 104: our own armour and main-hand weapon feed the threat score (B12 stage 2, HANDOFF issue 84)
+# ---------------------------------------------------------------------------
+_cs104 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _s in ('player.Stat("AV", 0)', 'player.Stat("DV", 0)', "player.GetPrimaryWeapon()", "mw.GetNormalPenetration(player)", '\\"av\\": {statAV}', '\\"melee\\": {{\\"weapon\\"', '\\"penetration\\": {meleePen}'):
+    assert _s in _cs104, _s
+_puma104 = _ct103.lookup(blueprint="Chitinous Puma")
+_weak104 = _ct103.threat(_puma104, 2, 27, us={"av": 4, "melee": {"damage": "1d2", "penetration": 0}})
+_strong104 = _ct103.threat(_puma104, 2, 27, us={"av": 7, "melee": {"damage": "2d6", "penetration": 3}})
+assert _strong104["ratio"] < _weak104["ratio"] / 5, (_weak104, _strong104)
+assert _strong104["their_dps"] < _weak104["their_dps"], "better armour must lower the damage we take"
+assert _ct103.creature_armor(_puma104) == 7 and _ct103.creature_armor(None) == 0
+assert _ct103.threat(_puma104, 2, 27)["ratio"] == _ct103.threat(_puma104, 2, 27, us={})["ratio"], "no export, no change: the guess is the fallback"
+print("  [OK] Test 104 Passed: the mod exports av, dv and the main-hand weapon (dice, penetration), and the threat score uses them: a stronger weapon and better armour lower the threat, and a state without them falls back to the guess.")
+
+
+# ---------------------------------------------------------------------------
+# Test 105: party tables and the party threat (B12 stage 4 start, HANDOFF issue 84)
+# ---------------------------------------------------------------------------
+_par105 = _ct103.load_parties()["parties"]
+assert abs(_par105["BaboonParty"]["members"]["Baboon"] - 3.15) < 0.01 and abs(_par105["BigBaboonParty"]["members"]["Baboon"] - 10.8) < 0.01, "3-4 baboons at 90 percent; 8-16 at 90 percent"
+assert _par105["SnapjawParty1"]["members"]["Snapjaw Scavenger 1"] == 3.5, "1-3 at 100 percent plus 1-3 at 75 percent"
+assert _ct103.parties_of("Baboon").get("BaboonParty") and not _ct103.parties_of("SecurityTurret")
+_us105 = {"av": 1, "melee": {"damage": "1d2", "penetration": -1}}
+_solo105 = _ct103.threat(_ct103.lookup(blueprint="Baboon"), 2, 30, us=_us105)
+_pack105 = _ct103.party_threat("BaboonParty", 2, 30, us=_us105)
+assert _solo105["cls"] in ("trivial", "easy", "fair") and _pack105["cls"] == "deadly" and _pack105["ratio"] > 4 * _solo105["ratio"], (_solo105, _pack105)
+assert _ct103.party_threat("NoSuchParty", 2, 30)["cls"] == "unknown"
+import tools.build_party_table as _bpt105
+assert _bpt105.number_average("3-4") == 3.5 and _bpt105.number_average("1d4") == 2.5 and _bpt105.number_average("") == 1.0
+print("  [OK] Test 105 Passed: the party tables give the game's own pack sizes (baboons 3.15 in a small party, 10.8 in a big one), a lone baboon is a fair fight but its party is deadly for a starting character, and unknown parties degrade to 'unknown'.")
+
+
+# ---------------------------------------------------------------------------
+# Test 106: zone danger ledger and exit steering (BACKLOG B10 step 1, HANDOFF issue 85), including a multi-turn walk
+# ---------------------------------------------------------------------------
+import zone_danger as _zd106
+assert _zd106.world_cell("JoppaWorld.11.22.1.1.10") == (34, 67, 10) and _zd106.world_cell("junk") is None
+assert _zd106.adjacent_zone("JoppaWorld.11.22.2.1.10", "E") == "JoppaWorld.12.22.0.1.10" and _zd106.adjacent_zone("JoppaWorld.11.22.0.1.10", "W") == "JoppaWorld.10.22.2.1.10"
+assert _zd106.zone_distance("JoppaWorld.11.22.2.1.10", "JoppaWorld.12.22.0.1.10") == 1 and _zd106.zone_distance("JoppaWorld.1.1.0.0.10", "JoppaWorld.1.1.0.0.11") is None
+_led106 = _zd106.Ledger()
+_Z = "JoppaWorld.11.22.1.1.10"
+assert _led106.record(_Z, "chitinous puma", 12, 5) is True and _led106.record(_Z, "goat", 1, 5) is False, "a worse creature replaces, a lesser one does not"
+assert _led106.flags[_Z].clears_at == 9 and _led106.active_flags(8) and not _led106.active_flags(9), "lapses at creature level minus 3"
+assert _zd106.Ledger().pressure(_Z, 1) == 0.0 and _zd106.steer(_zd106.Ledger(), _Z, 1, ["N", "S"], ["N", "S"], "S") == (None, None, None), "no flag, no steering"
+_lowpack = _zd106.Ledger(); _lowpack.record(_Z, "baboon party", 5, 1)
+assert _lowpack.flags[_Z].clears_at == 3, "a flag raised at level 1 lapses after two levels even for a weak creature"
+# steering: danger lies north of here, so north must not be chosen while south and east are free
+_led = _zd106.Ledger(); _led.record("JoppaWorld.11.22.1.0.10", "puma", 12, 3)      # the zone directly north of _Z
+_keep, _mode, _note = _zd106.steer(_led, _Z, 3, ["N", "S", "E", "W"], ["N", "S", "E", "W"], None)
+assert _mode == "away" and "N" not in _keep and set(_keep) <= {"S", "E", "W"}, (_keep, _mode, _note)
+# backtracking: danger on three sides ahead (we came from the south), the way back is the best exit
+_led2 = _zd106.Ledger()
+for _d in ("N", "E", "W"):
+    _led2.record(_zd106.adjacent_zone(_Z, _d), "puma", 12, 3)
+_keep2, _mode2, _note2 = _zd106.steer(_led2, _Z, 3, ["N", "E", "W", "S"], ["N", "E", "W"], "S")
+assert _mode2 == "retreat" and _keep2 == ["S"], (_keep2, _mode2, _note2)
+# multi-turn: a walker on a grid with a wall of flagged zones to the north must end up in the south or sideways and never oscillate between two zones
+def _walk106(start, flags, steps=14):
+    led = _zd106.Ledger()
+    for f in flags:
+        led.record(f, "puma", 12, 2)
+    cur, rev, seen, trail = start, None, set([start]), [start]
+    for _ in range(steps):
+        cands = [d for d in "NSEW" if _zd106.adjacent_zone(cur, d)]
+        novel = [d for d in cands if _zd106.adjacent_zone(cur, d) not in seen]
+        keep, mode, _n = _zd106.steer(led, cur, 2, [d for d in cands if d != rev] or cands, [d for d in novel if d != rev] or novel, rev)
+        pool = keep or ([d for d in novel if d != rev] or novel or cands)
+        d = sorted(pool)[0] if mode is None else pool[0]
+        nxt = _zd106.adjacent_zone(cur, d)
+        rev = {"N": "S", "S": "N", "E": "W", "W": "E"}[d]
+        cur = nxt; seen.add(cur); trail.append(cur)
+    return trail
+_start106 = "JoppaWorld.11.22.1.1.10"
+_flags106 = [_zd106.adjacent_zone(_start106, "N")] + [_zd106.adjacent_zone(_zd106.adjacent_zone(_start106, "N"), s) for s in "EW"]
+_trail106 = _walk106(_start106, _flags106)
+assert not any(a == b for a, b in zip(_trail106, _trail106[2:])), ("oscillation A-B-A", _trail106)
+_ys = [_zd106.world_cell(z)[1] for z in _trail106]
+assert _ys[-1] >= _ys[0], ("he walked north into the flagged zones", _ys)
+assert all(z not in _flags106 for z in _trail106), "the walk entered a flagged zone"
+# brain wiring: the ledger is fed from the state and the exit chooser answers
+brain.ZONE_DANGER = _zd106.Ledger()
+_st106 = {"zone_id": _start106, "level": 2, "hp": 20, "max_hp": 20, "visible_entities": [{"name": "wet chitinous puma", "blueprint": "Chitinous Puma", "is_enemy": True, "is_stationary": False, "level": 12, "difficulty": "Very Tough", "dist": 7}]}
+brain.note_zone_danger(_st106)
+assert _start106 in brain.ZONE_DANGER.flags and brain.ZONE_DANGER.flags[_start106].creature_level == 12
+_st106b = {"zone_id": _start106, "level": 2, "hp": 20, "visible_entities": [{"name": "goat", "blueprint": "Goat", "is_enemy": True, "is_stationary": False, "level": 1, "difficulty": "Trivial"}]}
+brain.ZONE_DANGER = _zd106.Ledger(); brain.note_zone_danger(_st106b)
+assert not brain.ZONE_DANGER.flags, "a goat flags nothing"
+brain.ZONE_DANGER = _zd106.Ledger()
+print("  [OK] Test 106 Passed: a zone with a creature out of our class is flagged until we have grown, exits are steered away from flagged zones, the way back is taken when every way on leads closer, a 14-step walk beside a wall of flagged zones never enters one and never oscillates, and a goat flags nothing.")
+
+
+# ---------------------------------------------------------------------------
+# Test 107: prompt tokens in the trace and the context headroom check (HANDOFF issue 86)
+# ---------------------------------------------------------------------------
+assert brain.loaded_context_length([{"id": "a", "loaded_context_length": 8192}, {"id": "b"}], "a") == 8192 and brain.loaded_context_length([{"id": "b"}], "b") is None and brain.loaded_context_length(None, "a") is None
+_src107 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert 'LAST_LLM_USAGE.update({"turn": TURN_CLOCK, "prompt_tokens"' in _src107 and '"llm": {k: LAST_LLM_USAGE.get(k)' in _src107, "the call must record usage and the trace row must carry it"
+import tools.console_logic as _cl107
+_tmp107 = _os.path.join(tempfile.mkdtemp(), "t.jsonl")
+def _w107(rows):
+    with open(_tmp107, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(_json.dumps(r) + chr(10))
+_w107([{"t": 1, "action": "REST"}])
+assert _cl107.llm_headroom(_tmp107)[0] == _cl107.UNKNOWN, "rows without token counts say unknown, not zero"
+_w107([{"llm": {"prompt_tokens": 2000, "ctx": 8192}}, {"llm": {"prompt_tokens": 3000, "ctx": 8192}}, {"t": 3}])
+_ok107 = _cl107.llm_headroom(_tmp107)
+assert _ok107[0] == _cl107.OK and "3000" in _ok107[1] and "8192" in _ok107[1], _ok107
+_w107([{"llm": {"prompt_tokens": 5200, "ctx": 8192}}])
+assert _cl107.llm_headroom(_tmp107)[0] == _cl107.WARN, "more than 60 percent of the window warns"
+_w107([{"llm": {"prompt_tokens": 900, "ctx": None}}])
+assert _cl107.llm_headroom(_tmp107)[0] == _cl107.UNKNOWN, "an unknown window size cannot be judged"
+print("  [OK] Test 107 Passed: the brain records prompt and completion tokens and the loaded context length on each model call, the trace row carries them, and the console health tab reports the largest prompt against the window (OK, WARN above 60 percent, UNKNOWN without data).")
+
+
+# ---------------------------------------------------------------------------
+# Test 108: the creature catalog applies mixins (HANDOFF issue 87: the first hover golem test)
+# ---------------------------------------------------------------------------
+_c108 = _ct103.load_catalog()
+_g108 = _c108["Hover Golem"]
+assert _g108["level"] == 50 and _g108["hp"] == 500 and "Barathrumites" in _g108["factions"] and not _g108["likely_hostile"], _g108
+assert _c108["Humanoid Robot Golem"]["level"] == 50 and _c108["Infrastructure Golem"]["hp"] == 1000, "the mixin's hit points, then the blueprint's own"
+assert _c108["Baboon"]["level"] == 5 and _c108["Scrapbot"]["factions"].startswith("Robots"), "creatures without a mixin are unchanged"
+_cs108 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "build_creature_catalog.py"), encoding="utf-8").read()
+assert "class MixinCatalog(bic.Catalog)" in _cs108 and "cat = MixinCatalog(raw)" in _cs108
+assert _c108["Scrapbot"]["calm"] is True and not _c108["Scrapbot"]["likely_hostile"] and _c108["Waydroid"]["likely_hostile"] and _c108["Baboon"]["likely_hostile"], "Calm=True means it does not start fights (the Scrapbot test, 2026-10-08); Hostile=false alone does not (baboons)"
+print("  [OK] Test 108 Passed: the creature catalog merges <mixin> blueprints, so a hover golem is level 50 with 500 hit points in the Barathrumites (not hostile), as the game reported, and creatures without a mixin are unchanged.")
+
+
+# ---------------------------------------------------------------------------
+# Test 109: the zone-danger ratio trigger is conservative for a character with a ranged opener (Waydroid retest, HANDOFF issue 87)
+# ---------------------------------------------------------------------------
+_ab109 = [{"name": "Lase (3 charges)", "command": "CommandLase", "usable": True}, {"name": "Sprint", "command": "CommandToggleRunning"}]
+assert brain.has_ranged_opener({"abilities": _ab109}) and brain.has_ranged_opener({"abilities": [{"command": "CommandTeleportOther", "usable": False}]}), "a kit on cooldown still counts"
+assert not brain.has_ranged_opener({"abilities": [{"command": "CommandToggleRunning"}, {"command": "CommandIntimidate"}]}) and not brain.has_ranged_opener({})
+assert brain.has_ranged_opener({"has_missile_weapon": True, "abilities": []})
+_wd109 = {"name": "waydroid", "blueprint": "Waydroid", "is_enemy": True, "is_stationary": False, "level": 10, "difficulty": "Average", "hp": 24, "dist": 8}
+def _flagged109(extra):
+    brain.ZONE_DANGER = _zd106.Ledger()
+    brain.note_zone_danger(dict({"zone_id": _start106, "level": 3, "hp": 26, "av": 1, "melee": {"damage": "1d2", "penetration": -1}, "visible_entities": [_wd109]}, **extra))
+    return _start106 in brain.ZONE_DANGER.flags
+assert _flagged109({"abilities": []}) is True, "no opener: the ratio flags a level-10 robot even when the engine calls it Average"
+assert _flagged109({"abilities": _ab109}) is False, "an opener: the ratio alone no longer flags it"
+_wd109["difficulty"] = "Very Tough"
+assert _flagged109({"abilities": _ab109}) is True, "the engine's own difficulty always flags"
+brain.ZONE_DANGER = _zd106.Ledger()
+print("  [OK] Test 109 Passed: a character with a ranged or disabling ability (ready or on cooldown) or a missile weapon is flagged only by the engine's difficulty, not by the melee-only threat ratio; a character without one is still flagged by both.")
+
+
+# ---------------------------------------------------------------------------
+# Test 110: last-seen position memory keeps the frontier chooser away from an out-of-class creature (B10 step 1 extension, HANDOFF issue 85)
+# ---------------------------------------------------------------------------
+_Z110 = "JoppaWorld.11.21.0.1.10"
+_led110 = _zd106.Ledger()
+assert _led110.avoid_points(_Z110, 1, 0) == [], "no flag, no avoid point"
+_led110.record(_Z110, "wet croc", 3, 1)
+assert _led110.avoid_points(_Z110, 1, 0) == [], "flagged but never located"
+_led110.seen(_Z110, 72, 13, 100)
+assert _led110.avoid_points(_Z110, 1, 120) == [(72, 13)] and _led110.avoid_points(_Z110, 1, 100 + _zd106.AVOID_MAX_AGE + 1) == [], "the position goes stale"
+assert _led110.avoid_points(_Z110, 20, 120) == [], "a lapsed flag keeps nothing away"
+_led110.seen("JoppaWorld.1.1.0.0.10", 5, 5, 100)
+assert "JoppaWorld.1.1.0.0.10" not in _led110.flags, "seen() never creates a flag"
+# the frontier chooser: the nearest target lies beside the croc, the next one does not
+def _front110(level=1, turn=120):
+    brain.ZONE_DANGER = _led110
+    brain.TURN_CLOCK = turn
+    brain.FRONTIER_COMMIT.update({"zone": None, "target": None})
+    brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
+    st = {"level": level, "frontier_targets": [{"x": 72, "y": 13, "dist": 2, "q": "SE"}, {"x": 30, "y": 5, "dist": 40, "q": "NW"}]}
+    return brain.pick_frontier_target(st, (74, 15), _Z110)
+_t110, _r110 = _front110()
+assert _t110 == (30, 5), (_t110, _r110)
+brain.FRONTIER_COMMIT.update({"zone": _Z110, "target": (72, 13)})
+_st110 = {"level": 1, "frontier_targets": [{"x": 72, "y": 13, "dist": 2, "q": "SE"}, {"x": 30, "y": 5, "dist": 40, "q": "NW"}]}
+assert brain.pick_frontier_target(_st110, (74, 15), _Z110)[0] == (30, 5), "a committed target near the danger is dropped"
+_only110 = {"level": 1, "frontier_targets": [{"x": 72, "y": 13, "dist": 2, "q": "SE"}]}
+brain.FRONTIER_COMMIT.update({"zone": None, "target": None})
+assert brain.pick_frontier_target(_only110, (74, 15), _Z110) == (None, None), "when every target is near the danger the chooser offers none (the brain then leaves or autoexplores)"
+assert _front110(level=20)[0] == (72, 13), "a lapsed flag restores the nearest target"
+assert _front110(turn=120 + 200)[0] == (72, 13), "a stale position restores the nearest target"
+# the feed: note_zone_danger stores where the creature stood
+brain.ZONE_DANGER = _zd106.Ledger(); brain.TURN_CLOCK = 50
+brain.note_zone_danger({"zone_id": _Z110, "level": 1, "hp": 18, "visible_entities": [{"name": "wet croc", "blueprint": "Crocodile", "is_enemy": True, "is_stationary": False, "level": 3, "difficulty": "Impossible", "tx": 70, "ty": 11, "hp": 40}]})
+assert brain.ZONE_DANGER.flags[_Z110].where == (70, 11) and brain.ZONE_DANGER.flags[_Z110].where_turn == 50
+brain.ZONE_DANGER = _zd106.Ledger(); brain.FRONTIER_COMMIT.update({"zone": None, "target": None})
+print("  [OK] Test 110 Passed: the ledger remembers where a flagged creature was last in view, the frontier chooser skips targets within 8 cells of it (dropping a committed one, offering none when all are near), and the memory lapses with the flag or after 80 turns.")
+
+
+# ---------------------------------------------------------------------------
+# Test 111: a rooted vine is not a fragile shooter (human run 2026-10-08, trace t1668: Lase fired at a jilted lover)
+# ---------------------------------------------------------------------------
+assert brain.is_fragile_shooter({"is_stationary": True, "max_hp": 5, "name": "musket turret", "blueprint": "SecurityTurret"}) is True
+assert brain.is_fragile_shooter({"is_stationary": True, "max_hp": 5, "name": "jilted lover", "blueprint": "Jilted Lover"}) is False, "no ranged attack in the catalogue: not a shooter"
+assert brain.is_fragile_shooter({"is_stationary": True, "max_hp": 5, "name": "mystery", "blueprint": "NoSuchThing"}) is True, "unknown to the catalogue: the old caution stays"
+assert brain.is_fragile_shooter({"is_stationary": False, "max_hp": 5, "name": "musket turret", "blueprint": "SecurityTurret"}) is False
+_st111 = {"x": 40, "y": 12, "visible_entities": [{"name": "jilted lover", "blueprint": "Jilted Lover", "is_enemy": True, "is_stationary": True, "max_hp": 5, "hp": 5, "dist": 4, "has_los": True, "tx": 44, "ty": 12}]}
+assert brain.turret_hazards(_st111) == [], "a lone jilted lover is not a turret hazard"
+print("  [OK] Test 111 Passed: a rooted vine with no ranged attack (jilted lover) is not treated as a fragile shooter, so the turret rule no longer spends Lase charges on it, while real turrets and creatures unknown to the catalogue keep the old rule.")
+
+
+# ---------------------------------------------------------------------------
+# Test 112: the turret retreat depends on the damage a nest deals against our hit points (human run 2026-10-08, trace t1649 and t1783; HANDOFF issue 89)
+# ---------------------------------------------------------------------------
+_c112 = _ct103.load_catalog()
+assert _c112["Seed-Spitting Vine"]["ranged_shots"][0]["damage"] == "1d3" and _c112["Seed-Spitting Vine"]["ranged_shots"][0]["penetration"] == 2, "ProjectileSpatSeed"
+assert _c112["SecurityTurret"]["ranged_shots"][0]["damage"] == "1d8" and _c112["SecurityTurret"]["ranged_shots"][0]["penetration"] == 4, "ProjectileMusketBall"
+_vine112 = {"name": "seed-spitting vine", "blueprint": "Seed-Spitting Vine", "is_enemy": True, "is_stationary": True, "max_hp": 5, "hp": 5, "dist": 11, "has_los": True}
+_vine112b = dict(_vine112, dist=6)
+_mus112 = {"name": "musket turret", "blueprint": "SecurityTurret", "is_enemy": True, "is_stationary": True, "max_hp": 5, "hp": 5, "dist": 6, "has_los": True}
+def _hz112(hp, ents):
+    return brain.turret_hazards({"hp": hp, "av": 1, "visible_entities": ents})
+assert _hz112(40, [_vine112]) == [], "one seed vine is not worth fleeing at 40 HP (t1783)"
+assert len(_hz112(40, [_vine112, _vine112b])) == 2, "two vines still are (t1649 had two, at 28 HP)"
+assert len(_hz112(28, [_vine112])) == 1, "the same vine matters at 28 HP"
+assert len(_hz112(40, [_mus112])) == 1, "a musket turret is never tolerable at these hit points"
+_unk112 = {"name": "ancient turret", "blueprint": "NoSuchTurret", "is_enemy": True, "is_stationary": True, "max_hp": 5, "dist": 6, "has_los": True}
+assert len(_hz112(500, [_unk112])) == 1, "a turret the catalogue does not know keeps the old caution"
+# the decision itself: one vine at 40 HP, stairs up near: no retreat; the musket nest keeps the doctrine
+_gs112 = {"x": 45, "y": 23, "z": 12, "zone_id": "JoppaWorld.11.20.1.1.12", "hp": 40, "av": 1, "level": 5, "standing_on_stairs_up": True, "stairs_up": [{"tx": 45, "ty": 23}],
+          "visible_entities": [dict(_vine112)]}
+assert brain.turret_decision(_gs112, [], 1.0, []) is None
+_gs112["visible_entities"] = [dict(_mus112)]
+assert brain.turret_decision(_gs112, [], 1.0, [])["action"] == "USE_STAIRS_UP"
+print("  [OK] Test 112 Passed: the catalogue carries the engine's shot damage (seed 1d3 pen 2, musket ball 1d8 pen 4), a nest whose expected damage while closing in is under half our HP is not fled (one vine at 40 HP), two vines or a lower HP or a musket turret still are, and an unknown turret keeps the old caution.")
+
+
+# ---------------------------------------------------------------------------
+# Test 113: a cleared stratum whose way down is held shut by a level goal is left by the stairs up (human run 2026-10-08, trace t2134-2253; HANDOFF issue 90)
+# ---------------------------------------------------------------------------
+_up113 = "JoppaWorld.11.20.1.1.10"
+_dn113 = "JoppaWorld.11.20.1.1.11"
+_saved113 = (dict(brain.KNOWN_STAIRS_DOWN), dict(brain.KNOWN_STAIRS_UP), set(brain.STAIRS_GIVEUP), set(brain.DEAD_END_ZONES), brain.ZONE_STEP_COUNT, brain.RETREAT_TARGET_LEVEL)
+try:
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.KNOWN_STAIRS_UP.clear(); brain.STAIRS_GIVEUP.clear(); brain.DEAD_END_ZONES.clear()
+    brain.KNOWN_STAIRS_DOWN[_dn113] = {"tx": 45, "ty": 23, "z": 11, "name": "stairs down", "req_level": 5}
+    brain.KNOWN_STAIRS_UP[_dn113] = {"tx": 20, "ty": 4, "z": 11, "name": "stairs up"}
+    brain.RETREAT_TARGET_LEVEL = 6
+    brain.ZONE_STEP_COUNT = 150
+    _edges113 = {"reachable_edges": "NSEW"}          # the engine claims every edge is reachable; underground its route ends at a wall
+    _d = brain.dead_end_ascent(_edges113, _dn113, 11, (62, 7), False, True, True)
+    assert _d and _d["action"] == "NAVIGATE_TO_CELL:20,4" and "Level goal" in _d["reason"], _d
+    assert brain.dead_end_ascent(_edges113, _dn113, 11, (62, 7), False, True, False) is None, "not gated: the delve logic owns it"
+    assert brain.dead_end_ascent(_edges113, _dn113, 11, (62, 7), False, False, True) is None, "still being explored"
+    brain.ZONE_STEP_COUNT = 5
+    assert brain.dead_end_ascent(_edges113, _dn113, 11, (62, 7), False, True, True) is None, "not worked long enough"
+    brain.ZONE_STEP_COUNT = 150
+    _u = brain.dead_end_ascent(_edges113, _dn113, 11, (20, 4), True, True, True)
+    assert _u and _u["action"] == "USE_STAIRS_UP" and "Level goal" in _u["reason"], _u
+    assert _dn113 not in brain.DEAD_END_ZONES and not brain.STAIRS_GIVEUP, "a waiting room is not a dead end: nothing is given up, the level goal holds the way down shut"
+    assert brain.dead_end_ascent(_edges113, _up113, 10, (62, 7), False, True, True) is None, "never on the surface"
+    # the same stratum with the stairs down given up is the old dead end
+    brain.STAIRS_GIVEUP.add((_dn113, (45, 23)))
+    _old = brain.dead_end_ascent({"reachable_edges": ""}, _dn113, 11, (62, 7), False, True, True)
+    assert _old and "Dead end" in _old["reason"], _old
+finally:
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.KNOWN_STAIRS_DOWN.update(_saved113[0]); brain.KNOWN_STAIRS_UP.clear(); brain.KNOWN_STAIRS_UP.update(_saved113[1])
+    brain.STAIRS_GIVEUP.clear(); brain.STAIRS_GIVEUP.update(_saved113[2]); brain.DEAD_END_ZONES.clear(); brain.DEAD_END_ZONES.update(_saved113[3])
+    brain.ZONE_STEP_COUNT = _saved113[4]; brain.RETREAT_TARGET_LEVEL = _saved113[5]
+_src113 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "is_zone_cleared, is_retreating)" in _src113, "the call site must pass the level-goal gate"
+print("  [OK] Test 113 Passed: in a cleared, worked stratum whose way down is held shut by a level goal he walks to the stairs up (even when the engine reports edges) and ascends without marking a dead end or giving up the stairs; with no gate, an unworked or uncleared stratum, or on the surface nothing changes, and the old dead end still fires when the stairs were given up.")
+
+
+# ---------------------------------------------------------------------------
+# Test 114: stairs the engine could not route to get a bounded second chance (human run 2026-10-09: written off at (57, 12) for the rest of the run; HANDOFF issue 92)
+# ---------------------------------------------------------------------------
+_Z114 = "JoppaWorld.11.20.1.1.13"
+_K114 = (_Z114, (73, 13))
+_saved114 = (dict(brain.KNOWN_STAIRS_DOWN), set(brain.STAIRS_GIVEUP), set(brain.UNREACHABLE_SECTORS), dict(brain.STAIRS_RETRY_META), set(brain.STAIRS_RETRY_ACTIVE), brain.TURN_CLOCK)
+try:
+    def _reset114():
+        brain.KNOWN_STAIRS_DOWN.clear(); brain.STAIRS_GIVEUP.clear(); brain.UNREACHABLE_SECTORS.clear(); brain.STAIRS_RETRY_META.clear(); brain.STAIRS_RETRY_ACTIVE.clear()
+        brain.KNOWN_STAIRS_DOWN[_Z114] = {"tx": 73, "ty": 13, "z": 13, "name": "stairs down"}
+        brain.TURN_CLOCK = 1000
+    _reset114()
+    assert brain.retry_given_up_stairs(_Z114, 6, (57, 12)) is False, "nothing written off: nothing to retry"
+    brain.note_stairs_unreachable(_Z114, (73, 13), 6, (57, 12)); brain.UNREACHABLE_SECTORS.add(_K114); brain.STAIRS_GIVEUP.add(_K114)
+    assert brain.retry_given_up_stairs(_Z114, 6, (57, 12)) is False, "same level, same place, no time passed: not yet"
+    brain.TURN_CLOCK = 1000 + brain.STAIRS_RETRY_TURNS - 1
+    assert brain.retry_given_up_stairs(_Z114, 6, (58, 12)) is False
+    assert brain.retry_given_up_stairs(_Z114, 7, (57, 12)) is True, "a level gained lifts the write-off"
+    assert _K114 not in brain.STAIRS_GIVEUP and _K114 not in brain.UNREACHABLE_SECTORS and _K114 in brain.STAIRS_RETRY_ACTIVE and brain.STAIRS_RETRY_META[_K114]["retries"] == 1
+    assert brain.retry_given_up_stairs(_Z114, 8, (57, 12)) is False, "a retry in progress is not restarted"
+    # a failed retry gives up again (what the greedy-fallback branch does) and the next trigger can lift it again
+    brain.STAIRS_RETRY_ACTIVE.discard(_K114); brain.STAIRS_GIVEUP.add(_K114); brain.note_stairs_unreachable(_Z114, (73, 13), 7, (57, 12))
+    assert brain.STAIRS_RETRY_META[_K114]["retries"] == 1, "the count survives a new write-off"
+    assert brain.retry_given_up_stairs(_Z114, 7, (30, 12)) is True, "moving 12 or more cells away lifts it"
+    # a dead-end give-up is never retried
+    _reset114(); brain.STAIRS_GIVEUP.add(_K114)
+    brain.TURN_CLOCK = 5000
+    assert brain.retry_given_up_stairs(_Z114, 9, (10, 10)) is False, "no retry entry: a deliberate give-up stays"
+    # multi-turn: the engine never finds a route; over 3000 turns the retries stay bounded and every retry ends at once
+    _reset114(); brain.note_stairs_unreachable(_Z114, (73, 13), 6, (57, 12)); brain.UNREACHABLE_SECTORS.add(_K114); brain.STAIRS_GIVEUP.add(_K114)
+    _acts114 = 0
+    for _t in range(1000, 4000):
+        brain.TURN_CLOCK = _t
+        if brain.retry_given_up_stairs(_Z114, 6, (57, 12)):
+            _acts114 += 1
+            brain.STAIRS_RETRY_ACTIVE.discard(_K114); brain.STAIRS_GIVEUP.add(_K114); brain.UNREACHABLE_SECTORS.add(_K114)
+            brain.note_stairs_unreachable(_Z114, (73, 13), 6, (57, 12))
+    assert _acts114 == brain.STAIRS_RETRY_MAX == 3, _acts114
+finally:
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.KNOWN_STAIRS_DOWN.update(_saved114[0]); brain.STAIRS_GIVEUP.clear(); brain.STAIRS_GIVEUP.update(_saved114[1])
+    brain.UNREACHABLE_SECTORS.clear(); brain.UNREACHABLE_SECTORS.update(_saved114[2]); brain.STAIRS_RETRY_META.clear(); brain.STAIRS_RETRY_META.update(_saved114[3])
+    brain.STAIRS_RETRY_ACTIVE.clear(); brain.STAIRS_RETRY_ACTIVE.update(_saved114[4]); brain.TURN_CLOCK = _saved114[5]
+_src114 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "if (zone_id, sd_pos) in STAIRS_RETRY_ACTIVE:" in _src114 and "best_m = None" in _src114 and "retry_given_up_stairs(zone_id, cur_lvl, cur_pos)" in _src114, "the call site and the engine-route-only rule"
+assert "STAIRS_RETRY_META.pop((up, (usd.get" in _src114, "a dead-end give-up must erase any retry entry"
+print("  [OK] Test 114 Passed: stairs the engine could not route to are retried when a level is gained, he has moved 12 cells, or 150 turns have passed, at most 3 times (a 3,000-turn simulation shows exactly 3), a retry never steps greedily, a deliberate dead-end give-up is never retried, and a retry in progress is not restarted.")
+
+
+# ---------------------------------------------------------------------------
+# Test 115: the path diagnostic exists in the mod and cannot throw or spam (HANDOFF issue 92)
+# ---------------------------------------------------------------------------
+_cs115 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _s in ("private static void LogPathDiag(GameObject player, Cell target)", "private static string PathDiagCell(Cell c, GameObject player)", "[QudAI PathDiag] no engine step to ",
+           "c.GetNavigationWeightFor(player, false, false, false, false, false)", "c.HasWadingDepthLiquid()", "c.HasSwimmingDepthLiquid()", "c.IsExplored()", "pathDiagSeen.Count >= 40",
+           "LogPathDiag(player, targetCell);"):
+    assert _s in _cs115, _s
+_body115 = _cs115[_cs115.index("private static void LogPathDiag(GameObject player, Cell target)"):_cs115.index("public static bool IsCompanion(GameObject obj, GameObject player)")]
+assert _body115.count("try") >= 3 and "catch { }" in _body115, "the diagnostic must be guarded"
+assert _cs115.count("{") == _cs115.count("}")
+print("  [OK] Test 115 Passed: the mod logs one guarded [QudAI PathDiag] line per target the engine cannot route to (target and neighbours: explored, passable, solid, wading, swimming, dangerous liquid, navigation weight), at most 40 per session.")

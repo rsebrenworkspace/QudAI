@@ -112,6 +112,20 @@ def weapons(cat, name):
     return list(natural.values()), list(ranged.values())
 
 
+def projectile_stats(cat, weapon):
+    """What one shot of a ranged weapon does, from the engine's own data: the weapon's ammo loader names a ProjectileObject, whose Projectile part has BaseDamage and
+    BasePenetration (seed slingshot: 1d3, 2; musket: 1d8, 4). None when the weapon has no such loader (energy weapons and others are not decoded here)."""
+    parts = cat.parts(weapon)
+    mw = parts.get("MissileWeapon") or {}
+    for pname, attrs in parts.items():
+        proj = attrs.get("ProjectileObject") if isinstance(attrs, dict) else None
+        if proj and proj in cat.raw:
+            pp = cat.parts(proj).get("Projectile") or {}
+            if pp.get("BaseDamage"):
+                return {"weapon": weapon, "damage": pp.get("BaseDamage"), "penetration": bic.num(pp.get("BasePenetration"), 0), "shots": bic.num(mw.get("ShotsPerAction"), 1) or 1}
+    return None
+
+
 def build_entry(cat, name, reps=None):
     parts = cat.parts(name)
     tags = cat.tags(name)
@@ -130,21 +144,43 @@ def build_entry(cat, name, reps=None):
         "stats": {k: v for k, v in st.items() if k not in ("Level", "Hitpoints")},
         "start_rep": start_reputation(brain.get("Factions"), reps or {}), "wanders": brain.get("Wanders") != "false", "rooted": rooted, "factions": brain.get("Factions"),
         "species": tags.get("Species"), "role": tags.get("Role"), "anatomy": parts.get("Body", {}).get("Anatomy"),
-        "melee": natural[:4], "ranged": ranged[:3], "is_ranged": bool(ranged) or "shoot_and_scoot" in flags,
+        "melee": natural[:4], "ranged": ranged[:3], "ranged_shots": [s for s in (projectile_stats(cat, w) for w in ranged[:3]) if s], "is_ranged": bool(ranged) or "shoot_and_scoot" in flags,
         "mutations": sorted({m.get("Name") for b in cat.chain(name) for m in cat.raw[b][0].findall("mutation") if m.get("Name")}),
         "skills": sorted({s.get("Name") for b in cat.chain(name) for s in cat.raw[b][0].findall("skill") if s.get("Name")}),
         "flags": flags, "has_ma": "MA" in st,
     }
     sr = entry.get("start_rep")
-    entry["likely_hostile"] = sr is not None and sr <= LIKELY_HOSTILE_REP
-    return {k: v for k, v in entry.items() if v not in (None, [], {}, "")} | {"likely_hostile": entry["likely_hostile"], "rooted": rooted, "is_ranged": entry["is_ranged"]}
+    entry["calm"] = str(brain.get("Calm", "")).lower() == "true"          # the Scrapbot (Calm="True", Robots faction, start_rep -475) did not attack in game (2026-10-08)
+    entry["likely_hostile"] = sr is not None and sr <= LIKELY_HOSTILE_REP and not entry["calm"]
+    return {k: v for k, v in entry.items() if v not in (None, [], {}, "", False)} | {"likely_hostile": entry["likely_hostile"], "rooted": rooted, "is_ranged": entry["is_ranged"]}
+
+
+class MixinCatalog(bic.Catalog):
+    """The item catalog's resolver, plus <mixin Name="X"/>: a mixin is another blueprint merged into this one, below the blueprint's own elements and above what it inherits.
+    Without it every golem read as level 1 with 16 hit points in the Robots faction; the mixin BaseVehicleGolem says level 50, 500 hit points and the Barathrumites
+    (the first human test of the hover golem, 2026-10-08, HANDOFF issue 87). Only creatures use this subclass: the item catalog is unchanged."""
+
+    def chain(self, name):
+        if name in self._chain:
+            return self._chain[name]
+        out = []
+        for b in super().chain(name):
+            for m in self.raw[b][0].findall("mixin"):
+                mn = m.get("Name")
+                if mn in self.raw and mn not in out:
+                    for mb in super().chain(mn):
+                        if mb not in out:
+                            out.append(mb)
+            out.append(b)
+        self._chain[name] = out
+        return out
 
 
 def main():
     data = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DATA
     folder = os.path.join(data, "StreamingAssets", "Base", "ObjectBlueprints")
     raw = bic.load_blueprints(folder)
-    cat = bic.Catalog(raw)
+    cat = MixinCatalog(raw)
     reps = faction_start_reputation(folder)
     out = {}
     for name in raw:

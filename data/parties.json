@@ -1,0 +1,413 @@
+{
+ "by_creature": {
+  "Baboon": {
+   "BaboonParty": 3.15,
+   "BigBaboonParty": 10.8
+  },
+  "Baboon Hero 1": {
+   "BaboonParty": 0.05,
+   "BigBaboonParty": 0.05
+  },
+  "Banana": {
+   "FactionEncounterPartyObjects_Tortoises": 1.0
+  },
+  "Banner-Knight Templar": {
+   "Templar War Party Major": 0.44,
+   "Templar War Party Minor": 0.48
+  },
+  "Bedroll": {
+   "FactionEncounterPartyObjects_Barathrumites": 2.5,
+   "FactionEncounterPartyObjects_Mechanimists": 2.5,
+   "FactionEncounterPartyObjects_Seekers": 2.5,
+   "FactionEncounterPartyObjects_Templar": 2.5
+  },
+  "Campfire": {
+   "FactionEncounterPartyObjects_Barathrumites": 1.0,
+   "FactionEncounterPartyObjects_Birds": 1.0,
+   "FactionEncounterPartyObjects_Mechanimists": 1.0,
+   "FactionEncounterPartyObjects_Seekers": 1.0,
+   "FactionEncounterPartyObjects_Templar": 1.0,
+   "GoatfolkParty": 0.03,
+   "SnapjawParty0": 0.12,
+   "SnapjawParty1": 0.12,
+   "SnapjawParty1-with-Warlord": 0.14,
+   "SnapjawParty2": 0.12
+  },
+  "Campfire Remains": {
+   "GoatfolkParty": 0.03,
+   "SnapjawParty0": 0.12,
+   "SnapjawParty1": 0.12,
+   "SnapjawParty1-with-Warlord": 0.14,
+   "SnapjawParty2": 0.12
+  },
+  "Dreadroot Tuber": {
+   "FactionEncounterPartyObjects_Bears": 4.0
+  },
+  "Fire ant corpse": {
+   "FactionEncounterPartyObjects_Arachnids": 0.5
+  },
+  "Garbage": {
+   "GoatfolkParty": 0.3,
+   "SnapjawParty0": 1.5,
+   "SnapjawParty1": 1.5,
+   "SnapjawParty1-with-Warlord": 1.65,
+   "SnapjawParty2": 1.5
+  },
+  "Giant Centipede Corpse": {
+   "FactionEncounterPartyObjects_Arachnids": 0.5
+  },
+  "Giant Dragonfly Corpse": {
+   "FactionEncounterPartyObjects_Arachnids": 1.5
+  },
+  "Glowfish Corpse": {
+   "FactionEncounterPartyObjects_Bears": 1.0
+  },
+  "Gnawed Watervine": {
+   "FactionEncounterPartyObjects_Tortoises": 0.5
+  },
+  "Goatfolk Bully": {
+   "GoatfolkParty": 0.71
+  },
+  "Goatfolk Hero 1": {
+   "GoatfolkParty": 0.03
+  },
+  "Goatfolk Qlippoth": {
+   "GoatfolkQlippothParty": 1.0
+  },
+  "Goatfolk Shaman": {
+   "GoatfolkParty": 0.05
+  },
+  "Goatfolk Sower": {
+   "GoatfolkParty": 0.24
+  },
+  "Goatfolk Yurtwarden": {
+   "GoatfolkParty": 0.24
+  },
+  "Gunner-Knight Templar": {
+   "Templar War Party Major": 2.83,
+   "Templar War Party Minor": 0.48
+  },
+  "Hoarshroom": {
+   "FactionEncounterPartyObjects_Mechanimists": 3.0,
+   "FactionEncounterPartyObjects_Seekers": 3.0
+  },
+  "HoneyWaterskin": {
+   "FactionEncounterPartyObjects_Barathrumites": 1.0,
+   "FactionEncounterPartyObjects_Bears": 3.0
+  },
+  "Hulking Baboon": {
+   "BaboonParty": 0.45,
+   "BigBaboonParty": 1.8
+  },
+  "Issachari Raider": {
+   "IssachariParty": 4.5
+  },
+  "Issachari Rifler": {
+   "IssachariParty": 0.88
+  },
+  "Knight Templar": {
+   "Templar War Party Major": 2.83,
+   "Templar War Party Minor": 0.48
+  },
+  "Newfather": {
+   "Templar War Party Minor": 0.48
+  },
+  "PhaseWeb": {
+   "FactionEncounterPartyObjects_Arachnids": 0.5
+  },
+  "Phylactery Squire": {
+   "Templar War Party Minor": 0.48
+  },
+  "Shrewd Baboon": {
+   "BaboonParty": 0.25,
+   "BigBaboonParty": 0.75
+  },
+  "Snapjaw Brute 0": {
+   "SnapjawParty0": 0.15
+  },
+  "Snapjaw Brute 1": {
+   "SnapjawParty1": 0.15,
+   "SnapjawParty1-with-Warlord": 0.16
+  },
+  "Snapjaw Brute 2": {
+   "SnapjawParty2": 0.15
+  },
+  "Snapjaw Hero 0": {
+   "SnapjawParty0": 0.03,
+   "SnapjawParty1": 0.03,
+   "SnapjawParty1-with-Warlord": 0.03
+  },
+  "Snapjaw Hero 1": {
+   "SnapjawParty2": 0.03
+  },
+  "Snapjaw Hunter 0": {
+   "SnapjawParty0": 0.5
+  },
+  "Snapjaw Hunter 1": {
+   "SnapjawParty1": 0.5,
+   "SnapjawParty1-with-Warlord": 0.55
+  },
+  "Snapjaw Hunter 2": {
+   "SnapjawParty2": 0.5
+  },
+  "Snapjaw Scavenger 0": {
+   "SnapjawParty0": 3.5
+  },
+  "Snapjaw Scavenger 1": {
+   "SnapjawParty1": 3.5,
+   "SnapjawParty1-with-Warlord": 3.85
+  },
+  "Snapjaw Scavenger 2": {
+   "SnapjawParty2": 3.5
+  },
+  "Snapjaw Shotgunner 0": {
+   "SnapjawParty0": 0.02
+  },
+  "Snapjaw Shotgunner 1": {
+   "SnapjawParty1": 0.02,
+   "SnapjawParty1-with-Warlord": 0.02,
+   "SnapjawParty2": 0.02
+  },
+  "Snapjaw Warlord 0": {
+   "SnapjawParty0": 0.1
+  },
+  "Snapjaw Warlord 1": {
+   "SnapjawParty1": 0.1,
+   "SnapjawParty1-with-Warlord": 1.01
+  },
+  "Snapjaw Warlord 2": {
+   "SnapjawParty2": 0.1
+  },
+  "Snapjaw Warrior 0": {
+   "SnapjawParty0": 0.1
+  },
+  "Snapjaw Warrior 1": {
+   "SnapjawParty1": 0.1,
+   "SnapjawParty1-with-Warlord": 0.11
+  },
+  "Snapjaw Warrior 2": {
+   "SnapjawParty2": 0.1
+  },
+  "Starapple": {
+   "FactionEncounterPartyObjects_Barathrumites": 1.5,
+   "FactionEncounterPartyObjects_Tortoises": 1.0
+  },
+  "Templar Squire": {
+   "Templar War Party Minor": 2.4
+  },
+  "Uplifted Knight Commander": {
+   "Templar War Party Major": 1.0
+  },
+  "Vinewafer": {
+   "FactionEncounterPartyObjects_Tortoises": 1.0
+  },
+  "Web": {
+   "FactionEncounterPartyObjects_Arachnids": 5.0
+  },
+  "Witchwood Bark": {
+   "FactionEncounterPartyObjects_Tortoises": 1.0
+  },
+  "Yuckwheat Stem": {
+   "FactionEncounterPartyObjects_Tortoises": 1.0
+  }
+ },
+ "meta": {
+  "built": "2026-10-08",
+  "note": "expected counts (averages), nested tables expanded to depth 4; a group without Style is read as pickone [unverified]",
+  "parties": 19,
+  "source": "StreamingAssets/Base/PopulationTables.xml"
+ },
+ "parties": {
+  "BaboonParty": {
+   "expected_total": 3.9,
+   "members": {
+    "Baboon": 3.15,
+    "Baboon Hero 1": 0.05,
+    "Hulking Baboon": 0.45,
+    "Shrewd Baboon": 0.25
+   }
+  },
+  "BigBaboonParty": {
+   "expected_total": 13.4,
+   "members": {
+    "Baboon": 10.8,
+    "Baboon Hero 1": 0.05,
+    "Hulking Baboon": 1.8,
+    "Shrewd Baboon": 0.75
+   }
+  },
+  "FactionEncounterPartyObjects_Arachnids": {
+   "expected_total": 8.0,
+   "members": {
+    "Fire ant corpse": 0.5,
+    "Giant Centipede Corpse": 0.5,
+    "Giant Dragonfly Corpse": 1.5,
+    "PhaseWeb": 0.5,
+    "Web": 5.0
+   }
+  },
+  "FactionEncounterPartyObjects_Barathrumites": {
+   "expected_total": 6.0,
+   "members": {
+    "Bedroll": 2.5,
+    "Campfire": 1.0,
+    "HoneyWaterskin": 1.0,
+    "Starapple": 1.5
+   }
+  },
+  "FactionEncounterPartyObjects_Bears": {
+   "expected_total": 8.0,
+   "members": {
+    "Dreadroot Tuber": 4.0,
+    "Glowfish Corpse": 1.0,
+    "HoneyWaterskin": 3.0
+   }
+  },
+  "FactionEncounterPartyObjects_Birds": {
+   "expected_total": 1.0,
+   "members": {
+    "Campfire": 1.0
+   }
+  },
+  "FactionEncounterPartyObjects_Mechanimists": {
+   "expected_total": 6.5,
+   "members": {
+    "Bedroll": 2.5,
+    "Campfire": 1.0,
+    "Hoarshroom": 3.0
+   }
+  },
+  "FactionEncounterPartyObjects_Seekers": {
+   "expected_total": 6.5,
+   "members": {
+    "Bedroll": 2.5,
+    "Campfire": 1.0,
+    "Hoarshroom": 3.0
+   }
+  },
+  "FactionEncounterPartyObjects_Templar": {
+   "expected_total": 3.5,
+   "members": {
+    "Bedroll": 2.5,
+    "Campfire": 1.0
+   }
+  },
+  "FactionEncounterPartyObjects_Tortoises": {
+   "expected_total": 5.5,
+   "members": {
+    "Banana": 1.0,
+    "Gnawed Watervine": 0.5,
+    "Starapple": 1.0,
+    "Vinewafer": 1.0,
+    "Witchwood Bark": 1.0,
+    "Yuckwheat Stem": 1.0
+   }
+  },
+  "GoatfolkParty": {
+   "expected_total": 1.63,
+   "members": {
+    "Campfire": 0.03,
+    "Campfire Remains": 0.03,
+    "Garbage": 0.3,
+    "Goatfolk Bully": 0.71,
+    "Goatfolk Hero 1": 0.03,
+    "Goatfolk Shaman": 0.05,
+    "Goatfolk Sower": 0.24,
+    "Goatfolk Yurtwarden": 0.24
+   }
+  },
+  "GoatfolkQlippothParty": {
+   "expected_total": 1.0,
+   "members": {
+    "Goatfolk Qlippoth": 1.0
+   }
+  },
+  "IssachariParty": {
+   "expected_total": 5.38,
+   "members": {
+    "Issachari Raider": 4.5,
+    "Issachari Rifler": 0.88
+   }
+  },
+  "SnapjawParty0": {
+   "expected_total": 6.14,
+   "members": {
+    "Campfire": 0.12,
+    "Campfire Remains": 0.12,
+    "Garbage": 1.5,
+    "Snapjaw Brute 0": 0.15,
+    "Snapjaw Hero 0": 0.03,
+    "Snapjaw Hunter 0": 0.5,
+    "Snapjaw Scavenger 0": 3.5,
+    "Snapjaw Shotgunner 0": 0.02,
+    "Snapjaw Warlord 0": 0.1,
+    "Snapjaw Warrior 0": 0.1
+   }
+  },
+  "SnapjawParty1": {
+   "expected_total": 6.14,
+   "members": {
+    "Campfire": 0.12,
+    "Campfire Remains": 0.12,
+    "Garbage": 1.5,
+    "Snapjaw Brute 1": 0.15,
+    "Snapjaw Hero 0": 0.03,
+    "Snapjaw Hunter 1": 0.5,
+    "Snapjaw Scavenger 1": 3.5,
+    "Snapjaw Shotgunner 1": 0.02,
+    "Snapjaw Warlord 1": 0.1,
+    "Snapjaw Warrior 1": 0.1
+   }
+  },
+  "SnapjawParty1-with-Warlord": {
+   "expected_total": 7.66,
+   "members": {
+    "Campfire": 0.14,
+    "Campfire Remains": 0.14,
+    "Garbage": 1.65,
+    "Snapjaw Brute 1": 0.16,
+    "Snapjaw Hero 0": 0.03,
+    "Snapjaw Hunter 1": 0.55,
+    "Snapjaw Scavenger 1": 3.85,
+    "Snapjaw Shotgunner 1": 0.02,
+    "Snapjaw Warlord 1": 1.01,
+    "Snapjaw Warrior 1": 0.11
+   }
+  },
+  "SnapjawParty2": {
+   "expected_total": 6.14,
+   "members": {
+    "Campfire": 0.12,
+    "Campfire Remains": 0.12,
+    "Garbage": 1.5,
+    "Snapjaw Brute 2": 0.15,
+    "Snapjaw Hero 1": 0.03,
+    "Snapjaw Hunter 2": 0.5,
+    "Snapjaw Scavenger 2": 3.5,
+    "Snapjaw Shotgunner 1": 0.02,
+    "Snapjaw Warlord 2": 0.1,
+    "Snapjaw Warrior 2": 0.1
+   }
+  },
+  "Templar War Party Major": {
+   "expected_total": 7.1,
+   "members": {
+    "Banner-Knight Templar": 0.44,
+    "Gunner-Knight Templar": 2.83,
+    "Knight Templar": 2.83,
+    "Uplifted Knight Commander": 1.0
+   }
+  },
+  "Templar War Party Minor": {
+   "expected_total": 4.8,
+   "members": {
+    "Banner-Knight Templar": 0.48,
+    "Gunner-Knight Templar": 0.48,
+    "Knight Templar": 0.48,
+    "Newfather": 0.48,
+    "Phylactery Squire": 0.48,
+    "Templar Squire": 2.4
+   }
+  }
+ }
+}

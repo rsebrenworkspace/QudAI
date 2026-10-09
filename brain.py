@@ -13,6 +13,8 @@ import mutation_policy
 import ability_registry
 import danger_ledger
 import item_scoring
+import zone_danger
+import creature_threat
 
 # Paths
 # QUDAI_EXCHANGE_DIR overrides the folder (tests point it at a temp dir so they can never touch the real game files).
@@ -370,6 +372,11 @@ def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
             if FRONTIER_FAILS[fk] >= FRONTIER_FAIL_LIMIT:
                 _frontier_write_off(zone_id, ck, f"{FRONTIER_FAIL_LIMIT} failed approaches although the engine lists it as reachable")
     bad_centres = FRONTIER_BAD.get(zone_id, [])
+    avoid_pts = ZONE_DANGER.avoid_points(zone_id, int(game_state.get("level") or 1), TURN_CLOCK)
+    if avoid_pts and FRONTIER_COMMIT["zone"] == zone_id and FRONTIER_COMMIT["target"] is not None:
+        tx0, ty0 = FRONTIER_COMMIT["target"]
+        if any(max(abs(tx0 - ax), abs(ty0 - ay)) <= zone_danger.AVOID_RADIUS for ax, ay in avoid_pts):
+            FRONTIER_COMMIT.update({"zone": None, "target": None})       # a committed target that now lies near the danger is dropped
     targets = []
     for tg in game_state.get("frontier_targets", []) or []:
         x, y = tg.get("x"), tg.get("y")
@@ -377,6 +384,8 @@ def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
             continue
         if any(max(abs(x - bx), abs(y - by)) <= FRONTIER_FAIL_RADIUS for bx, by in bad_centres):
             continue
+        if any(max(abs(x - ax), abs(y - ay)) <= zone_danger.AVOID_RADIUS for ax, ay in avoid_pts):
+            continue          # near where something out of our class was last seen
         targets.append(tg)
     if not targets:
         FRONTIER_COMMIT.update({"zone": None, "target": None})
@@ -407,10 +416,47 @@ def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
 SECTOR_STALL_LIMIT = 14
 SECTOR_PROGRESS = {"key": None, "best": None, "stall": 0}
 STAIRS_GIVEUP = set()       # (zone_id, stairs xy) the greedy fallback could not approach: delving to them is skipped
+# Stairs the engine could not route to get a bounded second chance (HANDOFF issue 92: written off at (57, 12) for good; the cause of the missing route is NOT known, it may be real). Only stairs written off for
+# lack of a route are in STAIRS_RETRY_META, never the deliberate dead-end give-ups. A retry uses the engine route ONLY (no greedy stepping): a failed retry costs one turn.
+STAIRS_RETRY_META = {}      # (zone_id, stairs xy) -> {"level", "turn", "pos", "retries"} at the last write-off
+STAIRS_RETRY_ACTIVE = set()
+STAIRS_RETRY_MAX = 3
+STAIRS_RETRY_TURNS = 150    # a retry is due this many turns after the write-off ...
+STAIRS_RETRY_DISTANCE = 12  # ... or when he is this far (Chebyshev) from where it failed ... or after he gains a level
+
+
+def note_stairs_unreachable(zone_id, xy, level, pos):
+    """Remembers where, when and at what level the engine failed to route to known stairs down, keeping the retry count."""
+    key = (zone_id, tuple(xy))
+    old = STAIRS_RETRY_META.get(key, {})
+    STAIRS_RETRY_META[key] = {"level": int(level or 1), "turn": TURN_CLOCK, "pos": tuple(pos) if pos else None, "retries": old.get("retries", 0)}
+
+
+def retry_given_up_stairs(zone_id, cur_lvl, cur_pos):
+    """Lifts the write-off of this zone's stairs down when something has changed since it (a level gained, a move of STAIRS_RETRY_DISTANCE cells, STAIRS_RETRY_TURNS turns),
+    at most STAIRS_RETRY_MAX times. True when it did. Never touches a dead-end give-up (those have no entry in STAIRS_RETRY_META)."""
+    sd = KNOWN_STAIRS_DOWN.get(zone_id)
+    if not sd:
+        return False
+    key = (zone_id, (sd.get("tx"), sd.get("ty")))
+    meta = STAIRS_RETRY_META.get(key)
+    if not meta or meta["retries"] >= STAIRS_RETRY_MAX or key in STAIRS_RETRY_ACTIVE:
+        return False
+    if key not in STAIRS_GIVEUP and key not in UNREACHABLE_SECTORS:
+        return False
+    far = bool(meta.get("pos") and cur_pos and max(abs(cur_pos[0] - meta["pos"][0]), abs(cur_pos[1] - meta["pos"][1])) >= STAIRS_RETRY_DISTANCE)
+    if not (int(cur_lvl or 1) > meta["level"] or far or TURN_CLOCK - meta["turn"] >= STAIRS_RETRY_TURNS):
+        return False
+    STAIRS_GIVEUP.discard(key)
+    UNREACHABLE_SECTORS.discard(key)
+    STAIRS_RETRY_ACTIVE.add(key)
+    meta["retries"] += 1
+    print(f"[STAIRS RETRY] Trying the stairs down at {key[1]} in {zone_id} again ({meta['retries']}/{STAIRS_RETRY_MAX}; level {meta['level']}->{cur_lvl}, {TURN_CLOCK - meta['turn']} turns, {'moved far' if far else 'same place'}): engine route only.")
+    return True
 SECTOR_GIVEUP = set()       # zone ids where even the nearest-unexplored-cell chase stalled: stop the water traversal there
 
 
-def sector_target_ok(zone_id, target, cur_pos, kind="centroid"):
+def sector_target_ok(zone_id, target, cur_pos, kind="centroid", level=None):
     """Records this turn's distance to the committed sector target. False (and blacklisted) once progress has stalled."""
     key = (zone_id, tuple(target)) if kind in ("centroid", "stairs") else (zone_id, kind)   # the nearest cell moves every step
     dist = max(abs(target[0] - cur_pos[0]), abs(target[1] - cur_pos[1]))
@@ -425,6 +471,7 @@ def sector_target_ok(zone_id, target, cur_pos, kind="centroid"):
         UNREACHABLE_SECTORS.add((zone_id, tuple(target)))
         if kind == "stairs":
             STAIRS_GIVEUP.add((zone_id, tuple(target)))
+            note_stairs_unreachable(zone_id, target, level, cur_pos)
         elif kind != "centroid":
             SECTOR_GIVEUP.add(zone_id)
         SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
@@ -1015,6 +1062,60 @@ def log_exit_choice(record):
         pass
 
 
+
+# --- Zones where we met something out of our class, and exit steering away from them (BACKLOG B10 step 1, HANDOFF issue 85) ---
+ZONE_DANGER = zone_danger.Ledger()      # in memory only: a restart of the brain forgets it
+ZONE_DANGER_PACK_SCORE = 3.0            # several lesser hostiles together count when their threat ratios add up to this (a heuristic)
+
+
+OPENER_FAMILIES = ("lase", "stunning_force", "flaming_ray", "freezing_ray", "elemental_ray", "sunder_mind", "teleport_other", "syphon_vim")
+
+
+def has_ranged_opener(game_state):
+    """True when the character owns a ranged or disabling attack (an ability in an offensive family, ready or not, or a missile weapon). The threat score models the main
+    hand only, so for such a character its ratio is too pessimistic: a level-3 mutant with Lase, Stunning Force and Teleport Other killed a level-10 Waydroid the score
+    rated 10 times deadly (Waydroid retest, 2026-10-08, HANDOFF issue 87)."""
+    try:
+        if game_state.get("has_missile_weapon"):
+            return True
+        return any(ability_registry.in_family(ab, *OPENER_FAMILIES) for ab in game_state.get("abilities") or [])
+    except Exception:
+        return False
+
+
+def note_zone_danger(game_state):
+    """Flags the current zone when a mobile hostile in view is out of our class, or when the hostiles in view together are. Prints `[ZONE DANGER]` once per new flag. Never acts, never raises."""
+    try:
+        zone = game_state.get("zone_id") or ""
+        our_level = int(game_state.get("level") or 1)
+        mobile = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_stationary")]
+        trust_ratio = not has_ranged_opener(game_state)      # the melee-only ratio is a trigger only for a character with no opener; the engine's own difficulty always is
+        worst, pack = None, 0.0
+        for e in mobile:
+            lvl = int(e.get("level") or 0)
+            ratio = 0.0
+            try:
+                entry = creature_threat.lookup(blueprint=e.get("blueprint"), name=e.get("name"))
+                if entry is not None:
+                    r = creature_threat.threat(entry, our_level, int(game_state.get("hp") or 20), enemy_hp=e.get("hp") or None, us=game_state)
+                    ratio = r["ratio"] or 0.0
+            except Exception:
+                ratio = 0.0
+            pack += ratio
+            if e.get("difficulty") in LETHAL_DIFFICULTIES or (trust_ratio and ratio >= 3.0):
+                if worst is None or lvl > worst[1]:
+                    worst = (e.get("name") or e.get("blueprint") or "?", lvl, "alone", e.get("tx"), e.get("ty"))
+        if worst is None and trust_ratio and pack >= ZONE_DANGER_PACK_SCORE and len(mobile) >= 3:
+            top = max(mobile, key=lambda x: int(x.get("level") or 0))
+            worst = (f"{len(mobile)} hostiles incl. {top.get('name')}", int(top.get("level") or 0), "pack", top.get("tx"), top.get("ty"))
+        if worst and ZONE_DANGER.record(zone, worst[0], worst[1], our_level):
+            print(f"[ZONE DANGER] {zone}: {worst[0]} (level {worst[1]}, {worst[2]}); stays flagged until our level {ZONE_DANGER.flags[zone].clears_at} (now {our_level})")
+        if worst:
+            ZONE_DANGER.seen(zone, worst[3], worst[4], TURN_CLOCK)       # last seen position: the frontier chooser keeps away from it (BACKLOG B10 step 1, last-seen memory)
+    except Exception:
+        pass
+
+
 def get_zone_exit_target(cur_pos, game_state=None):
     """
     Returns (target_coord, exit_tag, exit_dir) of the zone border exit to transition to the next zone.
@@ -1124,6 +1225,23 @@ def get_zone_exit_target(cur_pos, game_state=None):
         "cycle_neighbors": sorted(d for d in ["N", "S", "E", "W"] if _compute_adjacent_zone_id(cur_zone, d) in cycle_zones),
         "candidates": list(candidates), "novel": list(novel_candidates),
     }
+
+    # Zones we flagged as out of our class: steer away, or go back the way we came when every way on leads closer (BACKLOG B10 step 1)
+    steer_dirs, steer_mode, steer_note = zone_danger.steer(ZONE_DANGER, cur_zone, int((game_state or {}).get("level") or 1), candidates, novel_candidates, rev_dir)
+    if steer_mode == "retreat":
+        chosen_dir = steer_dirs[0]
+        pos, tag = _EXIT_TARGETS[chosen_dir](px, py)
+        CURRENT_ZONE_CHOSEN_EXIT = chosen_dir
+        CURRENT_ZONE_CHOSEN_EXIT_ZONE = cur_zone
+        label = f"{tag} (backtrack: danger ahead)"
+        log_exit_choice(dict(_log_base, chosen=chosen_dir, mode="danger_retreat", note=steer_note))
+        print(f"[ZONE DANGER] Backtracking {chosen_dir}: {steer_note}")
+        return pos, label, chosen_dir
+    if steer_mode == "away":
+        novel_candidates = [d for d in novel_candidates if d in steer_dirs]
+        candidates = [d for d in candidates if d in steer_dirs] or candidates
+        _log_base["danger_note"] = steer_note
+        print(f"[ZONE DANGER] Steering exits away from flagged zones: {steer_note}")
 
     # Prefer novel unvisited zones if available to foster organic world exploration
     if novel_candidates:
@@ -1449,8 +1567,21 @@ def pick_model_id(v0_models, v1_models, override=None):
     return None
 
 
+# What the last combat call cost, so the trace can show how close the prompt is to the model's context window (HANDOFF issue 86).
+LAST_LLM_USAGE = {}
+active_model_ctx = None
+
+
+def loaded_context_length(v0_models, model_id):
+    """The context window LM Studio loaded `model_id` with (its own listing: `loaded_context_length`), or None when it does not say."""
+    for m in v0_models or []:
+        if m.get("id") == model_id:
+            return m.get("loaded_context_length") or None
+    return None
+
+
 def detect_lm_studio_model():
-    global active_model_id
+    global active_model_id, active_model_ctx
     v0, v1 = [], []
     try:
         res = requests.get(LM_STUDIO_MODELS_V0_URL, timeout=3)
@@ -1467,6 +1598,7 @@ def detect_lm_studio_model():
     chosen = pick_model_id(v0, v1, LM_MODEL_OVERRIDE)
     if chosen:
         active_model_id = chosen
+        active_model_ctx = loaded_context_length(v0, chosen)
         why = "forced by QUDAI_LM_MODEL" if LM_MODEL_OVERRIDE else "loaded in LM Studio"
         print(f"[LM Studio Connected] Active model: {active_model_id} ({why}); combat call timeout {LM_STUDIO_TIMEOUT:.0f}s")
         return active_model_id
@@ -2547,6 +2679,10 @@ VALID ACTIONS:
         if res.status_code == 200:
             body = res.json()
             content = body["choices"][0]["message"]["content"]
+            _u = body.get("usage") or {}
+            LAST_LLM_USAGE.clear()
+            LAST_LLM_USAGE.update({"turn": TURN_CLOCK, "prompt_tokens": _u.get("prompt_tokens"), "completion_tokens": _u.get("completion_tokens"),
+                                   "ctx": active_model_ctx, "finish": body["choices"][0].get("finish_reason")})
             if LLM_PROBE is not None:
                 msg = body["choices"][0].get("message") or {}
                 LLM_PROBE.update({"raw": content if content is not None else "", "finish_reason": body["choices"][0].get("finish_reason"),
@@ -3278,7 +3414,38 @@ TURRET_STATE = {"last": None}
 def is_fragile_shooter(e):
     """A stationary creature with very few hit points (the mod exports `max_hp`): a turret-like shooter that is better killed than feared."""
     mh = e.get("max_hp") or 0
-    return bool(e.get("is_stationary")) and 0 < mh <= FRAGILE_MAX_HP
+    if not (bool(e.get("is_stationary")) and 0 < mh <= FRAGILE_MAX_HP):
+        return False
+    try:
+        entry = creature_threat.lookup(blueprint=e.get("blueprint"), name=e.get("name"))
+    except Exception:
+        entry = None
+    if entry is not None and not (entry.get("is_ranged") or entry.get("ranged")):
+        return False        # a rooted vine such as the jilted lover (5 HP, no ranged attack) is not a shooter: no Lase charges on it (human run, 2026-10-08, t1668)
+    return True
+
+
+TURRET_TOLERABLE_SHARE = 0.5     # a nest is not worth fleeing when the damage it deals while we close in is below this share of our current hit points
+
+
+def nest_is_tolerable(hazards, game_state):
+    """True when every hazard is in the catalogue with engine shot data and together they would deal less than TURRET_TOLERABLE_SHARE of our hit points over the turns it
+    takes to close in (creature_threat.APPROACH_TURNS). A seed-spitting vine (1d3, penetration 2) passes at 40 HP, two of them do not, a musket turret (1d8, penetration 4) never does;
+    anything the catalogue does not know keeps the old caution. HANDOFF issue 89."""
+    try:
+        hp = float(game_state.get("hp") or 0)
+        if hp <= 0 or not hazards:
+            return False
+        us = {"av": game_state.get("av")} if game_state.get("av") is not None else None
+        per_turn = 0.0
+        for e in hazards:
+            entry = creature_threat.lookup(blueprint=e.get("blueprint"), name=e.get("name"))
+            if entry is None or not entry.get("ranged_shots"):
+                return False
+            per_turn += creature_threat.damage_per_turn(entry, None, (us or {}).get("av"))
+        return per_turn * creature_threat.APPROACH_TURNS < TURRET_TOLERABLE_SHARE * hp
+    except Exception:
+        return False
 
 
 def turret_hazards(game_state):
@@ -3295,7 +3462,10 @@ def turret_hazards(game_state):
         if e.get("has_los") is False or (e.get("dist") if e.get("dist") is not None else 99) > TURRET_RANGE:
             continue
         out.append(e)
-    return sorted(out, key=lambda e: e.get("dist", 99))
+    out = sorted(out, key=lambda e: e.get("dist", 99))
+    if out and nest_is_tolerable(out, game_state):
+        return []        # too weak to matter at our current hit points: the normal rules apply (HANDOFF issue 89)
+    return out
 
 
 def turret_decision(game_state, abilities, hp_ratio, adj_threats):
@@ -3371,31 +3541,42 @@ def stairs_given_up(zone_id):
     return bool(sd and (zone_id, (sd.get("tx"), sd.get("ty"))) in STAIRS_GIVEUP)
 
 
-def dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared):
+def dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared, down_gated=False):
     """A stratum with no way down is a dead end: leave it by the stairs up instead of circling its walls (HANDOFF issue 73).
 
     The engine's own edge route led him to the stairs-up cell (the only exit of the Kuyukas workshop stratum, `reachable_edges` said NSEW) and the brain then
     stepped off it: nothing but the emergency retreat ever used `USE_STAIRS_UP`. Fires when the stratum is cleared, has been worked for DEAD_END_MIN_STEPS and
     no usable stairs down are known here: standing on the stairs up he ascends; away from them he walks there only when the engine reports no reachable
     edge at all (otherwise the edge logic runs first, and its route may end on the stairs). Going up writes the stairs down of the stratum above into
-    STAIRS_GIVEUP so he is not sent straight back down. Returns a decision dict or None."""
+    STAIRS_GIVEUP so he is not sent straight back down. Returns a decision dict or None.
+
+    `down_gated`: the stairs down are known but held back by a level goal (RETREAT_TARGET_LEVEL, set by a retreat from the stratum below). Then nobody owned the decision:
+    the delve logic would not descend and this function stood aside, so in a cleared stratum he circled its walls for 60 turns (human run 2026-10-08, trace t2134-2253,
+    HANDOFF issue 90). Now he leaves by the stairs up to level elsewhere: no dead-end mark and no give-up entry (the level goal keeps the way down closed until he has
+    grown), and the walk to the stairs does not wait for the engine to report no reachable edge, because underground its edge route ends at a wall."""
     if cur_z <= 10 or not zone_id:
         return None
     sd = KNOWN_STAIRS_DOWN.get(zone_id)
+    waiting = False
     if sd:
         sd_key = (zone_id, (sd.get("tx"), sd.get("ty")))
         if sd_key not in STAIRS_GIVEUP and sd_key not in UNREACHABLE_SECTORS:
-            return None                 # a way down exists: the delve logic owns the decision
+            if not down_gated:
+                return None             # a way down exists: the delve logic owns the decision
+            waiting = True              # a way down exists but a level goal holds it shut: this stratum is a waiting room
     if not (is_zone_cleared and ZONE_STEP_COUNT >= DEAD_END_MIN_STEPS):
         return None
     if standing_on_su:
+        if waiting:
+            return {"action": "USE_STAIRS_UP", "reason": f"Level goal: the way down from stratum {cur_z} is held shut until level {RETREAT_TARGET_LEVEL}; leaving the cleared stratum by the stairs up to level elsewhere"}
         DEAD_END_ZONES.add(zone_id)
         up = upper_zone_id(zone_id)
         usd = KNOWN_STAIRS_DOWN.get(up) if up else None
         if usd:
             STAIRS_GIVEUP.add((up, (usd.get("tx"), usd.get("ty"))))
+            STAIRS_RETRY_META.pop((up, (usd.get("tx"), usd.get("ty"))), None)      # a deliberate give-up is never retried
         return {"action": "USE_STAIRS_UP", "reason": f"Dead end: no way down from stratum {cur_z}; ascending the stairs up to leave it"}
-    if game_state.get("reachable_edges"):
+    if game_state.get("reachable_edges") and not waiting:
         return None                     # the engine says an edge is reachable: the zone-exit logic goes first
     su = KNOWN_STAIRS_UP.get(zone_id)
     if not su:
@@ -3406,6 +3587,8 @@ def dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone
     su_pos = (su.get("tx"), su.get("ty"))
     if cur_pos == su_pos or (zone_id, su_pos) in STAIRS_GIVEUP or (zone_id, su_pos) in UNREACHABLE_SECTORS:
         return None
+    if waiting:
+        return {"action": f"NAVIGATE_TO_CELL:{su_pos[0]},{su_pos[1]}", "reason": f"Level goal: the way down from stratum {cur_z} is held shut until level {RETREAT_TARGET_LEVEL}; walking to the stairs up at {su_pos} to level elsewhere"}
     return {"action": f"NAVIGATE_TO_CELL:{su_pos[0]},{su_pos[1]}", "reason": f"Dead end: no way down from stratum {cur_z}; walking to the stairs up at {su_pos}"}
 
 
@@ -3477,6 +3660,9 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     coords = last_action.split(":")[1].split(",")
                     blocked_target = (int(coords[0]), int(coords[1]))
                     UNREACHABLE_SECTORS.add((zone_id, blocked_target))
+                    _sdk = KNOWN_STAIRS_DOWN.get(zone_id)
+                    if _sdk and (_sdk.get("tx"), _sdk.get("ty")) == blocked_target:
+                        note_stairs_unreachable(zone_id, blocked_target, game_state.get("level"), (game_state.get("x"), game_state.get("y")))
                     print(f"[PATHFINDER BLOCKED]: Target {blocked_target} in zone {zone_id} is unreachable. Blacklisting.")
                 except Exception:
                     pass
@@ -3729,6 +3915,8 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             is_subterranean or (cur_lvl >= req_depth_lvl)
         )
 
+        if can_delve:
+            retry_given_up_stairs(zone_id, cur_lvl, cur_pos)        # a second look at stairs the engine could not route to (HANDOFF issue 92)
         if standing_on_sd and not stairs_given_up(zone_id):
             if can_delve:
                 if cur_lvl >= req_depth_lvl:
@@ -3759,11 +3947,19 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     if (zone_id, sd_pos) not in UNREACHABLE_SECTORS:
                         return {"action": f"NAVIGATE_TO_CELL:{sd_pos[0]},{sd_pos[1]}", "reason": f"{delve_type}: Navigating to stairs down at {sd_pos} to delve stratum {cur_z + 1} ({rec_str})"}
                     # The engine pathfinder reported no route (it may not swim). Greedy steps only as a guarded fallback.
-                    best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
-                    if best_m and sector_target_ok(zone_id, sd_pos, cur_pos, "stairs"):
+                    if (zone_id, sd_pos) in STAIRS_RETRY_ACTIVE:
+                        # a retry is engine-route only: no greedy stepping (it cost 45 turns of ping-pong the first time)
+                        STAIRS_RETRY_ACTIVE.discard((zone_id, sd_pos))
+                        STAIRS_GIVEUP.add((zone_id, sd_pos))
+                        note_stairs_unreachable(zone_id, sd_pos, cur_lvl, cur_pos)
+                        print(f"[STAIRS RETRY] Still no engine route to the stairs at {sd_pos}; given up again.")
+                        best_m = None
+                    else:
+                        best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
+                    if best_m and sector_target_ok(zone_id, sd_pos, cur_pos, "stairs", cur_lvl):
                         return {"action": best_m, "reason": f"{delve_type}: no engine route to the stairs at {sd_pos}; stepping {best_m[5:]} toward them ({rec_str})"}
 
-        dead_end = dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared)
+        dead_end = dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared, is_retreating)
         if dead_end:
             return dead_end
 
@@ -4095,6 +4291,7 @@ def main():
                 note_inventory_action(game_state)
                 note_avoid(game_state)
                 note_quests(game_state)
+                note_zone_danger(game_state)
                 note_proselytize(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
@@ -4404,6 +4601,7 @@ def main():
                     "reach": game_state.get("reachable_edges"), "chosen_exit": CURRENT_ZONE_CHOSEN_EXIT,
                     "suppressed": EXIT_SUPPRESS_UNTIL.get(game_state.get("zone_id"), 0) > TURN_CLOCK,
                     "move_failed": game_state.get("last_move_failed"), "model": active_model_id,
+                    **({"llm": {k: LAST_LLM_USAGE.get(k) for k in ("prompt_tokens", "completion_tokens", "ctx", "finish")}} if LAST_LLM_USAGE.get("turn") == TURN_CLOCK else {}),
                 })
 
                 dmg_flag = " [!HIT!]" if took_damage else ""
