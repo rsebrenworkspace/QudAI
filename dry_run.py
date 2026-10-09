@@ -5826,3 +5826,29 @@ finally:
 _src118 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 assert "note_ability_issued(action)" in _src118, "the main loop must record the issued ability"
 print("  [OK] Test 118 Passed: an ability the guard issued last turn (Teleport Other, which takes effect a turn late) is not offered again the next turn, the next answer (Intimidate) is used instead, a model repeat of it is not kept, it is offered again two turns later, and the main loop records every issued ability.")
+
+
+# ---------------------------------------------------------------------------
+# Test 119: the console strip shows the rating the brain uses, with the engine's own when they differ (human, 2026-10-09; HANDOFF issue 95)
+# ---------------------------------------------------------------------------
+import danger_ledger as _dl119
+_tmp119 = _os.path.join(tempfile.mkdtemp(), "danger_ledger.json")
+with open(_tmp119, "w", encoding="utf-8") as _f119:
+    _json.dump({"GiantAmoeba": {"name": "giant amoeba", "hits": 2, "max_hit": 11, "total_damage": 15, "kills": 0}}, _f119)
+_saved119 = _dl119.LEDGER_PATH
+try:
+    _dl119.LEDGER_PATH = _tmp119; _dl119.reset_cache()
+    _amo119 = {"name": "giant amoeba", "blueprint": "GiantAmoeba", "is_enemy": True, "is_stationary": False, "difficulty": "Average", "dist": 1, "hp": 20}
+    _st119 = {"level": 1, "hp": 7, "max_hp": 18, "av": 1, "melee": {"damage": "1d2-1", "penetration": -1}, "visible_entities": [_amo119]}
+    _txt119, _worst119 = _cl107.threat_summary(_st119)
+    assert "[Impossible (engine: Average)]" in _txt119 and _txt119.startswith("Hostiles: !! giant amoeba") and _worst119 == "danger", (_txt119, _worst119)
+    # a creature the ledger has not seen keeps the engine's rating and no note
+    _goat119 = {"name": "goat", "blueprint": "Goat", "is_enemy": True, "is_stationary": False, "difficulty": "Easy", "dist": 3, "hp": 12}
+    _txt2, _w2 = _cl107.threat_summary(dict(_st119, visible_entities=[_goat119]))
+    assert "[Easy]" in _txt2 and "engine:" not in _txt2 and _w2 == "watch", (_txt2, _w2)
+    # a bigger character: the same hit is a smaller share of his HP, so the rating is not raised (the brain does the same)
+    _txt3, _w3 = _cl107.threat_summary(dict(_st119, max_hp=60, hp=60))
+    assert "engine:" not in _txt3, _txt3
+finally:
+    _dl119.LEDGER_PATH = _saved119; _dl119.reset_cache()
+print("  [OK] Test 119 Passed: the console threat strip applies the danger ledger as the brain does and shows 'Impossible (engine: Average)' for a creature the ledger has proven dangerous to this character, leaves unknown creatures at the engine's rating, and does not raise the rating for a character with enough HP.")
