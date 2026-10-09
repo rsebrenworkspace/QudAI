@@ -624,6 +624,75 @@ def choose_inventory_action(game_state, template, is_town):
     return None
 
 
+# Proselytize outcome log (BACKLOG B11 stage 1, HANDOFF issue 80). Every Proselytize the brain sends is written to memory/proselytize_log.jsonl with the target's level and
+# our own level and Ego, and resolved a turn later from the companion list: "recruited" when a new companion appeared, else "not_recruited". `tools/proselytize_report.py`
+# turns the log into odds by level gap. Nothing here changes a decision.
+PROSELYTIZE_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "proselytize_log.jsonl")
+PROSELYTIZE_PENDING = {"rec": None, "wait": 0}
+
+
+def proselytize_target(game_state, direction):
+    """The entity a Proselytize aimed in `direction` is meant for: the nearest listed non-companion creature in that direction, else None."""
+    cands = [e for e in game_state.get("visible_entities") or [] if e.get("dir") == direction and not e.get("is_companion") and e.get("dist") is not None]
+    return min(cands, key=lambda e: e.get("dist", 99)) if cands else None
+
+
+def _write_proselytize(rec):
+    try:
+        with open(PROSELYTIZE_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + chr(10))
+    except Exception:
+        pass
+
+
+def record_proselytize_attempt(action, game_state):
+    """Called with the final action of a turn: notes a Proselytize attempt as pending. Never raises."""
+    try:
+        if not str(action).startswith("USE_ABILITY:CommandProselytize"):
+            return
+        parts = str(action).split(":")
+        d = parts[2] if len(parts) > 2 else None
+        t = proselytize_target(game_state, d) or {}
+        pend = PROSELYTIZE_PENDING["rec"]
+        if pend:
+            pend["outcome"] = "unresolved"
+            _write_proselytize(pend)
+        attrs = game_state.get("attributes") or {}
+        PROSELYTIZE_PENDING["rec"] = {
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S"), "turn": TURN_CLOCK, "zone": game_state.get("zone_id"), "dir": d,
+            "target": t.get("name"), "blueprint": t.get("blueprint"), "target_level": t.get("level"), "difficulty": t.get("difficulty"), "dist": t.get("dist"),
+            "hostile": t.get("is_enemy"), "stationary": t.get("is_stationary"), "our_level": game_state.get("level"), "ego": attrs.get("Ego"),
+            "hp": game_state.get("hp"), "max_hp": game_state.get("max_hp"),
+            "companions_before": [c.get("name") for c in game_state.get("companions") or []],
+        }
+        PROSELYTIZE_PENDING["wait"] = 2
+    except Exception:
+        pass
+
+
+def note_proselytize(game_state):
+    """Resolves the pending attempt from the companion list of the next states and logs it once. Never raises."""
+    try:
+        rec = PROSELYTIZE_PENDING["rec"]
+        if not rec:
+            return
+        comps = [c.get("name") for c in game_state.get("companions") or []]
+        before = rec.get("companions_before") or []
+        ab = next((a for a in game_state.get("abilities") or [] if a.get("command") == "CommandProselytize"), None)
+        recruited = len(comps) > len(before) or any(c not in before for c in comps)
+        PROSELYTIZE_PENDING["wait"] -= 1
+        if not recruited and PROSELYTIZE_PENDING["wait"] > 0:
+            return
+        rec["outcome"] = "recruited" if recruited else "not_recruited"
+        rec["fired"] = bool(ab and (ab.get("cooldown") or 0) > 0)
+        rec["gap"] = (rec["target_level"] - rec["our_level"]) if isinstance(rec.get("target_level"), int) and isinstance(rec.get("our_level"), int) else None
+        _write_proselytize(rec)
+        PROSELYTIZE_PENDING["rec"] = None
+        print(f"[PROSELYTIZE] {rec['outcome']}: {rec.get('target')} (level {rec.get('target_level')}, gap {rec['gap']}; our level {rec.get('our_level')}, Ego {rec.get('ego')})")
+    except Exception:
+        pass
+
+
 QUEST_SEEN = {"started": set(), "finished_steps": set(), "done": set(), "primed": False}
 
 
@@ -1813,7 +1882,7 @@ def choose_loot_action(game_state, zone_id, last_act, is_town):
     for k in [k for k, exp in LOOT_BLACKLIST.items() if exp <= LOOT_TURN]:
         del LOOT_BLACKLIST[k]
     sources = game_state.get("loot_sources") or []
-    if is_town or game_state.get("is_swimming") or not sources:
+    if is_town or game_state.get("is_swimming") or not sources or turret_hazards(game_state):
         LOOT_PURSUIT.update({"key": None, "turns": 0})
         LOOT_STREAK.update({"key": None, "count": 0})
         return None
@@ -3194,6 +3263,82 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     return enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
 
 
+# Turrets (HANDOFF issue 77). A level 3 character died to a musket turret that the mod exported with is_enemy false, rated Impossible (level 15), with only 5 hit points:
+# the brain walked toward a chest in its line of fire, then rested there at 41 percent. Turrets are fragile (5 hit points, armor 0 to 2) and fire every turn, so the doctrine
+# is: never rest or loot where one has a line of sight; shoot the nearest with a ready ranged attack; with two or more in view, or no ranged attack, leave by the stairs up
+# when they are close. The mod now also exports every entity's hp and max_hp and counts a Turret-tagged creature as an enemy; the blueprint test below keeps this working
+# with a state that predates that.
+TURRET_RANGE = 12
+TURRET_ATTACK_MAX_DIST = 9
+FRAGILE_MAX_HP = 15
+TURRET_STAIRS_RADIUS = 6
+TURRET_STATE = {"last": None}
+
+
+def is_fragile_shooter(e):
+    """A stationary creature with very few hit points (the mod exports `max_hp`): a turret-like shooter that is better killed than feared."""
+    mh = e.get("max_hp") or 0
+    return bool(e.get("is_stationary")) and 0 < mh <= FRAGILE_MAX_HP
+
+
+def turret_hazards(game_state):
+    """The turrets and fragile stationary shooters with a line of sight within TURRET_RANGE, nearest first. Read from the exported entities, whether or not the mod
+    called them enemies. A tinker robot that places turrets is mobile and not counted; its turrets are."""
+    out = []
+    for e in game_state.get("visible_entities") or []:
+        if e.get("is_companion"):
+            continue
+        label = f"{e.get('name', '')} {e.get('blueprint', '')}".lower()
+        is_turret = "turret" in label and "tinker" not in label
+        if not (is_turret or (e.get("is_enemy") and is_fragile_shooter(e))):
+            continue
+        if e.get("has_los") is False or (e.get("dist") if e.get("dist") is not None else 99) > TURRET_RANGE:
+            continue
+        out.append(e)
+    return sorted(out, key=lambda e: e.get("dist", 99))
+
+
+def turret_decision(game_state, abilities, hp_ratio, adj_threats):
+    """The turret doctrine; None when no turret is in view or something is already in melee reach (the normal combat rules handle that)."""
+    if adj_threats:
+        return None
+    hz = turret_hazards(game_state)
+    if not hz:
+        return None
+    px, py = game_state.get("x", 0), game_state.get("y", 0)
+    zone_id = game_state.get("zone_id", "")
+    cur_z = game_state.get("z", 10)
+    t = hz[0]
+    shooter = first_ready_by_priority(abilities, ("lase", "elemental_ray"))
+    can_shoot = bool(shooter and shooter.get("command")) and (t.get("dist") or 99) <= TURRET_ATTACK_MAX_DIST and t.get("dir")
+    up = None
+    if cur_z > 10:
+        ups = list(game_state.get("stairs_up") or [])
+        if KNOWN_STAIRS_UP.get(zone_id):
+            ups.append(KNOWN_STAIRS_UP[zone_id])
+        ups = [s for s in ups if s.get("tx") is not None and max(abs(s["tx"] - px), abs(s["ty"] - py)) <= TURRET_STAIRS_RADIUS]
+        up = min(ups, key=lambda s: max(abs(s["tx"] - px), abs(s["ty"] - py))) if ups else None
+    names = ", ".join(f"{e.get('name', 'turret')} ({e.get('dist')})" for e in hz[:3])
+
+    def retreat():
+        global RETREAT_TARGET_LEVEL
+        if game_state.get("standing_on_stairs_up"):
+            RETREAT_TARGET_LEVEL = game_state.get("level", 1) + 1
+            return {"action": "USE_STAIRS_UP", "reason": f"Turret nest ({names}): leaving by the stairs up and levelling before coming back"}
+        return {"action": f"NAVIGATE_TO_CELL:{up['tx']},{up['ty']}", "reason": f"Turret nest ({names}): walking to the stairs up at ({up['tx']}, {up['ty']})"}
+
+    if len(hz) >= 2 and up:
+        return retreat()
+    if can_shoot:
+        # The exact cell rides along ("...:W@25,12") so the mod aims at the turret itself, not at whatever its own enemy test finds (it found nothing in Gen 24 and 25).
+        aim = f"@{t['tx']},{t['ty']}" if t.get("tx") is not None and t.get("ty") is not None else ""
+        return {"action": f"USE_ABILITY:{shooter['command']}:{t['dir']}{aim}",
+                "reason": f"Turret ({t.get('name', 'turret')}, {t.get('dist')} tiles, {t.get('max_hp') or '?'} HP): shooting it with {shooter.get('name', 'a ranged attack')} instead of standing in its line of fire"}
+    if up:
+        return retreat()
+    return None
+
+
 DEAD_END_MIN_STEPS = 40         # a cleared stratum must have been worked for this many steps before the brain leaves it by the stairs up
 DEAD_END_ZONES = set()
 
@@ -3356,6 +3501,13 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     if fire_decision:
         return fire_decision
 
+    turret_move = turret_decision(game_state, abilities, hp_ratio, adj_threats)
+    if turret_move:
+        if TURRET_STATE["last"] != turret_move["action"]:
+            print(f"[TURRET] {turret_move['reason']}")
+        TURRET_STATE["last"] = turret_move["action"]
+        return turret_move
+
     # ==========================================================
     # EMERGENCY TACTICAL RETREAT TO STAIRS UP (Underground Defense)
     # ==========================================================
@@ -3363,7 +3515,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     is_overwhelmed = (cur_z > 10) and (
         (hp_ratio < 0.35) or
         (took_damage and hp_ratio < 0.45) or
-        any(e.get("difficulty") == "Impossible" for e in enemies)
+        any(e.get("difficulty") == "Impossible" and not is_fragile_shooter(e) for e in enemies)
     )
 
     if is_overwhelmed:
@@ -3509,7 +3661,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 return forage
 
         # 3. Rest until healed if safe and damaged below threshold (default 75%)
-        if hp_ratio < REST_HP_THRESHOLD and not took_damage and not is_swimming:
+        if hp_ratio < REST_HP_THRESHOLD and not took_damage and not is_swimming and not turret_hazards(game_state):
             pct = int(hp_ratio * 100)
             return {"action": "REST", "reason": f"Safe resting: HP at {pct}% (< {int(REST_HP_THRESHOLD*100)}%)"}
 
@@ -3943,6 +4095,7 @@ def main():
                 note_inventory_action(game_state)
                 note_avoid(game_state)
                 note_quests(game_state)
+                note_proselytize(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
 
@@ -4238,6 +4391,7 @@ def main():
                 last_executed_action = action
                 last_executed_pos = cur_pos
                 last_action = action
+                record_proselytize_attempt(action, game_state)
                 if action.startswith("MOVE_"):
                     move_history.append(action)
                 recent_actions.append({"action": action, "reason": reason, "pos": cur_pos, "hp": hp})

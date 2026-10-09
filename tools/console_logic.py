@@ -324,6 +324,70 @@ def set_approval(generations, approve):
 
 
 # ---------------------------------------------------------------------------
+# Lab tab: wish scenarios (BACKLOG B13). Cards only: nothing here talks to the game.
+# ---------------------------------------------------------------------------
+WISH_SCENARIOS_PATH = os.path.join(REPO, "data", "wish_scenarios.json")
+LAB_LOG_PATH = os.path.join(REPO, "memory", "lab_runs.jsonl")
+CONFIDENCE_TEXT = {"verified": "verified in game", "documented": "documented in the game's WishCommands.xml", "named": "name recognised by the wish handler; effect not read (tell me what it did)"}
+
+
+def load_wish_scenarios(path=None):
+    doc = read_json(path or WISH_SCENARIOS_PATH, {}) or {}
+    return [s for s in doc.get("scenarios", []) if isinstance(s, dict) and s.get("id") and s.get("wishes") is not None]
+
+
+def xp_for_level(level):
+    """XP needed to reach `level`: floor(15 x level^3) + 100, 0 for level 1 (ENGINE_INTERNALS 14.16, verified in code and against a live character)."""
+    return 0 if level <= 1 else 15 * level ** 3 + 100
+
+
+def xp_wish_for_level(target_level, current_xp):
+    """The wish that adds the XP missing for `target_level`, or '' when the character is already there. `xp:N` adds N XP (the game's own menu: 'Gain 25,000 XP' is xp:25000)."""
+    need = xp_for_level(int(target_level)) - int(current_xp or 0)
+    return f"xp:{need}" if need > 0 else ""
+
+
+def wish_lines(scenario, level=None, current_xp=0):
+    """The wish commands of a scenario, ready to type; the xp placeholder is filled from the chosen level and the current XP."""
+    out = []
+    for w in scenario.get("wishes", []):
+        cmd = str(w.get("cmd", ""))
+        if "<computed>" in cmd:
+            cmd = xp_wish_for_level(level, current_xp) if level else ""
+        if cmd:
+            out.append(cmd)
+    return out
+
+
+def scenario_text(scenario, level=None, current_xp=0):
+    L = [scenario.get("title", scenario.get("id", "")), "", "Why: " + str(scenario.get("why", "")), "", "Set up:"]
+    L += [f"  {i + 1}. {s}" for i, s in enumerate(scenario.get("setup", []))]
+    L += ["", "Wish for (Ctrl+W in the game, one per prompt):"]
+    for w in scenario.get("wishes", []):
+        cmd = str(w.get("cmd", ""))
+        if "<computed>" in cmd:
+            cmd = xp_wish_for_level(level, current_xp) or "(already at or above that level)" if level else "(choose a level below)"
+        L.append(f"  {cmd}")
+        L.append(f"      [{CONFIDENCE_TEXT.get(w.get('confidence'), w.get('confidence', ''))}] {w.get('note', '')}")
+    L += ["", "Watch for:"] + [f"  - {x}" for x in scenario.get("watch", [])]
+    if scenario.get("tests"):
+        L += ["", f"Covers: {scenario['tests']}"]
+    L += ["", "The prompt takes ONE line: copy and enter one wish at a time (the Copy button gives you the next one each time).",
+          "Wishes are cheats: use a throwaway character, pause the AI first, and archive the death it leaves behind from the Memory tab if you do not want its lesson."]
+    return "\n".join(L)
+
+
+def log_lab_use(scenario_id, note="", path=None):
+    """Appends 'a lab scenario was used now' to memory/lab_runs.jsonl so later analysis can tell wished runs from real ones. Returns the record."""
+    rec = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "scenario": scenario_id, "note": note}
+    p = path or LAB_LOG_PATH
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec) + chr(10))
+    return rec
+
+
+# ---------------------------------------------------------------------------
 # Memory tab: every stored memory, with approve / archive / delete
 # ---------------------------------------------------------------------------
 MEMORY_KINDS = ("lesson", "chronicle", "postmortem", "run", "lab", "data")

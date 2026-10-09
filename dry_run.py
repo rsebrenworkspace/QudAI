@@ -5149,3 +5149,189 @@ _csrc97 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tool
 for _needle in ("_build_memory", "memory_approve", "memory_archive", "memory_delete", 'default="no"'):
     assert _needle in _csrc97, f"the console must contain {_needle}"
 print("  [OK] Test 97 Passed: the Memory tab lists lessons, chronicles, post-mortems, runs, lab results and live data; archive keeps (lessons whole, files in archive folders, never overwriting), delete removes, live data is refused, and a generation number is never reused after either.")
+
+
+# ---------------------------------------------------------------------------
+# Test 98: the turret doctrine (HANDOFF issue 77), replaying the Gen 22 death state
+# ---------------------------------------------------------------------------
+_lase98 = {"name": "Lase (5 charges)", "command": "CommandLase", "cooldown": 0, "usable": True, "active": False}
+_other98 = [{"name": "Sprint", "command": "CommandToggleRunning", "cooldown": 0, "usable": True, "active": False},
+            {"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 0, "usable": True, "active": False},
+            {"name": "Teleport Other", "command": "CommandTeleportOther", "cooldown": 0, "usable": True, "active": False}]
+_musket98 = {"name": "musket turret", "blueprint": "SecurityTurret", "dist": 4, "dir": "NE", "tx": 10, "ty": 14, "is_enemy": False, "is_companion": False,
+             "has_los": True, "level": 15, "difficulty": "Impossible", "is_stationary": True}
+_tinker98 = {"name": "rifle turret tinker", "blueprint": "Rifle Turret Tinker", "dist": 10, "dir": "SE", "tx": 16, "ty": 20, "is_enemy": False, "is_companion": False,
+             "has_los": True, "level": 15, "difficulty": "Impossible", "is_stationary": False}
+_far98 = dict(_musket98, dist=16, has_los=False, tx=22, ty=12)
+_surr98 = {k: "Empty ground" for k in ("C", "N", "S", "E", "W", "NE", "NW", "SE", "SW")}
+
+
+def _state98(**kw):
+    s = {"hp": 10, "max_hp": 24, "x": 6, "y": 17, "z": 11, "level": 3, "zone_id": "JoppaWorld.11.21.0.0.11", "zone_name": "subterranean salt marsh", "zone_fully_explored": False,
+         "hostiles_nearby": True, "hostiles_adjacent": False, "unexplored_cells": 900, "surroundings": dict(_surr98),
+         "stairs_up": [{"name": "stairs up", "blueprint": "StairsUp", "dist": 1, "dir": "W", "tx": 5, "ty": 17}], "stairs_down": [], "standing_on_stairs_up": False,
+         "visible_entities": [dict(_musket98), dict(_tinker98), dict(_far98)], "abilities": [dict(_lase98)] + [dict(a) for a in _other98],
+         "loot_sources": [{"kind": "chest", "name": "chest", "tx": 17, "ty": 16, "dist": 11}]}
+    s.update(kw)
+    return s
+
+
+def _q98(state, enemies=None):
+    brain.recent_positions.clear()
+    brain.RETREAT_TARGET_LEVEL = None
+    brain.TURRET_STATE["last"] = None
+    return brain.query_decision(state, took_damage=False, enemies=enemies or [])
+
+
+# the hazard list: the musket turret in line of sight only (the tinker robot is mobile, the far turret has no line of sight)
+assert [e["name"] for e in brain.turret_hazards(_state98())] == ["musket turret"]
+assert brain.is_fragile_shooter({"is_stationary": True, "max_hp": 5}) and not brain.is_fragile_shooter({"is_stationary": False, "max_hp": 5}) and not brain.is_fragile_shooter({"is_stationary": True, "max_hp": 80})
+# the death turn, as the brain saw it (turret not listed as an enemy, 10 of 24 HP, safe-rest territory): it used to REST; now it shoots the turret
+_d = _q98(_state98())
+assert _d["action"] == "USE_ABILITY:CommandLase:NE@10,14" and "Turret" in _d["reason"], _d
+# the same with the new mod: the turret listed as an enemy with 5 hp
+_new = _state98(visible_entities=[dict(_musket98, is_enemy=True, hp=5, max_hp=5)])
+_d = _q98(_new, enemies=[dict(_musket98, is_enemy=True, hp=5, max_hp=5)])
+assert _d["action"] == "USE_ABILITY:CommandLase:NE@10,14", _d
+# no ranged attack: walk to the stairs one step away; on them: leave and level first
+_noshot = _state98(abilities=[dict(a) for a in _other98])
+assert _q98(_noshot)["action"] == "NAVIGATE_TO_CELL:5,17"
+_on = _state98(abilities=[dict(a) for a in _other98], x=5, y=17, standing_on_stairs_up=True)
+_d = _q98(_on)
+assert _d["action"] == "USE_STAIRS_UP" and brain.RETREAT_TARGET_LEVEL == 4, (_d, brain.RETREAT_TARGET_LEVEL)
+# two turrets in view and stairs close: leave instead of trading shots
+_two = _state98(visible_entities=[dict(_musket98), dict(_musket98, dist=6, tx=12, ty=15, name="second musket turret")])
+_d = _q98(_two)
+assert _d["action"] == "NAVIGATE_TO_CELL:5,17", _d
+# no stairs near and nothing to shoot with: the doctrine steps aside, but resting and looting stay vetoed
+_stuck = _state98(abilities=[dict(a) for a in _other98], stairs_up=[], hp=10)
+_d = _q98(_stuck)
+assert _d["action"] != "REST" and not str(_d.get("reason", "")).startswith("Loot:"), _d
+# a turret that is out of sight does not stop him resting, and without one resting works as before
+_calm = _state98(visible_entities=[dict(_far98)], hostiles_nearby=False, stairs_up=[])
+assert _q98(_calm)["action"] == "REST"
+# the emergency retreat no longer fires just because a fragile Impossible shooter is in the list; a real Impossible mobile creature still does
+_frag = {"name": "x", "difficulty": "Impossible", "is_stationary": True, "max_hp": 5, "dist": 5, "dir": "NE"}
+assert brain.is_fragile_shooter(_frag)
+_csrc98 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _needle in ("explicitCell", 'dirPart.IndexOf(\'@\')', "IsTurretObject(obj)", '\\"max_hp\\": {objMaxHp}', "objMaxHp = obj.baseHitpoints", "[QudAI Turret] "):
+    assert _needle in _csrc98, f"the mod must contain {_needle}"
+assert _csrc98.count("{") == _csrc98.count("}"), "C# braces"
+brain.RETREAT_TARGET_LEVEL = None
+brain.TURRET_STATE["last"] = None
+print("  [OK] Test 98 Passed: replaying the Gen 22 state, a musket turret in line of sight is shot with Lase instead of resting or looting, two turrets or no ranged attack send him to the stairs up (and he levels first), out-of-sight turrets change nothing, and the mod counts Turret-tagged creatures as enemies and exports hit points.")
+
+
+# ---------------------------------------------------------------------------
+# Test 99: the Proselytize outcome log (BACKLOG B11 stage 1, HANDOFF issue 80)
+# ---------------------------------------------------------------------------
+import sys as _sys99
+_sys99.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools"))
+import proselytize_report as _pr
+_old99 = brain.PROSELYTIZE_LOG_PATH
+brain.PROSELYTIZE_LOG_PATH = _os.path.join(tempfile.mkdtemp(), "proselytize_log.jsonl")
+brain.PROSELYTIZE_PENDING.update({"rec": None, "wait": 0})
+try:
+    _goat = {"name": "goat", "blueprint": "Goat", "dist": 1, "dir": "W", "is_enemy": False, "is_companion": False, "level": 2, "difficulty": "Easy", "is_stationary": False}
+    _snap = {"name": "snapjaw warrior", "blueprint": "Snapjaw Warrior", "dist": 2, "dir": "NE", "is_enemy": True, "is_companion": False, "level": 6, "difficulty": "Tough", "is_stationary": False}
+    _s0 = {"zone_id": "Z1", "level": 3, "hp": 20, "max_hp": 24, "attributes": {"Ego": 21}, "companions": [], "visible_entities": [_goat, _snap],
+           "abilities": [{"command": "CommandProselytize", "cooldown": 0}]}
+    _log = lambda: _pr.load(brain.PROSELYTIZE_LOG_PATH)
+    # an attempt on the goat that works: a companion appears in the next state
+    brain.record_proselytize_attempt("MOVE_E", _s0)                                        # not a Proselytize: ignored
+    assert brain.PROSELYTIZE_PENDING["rec"] is None
+    brain.record_proselytize_attempt("USE_ABILITY:CommandProselytize:W", _s0)
+    assert brain.PROSELYTIZE_PENDING["rec"]["target"] == "goat" and brain.PROSELYTIZE_PENDING["rec"]["target_level"] == 2
+    _buf = _io.StringIO()
+    with _ctx.redirect_stdout(_buf):
+        brain.note_proselytize(dict(_s0, companions=[{"name": "goat"}], abilities=[{"command": "CommandProselytize", "cooldown": 25}]))
+    _r = _log()
+    assert len(_r) == 1 and _r[0]["outcome"] == "recruited" and _r[0]["gap"] == -1 and _r[0]["fired"] is True and _r[0]["ego"] == 21 and "[PROSELYTIZE] recruited: goat" in _buf.getvalue(), _r
+    assert brain.PROSELYTIZE_PENDING["rec"] is None
+    # an attempt that fails: waits two turns for a companion, then logs not_recruited
+    brain.record_proselytize_attempt("USE_ABILITY:CommandProselytize:NE", _s0)
+    brain.note_proselytize(dict(_s0, abilities=[{"command": "CommandProselytize", "cooldown": 24}]))
+    assert len(_log()) == 1, "still waiting for the second look"
+    brain.note_proselytize(dict(_s0, abilities=[{"command": "CommandProselytize", "cooldown": 23}]))
+    _r = _log()
+    assert len(_r) == 2 and _r[1]["outcome"] == "not_recruited" and _r[1]["gap"] == 3 and _r[1]["hostile"] is True and _r[1]["target"] == "snapjaw warrior", _r
+    # a new attempt while one is pending resolves the old one as unresolved; an aim with no listed target still logs, with no gap
+    brain.record_proselytize_attempt("USE_ABILITY:CommandProselytize:S", _s0)
+    brain.record_proselytize_attempt("USE_ABILITY:CommandProselytize:W", _s0)
+    assert _log()[-1]["outcome"] == "unresolved" and _log()[-1]["target"] is None
+    brain.note_proselytize({"companions": "x", "abilities": None})                          # garbage never raises
+    brain.note_proselytize(None)
+    # the report: the gap buckets and the counts
+    _rows = [dict(outcome="recruited", gap=-1, hostile=False), dict(outcome="not_recruited", gap=-1, hostile=False), dict(outcome="recruited", gap=0, hostile=True),
+             dict(outcome="not_recruited", gap=3, hostile=True), dict(outcome="not_recruited", gap=5, hostile=True), dict(outcome="unresolved", gap=1), dict(outcome="recruited", gap=None)]
+    _sum = {label: (n, k) for label, n, k in _pr.summarize(_rows)}
+    assert _sum["below our level (gap <= -1)"] == (2, 1) and _sum["same level (gap 0)"] == (1, 1) and _sum["3 above"] == (1, 0) and _sum["4 or more above"] == (1, 0) \
+        and _sum["1 above"] == (0, 0) and _sum["gap unknown (target not listed)"] == (1, 1), _sum
+    assert "1 unresolved" in _pr.format_report(_rows) and "hostile targets: 1/3" in _pr.format_report(_rows)
+    assert _pr.load(_os.path.join(tempfile.mkdtemp(), "none.jsonl")) == []
+finally:
+    brain.PROSELYTIZE_LOG_PATH = _old99
+    brain.PROSELYTIZE_PENDING.update({"rec": None, "wait": 0})
+_src99 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "record_proselytize_attempt(action, game_state)" in _src99 and "note_proselytize(game_state)" in _src99
+print("  [OK] Test 99 Passed: every Proselytize is logged with the target's level, ours and our Ego, resolved from the companion list as recruited or not_recruited (or unresolved), never raises, and the report gives the rate by level gap.")
+
+
+# ---------------------------------------------------------------------------
+# Test 100: the creature catalog (BACKLOG B12 stage 1, HANDOFF issue 81)
+# ---------------------------------------------------------------------------
+import sys as _sys100
+_sys100.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools"))
+import build_creature_catalog as _bcc
+import creature_report as _crep
+assert _bcc.number_or_range({"Value": "5"}) == (5, 5) and _bcc.number_or_range({"sValue": "18-20"}) == (18, 20) and _bcc.number_or_range({"sValue": "25"}) == (25, 25)
+assert _bcc.number_or_range({"sValue": "(t)d3"}) == (None, None) and _bcc.number_or_range(None) == (None, None)
+_reps = {"Snapjaws": -475, "Joppa": -140}
+assert _bcc.start_reputation("Snapjaws-100,Joppa-50", _reps) == -475 and _bcc.start_reputation("Joppa-100", _reps) == -140 and _bcc.start_reputation("Nobody-100", _reps) is None and _bcc.start_reputation(None, _reps) is None
+_doc100 = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "creatures.json"), encoding="utf-8"))
+_c100 = _doc100["creatures"]
+assert _doc100["meta"]["creatures"] >= 800 and _doc100["meta"]["with_level"] == _doc100["meta"]["creatures"]
+_t = _c100["SecurityTurret"]
+assert _t["hp"] == 5 and _t["level"] == 15 and _t["rooted"] and _t["is_ranged"] and _t["likely_hostile"] and "turret" in _t["flags"] and _t["ranged"] == ["Musket"], _t   # the Gen 22 killer
+assert [m["name"] for m in _c100["RedrockGirshling"]["melee"]] == ["Girshling_Claw"], "the defanged girshling has no bite"
+assert _c100["Gunsmith"]["level"] == 18 and _c100["Gunsmith"]["level_max"] == 20, "a level range is kept, not read as the inherited default"
+assert _c100["Ctesiphus"]["likely_hostile"] is False and _c100["Ctesiphus"]["start_rep"] == -140 and _c100["Snapjaw Warrior 1"]["likely_hostile"] is True
+assert _c100["Giant Centipede"]["level"] == 5 and _c100["Knollworm"]["hp"] == 20 and _c100["IrritableTortoise"]["level"] == 5 and _c100["Chitinous Puma"]["level"] == 12 and _c100["Chitinous Puma"]["hp"] == 45   # the Gen 19 killer
+_page = _crep.render(_doc100)
+assert "musket turret" in _page and "Rooted shooters" in _page and "inferred" in _page
+print("  [OK] Test 100 Passed: the creature catalog reads fixed, range and tier-formula levels correctly, drops removed attacks, takes hostility from faction starting reputation, matches the Gen 22 turret (5 HP, level 15, rooted, ranged, hostile) and renders its report.")
+
+
+# ---------------------------------------------------------------------------
+# Test 101: the Lab tab's wish scenarios (BACKLOG B13 stage 1, HANDOFF issue 82)
+# ---------------------------------------------------------------------------
+_sc101 = _cl.load_wish_scenarios()
+assert len(_sc101) >= 7 and len({s["id"] for s in _sc101}) == len(_sc101)
+for _s in _sc101:
+    assert _s.get("title") and _s.get("why") and _s.get("setup") and _s.get("watch") and _s["wishes"], _s["id"]
+    for _w in _s["wishes"]:
+        assert _w.get("confidence") in _cl.CONFIDENCE_TEXT and _w.get("cmd"), (_s["id"], _w)
+# every spawn: names a creature blueprint in the catalog and every item: an item blueprint in the item catalog, so a card cannot send the human after a typo
+_items101 = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "items.json"), encoding="utf-8"))["items"]
+_crea101 = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "creatures.json"), encoding="utf-8"))["creatures"]
+for _s in _sc101:
+    for _w in _s["wishes"]:
+        _c = _w["cmd"]
+        assert not _c.startswith("spawn:"), f"the spawn: prefix failed in game (Unknown blueprint, 2026-10-08): {_s['id']}"
+        assert _w.get("kind") in ("blueprint", "command"), (_s["id"], _w)
+        if _w["kind"] == "blueprint":
+            assert _c in _crea101 or _c in _items101, f"unknown blueprint typed alone in {_s['id']}: {_c}"
+        elif _c.startswith("item:"):
+            assert _c[5:] in _items101, f"unknown item in {_s['id']}: {_c}"
+# the XP wish: the game's own curve, and what is still missing
+assert _cl.xp_for_level(1) == 0 and _cl.xp_for_level(2) == 220 and _cl.xp_for_level(5) == 1975 and _cl.xp_for_level(10) == 15100
+assert _cl.xp_wish_for_level(5, 1900) == "xp:75" and _cl.xp_wish_for_level(3, 1900) == "" and _cl.xp_wish_for_level(2, 0) == "xp:220"
+_lv = next(s for s in _sc101 if s["id"] == "set-level")
+assert _cl.wish_lines(_lv, 6, 0) == ["xp:3340"] and _cl.wish_lines(_lv, None, 0) == [] and _cl.wish_lines(_lv, 3, 5000) == []
+_t101 = _cl.scenario_text(_sc101[0])
+assert "Ctrl+W" in _t101 and "throwaway" in _t101 and "SecurityTurret" in _t101 and "ONE line" in _t101 and "verified in game" in _t101
+_p101 = _os.path.join(tempfile.mkdtemp(), "lab_runs.jsonl")
+_rec = _cl.log_lab_use("turret-nest", "unit test", _p101)
+assert _cl.tail_jsonl(_p101, 5)[0]["scenario"] == "turret-nest" and _rec["note"] == "unit test" and len(_cl.tail_jsonl(_p101, 5)) == 1
+assert _cl.load_wish_scenarios(_os.path.join(tempfile.mkdtemp(), "none.json")) == []
+print("  [OK] Test 101 Passed: the Lab scenarios load, name only creatures and items that exist in the catalogs, compute the XP wish from the game's curve and the current XP, render with the cheat warning, and log a use.")

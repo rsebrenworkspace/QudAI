@@ -1,0 +1,206 @@
+{
+ "about": "Lab scenarios for the console's Lab tab (BACKLOG B13). A wish is the game's own cheat prompt (Ctrl+W, or Shift+W for a menu; verified in Commands.xml). The prompt takes ONE line: paste or type one wish at a time. Use a throwaway character with the AI paused. Wish kinds: 'blueprint' = the creature or item name typed alone (verified in game 2026-10-08: SecurityTurret spawned one; the 'spawn:' prefix did NOT work, the log said Unknown blueprint); 'command' = a named wish. Confidence: 'verified' = seen working in the game, 'documented' = labelled in the game's WishCommands.xml, 'named' = the string is recognised by the wish handler but its effect was not read.",
+ "scenarios": [
+  {
+   "id": "turret-nest",
+   "title": "Turret nest",
+   "why": "Test the turret doctrine (HANDOFF issue 77) without waiting for a run that meets one: a turret listed as an enemy, shot with Lase, never rested in front of.",
+   "setup": [
+    "Pause the AI and find open floor with at least 8 clear tiles in one direction.",
+    "Wishes put a creature in the first empty cell NEXT TO YOU: there is no distance setting. So: turn godmode on, spawn the turret, walk the distance you want (5 or 6 tiles, in its line of sight), turn godmode off, then Engage the AI.",
+    "Copy and enter the lines in order, one at a time (the Copy button gives the next one each click): godmode, the turret, then walk, then godmode again."
+   ],
+   "wishes": [
+    {
+     "cmd": "godmode",
+     "kind": "command",
+     "confidence": "documented",
+     "note": "turn it ON first so the turret's first shots cannot hurt you while you walk away ('Toggle godmode' in the game's menu; not yet seen working by us)"
+    },
+    {
+     "cmd": "SecurityTurret",
+     "kind": "blueprint",
+     "confidence": "verified",
+     "note": "verified in game: one musket turret appeared (level 15, 5 HP), next to you"
+    },
+    {
+     "cmd": "godmode",
+     "kind": "command",
+     "confidence": "documented",
+     "note": "after you have walked 5 or 6 tiles away: the same wish again turns it OFF. Do not forget, or the test proves nothing"
+    }
+   ],
+   "watch": [
+    "[TURRET] lines in the brain console",
+    "the turret in last_state.json with is_enemy true and max_hp 5",
+    "a Lase aimed at the turret, then the turret gone",
+    "no REST while it has line of sight"
+   ],
+   "tests": "Test 98"
+  },
+  {
+   "id": "lethal-guard",
+   "title": "Very Tough creature next to you",
+   "why": "Test the lethal adjacent guard (issue 75): Teleport Other, Force Bubble or Intimidate instead of Lase.",
+   "setup": [
+    "Pause the AI. Use a character of level 3 to 5 with at least one of those abilities ready.",
+    "Wish for the creature, then Engage."
+   ],
+   "wishes": [
+    {
+     "cmd": "Chitinous Puma",
+     "confidence": "named",
+     "note": "level 12, 45 HP; Very Tough for a level 3 to 5 character (typed alone; untried, tell me what it did)",
+     "kind": "blueprint"
+    }
+   ],
+   "watch": [
+    "[LETHAL GUARD] line",
+    "the creature gone or controlled on the first turn"
+   ],
+   "tests": "Test 95"
+  },
+  {
+   "id": "proselytize-odds",
+   "title": "Proselytize odds by level gap",
+   "why": "Fill memory/proselytize_log.jsonl quickly (BACKLOG B11): attempts on calm creatures at known levels, with the 25-turn cooldown cleared between tries.",
+   "setup": [
+    "Pause the AI. Wish for a calm creature next to you, Engage, wait for the [PROSELYTIZE] line, Pause, clear the cooldown, repeat.",
+    "Run: python tools/proselytize_report.py"
+   ],
+   "wishes": [
+    {
+     "cmd": "Goat",
+     "confidence": "named",
+     "note": "a calm level 1 or 2 animal (typed alone; untried, tell me what it did)",
+     "kind": "blueprint"
+    },
+    {
+     "cmd": "Giant Centipede",
+     "confidence": "named",
+     "note": "level 5, hostile by faction (typed alone; untried, tell me what it did)",
+     "kind": "blueprint"
+    },
+    {
+     "cmd": "Knollworm",
+     "confidence": "named",
+     "note": "level 7 (typed alone; untried, tell me what it did)",
+     "kind": "blueprint"
+    },
+    {
+     "cmd": "clearcooldowns",
+     "confidence": "named",
+     "note": "to skip the 25-turn Proselytize cooldown",
+     "kind": "command"
+    }
+   ],
+   "watch": [
+    "[PROSELYTIZE] recruited or not_recruited lines",
+    "the report's rate per level gap"
+   ],
+   "tests": "Test 99"
+  },
+  {
+   "id": "set-level",
+   "title": "Set the character's level",
+   "why": "Reach a level (to test a level-gated rule such as the dive gates) without grinding. The XP needed comes from the game's own curve (ENGINE_INTERNALS 14.16); the tab computes how much to add from your current XP.",
+   "setup": [
+    "Pause the AI. Pick the level in the tab; it shows the exact wish."
+   ],
+   "wishes": [
+    {
+     "cmd": "xp:<computed>",
+     "confidence": "documented",
+     "note": "the game's own menu has 'Gain 25,000 XP' as xp:25000, so the amount after the colon is XP to add; level-ups still need to be taken (AP, SP, mutations) by the brain or by you",
+     "kind": "command"
+    }
+   ],
+   "watch": [
+    "the level in the state",
+    "the brain spending the new attribute and skill points"
+   ],
+   "tests": "ENGINE_INTERNALS 14.16"
+  },
+  {
+   "id": "quiet-walk",
+   "title": "Quiet walk (navigation and exits)",
+   "why": "Test exploration, exit and stairs logic (issues 71, 73, 74) without being killed halfway: calm creatures, or an invulnerable character.",
+   "setup": [
+    "Pause the AI. Wish, then Engage and watch the Live actions tab."
+   ],
+   "wishes": [
+    {
+     "cmd": "calm",
+     "confidence": "documented",
+     "note": "'Calm creatures' in the game's menu",
+     "kind": "command"
+    },
+    {
+     "cmd": "godmode",
+     "confidence": "documented",
+     "note": "'Toggle godmode'; wish again to turn it off. Do not leave it on for a run you want to count",
+     "kind": "command"
+    }
+   ],
+   "watch": [
+    "AUTOEXPLORE rows",
+    "USE_STAIRS_UP from a dead-end stratum, and no walk straight back down"
+   ],
+   "tests": "Tests 92, 94"
+  },
+  {
+   "id": "starter-kit",
+   "title": "Give an item (trade and gear tests)",
+   "why": "Test the item scorer and inventory actions (issues 66, 72) and trade ideas (B8) with an item you name.",
+   "setup": [
+    "Pause the AI. Wish for the item, then Engage and read the [INVENTORY] lines."
+   ],
+   "wishes": [
+    {
+     "cmd": "item:Musket",
+     "confidence": "documented",
+     "note": "the game's menu spawns items with item:<Blueprint>; the blueprint names are in data/items.json",
+     "kind": "command"
+    },
+    {
+     "cmd": "item:Floating Glowsphere",
+     "confidence": "documented",
+     "note": "an item worth 200 base, for the sell side of a trade",
+     "kind": "command"
+    }
+   ],
+   "watch": [
+    "equip or drop decisions",
+    "that a gifted firearm is kept (Test 93)"
+   ],
+   "tests": "Tests 87, 88, 93"
+  },
+  {
+   "id": "quest-state",
+   "title": "Quest state (quest log tests)",
+   "why": "Check the quest log export and the [QUEST] lines (issue 76) for a quest you did not take by hand.",
+   "setup": [
+    "Pause the AI. Wish, Engage for a few turns, open the Quests tab."
+   ],
+   "wishes": [
+    {
+     "cmd": "startquest:What's Eating the Watervine?",
+     "confidence": "named",
+     "note": "the quest name is the one in Quests.xml",
+     "kind": "command"
+    },
+    {
+     "cmd": "finishqueststep:What's Eating the Watervine?~Travel to Red Rock",
+     "confidence": "named",
+     "note": "the step id format 'Quest~Step' appears in the game's conversations; the exact wish syntax was not read",
+     "kind": "command"
+    }
+   ],
+   "watch": [
+    "the quest in the Quests tab",
+    "a [QUEST] new quest or step finished line"
+   ],
+   "tests": "Test 96"
+  }
+ ]
+}
