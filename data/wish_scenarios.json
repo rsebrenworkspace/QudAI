@@ -6,21 +6,28 @@
    "title": "Turret nest",
    "why": "Test the turret doctrine (HANDOFF issue 77) without waiting for a run that meets one: a turret listed as an enemy, shot with Lase, never rested in front of.",
    "setup": [
-    "Pause the AI. Walk to an open floor with about 6 tiles of clear line to the east.",
-    "Wish for the turrets below, step 4 to 5 tiles away so one has line of sight, then Engage the AI."
+    "Pause the AI and find open floor with at least 8 clear tiles in one direction.",
+    "Wishes put a creature in the first empty cell NEXT TO YOU: there is no distance setting. So: turn godmode on, spawn the turret, walk the distance you want (5 or 6 tiles, in its line of sight), turn godmode off, then Engage the AI.",
+    "Copy and enter the lines in order, one at a time (the Copy button gives the next one each click): godmode, the turret, then walk, then godmode again."
    ],
    "wishes": [
     {
-     "cmd": "SecurityTurret",
-     "confidence": "verified",
-     "note": "verified in game: one musket turret appeared (level 15, 5 HP)",
-     "kind": "blueprint"
+     "cmd": "godmode",
+     "kind": "command",
+     "confidence": "documented",
+     "note": "turn it ON first so the turret's first shots cannot hurt you while you walk away ('Toggle godmode' in the game's menu; not yet seen working by us)"
     },
     {
      "cmd": "SecurityTurret",
+     "kind": "blueprint",
      "confidence": "verified",
-     "note": "verified in game: one musket turret appeared (level 15, 5 HP)",
-     "kind": "blueprint"
+     "note": "verified in game: one musket turret appeared (level 15, 5 HP), next to you"
+    },
+    {
+     "cmd": "godmode",
+     "kind": "command",
+     "confidence": "documented",
+     "note": "after you have walked 5 or 6 tiles away: the same wish again turns it OFF. Do not forget, or the test proves nothing"
     }
    ],
    "watch": [
