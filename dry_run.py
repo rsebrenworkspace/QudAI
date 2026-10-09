@@ -5275,3 +5275,28 @@ finally:
 _src99 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 assert "record_proselytize_attempt(action, game_state)" in _src99 and "note_proselytize(game_state)" in _src99
 print("  [OK] Test 99 Passed: every Proselytize is logged with the target's level, ours and our Ego, resolved from the companion list as recruited or not_recruited (or unresolved), never raises, and the report gives the rate by level gap.")
+
+
+# ---------------------------------------------------------------------------
+# Test 100: the creature catalog (BACKLOG B12 stage 1, HANDOFF issue 81)
+# ---------------------------------------------------------------------------
+import sys as _sys100
+_sys100.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools"))
+import build_creature_catalog as _bcc
+import creature_report as _crep
+assert _bcc.number_or_range({"Value": "5"}) == (5, 5) and _bcc.number_or_range({"sValue": "18-20"}) == (18, 20) and _bcc.number_or_range({"sValue": "25"}) == (25, 25)
+assert _bcc.number_or_range({"sValue": "(t)d3"}) == (None, None) and _bcc.number_or_range(None) == (None, None)
+_reps = {"Snapjaws": -475, "Joppa": -140}
+assert _bcc.start_reputation("Snapjaws-100,Joppa-50", _reps) == -475 and _bcc.start_reputation("Joppa-100", _reps) == -140 and _bcc.start_reputation("Nobody-100", _reps) is None and _bcc.start_reputation(None, _reps) is None
+_doc100 = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "creatures.json"), encoding="utf-8"))
+_c100 = _doc100["creatures"]
+assert _doc100["meta"]["creatures"] >= 800 and _doc100["meta"]["with_level"] == _doc100["meta"]["creatures"]
+_t = _c100["SecurityTurret"]
+assert _t["hp"] == 5 and _t["level"] == 15 and _t["rooted"] and _t["is_ranged"] and _t["likely_hostile"] and "turret" in _t["flags"] and _t["ranged"] == ["Musket"], _t   # the Gen 22 killer
+assert [m["name"] for m in _c100["RedrockGirshling"]["melee"]] == ["Girshling_Claw"], "the defanged girshling has no bite"
+assert _c100["Gunsmith"]["level"] == 18 and _c100["Gunsmith"]["level_max"] == 20, "a level range is kept, not read as the inherited default"
+assert _c100["Ctesiphus"]["likely_hostile"] is False and _c100["Ctesiphus"]["start_rep"] == -140 and _c100["Snapjaw Warrior 1"]["likely_hostile"] is True
+assert _c100["Giant Centipede"]["level"] == 5 and _c100["Knollworm"]["hp"] == 20 and _c100["IrritableTortoise"]["level"] == 5 and _c100["Chitinous Puma"]["level"] == 12 and _c100["Chitinous Puma"]["hp"] == 45   # the Gen 19 killer
+_page = _crep.render(_doc100)
+assert "musket turret" in _page and "Rooted shooters" in _page and "inferred" in _page
+print("  [OK] Test 100 Passed: the creature catalog reads fixed, range and tier-formula levels correctly, drops removed attacks, takes hostility from faction starting reputation, matches the Gen 22 turret (5 HP, level 15, rooted, ranged, hostile) and renders its report.")
