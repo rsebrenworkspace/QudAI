@@ -5794,3 +5794,35 @@ finally:
     brain.FAILED_ZONE_EXITS.clear(); brain.FAILED_ZONE_EXITS.update(_saved117[0]); brain.CURRENT_ZONE_CHOSEN_EXIT = _saved117[1]; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = _saved117[2]
     brain.EXIT_SUPPRESS_UNTIL.clear(); brain.EXIT_SUPPRESS_UNTIL.update(_saved117[3]); brain.LAST_ZONE_ENTRY = _saved117[4]; brain.current_zone_id = _saved117[5]
 print("  [OK] Test 117 Passed: an empty reachable_edges reading on a border cell is treated as an engine artifact (it no longer blacklists the exit he is heading for; 40 alternating readings blacklist nothing), an empty reading inside the zone still means a sealed room, and a real report that the exit is missing still invalidates it.")
+
+
+# ---------------------------------------------------------------------------
+# Test 118: the lethal guard does not offer an ability issued last turn (human run 2026-10-09, trace t270-271; HANDOFF issue 94)
+# ---------------------------------------------------------------------------
+_ab118 = [{"name": "Teleport Other", "command": "CommandTeleportOther", "cooldown": 0, "usable": True, "active": False},
+          {"name": "Intimidate", "command": "CommandIntimidate", "cooldown": 0, "usable": True, "active": False}]
+_amoeba118 = {"name": "giant amoeba", "blueprint": "GiantAmoeba", "dist": 1, "dir": "W", "difficulty": "Impossible", "level": 1, "is_stationary": False}
+_saved118 = (dict(brain.ABILITY_ISSUED), brain.TURN_CLOCK)
+try:
+    brain.ABILITY_ISSUED.clear(); brain.TURN_CLOCK = 270
+    _d1 = brain.lethal_adjacent_guard({"action": "USE_ABILITY:CommandProselytize:W", "reason": "x"}, {"W": 1}, [_amoeba118], _ab118)
+    assert _d1["action"] == "USE_ABILITY:CommandTeleportOther:W", _d1
+    brain.note_ability_issued(_d1["action"])
+    brain.TURN_CLOCK = 271          # the next state still shows the amoeba adjacent and the teleport "ready"
+    _d2 = brain.lethal_adjacent_guard({"action": "USE_ABILITY:CommandProselytize:W", "reason": "x"}, {"W": 1}, [_amoeba118], _ab118)
+    assert _d2["action"] == "USE_ABILITY:CommandIntimidate", ("the repeat must go to the next answer", _d2)
+    _d3 = brain.lethal_adjacent_guard({"action": "USE_ABILITY:CommandTeleportOther:W", "reason": "model repeat"}, {"W": 1}, [_amoeba118], _ab118)
+    assert _d3["action"] == "USE_ABILITY:CommandIntimidate", ("a model repeat of the just-issued ability is not kept", _d3)
+    brain.TURN_CLOCK = 272          # two turns later the cooldown reading is trustworthy again
+    _d4 = brain.lethal_adjacent_guard({"action": "USE_ABILITY:CommandProselytize:W", "reason": "x"}, {"W": 1}, [_amoeba118], _ab118)
+    assert _d4["action"] == "USE_ABILITY:CommandTeleportOther:W", _d4
+    # only one ability: nothing else to offer, the decision passes through rather than repeating the refused one
+    brain.ABILITY_ISSUED.clear(); brain.note_ability_issued("USE_ABILITY:CommandTeleportOther:W"); brain.TURN_CLOCK = 273
+    _d5 = brain.lethal_adjacent_guard({"action": "MOVE_E", "reason": "x"}, {"W": 1}, [_amoeba118], [_ab118[0]])
+    assert _d5["action"] == "MOVE_E", _d5
+    brain.note_ability_issued("MOVE_N"); brain.note_ability_issued(None)
+finally:
+    brain.ABILITY_ISSUED.clear(); brain.ABILITY_ISSUED.update(_saved118[0]); brain.TURN_CLOCK = _saved118[1]
+_src118 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "note_ability_issued(action)" in _src118, "the main loop must record the issued ability"
+print("  [OK] Test 118 Passed: an ability the guard issued last turn (Teleport Other, which takes effect a turn late) is not offered again the next turn, the next answer (Intimidate) is used instead, a model repeat of it is not kept, it is offered again two turns later, and the main loop records every issued ability.")
