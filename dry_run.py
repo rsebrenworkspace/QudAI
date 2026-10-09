@@ -5580,3 +5580,15 @@ brain.note_zone_danger({"zone_id": _Z110, "level": 1, "hp": 18, "visible_entitie
 assert brain.ZONE_DANGER.flags[_Z110].where == (70, 11) and brain.ZONE_DANGER.flags[_Z110].where_turn == 50
 brain.ZONE_DANGER = _zd106.Ledger(); brain.FRONTIER_COMMIT.update({"zone": None, "target": None})
 print("  [OK] Test 110 Passed: the ledger remembers where a flagged creature was last in view, the frontier chooser skips targets within 8 cells of it (dropping a committed one, offering none when all are near), and the memory lapses with the flag or after 80 turns.")
+
+
+# ---------------------------------------------------------------------------
+# Test 111: a rooted vine is not a fragile shooter (human run 2026-10-08, trace t1668: Lase fired at a jilted lover)
+# ---------------------------------------------------------------------------
+assert brain.is_fragile_shooter({"is_stationary": True, "max_hp": 5, "name": "musket turret", "blueprint": "SecurityTurret"}) is True
+assert brain.is_fragile_shooter({"is_stationary": True, "max_hp": 5, "name": "jilted lover", "blueprint": "Jilted Lover"}) is False, "no ranged attack in the catalogue: not a shooter"
+assert brain.is_fragile_shooter({"is_stationary": True, "max_hp": 5, "name": "mystery", "blueprint": "NoSuchThing"}) is True, "unknown to the catalogue: the old caution stays"
+assert brain.is_fragile_shooter({"is_stationary": False, "max_hp": 5, "name": "musket turret", "blueprint": "SecurityTurret"}) is False
+_st111 = {"x": 40, "y": 12, "visible_entities": [{"name": "jilted lover", "blueprint": "Jilted Lover", "is_enemy": True, "is_stationary": True, "max_hp": 5, "hp": 5, "dist": 4, "has_los": True, "tx": 44, "ty": 12}]}
+assert brain.turret_hazards(_st111) == [], "a lone jilted lover is not a turret hazard"
+print("  [OK] Test 111 Passed: a rooted vine with no ranged attack (jilted lover) is not treated as a fragile shooter, so the turret rule no longer spends Lase charges on it, while real turrets and creatures unknown to the catalogue keep the old rule.")

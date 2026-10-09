@@ -3376,7 +3376,15 @@ TURRET_STATE = {"last": None}
 def is_fragile_shooter(e):
     """A stationary creature with very few hit points (the mod exports `max_hp`): a turret-like shooter that is better killed than feared."""
     mh = e.get("max_hp") or 0
-    return bool(e.get("is_stationary")) and 0 < mh <= FRAGILE_MAX_HP
+    if not (bool(e.get("is_stationary")) and 0 < mh <= FRAGILE_MAX_HP):
+        return False
+    try:
+        entry = creature_threat.lookup(blueprint=e.get("blueprint"), name=e.get("name"))
+    except Exception:
+        entry = None
+    if entry is not None and not (entry.get("is_ranged") or entry.get("ranged")):
+        return False        # a rooted vine such as the jilted lover (5 HP, no ranged attack) is not a shooter: no Lase charges on it (human run, 2026-10-08, t1668)
+    return True
 
 
 def turret_hazards(game_state):
