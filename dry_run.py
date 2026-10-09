@@ -5335,3 +5335,36 @@ _rec = _cl.log_lab_use("turret-nest", "unit test", _p101)
 assert _cl.tail_jsonl(_p101, 5)[0]["scenario"] == "turret-nest" and _rec["note"] == "unit test" and len(_cl.tail_jsonl(_p101, 5)) == 1
 assert _cl.load_wish_scenarios(_os.path.join(tempfile.mkdtemp(), "none.json")) == []
 print("  [OK] Test 101 Passed: the Lab scenarios load, name only creatures and items that exist in the catalogs, compute the XP wish from the game's curve and the current XP, render with the cheat warning, and log a use.")
+
+
+# ---------------------------------------------------------------------------
+# Test 102: the IsAlive audit and the service-NPC recruit rule (HANDOFF issues 77 and 79)
+# ---------------------------------------------------------------------------
+import re as _re102
+_cs102 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+def _body102(name):
+    i = _cs102.index(name)
+    j = _cs102.index("\n        }\n", i)
+    return _cs102[i:j]
+assert "private static bool IsStanding(GameObject o)" in _cs102 and "o.hitpoints > 0" in _cs102
+assert "|| !IsStanding(obj)) return false;" in _body102("public static bool IsCompanion(GameObject obj, GameObject player)")
+_enemy102 = _body102("public static bool CheckIsEnemy(GameObject obj, GameObject player)")
+assert "if (!IsStanding(obj)) return false;" in _enemy102 and "if (!obj.IsAlive) return false;" not in _enemy102
+assert "IsStanding(c))" in _cs102 and "IsStanding(zObj)" in _cs102, "the companion scans must not require organic life"
+# what is left of IsAlive is deliberate: proselytize (organic minds only), loot (do not loot a turret), the diagnostic, the player's own death check, the stairs and the target fallback
+_code102 = "\n".join(l for l in _cs102.splitlines() if not l.strip().startswith("//"))
+assert len(_re102.findall(r"\.IsAlive\b", _code102)) == 7, len(_re102.findall(r"\.IsAlive\b", _code102))
+# issue 79: the markers, and that a hostile service NPC is not protected
+_svc102 = _body102("private static bool IsServiceNpc(GameObject obj)")
+for _m in ("GivesRep", "GenericInventoryRestocker", "GivesDynamicQuest", "NamedVillager", "ParticipantVillager"):
+    assert _m in _svc102, _m
+assert "IsServiceNpc(obj) && !obj.IsHostileTowards(player)" in _cs102
+# the data behind it: the catalog flags separate people who serve from ordinary creatures (ConversationScript does not: 814 of 845 have one)
+_crea102 = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "creatures.json"), encoding="utf-8"))["creatures"]
+_serve = lambda n: bool({"gives_rep", "restocks"} & set(_crea102[n].get("flags", [])))
+for _n in ("Nima Ruda", "Gunsmith", "Mehmet", "ElderBob", "Warden Yrame", "Warden Esthers", "Tam", "Argyve"):
+    assert _serve(_n), _n
+for _n in ("Goat", "Ctesiphus", "Giant Centipede", "Snapjaw Warrior 1", "Cave Spider", "Baboon", "Knollworm", "SecurityTurret"):
+    assert not _serve(_n), _n
+assert 100 <= sum(1 for _n in _crea102 if _serve(_n)) <= 200
+print("  [OK] Test 102 Passed: companions and the enemy test use hit points instead of organic life (so a robot, golem or turret can be a companion or an enemy), the 7 remaining IsAlive uses are the intended ones, and shopkeepers, quest givers and reputation NPCs are protected from recruiting by the markers that separate them from animals.")
