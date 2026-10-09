@@ -5424,3 +5424,62 @@ assert _ct103.party_threat("NoSuchParty", 2, 30)["cls"] == "unknown"
 import tools.build_party_table as _bpt105
 assert _bpt105.number_average("3-4") == 3.5 and _bpt105.number_average("1d4") == 2.5 and _bpt105.number_average("") == 1.0
 print("  [OK] Test 105 Passed: the party tables give the game's own pack sizes (baboons 3.15 in a small party, 10.8 in a big one), a lone baboon is a fair fight but its party is deadly for a starting character, and unknown parties degrade to 'unknown'.")
+
+
+# ---------------------------------------------------------------------------
+# Test 106: zone danger ledger and exit steering (BACKLOG B10 step 1, HANDOFF issue 85), including a multi-turn walk
+# ---------------------------------------------------------------------------
+import zone_danger as _zd106
+assert _zd106.world_cell("JoppaWorld.11.22.1.1.10") == (34, 67, 10) and _zd106.world_cell("junk") is None
+assert _zd106.adjacent_zone("JoppaWorld.11.22.2.1.10", "E") == "JoppaWorld.12.22.0.1.10" and _zd106.adjacent_zone("JoppaWorld.11.22.0.1.10", "W") == "JoppaWorld.10.22.2.1.10"
+assert _zd106.zone_distance("JoppaWorld.11.22.2.1.10", "JoppaWorld.12.22.0.1.10") == 1 and _zd106.zone_distance("JoppaWorld.1.1.0.0.10", "JoppaWorld.1.1.0.0.11") is None
+_led106 = _zd106.Ledger()
+_Z = "JoppaWorld.11.22.1.1.10"
+assert _led106.record(_Z, "chitinous puma", 12, 5) is True and _led106.record(_Z, "goat", 1, 5) is False, "a worse creature replaces, a lesser one does not"
+assert _led106.flags[_Z].clears_at == 9 and _led106.active_flags(8) and not _led106.active_flags(9), "lapses at creature level minus 3"
+assert _zd106.Ledger().pressure(_Z, 1) == 0.0 and _zd106.steer(_zd106.Ledger(), _Z, 1, ["N", "S"], ["N", "S"], "S") == (None, None, None), "no flag, no steering"
+_lowpack = _zd106.Ledger(); _lowpack.record(_Z, "baboon party", 5, 1)
+assert _lowpack.flags[_Z].clears_at == 3, "a flag raised at level 1 lapses after two levels even for a weak creature"
+# steering: danger lies north of here, so north must not be chosen while south and east are free
+_led = _zd106.Ledger(); _led.record("JoppaWorld.11.22.1.0.10", "puma", 12, 3)      # the zone directly north of _Z
+_keep, _mode, _note = _zd106.steer(_led, _Z, 3, ["N", "S", "E", "W"], ["N", "S", "E", "W"], None)
+assert _mode == "away" and "N" not in _keep and set(_keep) <= {"S", "E", "W"}, (_keep, _mode, _note)
+# backtracking: danger on three sides ahead (we came from the south), the way back is the best exit
+_led2 = _zd106.Ledger()
+for _d in ("N", "E", "W"):
+    _led2.record(_zd106.adjacent_zone(_Z, _d), "puma", 12, 3)
+_keep2, _mode2, _note2 = _zd106.steer(_led2, _Z, 3, ["N", "E", "W", "S"], ["N", "E", "W"], "S")
+assert _mode2 == "retreat" and _keep2 == ["S"], (_keep2, _mode2, _note2)
+# multi-turn: a walker on a grid with a wall of flagged zones to the north must end up in the south or sideways and never oscillate between two zones
+def _walk106(start, flags, steps=14):
+    led = _zd106.Ledger()
+    for f in flags:
+        led.record(f, "puma", 12, 2)
+    cur, rev, seen, trail = start, None, set([start]), [start]
+    for _ in range(steps):
+        cands = [d for d in "NSEW" if _zd106.adjacent_zone(cur, d)]
+        novel = [d for d in cands if _zd106.adjacent_zone(cur, d) not in seen]
+        keep, mode, _n = _zd106.steer(led, cur, 2, [d for d in cands if d != rev] or cands, [d for d in novel if d != rev] or novel, rev)
+        pool = keep or ([d for d in novel if d != rev] or novel or cands)
+        d = sorted(pool)[0] if mode is None else pool[0]
+        nxt = _zd106.adjacent_zone(cur, d)
+        rev = {"N": "S", "S": "N", "E": "W", "W": "E"}[d]
+        cur = nxt; seen.add(cur); trail.append(cur)
+    return trail
+_start106 = "JoppaWorld.11.22.1.1.10"
+_flags106 = [_zd106.adjacent_zone(_start106, "N")] + [_zd106.adjacent_zone(_zd106.adjacent_zone(_start106, "N"), s) for s in "EW"]
+_trail106 = _walk106(_start106, _flags106)
+assert not any(a == b for a, b in zip(_trail106, _trail106[2:])), ("oscillation A-B-A", _trail106)
+_ys = [_zd106.world_cell(z)[1] for z in _trail106]
+assert _ys[-1] >= _ys[0], ("he walked north into the flagged zones", _ys)
+assert all(z not in _flags106 for z in _trail106), "the walk entered a flagged zone"
+# brain wiring: the ledger is fed from the state and the exit chooser answers
+brain.ZONE_DANGER = _zd106.Ledger()
+_st106 = {"zone_id": _start106, "level": 2, "hp": 20, "max_hp": 20, "visible_entities": [{"name": "wet chitinous puma", "blueprint": "Chitinous Puma", "is_enemy": True, "is_stationary": False, "level": 12, "difficulty": "Very Tough", "dist": 7}]}
+brain.note_zone_danger(_st106)
+assert _start106 in brain.ZONE_DANGER.flags and brain.ZONE_DANGER.flags[_start106].creature_level == 12
+_st106b = {"zone_id": _start106, "level": 2, "hp": 20, "visible_entities": [{"name": "goat", "blueprint": "Goat", "is_enemy": True, "is_stationary": False, "level": 1, "difficulty": "Trivial"}]}
+brain.ZONE_DANGER = _zd106.Ledger(); brain.note_zone_danger(_st106b)
+assert not brain.ZONE_DANGER.flags, "a goat flags nothing"
+brain.ZONE_DANGER = _zd106.Ledger()
+print("  [OK] Test 106 Passed: a zone with a creature out of our class is flagged until we have grown, exits are steered away from flagged zones, the way back is taken when every way on leads closer, a 14-step walk beside a wall of flagged zones never enters one and never oscillates, and a goat flags nothing.")

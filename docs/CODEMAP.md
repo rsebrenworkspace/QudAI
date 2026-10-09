@@ -68,6 +68,9 @@
 | `tools/check_docs.py` | Compares the patch list, command list, test count, and paths in the docs against the code; run before every commit |
 | `data/wish_scenarios.json` | The Lab tab's wish scenarios (BACKLOG B13) |
 | `tools/build_creature_catalog.py`, `tools/creature_report.py`, `data/creatures.json`, `docs/CREATURES.md` | Creature catalog from the game data and its report (BACKLOG B12) |
+| `creature_threat.py`, `tools/threat_calibration.py` | Catalogue lookup, the combat race score (`threat`), whole-party score (`party_threat`); the calibration tool ranks the recorded deaths |
+| `tools/build_party_table.py`, `data/parties.json` | Expected size of every game party table, from `PopulationTables.xml` |
+| `zone_danger.py` | Zone danger ledger and exit steering (`Ledger`, `steer`); brain hooks: `note_zone_danger`, `get_zone_exit_target` |
 | `tools/proselytize_report.py` | Odds of Proselytize by level gap, from `memory/proselytize_log.jsonl` (BACKLOG B11) |
 | `tools/qudai_console.py`, `tools/console_logic.py`, `QudAI_Console.bat` | The console window (GUI) and its testable logic (build/Player log parsing, state/trace views, lesson approval); see ARCHITECTURE "Console" |
 | `tools/git_report.py` | Read-only git health report (branch, ahead/behind, unmerged branches, untracked game data, repo health) with suggested next steps |

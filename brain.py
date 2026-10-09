@@ -13,6 +13,8 @@ import mutation_policy
 import ability_registry
 import danger_ledger
 import item_scoring
+import zone_danger
+import creature_threat
 
 # Paths
 # QUDAI_EXCHANGE_DIR overrides the folder (tests point it at a temp dir so they can never touch the real game files).
@@ -1015,6 +1017,42 @@ def log_exit_choice(record):
         pass
 
 
+
+# --- Zones where we met something out of our class, and exit steering away from them (BACKLOG B10 step 1, HANDOFF issue 85) ---
+ZONE_DANGER = zone_danger.Ledger()      # in memory only: a restart of the brain forgets it
+ZONE_DANGER_PACK_SCORE = 3.0            # several lesser hostiles together count when their threat ratios add up to this (a heuristic)
+
+
+def note_zone_danger(game_state):
+    """Flags the current zone when a mobile hostile in view is out of our class, or when the hostiles in view together are. Prints `[ZONE DANGER]` once per new flag. Never acts, never raises."""
+    try:
+        zone = game_state.get("zone_id") or ""
+        our_level = int(game_state.get("level") or 1)
+        mobile = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_stationary")]
+        worst, pack = None, 0.0
+        for e in mobile:
+            lvl = int(e.get("level") or 0)
+            ratio = 0.0
+            try:
+                entry = creature_threat.lookup(blueprint=e.get("blueprint"), name=e.get("name"))
+                if entry is not None:
+                    r = creature_threat.threat(entry, our_level, int(game_state.get("hp") or 20), enemy_hp=e.get("hp") or None, us=game_state)
+                    ratio = r["ratio"] or 0.0
+            except Exception:
+                ratio = 0.0
+            pack += ratio
+            if e.get("difficulty") in LETHAL_DIFFICULTIES or ratio >= 3.0:
+                if worst is None or lvl > worst[1]:
+                    worst = (e.get("name") or e.get("blueprint") or "?", lvl, "alone")
+        if worst is None and pack >= ZONE_DANGER_PACK_SCORE and len(mobile) >= 3:
+            top = max(mobile, key=lambda x: int(x.get("level") or 0))
+            worst = (f"{len(mobile)} hostiles incl. {top.get('name')}", int(top.get("level") or 0), "pack")
+        if worst and ZONE_DANGER.record(zone, worst[0], worst[1], our_level):
+            print(f"[ZONE DANGER] {zone}: {worst[0]} (level {worst[1]}, {worst[2]}); stays flagged until our level {ZONE_DANGER.flags[zone].clears_at} (now {our_level})")
+    except Exception:
+        pass
+
+
 def get_zone_exit_target(cur_pos, game_state=None):
     """
     Returns (target_coord, exit_tag, exit_dir) of the zone border exit to transition to the next zone.
@@ -1124,6 +1162,23 @@ def get_zone_exit_target(cur_pos, game_state=None):
         "cycle_neighbors": sorted(d for d in ["N", "S", "E", "W"] if _compute_adjacent_zone_id(cur_zone, d) in cycle_zones),
         "candidates": list(candidates), "novel": list(novel_candidates),
     }
+
+    # Zones we flagged as out of our class: steer away, or go back the way we came when every way on leads closer (BACKLOG B10 step 1)
+    steer_dirs, steer_mode, steer_note = zone_danger.steer(ZONE_DANGER, cur_zone, int((game_state or {}).get("level") or 1), candidates, novel_candidates, rev_dir)
+    if steer_mode == "retreat":
+        chosen_dir = steer_dirs[0]
+        pos, tag = _EXIT_TARGETS[chosen_dir](px, py)
+        CURRENT_ZONE_CHOSEN_EXIT = chosen_dir
+        CURRENT_ZONE_CHOSEN_EXIT_ZONE = cur_zone
+        label = f"{tag} (backtrack: danger ahead)"
+        log_exit_choice(dict(_log_base, chosen=chosen_dir, mode="danger_retreat", note=steer_note))
+        print(f"[ZONE DANGER] Backtracking {chosen_dir}: {steer_note}")
+        return pos, label, chosen_dir
+    if steer_mode == "away":
+        novel_candidates = [d for d in novel_candidates if d in steer_dirs]
+        candidates = [d for d in candidates if d in steer_dirs] or candidates
+        _log_base["danger_note"] = steer_note
+        print(f"[ZONE DANGER] Steering exits away from flagged zones: {steer_note}")
 
     # Prefer novel unvisited zones if available to foster organic world exploration
     if novel_candidates:
@@ -4095,6 +4150,7 @@ def main():
                 note_inventory_action(game_state)
                 note_avoid(game_state)
                 note_quests(game_state)
+                note_zone_danger(game_state)
                 note_proselytize(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
