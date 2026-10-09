@@ -5084,3 +5084,68 @@ for _needle in ("[QudAI Quests] ", "QuestElements(", "QuestUnwrap(", "QuestKey("
 assert _csrc96.count("{") == _csrc96.count("}"), "C# braces"
 brain.QUEST_SEEN.update({"started": set(), "finished_steps": set(), "done": set(), "primed": False})
 print("  [OK] Test 96 Passed: the brain announces new quests, finished steps and finished quests once (and stays quiet on its first look), the console renders the quest log, and the mod exports it read-only by reflection.")
+
+
+# ---------------------------------------------------------------------------
+# Test 97: Memory tab logic (console): list everything, approve, archive, delete; a generation number is never reused
+# ---------------------------------------------------------------------------
+_old97 = (_chr.WISDOM_FILE, _chr.GENERATION_COUNTER_FILE)
+_root97 = tempfile.mkdtemp()
+_mem97, _chd97 = _os.path.join(_root97, "memory"), _os.path.join(_root97, "chronicles")
+for _d in (_os.path.join(_mem97, "runs"), _os.path.join(_mem97, "model_lab"), _chd97):
+    _os.makedirs(_d)
+_chr.WISDOM_FILE = _os.path.join(_mem97, "ancestral_wisdom.json")
+_chr.GENERATION_COUNTER_FILE = _os.path.join(_mem97, "generation_counter.json")
+try:
+    _chr.save_ancestral_wisdom([{"generation": g, "name": f"N{g}", "level": 3, "lesson": f"lesson {g}", "death_reason": "x", "approved": g == 1} for g in (1, 2, 3)])
+    for _p, _t in ((_os.path.join(_chd97, "Chronicle_Gen1_N1_1.md"), "chronicle text"), (_os.path.join(_chd97, "Postmortem_Gen1_N1_1.md"), "post-mortem text"),
+                   (_os.path.join(_mem97, "runs", "run_1.json"), "{}"), (_os.path.join(_mem97, "model_lab", "lab_1.md"), "lab"), (_os.path.join(_mem97, "danger_ledger.json"), "{}")):
+        open(_p, "w", encoding="utf-8").write(_t)
+    _items = _cl.list_memory_items(_mem97, _chd97)
+    _by = {}
+    for _it in _items:
+        _by.setdefault(_it["kind"], []).append(_it)
+    assert {k: len(v) for k, v in _by.items()} == {"lesson": 3, "chronicle": 1, "postmortem": 1, "run": 1, "lab": 1, "data": 1}, {k: len(v) for k, v in _by.items()}
+    assert [i["gen"] for i in _by["lesson"]] == [3, 2, 1], "newest lesson first"
+    assert [i["kind"] for i in _items] == sorted([i["kind"] for i in _items], key=_cl.MEMORY_KINDS.index), "grouped in the fixed kind order"
+    assert "lesson 1" in _cl.memory_item_text(_by["lesson"][2]) and "APPROVED" in _cl.memory_item_text(_by["lesson"][2]) and _cl.memory_item_text(_by["chronicle"][0]) == "chronicle text"
+    # live data is shown but refused
+    assert _by["data"][0]["safe"] is False
+    for _fn in (lambda: _cl.archive_memory_item(_by["data"][0], _mem97, _chd97), lambda: _cl.delete_memory_item(_by["data"][0])):
+        try:
+            _fn()
+            raise AssertionError("a live data file must be refused")
+        except ValueError:
+            pass
+    assert _os.path.exists(_os.path.join(_mem97, "danger_ledger.json"))
+    # archive a lesson: it leaves the active list, is kept whole in the archive file, unapproved, and its number is never reused
+    _cl.archive_memory_item(_by["lesson"][1], _mem97, _chd97)                          # generation 2
+    _active = {w["generation"] for w in _chr.load_ancestral_wisdom()}
+    _arch = _cl.read_json(_os.path.join(_mem97, "archive", "ancestral_wisdom_archived.json"), [])
+    assert _active == {1, 3} and [w["generation"] for w in _arch] == [2] and _arch[0]["lesson"] == "lesson 2" and _arch[0]["approved"] is False
+    assert _chr.next_generation(_chr.load_ancestral_wisdom()) == 4
+    # delete a lesson: gone for good, and the counter still never goes back
+    _cl.delete_memory_item(_by["lesson"][0])                                           # generation 3
+    assert {w["generation"] for w in _chr.load_ancestral_wisdom()} == {1}
+    assert _chr.next_generation(_chr.load_ancestral_wisdom()) == 5, "numbers 3 and 4 must not be reused"
+    # files: archive moves (never overwrites), delete removes
+    _cl.archive_memory_item(_by["chronicle"][0], _mem97, _chd97)
+    assert not _os.path.exists(_by["chronicle"][0]["path"]) and _os.path.exists(_os.path.join(_chd97, "archive", "Chronicle_Gen1_N1_1.md"))
+    open(_by["chronicle"][0]["path"], "w", encoding="utf-8").write("second one")
+    _cl.archive_memory_item(_by["chronicle"][0], _mem97, _chd97)
+    assert len(_os.listdir(_os.path.join(_chd97, "archive"))) == 2, "a same-named file must not overwrite the archived one"
+    _cl.archive_memory_item(_by["run"][0], _mem97, _chd97)
+    assert _os.path.exists(_os.path.join(_mem97, "archive", "run", "run_1.json"))
+    _cl.delete_memory_item(_by["lab"][0])
+    assert not _os.path.exists(_by["lab"][0]["path"])
+    _left = _cl.list_memory_items(_mem97, _chd97)
+    assert sorted(i["kind"] for i in _left) == ["data", "data", "lesson", "postmortem"], [i["kind"] for i in _left]   # the two data files: danger_ledger and the new generation counter
+    # a lesson written after all that gets a fresh number
+    _again = _chr.load_ancestral_wisdom()
+    assert _chr.next_generation(_again) == 6
+finally:
+    _chr.WISDOM_FILE, _chr.GENERATION_COUNTER_FILE = _old97
+_csrc97 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
+for _needle in ("_build_memory", "memory_approve", "memory_archive", "memory_delete", 'default="no"'):
+    assert _needle in _csrc97, f"the console must contain {_needle}"
+print("  [OK] Test 97 Passed: the Memory tab lists lessons, chronicles, post-mortems, runs, lab results and live data; archive keeps (lessons whole, files in archive folders, never overwriting), delete removes, live data is refused, and a generation number is never reused after either.")

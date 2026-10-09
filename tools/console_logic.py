@@ -323,6 +323,131 @@ def set_approval(generations, approve):
     return changed
 
 
+# ---------------------------------------------------------------------------
+# Memory tab: every stored memory, with approve / archive / delete
+# ---------------------------------------------------------------------------
+MEMORY_KINDS = ("lesson", "chronicle", "postmortem", "run", "lab", "data")
+MEMORY_KIND_NAMES = {"lesson": "Ancestral lessons", "chronicle": "Chronicles", "postmortem": "Post-mortems", "run": "Run records",
+                     "lab": "Model lab results", "data": "Live data (used by the brain: view only)"}
+DATA_FILES = ("ability_stats.json", "danger_ledger.json", "exit_choices.jsonl", "item_drops.jsonl", "decision_trace.jsonl", "decision_trace.jsonl.1", "generation_counter.json")
+VIEW_ONLY_KINDS = ("data",)
+
+
+def _mem_dir():
+    return os.path.join(REPO, "memory")
+
+
+def _chron_dir():
+    return os.path.join(REPO, "chronicles")
+
+
+def _wisdom_dir():
+    import chronicler
+    return os.path.dirname(chronicler.WISDOM_FILE)
+
+
+def _archived_lessons_path():
+    return os.path.join(_wisdom_dir(), "archive", "ancestral_wisdom_archived.json")
+
+
+def list_memory_items(mem_dir=None, chron_dir=None):
+    """Every stored memory as dicts {kind, key, title, path, gen, approved, safe}, grouped in MEMORY_KINDS order, newest first within a group.
+    `safe` is False for the live data files the brain reads, which are shown but never archived or deleted from here."""
+    mem_dir = mem_dir or _mem_dir()
+    chron_dir = chron_dir or _chron_dir()
+    items = []
+    for w in sorted(lessons(), key=lambda x: x.get("generation") or 0, reverse=True):
+        gen = w.get("generation")
+        approved = w.get("approved") is True
+        items.append({"kind": "lesson", "key": f"lesson:{gen}", "gen": gen, "approved": approved, "safe": True, "path": None,
+                      "title": f"Gen {gen}  {'APPROVED' if approved else 'hidden'}  {w.get('name', '?')} L{w.get('level', '?')}: {str(w.get('lesson', ''))[:70]}"})
+
+    def files(folder, kind, match, safe=True):
+        try:
+            names = [n for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n)) and match(n)]
+        except OSError:
+            return
+        for n in sorted(names, key=lambda n: os.path.getmtime(os.path.join(folder, n)), reverse=True):
+            items.append({"kind": kind, "key": f"{kind}:{n}", "gen": None, "approved": None, "safe": safe, "path": os.path.join(folder, n), "title": n})
+
+    files(chron_dir, "chronicle", lambda n: n.startswith("Chronicle_") and n.endswith(".md"))
+    files(chron_dir, "postmortem", lambda n: n.startswith("Postmortem_") and n.endswith(".md"))
+    files(os.path.join(mem_dir, "runs"), "run", lambda n: n.endswith(".json"))
+    files(os.path.join(mem_dir, "model_lab"), "lab", lambda n: n.endswith((".json", ".md")))
+    files(mem_dir, "data", lambda n: n in DATA_FILES, safe=False)
+    order = {k: i for i, k in enumerate(MEMORY_KINDS)}
+    items.sort(key=lambda it: order[it["kind"]])          # stable: keeps the newest-first order inside each kind
+    return items
+
+
+def memory_item_text(item, max_bytes=300_000):
+    """The whole memory as text for the right-hand pane."""
+    if item["kind"] == "lesson":
+        for w in lessons():
+            if w.get("generation") == item.get("gen"):
+                head = f"Generation {w.get('generation')}   {'APPROVED: shown to the combat model' if w.get('approved') is True else 'hidden: NOT shown to the combat model'}\n"
+                head += f"Character: {w.get('name')}  level {w.get('level')}  turns {w.get('turns')}  zone {w.get('zone')}\nDied to: {w.get('death_reason')}\nRecorded: {w.get('timestamp')}\n\nLesson:\n{w.get('lesson')}\n"
+                return head
+        return "This lesson is no longer in the active list (archived or deleted)."
+    text = read_text(item["path"], max_bytes)
+    return text if text else "(empty or unreadable)"
+
+
+def _unique_path(folder, name):
+    os.makedirs(folder, exist_ok=True)
+    dest = os.path.join(folder, name)
+    if not os.path.exists(dest):
+        return dest
+    stem, ext = os.path.splitext(name)
+    return os.path.join(folder, f"{stem}_{int(time.time())}{ext}")
+
+
+def archive_memory_item(item, mem_dir=None, chron_dir=None):
+    """Takes a memory out of the active set without losing it. A lesson moves (whole) to memory/archive/ancestral_wisdom_archived.json; a chronicle or
+    post-mortem moves to chronicles/archive/; a run record or lab result moves to memory/archive/<kind>/. Returns a short description of where it went."""
+    import chronicler
+    if item["kind"] in VIEW_ONLY_KINDS or not item.get("safe", True):
+        raise ValueError("live data files are never archived from here")
+    if item["kind"] == "lesson":
+        wisdom = chronicler.load_ancestral_wisdom()
+        entry = next((w for w in wisdom if w.get("generation") == item.get("gen")), None)
+        if entry is None:
+            raise ValueError("that lesson is not in the active list")
+        path = _archived_lessons_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        archived = read_json(path, []) or []
+        archived.append(dict(entry, approved=False, archived_at=time.strftime("%Y-%m-%d %H:%M:%S")))
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(archived, f, indent=2)                          # written first: a failure here leaves the lesson where it was
+        chronicler.save_ancestral_wisdom([w for w in wisdom if w is not entry])
+        return f"lesson Gen {item.get('gen')} -> {path}"
+    import shutil
+    folder = os.path.dirname(item["path"])
+    if item["kind"] in ("chronicle", "postmortem"):
+        dest_dir = os.path.join(chron_dir or _chron_dir(), "archive")
+    else:
+        dest_dir = os.path.join(mem_dir or _mem_dir(), "archive", item["kind"])
+    dest = _unique_path(dest_dir, os.path.basename(item["path"]))
+    shutil.move(item["path"], dest)
+    return f"{os.path.basename(item['path'])} -> {dest}"
+
+
+def delete_memory_item(item):
+    """Permanently removes a memory (a lesson entry, or the file). Live data files are refused. Returns a short description."""
+    import chronicler
+    if item["kind"] in VIEW_ONLY_KINDS or not item.get("safe", True):
+        raise ValueError("live data files are never deleted from here")
+    if item["kind"] == "lesson":
+        wisdom = chronicler.load_ancestral_wisdom()
+        keep = [w for w in wisdom if w.get("generation") != item.get("gen")]
+        if len(keep) == len(wisdom):
+            raise ValueError("that lesson is not in the active list")
+        chronicler.save_ancestral_wisdom(keep)
+        return f"lesson Gen {item.get('gen')} deleted"
+    os.remove(item["path"])
+    return f"{os.path.basename(item['path'])} deleted"
+
+
 def drop_log_text(path):
     rows = tail_jsonl(path, 100)
     if not rows:
