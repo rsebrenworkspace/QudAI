@@ -5592,3 +5592,29 @@ assert brain.is_fragile_shooter({"is_stationary": False, "max_hp": 5, "name": "m
 _st111 = {"x": 40, "y": 12, "visible_entities": [{"name": "jilted lover", "blueprint": "Jilted Lover", "is_enemy": True, "is_stationary": True, "max_hp": 5, "hp": 5, "dist": 4, "has_los": True, "tx": 44, "ty": 12}]}
 assert brain.turret_hazards(_st111) == [], "a lone jilted lover is not a turret hazard"
 print("  [OK] Test 111 Passed: a rooted vine with no ranged attack (jilted lover) is not treated as a fragile shooter, so the turret rule no longer spends Lase charges on it, while real turrets and creatures unknown to the catalogue keep the old rule.")
+
+
+# ---------------------------------------------------------------------------
+# Test 112: the turret retreat depends on the damage a nest deals against our hit points (human run 2026-10-08, trace t1649 and t1783; HANDOFF issue 89)
+# ---------------------------------------------------------------------------
+_c112 = _ct103.load_catalog()
+assert _c112["Seed-Spitting Vine"]["ranged_shots"][0]["damage"] == "1d3" and _c112["Seed-Spitting Vine"]["ranged_shots"][0]["penetration"] == 2, "ProjectileSpatSeed"
+assert _c112["SecurityTurret"]["ranged_shots"][0]["damage"] == "1d8" and _c112["SecurityTurret"]["ranged_shots"][0]["penetration"] == 4, "ProjectileMusketBall"
+_vine112 = {"name": "seed-spitting vine", "blueprint": "Seed-Spitting Vine", "is_enemy": True, "is_stationary": True, "max_hp": 5, "hp": 5, "dist": 11, "has_los": True}
+_vine112b = dict(_vine112, dist=6)
+_mus112 = {"name": "musket turret", "blueprint": "SecurityTurret", "is_enemy": True, "is_stationary": True, "max_hp": 5, "hp": 5, "dist": 6, "has_los": True}
+def _hz112(hp, ents):
+    return brain.turret_hazards({"hp": hp, "av": 1, "visible_entities": ents})
+assert _hz112(40, [_vine112]) == [], "one seed vine is not worth fleeing at 40 HP (t1783)"
+assert len(_hz112(40, [_vine112, _vine112b])) == 2, "two vines still are (t1649 had two, at 28 HP)"
+assert len(_hz112(28, [_vine112])) == 1, "the same vine matters at 28 HP"
+assert len(_hz112(40, [_mus112])) == 1, "a musket turret is never tolerable at these hit points"
+_unk112 = {"name": "ancient turret", "blueprint": "NoSuchTurret", "is_enemy": True, "is_stationary": True, "max_hp": 5, "dist": 6, "has_los": True}
+assert len(_hz112(500, [_unk112])) == 1, "a turret the catalogue does not know keeps the old caution"
+# the decision itself: one vine at 40 HP, stairs up near: no retreat; the musket nest keeps the doctrine
+_gs112 = {"x": 45, "y": 23, "z": 12, "zone_id": "JoppaWorld.11.20.1.1.12", "hp": 40, "av": 1, "level": 5, "standing_on_stairs_up": True, "stairs_up": [{"tx": 45, "ty": 23}],
+          "visible_entities": [dict(_vine112)]}
+assert brain.turret_decision(_gs112, [], 1.0, []) is None
+_gs112["visible_entities"] = [dict(_mus112)]
+assert brain.turret_decision(_gs112, [], 1.0, [])["action"] == "USE_STAIRS_UP"
+print("  [OK] Test 112 Passed: the catalogue carries the engine's shot damage (seed 1d3 pen 2, musket ball 1d8 pen 4), a nest whose expected damage while closing in is under half our HP is not fled (one vine at 40 HP), two vines or a lower HP or a musket turret still are, and an unknown turret keeps the old caution.")

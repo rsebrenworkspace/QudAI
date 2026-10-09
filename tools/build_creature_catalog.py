@@ -112,6 +112,20 @@ def weapons(cat, name):
     return list(natural.values()), list(ranged.values())
 
 
+def projectile_stats(cat, weapon):
+    """What one shot of a ranged weapon does, from the engine's own data: the weapon's ammo loader names a ProjectileObject, whose Projectile part has BaseDamage and
+    BasePenetration (seed slingshot: 1d3, 2; musket: 1d8, 4). None when the weapon has no such loader (energy weapons and others are not decoded here)."""
+    parts = cat.parts(weapon)
+    mw = parts.get("MissileWeapon") or {}
+    for pname, attrs in parts.items():
+        proj = attrs.get("ProjectileObject") if isinstance(attrs, dict) else None
+        if proj and proj in cat.raw:
+            pp = cat.parts(proj).get("Projectile") or {}
+            if pp.get("BaseDamage"):
+                return {"weapon": weapon, "damage": pp.get("BaseDamage"), "penetration": bic.num(pp.get("BasePenetration"), 0), "shots": bic.num(mw.get("ShotsPerAction"), 1) or 1}
+    return None
+
+
 def build_entry(cat, name, reps=None):
     parts = cat.parts(name)
     tags = cat.tags(name)
@@ -130,7 +144,7 @@ def build_entry(cat, name, reps=None):
         "stats": {k: v for k, v in st.items() if k not in ("Level", "Hitpoints")},
         "start_rep": start_reputation(brain.get("Factions"), reps or {}), "wanders": brain.get("Wanders") != "false", "rooted": rooted, "factions": brain.get("Factions"),
         "species": tags.get("Species"), "role": tags.get("Role"), "anatomy": parts.get("Body", {}).get("Anatomy"),
-        "melee": natural[:4], "ranged": ranged[:3], "is_ranged": bool(ranged) or "shoot_and_scoot" in flags,
+        "melee": natural[:4], "ranged": ranged[:3], "ranged_shots": [s for s in (projectile_stats(cat, w) for w in ranged[:3]) if s], "is_ranged": bool(ranged) or "shoot_and_scoot" in flags,
         "mutations": sorted({m.get("Name") for b in cat.chain(name) for m in cat.raw[b][0].findall("mutation") if m.get("Name")}),
         "skills": sorted({s.get("Name") for b in cat.chain(name) for s in cat.raw[b][0].findall("skill") if s.get("Name")}),
         "flags": flags, "has_ma": "MA" in st,

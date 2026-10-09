@@ -3387,6 +3387,29 @@ def is_fragile_shooter(e):
     return True
 
 
+TURRET_TOLERABLE_SHARE = 0.5     # a nest is not worth fleeing when the damage it deals while we close in is below this share of our current hit points
+
+
+def nest_is_tolerable(hazards, game_state):
+    """True when every hazard is in the catalogue with engine shot data and together they would deal less than TURRET_TOLERABLE_SHARE of our hit points over the turns it
+    takes to close in (creature_threat.APPROACH_TURNS). A seed-spitting vine (1d3, penetration 2) passes at 40 HP, two of them do not, a musket turret (1d8, penetration 4) never does;
+    anything the catalogue does not know keeps the old caution. HANDOFF issue 89."""
+    try:
+        hp = float(game_state.get("hp") or 0)
+        if hp <= 0 or not hazards:
+            return False
+        us = {"av": game_state.get("av")} if game_state.get("av") is not None else None
+        per_turn = 0.0
+        for e in hazards:
+            entry = creature_threat.lookup(blueprint=e.get("blueprint"), name=e.get("name"))
+            if entry is None or not entry.get("ranged_shots"):
+                return False
+            per_turn += creature_threat.damage_per_turn(entry, None, (us or {}).get("av"))
+        return per_turn * creature_threat.APPROACH_TURNS < TURRET_TOLERABLE_SHARE * hp
+    except Exception:
+        return False
+
+
 def turret_hazards(game_state):
     """The turrets and fragile stationary shooters with a line of sight within TURRET_RANGE, nearest first. Read from the exported entities, whether or not the mod
     called them enemies. A tinker robot that places turrets is mobile and not counted; its turrets are."""
@@ -3401,7 +3424,10 @@ def turret_hazards(game_state):
         if e.get("has_los") is False or (e.get("dist") if e.get("dist") is not None else 99) > TURRET_RANGE:
             continue
         out.append(e)
-    return sorted(out, key=lambda e: e.get("dist", 99))
+    out = sorted(out, key=lambda e: e.get("dist", 99))
+    if out and nest_is_tolerable(out, game_state):
+        return []        # too weak to matter at our current hit points: the normal rules apply (HANDOFF issue 89)
+    return out
 
 
 def turret_decision(game_state, abilities, hp_ratio, adj_threats):

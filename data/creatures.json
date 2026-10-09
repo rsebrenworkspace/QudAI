@@ -243,6 +243,14 @@
    "ranged": [
     "Flamethrower"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d2",
+     "penetration": 15,
+     "shots": 9,
+     "weapon": "Flamethrower"
+    }
+   ],
    "role": "Unspecified",
    "rooted": false,
    "skills": [
@@ -405,6 +413,14 @@
    "name": "agolfly",
    "ranged": [
     "Girshfly_Energy"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 8,
+     "shots": 1,
+     "weapon": "Girshfly_Energy"
+    }
    ],
    "role": "Skirmisher",
    "rooted": false,
@@ -738,6 +754,14 @@
    "ranged": [
     "Semi-Automatic Pistol"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": false,
    "skills": [
@@ -963,6 +987,14 @@
    "name": "Aloysius",
    "ranged": [
     "Freeze Ray"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d4",
+     "penetration": 1,
+     "shots": 1,
+     "weapon": "Freeze Ray"
+    }
    ],
    "role": "NPC",
    "rooted": false,
@@ -2005,6 +2037,14 @@
    "ranged": [
     "Borderlands Revolver"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 3,
+     "shots": 1,
+     "weapon": "Borderlands Revolver"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": false,
    "skills": [
@@ -2074,6 +2114,14 @@
    "name": "arconaut",
    "ranged": [
     "Borderlands Revolver"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 3,
+     "shots": 1,
+     "weapon": "Borderlands Revolver"
+    }
    ],
    "role": "Skirmisher",
    "rooted": false,
@@ -6328,6 +6376,14 @@
    "ranged": [
     "Borderlands Revolver"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 3,
+     "shots": 1,
+     "weapon": "Borderlands Revolver"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": false,
    "skills": [
@@ -6490,6 +6546,14 @@
    "ranged": [
     "Chain Laser"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 5,
+     "shots": 3,
+     "weapon": "Chain Laser"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": true,
    "skills": [
@@ -6644,6 +6708,14 @@
    "name": "chaingun turret",
    "ranged": [
     "Chaingun"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 6,
+     "weapon": "Chaingun"
+    }
    ],
    "role": "Skirmisher",
    "rooted": true,
@@ -13238,6 +13310,14 @@
    "ranged": [
     "Swarm Rack"
    ],
+   "ranged_shots": [
+    {
+     "damage": "3d6",
+     "penetration": 13,
+     "shots": 10,
+     "weapon": "Swarm Rack"
+    }
+   ],
    "role": "Artillery",
    "rooted": false,
    "skills": [
@@ -13972,6 +14052,14 @@
    "ranged": [
     "LightLock"
    ],
+   "ranged_shots": [
+    {
+     "damage": "2d6",
+     "penetration": 9,
+     "shots": 1,
+     "weapon": "LightLock"
+    }
+   ],
    "role": "Artillery",
    "rooted": false,
    "skills": [
@@ -14075,6 +14163,14 @@
    "name": "conservator",
    "ranged": [
     "LightLock"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "2d6",
+     "penetration": 9,
+     "shots": 1,
+     "weapon": "LightLock"
+    }
    ],
    "role": "Artillery",
    "rooted": false,
@@ -15036,6 +15132,14 @@
    "ranged": [
     "Sniper Rifle"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d8",
+     "penetration": 7,
+     "shots": 1,
+     "weapon": "Sniper Rifle"
+    }
+   ],
    "role": "NPC",
    "rooted": false,
    "skills": [
@@ -15224,6 +15328,14 @@
    "ranged": [
     "LightRondure"
    ],
+   "ranged_shots": [
+    {
+     "damage": "2d8",
+     "penetration": 10,
+     "shots": 2,
+     "weapon": "LightRondure"
+    }
+   ],
    "role": "Brute",
    "rooted": false,
    "skills": [
@@ -15320,6 +15432,14 @@
    "name": "crypt sitter",
    "ranged": [
     "LightRondure"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "2d8",
+     "penetration": 10,
+     "shots": 2,
+     "weapon": "LightRondure"
+    }
    ],
    "role": "Brute",
    "rooted": false,
@@ -15797,6 +15917,14 @@
    "ranged": [
     "Semi-Automatic Pistol"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": false,
    "skills": [
@@ -15960,6 +16088,14 @@
    "name": "Dardi",
    "ranged": [
     "Chain Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 4,
+     "weapon": "Chain Pistol"
+    }
    ],
    "role": "NPC",
    "rooted": false,
@@ -17319,6 +17455,14 @@
    "name": "Doyoba",
    "ranged": [
     "Semi-Automatic Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
    ],
    "role": "Skirmisher",
    "rooted": false,
@@ -20199,6 +20343,14 @@
    "name": "Eskhind",
    "ranged": [
     "Borderlands Revolver"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 3,
+     "shots": 1,
+     "weapon": "Borderlands Revolver"
+    }
    ],
    "role": "Unspecified",
    "rooted": false,
@@ -23162,6 +23314,14 @@
    "ranged": [
     "Naser Cannon"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 11,
+     "shots": 1,
+     "weapon": "Naser Cannon"
+    }
+   ],
    "role": "Artillery",
    "rooted": false,
    "skills": [
@@ -23248,6 +23408,14 @@
    "name": "gamma moth",
    "ranged": [
     "Gamma Moth Gaze"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 8,
+     "shots": 1,
+     "weapon": "Gamma Moth Gaze"
+    }
    ],
    "role": "Artillery",
    "rooted": false,
@@ -24970,6 +25138,14 @@
    "ranged": [
     "Glowmoth_Gaze"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Glowmoth_Gaze"
+    }
+   ],
    "role": "Unspecified",
    "rooted": false,
    "species": "moth",
@@ -26010,6 +26186,14 @@
    "ranged": [
     "Desert Rifle"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d8",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Desert Rifle"
+    }
+   ],
    "role": "Artillery",
    "rooted": false,
    "skills": [
@@ -26550,6 +26734,14 @@
    "ranged": [
     "Overloaded Laser Pistol"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d10",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Overloaded Laser Pistol"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": false,
    "skills": [
@@ -27036,6 +27228,14 @@
    "ranged": [
     "Chain Laser"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 5,
+     "shots": 3,
+     "weapon": "Chain Laser"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": true,
    "skills": [
@@ -27118,6 +27318,14 @@
    "name": "chain laser emplacement",
    "ranged": [
     "Chain Laser"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 5,
+     "shots": 3,
+     "weapon": "Chain Laser"
+    }
    ],
    "role": "Skirmisher",
    "rooted": true,
@@ -27503,6 +27711,14 @@
    "name": "Gyamyo",
    "ranged": [
     "Semi-Automatic Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
    ],
    "role": "Skirmisher",
    "rooted": false,
@@ -29497,6 +29713,14 @@
    "name": "Hortensa",
    "ranged": [
     "Laser Rifle"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Laser Rifle"
+    }
    ],
    "role": "NPC",
    "rooted": false,
@@ -32382,6 +32606,14 @@
    "ranged": [
     "Laser Rifle"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Laser Rifle"
+    }
+   ],
    "role": "NPC",
    "rooted": false,
    "skills": [
@@ -32518,6 +32750,14 @@
    "name": "Issachari rifler",
    "ranged": [
     "Desert Rifle"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d8",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Desert Rifle"
+    }
    ],
    "role": "Unspecified",
    "rooted": false,
@@ -32739,6 +32979,14 @@
    "name": "Jacobo",
    "ranged": [
     "Laser Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d10",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Laser Pistol"
+    }
    ],
    "role": "NPC",
    "rooted": false,
@@ -34058,6 +34306,14 @@
    "ranged": [
     "Svardym_Spit"
    ],
+   "ranged_shots": [
+    {
+     "damage": "3d3",
+     "penetration": 9,
+     "shots": 1,
+     "weapon": "Svardym_Spit"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": false,
    "skills": [
@@ -34334,6 +34590,14 @@
    "ranged": [
     "Laser Rifle"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Laser Rifle"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": true,
    "skills": [
@@ -34412,6 +34676,14 @@
    "name": "Lebah",
    "ranged": [
     "Semi-Automatic Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
    ],
    "role": "Skirmisher",
    "rooted": false,
@@ -34649,6 +34921,14 @@
    "name": "leering stalker",
    "ranged": [
     "Blast Cannon"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "2d8",
+     "penetration": 12,
+     "shots": 1,
+     "weapon": "Blast Cannon"
+    }
    ],
    "role": "Artillery",
    "rooted": false,
@@ -35251,6 +35531,14 @@
    "ranged": [
     "Borderlands Revolver"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 3,
+     "shots": 1,
+     "weapon": "Borderlands Revolver"
+    }
+   ],
    "role": "Unspecified",
    "rooted": false,
    "skills": [
@@ -35416,6 +35704,14 @@
    "ranged": [
     "Laser Pistol"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d10",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Laser Pistol"
+    }
+   ],
    "role": "NPC",
    "rooted": false,
    "skills": [
@@ -35498,6 +35794,14 @@
    "name": "Urshiib Merchant",
    "ranged": [
     "Laser Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d10",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Laser Pistol"
+    }
    ],
    "role": "NPC",
    "rooted": false,
@@ -35753,6 +36057,14 @@
    "name": "Many Eyes",
    "ranged": [
     "Naser Cannon"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 11,
+     "shots": 1,
+     "weapon": "Naser Cannon"
+    }
    ],
    "role": "Artillery",
    "rooted": false,
@@ -40077,6 +40389,14 @@
    "ranged": [
     "Laser Rifle"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Laser Rifle"
+    }
+   ],
    "role": "Unspecified",
    "rooted": true,
    "skills": [
@@ -40238,6 +40558,14 @@
    "name": "microturret",
    "ranged": [
     "Semi-Automatic Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
    ],
    "role": "Skirmisher",
    "rooted": true,
@@ -40690,6 +41018,14 @@
    "name": "juicing cannibal",
    "ranged": [
     "Missile Launcher"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 10,
+     "shots": 1,
+     "weapon": "Missile Launcher"
+    }
    ],
    "role": "Brute",
    "rooted": false,
@@ -41145,6 +41481,14 @@
    "ranged": [
     "Semi-Automatic Pistol"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": false,
    "skills": [
@@ -41226,6 +41570,14 @@
    "name": "mopango pilgrim",
    "ranged": [
     "Semi-Automatic Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
    ],
    "role": "Skirmisher",
    "rooted": false,
@@ -41309,6 +41661,14 @@
    "ranged": [
     "Semi-Automatic Pistol"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": false,
    "skills": [
@@ -41388,6 +41748,14 @@
    "name": "mopango tombdweller",
    "ranged": [
     "Semi-Automatic Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
    ],
    "role": "Skirmisher",
    "rooted": false,
@@ -41469,6 +41837,14 @@
    "name": "mopango watcher",
    "ranged": [
     "Semi-Automatic Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
    ],
    "role": "Skirmisher",
    "rooted": false,
@@ -42140,6 +42516,14 @@
    "ranged": [
     "Laser Rifle"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Laser Rifle"
+    }
+   ],
    "role": "NPC",
    "rooted": false,
    "skills": [
@@ -42614,6 +42998,14 @@
    "name": "anomaly extinguisher",
    "ranged": [
     "Normality Gas Pump"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "0",
+     "penetration": 0,
+     "shots": 5,
+     "weapon": "Normality Gas Pump"
+    }
    ],
    "role": "Artillery",
    "rooted": false,
@@ -43391,6 +43783,14 @@
    "ranged": [
     "Borderlands Revolver"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 3,
+     "shots": 1,
+     "weapon": "Borderlands Revolver"
+    }
+   ],
    "role": "NPC",
    "rooted": false,
    "skills": [
@@ -43470,6 +43870,14 @@
    "name": "Urshiib Librarian",
    "ranged": [
     "Borderlands Revolver"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 3,
+     "shots": 1,
+     "weapon": "Borderlands Revolver"
+    }
    ],
    "role": "NPC",
    "rooted": false,
@@ -44284,6 +44692,14 @@
    "name": "Phinae Hoshaiah",
    "ranged": [
     "Overloaded Laser Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d10",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Overloaded Laser Pistol"
+    }
    ],
    "role": "Unspecified",
    "rooted": false,
@@ -46195,6 +46611,14 @@
    "ranged": [
     "Overloaded Laser Pistol"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d10",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Overloaded Laser Pistol"
+    }
+   ],
    "role": "NPC",
    "rooted": false,
    "skills": [
@@ -48030,6 +48454,14 @@
    "ranged": [
     "Desert Rifle"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d8",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Desert Rifle"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": true,
    "skills": [
@@ -48343,6 +48775,14 @@
    "name": "rocket turret",
    "ranged": [
     "Missile Launcher"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 10,
+     "shots": 1,
+     "weapon": "Missile Launcher"
+    }
    ],
    "role": "Skirmisher",
    "rooted": true,
@@ -49634,6 +50074,14 @@
    "ranged": [
     "Musket"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d8",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Musket"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": true,
    "skills": [
@@ -49707,6 +50155,14 @@
    "name": "seed-spitting vine",
    "ranged": [
     "Seed Slingshot"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d3",
+     "penetration": 2,
+     "shots": 1,
+     "weapon": "Seed Slingshot"
+    }
    ],
    "role": "Skirmisher",
    "rooted": true,
@@ -51167,6 +51623,14 @@
    "name": "slugsnout",
    "ranged": [
     "Slugsnout Snout"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d8",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Slugsnout Snout"
+    }
    ],
    "role": "Artillery",
    "rooted": false,
@@ -52952,6 +53416,14 @@
    "ranged": [
     "Pump Shotgun"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d2",
+     "penetration": 4,
+     "shots": 8,
+     "weapon": "Pump Shotgun"
+    }
+   ],
    "role": "Artillery",
    "rooted": false,
    "species": "snapjaw",
@@ -53032,6 +53504,14 @@
    "ranged": [
     "Pump Shotgun"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d2",
+     "penetration": 4,
+     "shots": 8,
+     "weapon": "Pump Shotgun"
+    }
+   ],
    "role": "Artillery",
    "rooted": false,
    "species": "snapjaw",
@@ -53111,6 +53591,14 @@
    "name": "snapjaw shotgunner",
    "ranged": [
     "Pump Shotgun"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d2",
+     "penetration": 4,
+     "shots": 8,
+     "weapon": "Pump Shotgun"
+    }
    ],
    "role": "Artillery",
    "rooted": false,
@@ -54104,6 +54592,14 @@
    "name": "Sparafucile",
    "ranged": [
     "MasterworkCarbine"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d8",
+     "penetration": 5,
+     "shots": 3,
+     "weapon": "MasterworkCarbine"
+    }
    ],
    "role": "NPC",
    "rooted": false,
@@ -56117,6 +56613,14 @@
    "ranged": [
     "Svardym_Spit"
    ],
+   "ranged_shots": [
+    {
+     "damage": "3d3",
+     "penetration": 9,
+     "shots": 1,
+     "weapon": "Svardym_Spit"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": false,
    "skills": [
@@ -56795,6 +57299,14 @@
    "name": "thirst thistle",
    "ranged": [
     "Thistle Pitcher"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d3+1",
+     "penetration": 3,
+     "shots": 1,
+     "weapon": "Thistle Pitcher"
+    }
    ],
    "role": "Skirmisher",
    "rooted": true,
@@ -57690,6 +58202,14 @@
    "ranged": [
     "Mortar Tube"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d3",
+     "penetration": 3,
+     "shots": 1,
+     "weapon": "Mortar Tube"
+    }
+   ],
    "role": "Artillery",
    "rooted": false,
    "skills": [
@@ -57828,6 +58348,14 @@
    "ranged": [
     "Short Bow",
     "Electrobow"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 6,
+     "shots": 1,
+     "weapon": "Electrobow"
+    }
    ],
    "role": "Skirmisher",
    "rooted": false,
@@ -59241,6 +59769,14 @@
    "name": "two-headed slugsnout",
    "ranged": [
     "Slugsnout Snout"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d8",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Slugsnout Snout"
+    }
    ],
    "role": "Artillery",
    "rooted": false,
@@ -61039,6 +61575,14 @@
    "ranged": [
     "ShoulderMountedLightCannon"
    ],
+   "ranged_shots": [
+    {
+     "damage": "7d6",
+     "penetration": 10,
+     "shots": 2,
+     "weapon": "ShoulderMountedLightCannon"
+    }
+   ],
    "role": "Unspecified",
    "rooted": false,
    "skills": [
@@ -61131,6 +61675,14 @@
    "name": "temple mecha mk Ib",
    "ranged": [
     "ShoulderMountedLightCannon"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "7d6",
+     "penetration": 10,
+     "shots": 2,
+     "weapon": "ShoulderMountedLightCannon"
+    }
    ],
    "role": "Unspecified",
    "rooted": false,
@@ -61225,6 +61777,14 @@
    "ranged": [
     "ShoulderMountedLightCannon"
    ],
+   "ranged_shots": [
+    {
+     "damage": "7d6",
+     "penetration": 10,
+     "shots": 2,
+     "weapon": "ShoulderMountedLightCannon"
+    }
+   ],
    "role": "Unspecified",
    "rooted": false,
    "skills": [
@@ -61317,6 +61877,14 @@
    "name": "temple mecha mk Ib",
    "ranged": [
     "ShoulderMountedLightCannon"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "7d6",
+     "penetration": 10,
+     "shots": 2,
+     "weapon": "ShoulderMountedLightCannon"
+    }
    ],
    "role": "Unspecified",
    "rooted": false,
@@ -61411,6 +61979,20 @@
     "ShoulderMountedLightCannon",
     "Vertical Launcher"
    ],
+   "ranged_shots": [
+    {
+     "damage": "7d6",
+     "penetration": 10,
+     "shots": 2,
+     "weapon": "ShoulderMountedLightCannon"
+    },
+    {
+     "damage": "1d8",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Vertical Launcher"
+    }
+   ],
    "role": "Unspecified",
    "rooted": false,
    "skills": [
@@ -61504,6 +62086,20 @@
    "ranged": [
     "ShoulderMountedLightCannon",
     "Vertical Launcher"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "7d6",
+     "penetration": 10,
+     "shots": 2,
+     "weapon": "ShoulderMountedLightCannon"
+    },
+    {
+     "damage": "1d8",
+     "penetration": 5,
+     "shots": 1,
+     "weapon": "Vertical Launcher"
+    }
    ],
    "role": "Unspecified",
    "rooted": false,
@@ -61811,6 +62407,14 @@
    "ranged": [
     "Chain Laser"
    ],
+   "ranged_shots": [
+    {
+     "damage": "1d12",
+     "penetration": 5,
+     "shots": 3,
+     "weapon": "Chain Laser"
+    }
+   ],
    "role": "Skirmisher",
    "rooted": true,
    "skills": [
@@ -62054,6 +62658,14 @@
    "name": "1-FF",
    "ranged": [
     "LightLock"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "2d6",
+     "penetration": 9,
+     "shots": 1,
+     "weapon": "LightLock"
+    }
    ],
    "role": "Artillery",
    "rooted": false,
@@ -63976,6 +64588,14 @@
    "name": "Yona",
    "ranged": [
     "Semi-Automatic Pistol"
+   ],
+   "ranged_shots": [
+    {
+     "damage": "1d6",
+     "penetration": 4,
+     "shots": 1,
+     "weapon": "Semi-Automatic Pistol"
+    }
    ],
    "role": "Skirmisher",
    "rooted": false,

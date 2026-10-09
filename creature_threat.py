@@ -137,6 +137,11 @@ def damage_per_turn(entry, observed_per_hit=None, armor=None):
     if observed_per_hit:
         melee = max(melee, observed_per_hit * max(1, sum(int(a.get("count") or 1) for a in (entry.get("melee") or []))))
     ranged = RANGED_DAMAGE if entry.get("ranged") else 0.0
+    shots = entry.get("ranged_shots") or []
+    if shots:
+        # the engine's own numbers for one shot (data/creatures.json `ranged_shots`, from the weapon's projectile): dice per penetration times expected penetrations
+        a = OUR_ARMOR if armor is None else armor
+        ranged = max(_dice_average(s.get("damage")) * expected_penetrations(a, int(s.get("penetration") or 0)) * int(s.get("shots") or 1) for s in shots)
     return max(melee, ranged) * HIT_CHANCE
 
 
