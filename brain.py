@@ -372,6 +372,11 @@ def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
             if FRONTIER_FAILS[fk] >= FRONTIER_FAIL_LIMIT:
                 _frontier_write_off(zone_id, ck, f"{FRONTIER_FAIL_LIMIT} failed approaches although the engine lists it as reachable")
     bad_centres = FRONTIER_BAD.get(zone_id, [])
+    avoid_pts = ZONE_DANGER.avoid_points(zone_id, int(game_state.get("level") or 1), TURN_CLOCK)
+    if avoid_pts and FRONTIER_COMMIT["zone"] == zone_id and FRONTIER_COMMIT["target"] is not None:
+        tx0, ty0 = FRONTIER_COMMIT["target"]
+        if any(max(abs(tx0 - ax), abs(ty0 - ay)) <= zone_danger.AVOID_RADIUS for ax, ay in avoid_pts):
+            FRONTIER_COMMIT.update({"zone": None, "target": None})       # a committed target that now lies near the danger is dropped
     targets = []
     for tg in game_state.get("frontier_targets", []) or []:
         x, y = tg.get("x"), tg.get("y")
@@ -379,6 +384,8 @@ def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
             continue
         if any(max(abs(x - bx), abs(y - by)) <= FRONTIER_FAIL_RADIUS for bx, by in bad_centres):
             continue
+        if any(max(abs(x - ax), abs(y - ay)) <= zone_danger.AVOID_RADIUS for ax, ay in avoid_pts):
+            continue          # near where something out of our class was last seen
         targets.append(tg)
     if not targets:
         FRONTIER_COMMIT.update({"zone": None, "target": None})
@@ -1059,12 +1066,14 @@ def note_zone_danger(game_state):
             pack += ratio
             if e.get("difficulty") in LETHAL_DIFFICULTIES or (trust_ratio and ratio >= 3.0):
                 if worst is None or lvl > worst[1]:
-                    worst = (e.get("name") or e.get("blueprint") or "?", lvl, "alone")
+                    worst = (e.get("name") or e.get("blueprint") or "?", lvl, "alone", e.get("tx"), e.get("ty"))
         if worst is None and trust_ratio and pack >= ZONE_DANGER_PACK_SCORE and len(mobile) >= 3:
             top = max(mobile, key=lambda x: int(x.get("level") or 0))
-            worst = (f"{len(mobile)} hostiles incl. {top.get('name')}", int(top.get("level") or 0), "pack")
+            worst = (f"{len(mobile)} hostiles incl. {top.get('name')}", int(top.get("level") or 0), "pack", top.get("tx"), top.get("ty"))
         if worst and ZONE_DANGER.record(zone, worst[0], worst[1], our_level):
             print(f"[ZONE DANGER] {zone}: {worst[0]} (level {worst[1]}, {worst[2]}); stays flagged until our level {ZONE_DANGER.flags[zone].clears_at} (now {our_level})")
+        if worst:
+            ZONE_DANGER.seen(zone, worst[3], worst[4], TURN_CLOCK)       # last seen position: the frontier chooser keeps away from it (BACKLOG B10 step 1, last-seen memory)
     except Exception:
         pass
 

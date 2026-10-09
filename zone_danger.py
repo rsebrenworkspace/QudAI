@@ -11,6 +11,8 @@ DIRECTIONS = ("N", "S", "E", "W")
 LEVEL_MARGIN = 3              # a flag lapses when our level reaches the creature's level minus this ...
 MIN_GROWTH = 2                # ... or when we have gained this many levels since the flag (so a flag for a level-1 pack lapses too)
 RETREAT_PRESSURE = 0.5        # back-tracking is considered only when the danger is this close (a flag in this zone or the next one)
+AVOID_RADIUS = 8              # frontier targets this close (Chebyshev, in cells) to where the creature was last seen are skipped
+AVOID_MAX_AGE = 80            # ... for this many turns after it was last seen (a mobile creature moves on)
 
 
 def world_cell(zone_id):
@@ -40,6 +42,8 @@ class Flag:
         self.creature = creature
         self.creature_level = int(creature_level or 0)
         self.seen_at_level = int(our_level or 1)
+        self.where = None               # (x, y) of the creature the last time it was in view in this zone
+        self.where_turn = None
 
     @property
     def clears_at(self):
@@ -64,6 +68,21 @@ class Ledger:
             return False
         self.flags[zone_id] = Flag(zone_id, creature, creature_level, our_level)
         return True
+
+    def seen(self, zone_id, x, y, turn):
+        """Remember where the flagged creature was last in view. Ignored for a zone without an active flag."""
+        f = self.flags.get(zone_id)
+        if f is not None and x is not None and y is not None:
+            f.where, f.where_turn = (int(x), int(y)), turn
+
+    def avoid_points(self, zone_id, our_level, turn):
+        """Cells in this zone to keep away from: where an active flag's creature was last seen, if that was recent."""
+        f = self.flags.get(zone_id)
+        if f is None or f.where is None or not f.active(our_level):
+            return []
+        if f.where_turn is not None and turn is not None and turn - f.where_turn > AVOID_MAX_AGE:
+            return []
+        return [f.where]
 
     def active_flags(self, our_level):
         return [f for f in self.flags.values() if f.active(our_level)]

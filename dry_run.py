@@ -5541,3 +5541,42 @@ _wd109["difficulty"] = "Very Tough"
 assert _flagged109({"abilities": _ab109}) is True, "the engine's own difficulty always flags"
 brain.ZONE_DANGER = _zd106.Ledger()
 print("  [OK] Test 109 Passed: a character with a ranged or disabling ability (ready or on cooldown) or a missile weapon is flagged only by the engine's difficulty, not by the melee-only threat ratio; a character without one is still flagged by both.")
+
+
+# ---------------------------------------------------------------------------
+# Test 110: last-seen position memory keeps the frontier chooser away from an out-of-class creature (B10 step 1 extension, HANDOFF issue 85)
+# ---------------------------------------------------------------------------
+_Z110 = "JoppaWorld.11.21.0.1.10"
+_led110 = _zd106.Ledger()
+assert _led110.avoid_points(_Z110, 1, 0) == [], "no flag, no avoid point"
+_led110.record(_Z110, "wet croc", 3, 1)
+assert _led110.avoid_points(_Z110, 1, 0) == [], "flagged but never located"
+_led110.seen(_Z110, 72, 13, 100)
+assert _led110.avoid_points(_Z110, 1, 120) == [(72, 13)] and _led110.avoid_points(_Z110, 1, 100 + _zd106.AVOID_MAX_AGE + 1) == [], "the position goes stale"
+assert _led110.avoid_points(_Z110, 20, 120) == [], "a lapsed flag keeps nothing away"
+_led110.seen("JoppaWorld.1.1.0.0.10", 5, 5, 100)
+assert "JoppaWorld.1.1.0.0.10" not in _led110.flags, "seen() never creates a flag"
+# the frontier chooser: the nearest target lies beside the croc, the next one does not
+def _front110(level=1, turn=120):
+    brain.ZONE_DANGER = _led110
+    brain.TURN_CLOCK = turn
+    brain.FRONTIER_COMMIT.update({"zone": None, "target": None})
+    brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
+    st = {"level": level, "frontier_targets": [{"x": 72, "y": 13, "dist": 2, "q": "SE"}, {"x": 30, "y": 5, "dist": 40, "q": "NW"}]}
+    return brain.pick_frontier_target(st, (74, 15), _Z110)
+_t110, _r110 = _front110()
+assert _t110 == (30, 5), (_t110, _r110)
+brain.FRONTIER_COMMIT.update({"zone": _Z110, "target": (72, 13)})
+_st110 = {"level": 1, "frontier_targets": [{"x": 72, "y": 13, "dist": 2, "q": "SE"}, {"x": 30, "y": 5, "dist": 40, "q": "NW"}]}
+assert brain.pick_frontier_target(_st110, (74, 15), _Z110)[0] == (30, 5), "a committed target near the danger is dropped"
+_only110 = {"level": 1, "frontier_targets": [{"x": 72, "y": 13, "dist": 2, "q": "SE"}]}
+brain.FRONTIER_COMMIT.update({"zone": None, "target": None})
+assert brain.pick_frontier_target(_only110, (74, 15), _Z110) == (None, None), "when every target is near the danger the chooser offers none (the brain then leaves or autoexplores)"
+assert _front110(level=20)[0] == (72, 13), "a lapsed flag restores the nearest target"
+assert _front110(turn=120 + 200)[0] == (72, 13), "a stale position restores the nearest target"
+# the feed: note_zone_danger stores where the creature stood
+brain.ZONE_DANGER = _zd106.Ledger(); brain.TURN_CLOCK = 50
+brain.note_zone_danger({"zone_id": _Z110, "level": 1, "hp": 18, "visible_entities": [{"name": "wet croc", "blueprint": "Crocodile", "is_enemy": True, "is_stationary": False, "level": 3, "difficulty": "Impossible", "tx": 70, "ty": 11, "hp": 40}]})
+assert brain.ZONE_DANGER.flags[_Z110].where == (70, 11) and brain.ZONE_DANGER.flags[_Z110].where_turn == 50
+brain.ZONE_DANGER = _zd106.Ledger(); brain.FRONTIER_COMMIT.update({"zone": None, "target": None})
+print("  [OK] Test 110 Passed: the ledger remembers where a flagged creature was last in view, the frontier chooser skips targets within 8 cells of it (dropping a committed one, offering none when all are near), and the memory lapses with the flag or after 80 turns.")
