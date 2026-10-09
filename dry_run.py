@@ -5521,3 +5521,23 @@ _cs108 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools
 assert "class MixinCatalog(bic.Catalog)" in _cs108 and "cat = MixinCatalog(raw)" in _cs108
 assert _c108["Scrapbot"]["calm"] is True and not _c108["Scrapbot"]["likely_hostile"] and _c108["Waydroid"]["likely_hostile"] and _c108["Baboon"]["likely_hostile"], "Calm=True means it does not start fights (the Scrapbot test, 2026-10-08); Hostile=false alone does not (baboons)"
 print("  [OK] Test 108 Passed: the creature catalog merges <mixin> blueprints, so a hover golem is level 50 with 500 hit points in the Barathrumites (not hostile), as the game reported, and creatures without a mixin are unchanged.")
+
+
+# ---------------------------------------------------------------------------
+# Test 109: the zone-danger ratio trigger is conservative for a character with a ranged opener (Waydroid retest, HANDOFF issue 87)
+# ---------------------------------------------------------------------------
+_ab109 = [{"name": "Lase (3 charges)", "command": "CommandLase", "usable": True}, {"name": "Sprint", "command": "CommandToggleRunning"}]
+assert brain.has_ranged_opener({"abilities": _ab109}) and brain.has_ranged_opener({"abilities": [{"command": "CommandTeleportOther", "usable": False}]}), "a kit on cooldown still counts"
+assert not brain.has_ranged_opener({"abilities": [{"command": "CommandToggleRunning"}, {"command": "CommandIntimidate"}]}) and not brain.has_ranged_opener({})
+assert brain.has_ranged_opener({"has_missile_weapon": True, "abilities": []})
+_wd109 = {"name": "waydroid", "blueprint": "Waydroid", "is_enemy": True, "is_stationary": False, "level": 10, "difficulty": "Average", "hp": 24, "dist": 8}
+def _flagged109(extra):
+    brain.ZONE_DANGER = _zd106.Ledger()
+    brain.note_zone_danger(dict({"zone_id": _start106, "level": 3, "hp": 26, "av": 1, "melee": {"damage": "1d2", "penetration": -1}, "visible_entities": [_wd109]}, **extra))
+    return _start106 in brain.ZONE_DANGER.flags
+assert _flagged109({"abilities": []}) is True, "no opener: the ratio flags a level-10 robot even when the engine calls it Average"
+assert _flagged109({"abilities": _ab109}) is False, "an opener: the ratio alone no longer flags it"
+_wd109["difficulty"] = "Very Tough"
+assert _flagged109({"abilities": _ab109}) is True, "the engine's own difficulty always flags"
+brain.ZONE_DANGER = _zd106.Ledger()
+print("  [OK] Test 109 Passed: a character with a ranged or disabling ability (ready or on cooldown) or a missile weapon is flagged only by the engine's difficulty, not by the melee-only threat ratio; a character without one is still flagged by both.")

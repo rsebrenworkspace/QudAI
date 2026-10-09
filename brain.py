@@ -1023,12 +1023,28 @@ ZONE_DANGER = zone_danger.Ledger()      # in memory only: a restart of the brain
 ZONE_DANGER_PACK_SCORE = 3.0            # several lesser hostiles together count when their threat ratios add up to this (a heuristic)
 
 
+OPENER_FAMILIES = ("lase", "stunning_force", "flaming_ray", "freezing_ray", "elemental_ray", "sunder_mind", "teleport_other", "syphon_vim")
+
+
+def has_ranged_opener(game_state):
+    """True when the character owns a ranged or disabling attack (an ability in an offensive family, ready or not, or a missile weapon). The threat score models the main
+    hand only, so for such a character its ratio is too pessimistic: a level-3 mutant with Lase, Stunning Force and Teleport Other killed a level-10 Waydroid the score
+    rated 10 times deadly (Waydroid retest, 2026-10-08, HANDOFF issue 87)."""
+    try:
+        if game_state.get("has_missile_weapon"):
+            return True
+        return any(ability_registry.in_family(ab, *OPENER_FAMILIES) for ab in game_state.get("abilities") or [])
+    except Exception:
+        return False
+
+
 def note_zone_danger(game_state):
     """Flags the current zone when a mobile hostile in view is out of our class, or when the hostiles in view together are. Prints `[ZONE DANGER]` once per new flag. Never acts, never raises."""
     try:
         zone = game_state.get("zone_id") or ""
         our_level = int(game_state.get("level") or 1)
         mobile = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_stationary")]
+        trust_ratio = not has_ranged_opener(game_state)      # the melee-only ratio is a trigger only for a character with no opener; the engine's own difficulty always is
         worst, pack = None, 0.0
         for e in mobile:
             lvl = int(e.get("level") or 0)
@@ -1041,10 +1057,10 @@ def note_zone_danger(game_state):
             except Exception:
                 ratio = 0.0
             pack += ratio
-            if e.get("difficulty") in LETHAL_DIFFICULTIES or ratio >= 3.0:
+            if e.get("difficulty") in LETHAL_DIFFICULTIES or (trust_ratio and ratio >= 3.0):
                 if worst is None or lvl > worst[1]:
                     worst = (e.get("name") or e.get("blueprint") or "?", lvl, "alone")
-        if worst is None and pack >= ZONE_DANGER_PACK_SCORE and len(mobile) >= 3:
+        if worst is None and trust_ratio and pack >= ZONE_DANGER_PACK_SCORE and len(mobile) >= 3:
             top = max(mobile, key=lambda x: int(x.get("level") or 0))
             worst = (f"{len(mobile)} hostiles incl. {top.get('name')}", int(top.get("level") or 0), "pack")
         if worst and ZONE_DANGER.record(zone, worst[0], worst[1], our_level):
