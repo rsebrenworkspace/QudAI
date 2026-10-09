@@ -1504,8 +1504,21 @@ def pick_model_id(v0_models, v1_models, override=None):
     return None
 
 
+# What the last combat call cost, so the trace can show how close the prompt is to the model's context window (HANDOFF issue 86).
+LAST_LLM_USAGE = {}
+active_model_ctx = None
+
+
+def loaded_context_length(v0_models, model_id):
+    """The context window LM Studio loaded `model_id` with (its own listing: `loaded_context_length`), or None when it does not say."""
+    for m in v0_models or []:
+        if m.get("id") == model_id:
+            return m.get("loaded_context_length") or None
+    return None
+
+
 def detect_lm_studio_model():
-    global active_model_id
+    global active_model_id, active_model_ctx
     v0, v1 = [], []
     try:
         res = requests.get(LM_STUDIO_MODELS_V0_URL, timeout=3)
@@ -1522,6 +1535,7 @@ def detect_lm_studio_model():
     chosen = pick_model_id(v0, v1, LM_MODEL_OVERRIDE)
     if chosen:
         active_model_id = chosen
+        active_model_ctx = loaded_context_length(v0, chosen)
         why = "forced by QUDAI_LM_MODEL" if LM_MODEL_OVERRIDE else "loaded in LM Studio"
         print(f"[LM Studio Connected] Active model: {active_model_id} ({why}); combat call timeout {LM_STUDIO_TIMEOUT:.0f}s")
         return active_model_id
@@ -2602,6 +2616,10 @@ VALID ACTIONS:
         if res.status_code == 200:
             body = res.json()
             content = body["choices"][0]["message"]["content"]
+            _u = body.get("usage") or {}
+            LAST_LLM_USAGE.clear()
+            LAST_LLM_USAGE.update({"turn": TURN_CLOCK, "prompt_tokens": _u.get("prompt_tokens"), "completion_tokens": _u.get("completion_tokens"),
+                                   "ctx": active_model_ctx, "finish": body["choices"][0].get("finish_reason")})
             if LLM_PROBE is not None:
                 msg = body["choices"][0].get("message") or {}
                 LLM_PROBE.update({"raw": content if content is not None else "", "finish_reason": body["choices"][0].get("finish_reason"),
@@ -4460,6 +4478,7 @@ def main():
                     "reach": game_state.get("reachable_edges"), "chosen_exit": CURRENT_ZONE_CHOSEN_EXIT,
                     "suppressed": EXIT_SUPPRESS_UNTIL.get(game_state.get("zone_id"), 0) > TURN_CLOCK,
                     "move_failed": game_state.get("last_move_failed"), "model": active_model_id,
+                    **({"llm": {k: LAST_LLM_USAGE.get(k) for k in ("prompt_tokens", "completion_tokens", "ctx", "finish")}} if LAST_LLM_USAGE.get("turn") == TURN_CLOCK else {}),
                 })
 
                 dmg_flag = " [!HIT!]" if took_damage else ""

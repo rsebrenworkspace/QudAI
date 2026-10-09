@@ -5483,3 +5483,27 @@ brain.ZONE_DANGER = _zd106.Ledger(); brain.note_zone_danger(_st106b)
 assert not brain.ZONE_DANGER.flags, "a goat flags nothing"
 brain.ZONE_DANGER = _zd106.Ledger()
 print("  [OK] Test 106 Passed: a zone with a creature out of our class is flagged until we have grown, exits are steered away from flagged zones, the way back is taken when every way on leads closer, a 14-step walk beside a wall of flagged zones never enters one and never oscillates, and a goat flags nothing.")
+
+
+# ---------------------------------------------------------------------------
+# Test 107: prompt tokens in the trace and the context headroom check (HANDOFF issue 86)
+# ---------------------------------------------------------------------------
+assert brain.loaded_context_length([{"id": "a", "loaded_context_length": 8192}, {"id": "b"}], "a") == 8192 and brain.loaded_context_length([{"id": "b"}], "b") is None and brain.loaded_context_length(None, "a") is None
+_src107 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert 'LAST_LLM_USAGE.update({"turn": TURN_CLOCK, "prompt_tokens"' in _src107 and '"llm": {k: LAST_LLM_USAGE.get(k)' in _src107, "the call must record usage and the trace row must carry it"
+import tools.console_logic as _cl107
+_tmp107 = _os.path.join(tempfile.mkdtemp(), "t.jsonl")
+def _w107(rows):
+    with open(_tmp107, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(_json.dumps(r) + chr(10))
+_w107([{"t": 1, "action": "REST"}])
+assert _cl107.llm_headroom(_tmp107)[0] == _cl107.UNKNOWN, "rows without token counts say unknown, not zero"
+_w107([{"llm": {"prompt_tokens": 2000, "ctx": 8192}}, {"llm": {"prompt_tokens": 3000, "ctx": 8192}}, {"t": 3}])
+_ok107 = _cl107.llm_headroom(_tmp107)
+assert _ok107[0] == _cl107.OK and "3000" in _ok107[1] and "8192" in _ok107[1], _ok107
+_w107([{"llm": {"prompt_tokens": 5200, "ctx": 8192}}])
+assert _cl107.llm_headroom(_tmp107)[0] == _cl107.WARN, "more than 60 percent of the window warns"
+_w107([{"llm": {"prompt_tokens": 900, "ctx": None}}])
+assert _cl107.llm_headroom(_tmp107)[0] == _cl107.UNKNOWN, "an unknown window size cannot be judged"
+print("  [OK] Test 107 Passed: the brain records prompt and completion tokens and the loaded context length on each model call, the trace row carries them, and the console health tab reports the largest prompt against the window (OK, WARN above 60 percent, UNKNOWN without data).")
