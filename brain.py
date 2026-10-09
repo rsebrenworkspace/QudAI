@@ -671,6 +671,55 @@ def choose_inventory_action(game_state, template, is_town):
     return None
 
 
+# Ground equipment (BACKLOG B16, HANDOFF issue 96). The loot step only takes what the engine's autoget accepts, so the weapons and armor killed creatures drop stayed on the ground
+# while a level 5 character still wore AV 1 and swung a 1d2 staff (Gen 27). The mod exports `ground_items` (unowned, takeable, never one we dropped) and `TAKE_ITEM:<id>` takes one
+# from the player's cell or an adjacent one. The decision uses the SAME scorer as the inventory (`item_scoring.choose_equips`): an item is fetched only when that scorer would equip it,
+# so what he takes is never what the drop rule drops again. The existing EQUIP_ITEM step then wears it.
+GROUND_PICKUP_MAX_DIST = 10
+GROUND_PURSUIT_MAX = 40          # turns walking toward one item before it is written off
+GROUND_MIN_SCORE = 1.0             # a candidate must also score at least this by itself (an empty slot is not a reason to fetch a worthless item)
+GROUND_STATE = {"id": None, "turns": 0, "blacklist": set()}
+
+
+def choose_ground_pickup(game_state, template, is_town):
+    """TAKE_ITEM (next to it) or NAVIGATE_TO_CELL (walking to it) for the nearest ground item that would be an equip upgrade, or None. Phase A only: the caller guarantees no combat."""
+    ground = game_state.get("ground_items")
+    inv = game_state.get("inventory")
+    if is_town or game_state.get("is_swimming") or not isinstance(ground, list) or not ground or not isinstance(inv, list) or not inv:
+        return None
+    items = [dict(i, blueprint=i.get("blueprint"), weight=(i.get("weight") or 0) / max(1, i.get("count") or 1)) for i in inv if i.get("id")]
+    profile = _inv_profile(template)
+    carried, cap = game_state.get("carry_weight") or 0, game_state.get("max_carry_weight") or 0
+    for g in sorted(ground, key=lambda e: e.get("dist", 99)):
+        gid = g.get("id")
+        if (not gid or gid in GROUND_STATE["blacklist"] or INV_STATE["fails"].get(gid, 0) >= INV_FAIL_LIMIT or g.get("identified") is False
+                or (g.get("dist") if g.get("dist") is not None else 99) > GROUND_PICKUP_MAX_DIST):
+            continue
+        if cap and carried + (g.get("weight") or 0) > cap - 10:
+            continue
+        if (game_state.get("zone_id"), (g.get("tx"), g.get("ty"))) in UNREACHABLE_SECTORS:
+            continue                  # the engine reported no route to that cell
+        cand = {"id": gid, "blueprint": g.get("blueprint"), "name": g.get("name"), "count": 1, "weight": g.get("weight") or 0, "equipped": False, "identified": True}
+        wins = [(it, slot, why) for it, slot, why in item_scoring.choose_equips(items + [cand], profile) if it.get("id") == gid]
+        if not wins or item_scoring.score_item(item_scoring._entry(cand), profile)[0] < GROUND_MIN_SCORE:
+            continue                  # not an upgrade, or an empty slot that a worthless item would "fill"
+        why = wins[0][2]
+        if GROUND_STATE["id"] != gid:
+            GROUND_STATE.update({"id": gid, "turns": 0})
+        GROUND_STATE["turns"] += 1
+        if GROUND_STATE["turns"] > GROUND_PURSUIT_MAX:
+            GROUND_STATE["blacklist"].add(gid)
+            print(f"[GROUND] Writing off {g.get('name')}: {GROUND_PURSUIT_MAX} turns without reaching it.")
+            continue
+        if (g.get("dist") or 0) <= 1:
+            INV_STATE["pending"] = {"kind": "take", "ids": [gid], "reasons": {gid: why}, "names": {gid: g.get("name")}}
+            return {"action": f"TAKE_ITEM:{gid}", "reason": f"Ground equipment: taking {g.get('name')} ({why})"}
+        if g.get("tx") is None or g.get("ty") is None:
+            continue
+        return {"action": f"NAVIGATE_TO_CELL:{g['tx']},{g['ty']}", "reason": f"Ground equipment: walking to {g.get('name')} {g.get('dist')} tiles away ({why})"}
+    return None
+
+
 # Proselytize outcome log (BACKLOG B11 stage 1, HANDOFF issue 80). Every Proselytize the brain sends is written to memory/proselytize_log.jsonl with the target's level and
 # our own level and Ego, and resolved a turn later from the companion list: "recruited" when a new companion appeared, else "not_recruited". `tools/proselytize_report.py`
 # turns the log into odds by level gap. Nothing here changes a decision.
@@ -805,7 +854,10 @@ def note_inventory_action(game_state):
         for item in la.get("ok", []):
             iid, _, name = str(item).partition("|")
             INV_STATE["fails"].pop(iid, None)
-            if la.get("kind") == "drop":
+            if la.get("kind") == "take":
+                print(f"[INVENTORY] took {name} from the ground: {(pend.get('reasons') or {}).get(iid, '')}")
+                GROUND_STATE.update({"id": None, "turns": 0})
+            elif la.get("kind") == "drop":
                 log_item_drop({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "zone": la.get("zone"), "x": la.get("x"), "y": la.get("y"), "id": iid, "name": name,
                                "reason": (pend.get("reasons") or {}).get(iid, "")})
                 print(f"[INVENTORY] dropped {name} at ({la.get('x')}, {la.get('y')}): {(pend.get('reasons') or {}).get(iid, '')}")
@@ -3904,6 +3956,11 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         inv_decision = choose_inventory_action(game_state, template, is_town)
         if inv_decision:
             return inv_decision
+
+        # 3D. Ground equipment: fetch a weapon or armor from the ground when the inventory scorer would wear it (BACKLOG B16, issue 96). Phase A only.
+        ground_decision = choose_ground_pickup(game_state, template, is_town)
+        if ground_decision:
+            return ground_decision
 
         # 4. Top-off ammo while area is secure (only if we have spare ammo in inventory!)
         if has_missile and max_ammo > 0 and ammo < max_ammo and inv_ammo > 0:

@@ -201,6 +201,36 @@
     "a [QUEST] new quest or step finished line"
    ],
    "tests": "Test 96"
+  },
+  {
+   "id": "ground-equipment",
+   "title": "Equipment on the ground (B16)",
+   "why": "Check that he fetches and wears a clear armor upgrade lying on the ground (issue 96), and ignores one that is not an upgrade.",
+   "setup": [
+    "Quiet zone, no hostiles in view, the AI paused. Note what he wears (armor value on the Live tab or in last_state.json: av, dv).",
+    "Wish the first item, engage the AI and watch. Pause, then try the second."
+   ],
+   "wishes": [
+    {
+     "cmd": "Chain Mail",
+     "confidence": "verified",
+     "note": "armor AV 3, DV -1: a clear upgrade over a cloth robe by the inventory scorer; an item wish drops it next to you",
+     "kind": "blueprint"
+    },
+    {
+     "cmd": "Bark Armor",
+     "confidence": "named",
+     "note": "AV 2, DV -1: by the scorer NOT an upgrade over a cloth robe (it misses the 2.0 margin); he should leave it",
+     "kind": "blueprint"
+    }
+   ],
+   "watch": [
+    "a [INVENTORY] took chain mail from the ground line, then [INVENTORY] equipped chain mail",
+    "last_state.json: ground_items lists the item, av goes up, the old robe is dropped by the inventory step",
+    "no pickup and drop ping-pong (the dropped robe must not be fetched again)",
+    "Player.log: [QudAI Inventory] take ok=1"
+   ],
+   "tests": "Test 120"
   }
  ]
 }
