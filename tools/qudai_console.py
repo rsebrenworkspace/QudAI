@@ -51,15 +51,16 @@ class Console(tk.Tk):
         nb = ttk.Notebook(root)
         root.add(nb, weight=3)
         root.add(self._build_bottom(root), weight=2)
-        self.tab_control, self.tab_health, self.tab_live, self.tab_review, self.tab_memory, self.tab_items, self.tab_quests = (ttk.Frame(nb) for _ in range(7))
+        self.tab_control, self.tab_health, self.tab_live, self.tab_review, self.tab_memory, self.tab_lab, self.tab_items, self.tab_quests = (ttk.Frame(nb) for _ in range(8))
         for tab, name in ((self.tab_control, "Control"), (self.tab_health, "Mod health"), (self.tab_live, "Live"), (self.tab_review, "Review"), (self.tab_memory, "Memory"),
-                          (self.tab_items, "Items"), (self.tab_quests, "Quests")):
+                          (self.tab_lab, "Lab"), (self.tab_items, "Items"), (self.tab_quests, "Quests")):
             nb.add(tab, text=name)
         self._build_control()
         self._build_health()
         self._build_live()
         self._build_review()
         self._build_memory()
+        self._build_lab()
         self._build_items()
         ttk.Label(self.tab_quests, text="Quest log (read-only, from the last state)").pack(anchor="w", padx=4)
         self.quest_text = self._text(self.tab_quests)
@@ -219,6 +220,69 @@ class Console(tk.Tk):
         ttk.Label(right, textvariable=self.mem_status, wraplength=700, justify="left").pack(anchor="w", padx=4)
         self._mem_items = {}
         self.reload_memory()
+
+    def _build_lab(self):
+        f = self.tab_lab
+        paned = ttk.PanedWindow(f, orient="horizontal")
+        paned.pack(fill="both", expand=True)
+        left, right = ttk.Frame(paned), ttk.Frame(paned)
+        paned.add(left, weight=1)
+        paned.add(right, weight=3)
+        ttk.Label(left, text="Lab scenarios (wishes)").pack(anchor="w", padx=4)
+        self.lab_list = tk.Listbox(left, exportselection=False, height=12)
+        self.lab_list.pack(fill="both", expand=True, padx=4)
+        self._lab = cl.load_wish_scenarios()
+        for s in self._lab:
+            self.lab_list.insert("end", s.get("title", s["id"]))
+        self.lab_list.bind("<<ListboxSelect>>", lambda _e: self.show_lab())
+        self.lab_text = self._text(right)
+        row = ttk.Frame(right)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Target level").pack(side="left", padx=4)
+        self.lab_level = tk.IntVar(value=5)
+        spin = ttk.Spinbox(row, from_=2, to=20, textvariable=self.lab_level, width=4, command=self.show_lab)
+        spin.pack(side="left")
+        spin.bind("<KeyRelease>", lambda _e: self.show_lab())
+        ttk.Button(row, text="Copy wish lines", command=self.lab_copy).pack(side="left", padx=10)
+        ttk.Button(row, text="I used this (log it)", command=self.lab_log).pack(side="left")
+        self.lab_status = tk.StringVar(value="Pick a scenario. The wish prompt is Ctrl+W in the game; pause the AI first.")
+        ttk.Label(right, textvariable=self.lab_status, wraplength=800, justify="left").pack(anchor="w", padx=4)
+
+    def _lab_selected(self):
+        sel = self.lab_list.curselection()
+        return self._lab[sel[0]] if sel else None
+
+    def _lab_xp(self):
+        return (cl.read_json(os.path.join(EX, "last_state.json"), {}) or {}).get("xp", 0)
+
+    def show_lab(self):
+        s = self._lab_selected()
+        if not s:
+            return
+        try:
+            level = int(self.lab_level.get())
+        except (tk.TclError, ValueError):
+            level = None
+        self._set(self.lab_text, cl.scenario_text(s, level, self._lab_xp()))
+
+    def lab_copy(self):
+        s = self._lab_selected()
+        if not s:
+            return
+        try:
+            level = int(self.lab_level.get())
+        except (tk.TclError, ValueError):
+            level = None
+        lines = cl.wish_lines(s, level, self._lab_xp())
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(lines))
+        self.lab_status.set(f"Copied {len(lines)} wish line(s). In the game press Ctrl+W, paste one line, Enter; repeat for the next.")
+
+    def lab_log(self):
+        s = self._lab_selected()
+        if s:
+            cl.log_lab_use(s["id"])
+            self.lab_status.set(f"Logged '{s['id']}' in memory/lab_runs.jsonl (so this run can be told apart from a real one).")
 
     def _build_items(self):
         f = self.tab_items

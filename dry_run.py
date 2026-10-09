@@ -5300,3 +5300,36 @@ assert _c100["Giant Centipede"]["level"] == 5 and _c100["Knollworm"]["hp"] == 20
 _page = _crep.render(_doc100)
 assert "musket turret" in _page and "Rooted shooters" in _page and "inferred" in _page
 print("  [OK] Test 100 Passed: the creature catalog reads fixed, range and tier-formula levels correctly, drops removed attacks, takes hostility from faction starting reputation, matches the Gen 22 turret (5 HP, level 15, rooted, ranged, hostile) and renders its report.")
+
+
+# ---------------------------------------------------------------------------
+# Test 101: the Lab tab's wish scenarios (BACKLOG B13 stage 1, HANDOFF issue 82)
+# ---------------------------------------------------------------------------
+_sc101 = _cl.load_wish_scenarios()
+assert len(_sc101) >= 7 and len({s["id"] for s in _sc101}) == len(_sc101)
+for _s in _sc101:
+    assert _s.get("title") and _s.get("why") and _s.get("setup") and _s.get("watch") and _s["wishes"], _s["id"]
+    for _w in _s["wishes"]:
+        assert _w.get("confidence") in _cl.CONFIDENCE_TEXT and _w.get("cmd"), (_s["id"], _w)
+# every spawn: names a creature blueprint in the catalog and every item: an item blueprint in the item catalog, so a card cannot send the human after a typo
+_items101 = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "items.json"), encoding="utf-8"))["items"]
+_crea101 = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "creatures.json"), encoding="utf-8"))["creatures"]
+for _s in _sc101:
+    for _w in _s["wishes"]:
+        _c = _w["cmd"]
+        if _c.startswith("spawn:"):
+            assert _c[6:] in _crea101, f"unknown creature in {_s['id']}: {_c}"
+        elif _c.startswith("item:"):
+            assert _c[5:] in _items101, f"unknown item in {_s['id']}: {_c}"
+# the XP wish: the game's own curve, and what is still missing
+assert _cl.xp_for_level(1) == 0 and _cl.xp_for_level(2) == 220 and _cl.xp_for_level(5) == 1975 and _cl.xp_for_level(10) == 15100
+assert _cl.xp_wish_for_level(5, 1900) == "xp:75" and _cl.xp_wish_for_level(3, 1900) == "" and _cl.xp_wish_for_level(2, 0) == "xp:220"
+_lv = next(s for s in _sc101 if s["id"] == "set-level")
+assert _cl.wish_lines(_lv, 6, 0) == ["xp:3340"] and _cl.wish_lines(_lv, None, 0) == [] and _cl.wish_lines(_lv, 3, 5000) == []
+_t101 = _cl.scenario_text(_sc101[0])
+assert "Ctrl+W" in _t101 and "throwaway" in _t101 and "spawn:SecurityTurret" in _t101
+_p101 = _os.path.join(tempfile.mkdtemp(), "lab_runs.jsonl")
+_rec = _cl.log_lab_use("turret-nest", "unit test", _p101)
+assert _cl.tail_jsonl(_p101, 5)[0]["scenario"] == "turret-nest" and _rec["note"] == "unit test" and len(_cl.tail_jsonl(_p101, 5)) == 1
+assert _cl.load_wish_scenarios(_os.path.join(tempfile.mkdtemp(), "none.json")) == []
+print("  [OK] Test 101 Passed: the Lab scenarios load, name only creatures and items that exist in the catalogs, compute the XP wish from the game's curve and the current XP, render with the cheat warning, and log a use.")
