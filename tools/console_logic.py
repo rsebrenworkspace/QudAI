@@ -328,7 +328,7 @@ def set_approval(generations, approve):
 # ---------------------------------------------------------------------------
 WISH_SCENARIOS_PATH = os.path.join(REPO, "data", "wish_scenarios.json")
 LAB_LOG_PATH = os.path.join(REPO, "memory", "lab_runs.jsonl")
-CONFIDENCE_TEXT = {"documented": "documented in the game's WishCommands.xml", "named": "name recognised by the wish handler; effect not read (tell me what it did)"}
+CONFIDENCE_TEXT = {"verified": "verified in game", "documented": "documented in the game's WishCommands.xml", "named": "name recognised by the wish handler; effect not read (tell me what it did)"}
 
 
 def load_wish_scenarios(path=None):
@@ -372,7 +372,8 @@ def scenario_text(scenario, level=None, current_xp=0):
     L += ["", "Watch for:"] + [f"  - {x}" for x in scenario.get("watch", [])]
     if scenario.get("tests"):
         L += ["", f"Covers: {scenario['tests']}"]
-    L += ["", "Wishes are cheats: use a throwaway character, pause the AI first, and archive the death it leaves behind from the Memory tab if you do not want its lesson."]
+    L += ["", "The prompt takes ONE line: copy and enter one wish at a time (the Copy button gives you the next one each time).",
+          "Wishes are cheats: use a throwaway character, pause the AI first, and archive the death it leaves behind from the Memory tab if you do not want its lesson."]
     return "\n".join(L)
 
 

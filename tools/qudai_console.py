@@ -234,7 +234,8 @@ class Console(tk.Tk):
         self._lab = cl.load_wish_scenarios()
         for s in self._lab:
             self.lab_list.insert("end", s.get("title", s["id"]))
-        self.lab_list.bind("<<ListboxSelect>>", lambda _e: self.show_lab())
+        self.lab_list.bind("<<ListboxSelect>>", lambda _e: (setattr(self, "_lab_idx", 0), self.show_lab()))
+        self._lab_idx = 0
         self.lab_text = self._text(right)
         row = ttk.Frame(right)
         row.pack(fill="x", pady=4)
@@ -243,7 +244,7 @@ class Console(tk.Tk):
         spin = ttk.Spinbox(row, from_=2, to=20, textvariable=self.lab_level, width=4, command=self.show_lab)
         spin.pack(side="left")
         spin.bind("<KeyRelease>", lambda _e: self.show_lab())
-        ttk.Button(row, text="Copy wish lines", command=self.lab_copy).pack(side="left", padx=10)
+        ttk.Button(row, text="Copy next wish line", command=self.lab_copy).pack(side="left", padx=10)
         ttk.Button(row, text="I used this (log it)", command=self.lab_log).pack(side="left")
         self.lab_status = tk.StringVar(value="Pick a scenario. The wish prompt is Ctrl+W in the game; pause the AI first.")
         ttk.Label(right, textvariable=self.lab_status, wraplength=800, justify="left").pack(anchor="w", padx=4)
@@ -274,9 +275,14 @@ class Console(tk.Tk):
         except (tk.TclError, ValueError):
             level = None
         lines = cl.wish_lines(s, level, self._lab_xp())
+        if not lines:
+            self.lab_status.set("Nothing to copy for this scenario (choose a level, or you are already there).")
+            return
+        i = self._lab_idx % len(lines)
         self.clipboard_clear()
-        self.clipboard_append("\n".join(lines))
-        self.lab_status.set(f"Copied {len(lines)} wish line(s). In the game press Ctrl+W, paste one line, Enter; repeat for the next.")
+        self.clipboard_append(lines[i])
+        self._lab_idx = i + 1
+        self.lab_status.set(f"Copied line {i + 1} of {len(lines)}: {lines[i]}    In the game: Ctrl+W, paste, Enter. Click again for the next line.")
 
     def lab_log(self):
         s = self._lab_selected()

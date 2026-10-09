@@ -5317,8 +5317,10 @@ _crea101 = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__fil
 for _s in _sc101:
     for _w in _s["wishes"]:
         _c = _w["cmd"]
-        if _c.startswith("spawn:"):
-            assert _c[6:] in _crea101, f"unknown creature in {_s['id']}: {_c}"
+        assert not _c.startswith("spawn:"), f"the spawn: prefix failed in game (Unknown blueprint, 2026-10-08): {_s['id']}"
+        assert _w.get("kind") in ("blueprint", "command"), (_s["id"], _w)
+        if _w["kind"] == "blueprint":
+            assert _c in _crea101 or _c in _items101, f"unknown blueprint typed alone in {_s['id']}: {_c}"
         elif _c.startswith("item:"):
             assert _c[5:] in _items101, f"unknown item in {_s['id']}: {_c}"
 # the XP wish: the game's own curve, and what is still missing
@@ -5327,7 +5329,7 @@ assert _cl.xp_wish_for_level(5, 1900) == "xp:75" and _cl.xp_wish_for_level(3, 19
 _lv = next(s for s in _sc101 if s["id"] == "set-level")
 assert _cl.wish_lines(_lv, 6, 0) == ["xp:3340"] and _cl.wish_lines(_lv, None, 0) == [] and _cl.wish_lines(_lv, 3, 5000) == []
 _t101 = _cl.scenario_text(_sc101[0])
-assert "Ctrl+W" in _t101 and "throwaway" in _t101 and "spawn:SecurityTurret" in _t101
+assert "Ctrl+W" in _t101 and "throwaway" in _t101 and "SecurityTurret" in _t101 and "ONE line" in _t101 and "verified in game" in _t101
 _p101 = _os.path.join(tempfile.mkdtemp(), "lab_runs.jsonl")
 _rec = _cl.log_lab_use("turret-nest", "unit test", _p101)
 assert _cl.tail_jsonl(_p101, 5)[0]["scenario"] == "turret-nest" and _rec["note"] == "unit test" and len(_cl.tail_jsonl(_p101, 5)) == 1
