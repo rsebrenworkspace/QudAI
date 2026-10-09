@@ -3387,6 +3387,26 @@ def enforce_stand_and_fight(decision, game_state, adj_threats, enemies, abilitie
 # The deterministic fallback has a close-contact answer, but the model is asked first. So, before the stand-and-fight rule, an adjacent MOBILE hostile rated Very Tough
 # or Impossible gets the first ready of these answers instead of whatever the model chose (Tough and below stay with the model).
 LETHAL_DIFFICULTIES = ("Very Tough", "Impossible")
+# Abilities issued in the last turn (HANDOFF issue 94): Teleport Other takes effect one turn late, so the next state still showed the amoeba adjacent and the ability "ready", and the guard
+# chose it again; the game refused it as "not usable" and the refusal cost a full turn at 7 of 18 HP (human run 2026-10-09, trace t270-271, Player.log). A guard ability issued last turn
+# is not offered again this turn.
+ABILITY_ISSUED = {}
+ABILITY_LOCKOUT_TURNS = 1
+
+
+def note_ability_issued(action):
+    """Remembers the command of a USE_ABILITY action at the turn it was issued. Never raises."""
+    try:
+        if str(action).startswith("USE_ABILITY:"):
+            ABILITY_ISSUED[str(action).split(":")[1]] = TURN_CLOCK
+    except Exception:
+        pass
+
+
+def ability_just_issued(command):
+    return bool(command) and 0 < TURN_CLOCK - ABILITY_ISSUED.get(command, -999) <= ABILITY_LOCKOUT_TURNS
+
+
 LETHAL_GUARD_FAMILIES = ("teleport_other", "force_shield", "intimidate")
 LETHAL_GUARD_KEEP = ("USE_ABILITY:CommandTeleportOther", "USE_ABILITY:CommandForceBubble", "USE_ABILITY:CommandIntimidate", "USE_STAIRS", "USE_ABILITY:CommandTeleport")
 
@@ -3396,13 +3416,14 @@ def lethal_adjacent_guard(decision, adj_threats, enemies, abilities):
     if (decision or {}).get("flee_ok"):
         return decision
     action = (decision or {}).get("action", "")
-    if action.startswith(LETHAL_GUARD_KEEP):
+    _chosen_cmd = action.split(":")[1] if action.startswith("USE_ABILITY:") else ""
+    if action.startswith(LETHAL_GUARD_KEEP) and not ability_just_issued(_chosen_cmd):
         return decision                              # the model (or a rule) already chose an escape or a control answer
     adj = [e for e in enemies if e.get("dist") == 1 and e.get("dir") in (adj_threats or {})
            and e.get("difficulty") in LETHAL_DIFFICULTIES and not e.get("is_stationary") and not e.get("is_companion")]
     if not adj:
         return decision
-    ab = first_ready_by_priority(abilities, LETHAL_GUARD_FAMILIES)
+    ab = first_ready_by_priority([a for a in (abilities or []) if not ability_just_issued((a or {}).get("command"))], LETHAL_GUARD_FAMILIES)
     if not ab or not ab.get("command"):
         return decision
     target = adj[0]
@@ -4626,6 +4647,7 @@ def main():
                 last_executed_pos = cur_pos
                 last_action = action
                 record_proselytize_attempt(action, game_state)
+                note_ability_issued(action)
                 if action.startswith("MOVE_"):
                     move_history.append(action)
                 recent_actions.append({"action": action, "reason": reason, "pos": cur_pos, "hp": hp})
