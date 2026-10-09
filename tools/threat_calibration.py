@@ -57,14 +57,21 @@ def main():
             if str(v.get("name", "")).lower().split("[")[0].strip().endswith(str(e.get("name", "")).lower()) and v.get("hits"):
                 obs = v["total_damage"] / float(v["hits"])
         r = ct.threat(e, int(d["level"]), hp, observed_per_hit=obs, us=START)
-        rows.append((r["ratio"], d["killer"], d["level"], e.get("level"), e.get("hp"), r["their_dps"], r["cls"]))
+        bp = next((b for b, x in cat.items() if x is e), None)
+        pc = ""
+        mine = ct.parties_of(bp) if bp else {}
+        if mine:
+            smallest = min(mine, key=lambda k: ct.load_parties()["parties"][k]["expected_total"])     # the common small party, not the rare big one
+            pc = ct.party_threat(smallest, int(d["level"]), hp, us=START)["cls"] + " (" + smallest + ")"
+        rows.append((r["ratio"], d["killer"], d["level"], e.get("level"), e.get("hp"), r["their_dps"], r["cls"], pc))
     rows.sort(key=lambda x: -x[0])
-    print("ratio  class      our L  their L/HP  dmg/turn  killer")
+    print("ratio  class      our L  their L/HP  dmg/turn  killer  [as a party]")
     for r in rows:
-        print(f"{r[0]:5.2f}  {r[6]:<9}  {r[2]:>4}   {r[3]}/{r[4]:<6}   {r[5]:>6}   {r[1]}")
+        print(f"{r[0]:5.2f}  {r[6]:<9}  {r[2]:>4}   {r[3]}/{r[4]:<6}   {r[5]:>6}   {r[1]}  {r[7]}")
     if rows:
         calm = [r for r in rows if r[6] in ("trivial", "easy")]
-        print(f"\n{len(rows)} deaths scored; {len(calm)} rated trivial or easy although they killed us (that is the miss list).")
+        still = [r for r in calm if not r[7] or r[7].split()[0] in ("trivial", "easy")]
+        print(f"\n{len(rows)} deaths scored; {len(calm)} rated trivial or easy alone, {len(still)} still so when scored as the party they come in.")
     for m in miss:
         print("no catalogue match:", m)
 

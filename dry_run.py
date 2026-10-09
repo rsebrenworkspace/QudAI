@@ -5407,3 +5407,20 @@ assert _strong104["their_dps"] < _weak104["their_dps"], "better armour must lowe
 assert _ct103.creature_armor(_puma104) == 7 and _ct103.creature_armor(None) == 0
 assert _ct103.threat(_puma104, 2, 27)["ratio"] == _ct103.threat(_puma104, 2, 27, us={})["ratio"], "no export, no change: the guess is the fallback"
 print("  [OK] Test 104 Passed: the mod exports av, dv and the main-hand weapon (dice, penetration), and the threat score uses them: a stronger weapon and better armour lower the threat, and a state without them falls back to the guess.")
+
+
+# ---------------------------------------------------------------------------
+# Test 105: party tables and the party threat (B12 stage 4 start, HANDOFF issue 84)
+# ---------------------------------------------------------------------------
+_par105 = _ct103.load_parties()["parties"]
+assert abs(_par105["BaboonParty"]["members"]["Baboon"] - 3.15) < 0.01 and abs(_par105["BigBaboonParty"]["members"]["Baboon"] - 10.8) < 0.01, "3-4 baboons at 90 percent; 8-16 at 90 percent"
+assert _par105["SnapjawParty1"]["members"]["Snapjaw Scavenger 1"] == 3.5, "1-3 at 100 percent plus 1-3 at 75 percent"
+assert _ct103.parties_of("Baboon").get("BaboonParty") and not _ct103.parties_of("SecurityTurret")
+_us105 = {"av": 1, "melee": {"damage": "1d2", "penetration": -1}}
+_solo105 = _ct103.threat(_ct103.lookup(blueprint="Baboon"), 2, 30, us=_us105)
+_pack105 = _ct103.party_threat("BaboonParty", 2, 30, us=_us105)
+assert _solo105["cls"] in ("trivial", "easy", "fair") and _pack105["cls"] == "deadly" and _pack105["ratio"] > 4 * _solo105["ratio"], (_solo105, _pack105)
+assert _ct103.party_threat("NoSuchParty", 2, 30)["cls"] == "unknown"
+import tools.build_party_table as _bpt105
+assert _bpt105.number_average("3-4") == 3.5 and _bpt105.number_average("1d4") == 2.5 and _bpt105.number_average("") == 1.0
+print("  [OK] Test 105 Passed: the party tables give the game's own pack sizes (baboons 3.15 in a small party, 10.8 in a big one), a lone baboon is a fair fight but its party is deadly for a starting character, and unknown parties degrade to 'unknown'.")

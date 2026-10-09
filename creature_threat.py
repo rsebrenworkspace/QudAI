@@ -186,3 +186,46 @@ def threat(entry, our_level, our_hp, enemy_hp=None, observed_per_hit=None, us=No
         notes.append("ranged")
     return {"ratio": round(ratio, 2), "cls": classify(ratio), "turns_to_kill_it": round(ttk_it, 1),
             "turns_to_kill_us": round(ttk_us, 1), "their_dps": round(theirs, 1), "notes": notes}
+
+
+# --- parties (data/parties.json, built by tools/build_party_table.py from PopulationTables.xml) ---
+PARTIES_PATH = os.path.join(ROOT, "data", "parties.json")
+MAX_ENGAGED = 4               # how many of a pack can reach us at once in open ground; a guess, a corridor makes it 1 or 2
+
+
+def load_parties(path=PARTIES_PATH):
+    if path in _cache:
+        return _cache[path]
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {"parties": {}, "by_creature": {}}
+    _cache[path] = data
+    return data
+
+
+def parties_of(blueprint):
+    """{party table: expected number of this blueprint in it} for a creature blueprint; {} when it never comes in a party."""
+    return dict(load_parties().get("by_creature", {}).get(blueprint, {}))
+
+
+def party_threat(party, our_level, our_hp, us=None, catalog=None):
+    """The race against a whole party: every creature in it (expected counts, non-creatures such as Garbage skipped) is fought one after another,
+    while at most MAX_ENGAGED of the survivors hit us at once. -> same shape as threat(), plus `members` (expected number of creatures)."""
+    cat = catalog if catalog is not None else load_catalog()
+    members = load_parties().get("parties", {}).get(party, {}).get("members", {})
+    rows = [(cat[bp], n) for bp, n in members.items() if bp in cat]
+    if not rows:
+        return {"ratio": None, "cls": "unknown", "members": 0, "notes": ["party not in the table"]}
+    total = sum(n for _, n in rows)
+    hp = sum(n * (e.get("hp") or 1) for e, n in rows)
+    mean_dps = sum(n * damage_per_turn(e, None, (us or {}).get("av")) for e, n in rows) / total
+    mean_ours = sum(n * our_damage_per_turn(our_level, us, e) for e, n in rows) / total
+    engaged = min(total, MAX_ENGAGED)
+    theirs = mean_dps * engaged
+    ttk_it = hp / max(0.1, mean_ours)
+    ttk_us = (our_hp / theirs) if theirs > 0 else 999.0
+    ratio = ttk_it / ttk_us
+    return {"ratio": round(ratio, 2), "cls": classify(ratio), "members": round(total, 1), "turns_to_kill_it": round(ttk_it, 1),
+            "turns_to_kill_us": round(ttk_us, 1), "their_dps": round(theirs, 1), "notes": [f"{total:.1f} creatures, {engaged:.1f} at once"]}
