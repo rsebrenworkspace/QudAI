@@ -13,6 +13,10 @@ import creature_threat as ct  # noqa: E402
 KILLER = re.compile(r"(?:killed|bitten to death|stung|crushed|slain|mauled|clawed|devoured|burned|shot|pierced|beaten)[^.]*? by (?:an?|the)\s+(.+?)(?: with | for |\.|$)")
 
 
+# A starting character as the game reported him (state.json 2026-10-08): armour 1, a staff doing 1d2, penetration -1.
+START = {"av": 1, "melee": {"damage": "1d2", "penetration": -1}}
+
+
 def deaths():
     files = glob.glob(os.path.join(ROOT, "memory", "runs", "run_*.json")) + glob.glob(os.path.join(ROOT, "memory", "archive", "**", "run_*.json"), recursive=True)
     out = []
@@ -52,7 +56,7 @@ def main():
         for bp, v in led.items():
             if str(v.get("name", "")).lower().split("[")[0].strip().endswith(str(e.get("name", "")).lower()) and v.get("hits"):
                 obs = v["total_damage"] / float(v["hits"])
-        r = ct.threat(e, int(d["level"]), hp, observed_per_hit=obs)
+        r = ct.threat(e, int(d["level"]), hp, observed_per_hit=obs, us=START)
         rows.append((r["ratio"], d["killer"], d["level"], e.get("level"), e.get("hp"), r["their_dps"], r["cls"]))
     rows.sort(key=lambda x: -x[0])
     print("ratio  class      our L  their L/HP  dmg/turn  killer")

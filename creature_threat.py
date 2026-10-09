@@ -16,7 +16,7 @@ CATALOG_PATH = os.path.join(ROOT, "data", "creatures.json")
 # --- guesses, tuned by tools/threat_calibration.py (change them there, not in the middle of a fight) ---
 HIT_CHANCE = 0.75             # share of attacks that land
 RANGED_DAMAGE = 7.0           # per shot when the catalogue knows the weapon's name but not its damage
-OUR_ARMOR = 4                 # AV of a starting character; the state does not export it yet (R3: C# should), so a guess
+OUR_ARMOR = 1                 # AV of a starting character [verified in game 2026-10-08: av 1, dv 0, staff 1d2, penetration -1]; the live state overrides it
 WEAPON_PV = 2                 # penetration bonus a creature's natural weapon adds to its strength modifier; a guess, fitted to the damage ledger
 OUR_BASE_DAMAGE = 3.0         # what a starting character deals per swing before level
 OUR_DAMAGE_PER_LEVEL = 0.35
