@@ -254,10 +254,24 @@ def threat_class(entity, state):
         return ""
 
 
-def threat_summary(state, limit=5):
-    """One line about the hostiles in view: name, difficulty relative to his level (the mod's own Trivial..Impossible scale), distance.
-    -> (text, worst) where worst is 'danger' when any is Tough or worse, 'calm' when none are in view, else 'watch'."""
+def effective_hostiles(state):
+    """The hostiles in view with the rating the BRAIN uses: the engine's difficulty, raised by the danger ledger (what that creature type has actually done to us, relative to
+    the current max HP; danger_ledger.apply). A raised rating carries `difficulty_engine` (the engine's own). The console used to show only the engine's number, so a giant amoeba
+    the engine called Average and the ledger called Impossible looked harmless while the brain's lethal guard was reacting to it (human run 2026-10-09, HANDOFF issue 95)."""
     ents = [e for e in (state or {}).get("visible_entities") or [] if e.get("is_enemy")]
+    try:
+        import danger_ledger
+        danger_ledger.reset_cache()            # the brain writes the file while the console runs
+        return danger_ledger.apply(ents, (state or {}).get("max_hp"))
+    except Exception:
+        return ents
+
+
+def threat_summary(state, limit=5):
+    """One line about the hostiles in view: name, difficulty relative to his level (the mod's own Trivial..Impossible scale, raised by the danger ledger exactly as the brain does,
+    with the engine's own rating in brackets when they differ), distance, and the catalogue's class.
+    -> (text, worst) where worst is 'danger' when any is Tough or worse, 'calm' when none are in view, else 'watch'."""
+    ents = effective_hostiles(state)
     if not ents:
         return "No hostiles in view.", "calm"
     ents.sort(key=lambda e: e.get("dist", 999))
@@ -265,7 +279,8 @@ def threat_summary(state, limit=5):
     for e in ents[:limit]:
         diff = e.get("difficulty", "?")
         est = threat_class(e, state)
-        parts.append(f"{'!! ' if diff in DANGEROUS else ''}{e.get('name', '?')} [{diff}]{' ~' + est if est else ''} {e.get('dist', '?')} tiles{' (rooted)' if e.get('is_stationary') else ''}")
+        raised = f" (engine: {e['difficulty_engine']})" if e.get("difficulty_engine") and e.get("difficulty_engine") != diff else ""
+        parts.append(f"{'!! ' if diff in DANGEROUS else ''}{e.get('name', '?')} [{diff}{raised}]{' ~' + est if est else ''} {e.get('dist', '?')} tiles{' (rooted)' if e.get('is_stationary') else ''}")
     more = f"  (+{len(ents) - limit} more)" if len(ents) > limit else ""
     worst = "danger" if any(e.get("difficulty") in DANGEROUS for e in ents) else "watch"
     return "Hostiles: " + "  |  ".join(parts) + more, worst
