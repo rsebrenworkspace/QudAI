@@ -5149,3 +5149,74 @@ _csrc97 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tool
 for _needle in ("_build_memory", "memory_approve", "memory_archive", "memory_delete", 'default="no"'):
     assert _needle in _csrc97, f"the console must contain {_needle}"
 print("  [OK] Test 97 Passed: the Memory tab lists lessons, chronicles, post-mortems, runs, lab results and live data; archive keeps (lessons whole, files in archive folders, never overwriting), delete removes, live data is refused, and a generation number is never reused after either.")
+
+
+# ---------------------------------------------------------------------------
+# Test 98: the turret doctrine (HANDOFF issue 77), replaying the Gen 22 death state
+# ---------------------------------------------------------------------------
+_lase98 = {"name": "Lase (5 charges)", "command": "CommandLase", "cooldown": 0, "usable": True, "active": False}
+_other98 = [{"name": "Sprint", "command": "CommandToggleRunning", "cooldown": 0, "usable": True, "active": False},
+            {"name": "Stunning Force", "command": "CommandStunningForce", "cooldown": 0, "usable": True, "active": False},
+            {"name": "Teleport Other", "command": "CommandTeleportOther", "cooldown": 0, "usable": True, "active": False}]
+_musket98 = {"name": "musket turret", "blueprint": "SecurityTurret", "dist": 4, "dir": "NE", "tx": 10, "ty": 14, "is_enemy": False, "is_companion": False,
+             "has_los": True, "level": 15, "difficulty": "Impossible", "is_stationary": True}
+_tinker98 = {"name": "rifle turret tinker", "blueprint": "Rifle Turret Tinker", "dist": 10, "dir": "SE", "tx": 16, "ty": 20, "is_enemy": False, "is_companion": False,
+             "has_los": True, "level": 15, "difficulty": "Impossible", "is_stationary": False}
+_far98 = dict(_musket98, dist=16, has_los=False, tx=22, ty=12)
+_surr98 = {k: "Empty ground" for k in ("C", "N", "S", "E", "W", "NE", "NW", "SE", "SW")}
+
+
+def _state98(**kw):
+    s = {"hp": 10, "max_hp": 24, "x": 6, "y": 17, "z": 11, "level": 3, "zone_id": "JoppaWorld.11.21.0.0.11", "zone_name": "subterranean salt marsh", "zone_fully_explored": False,
+         "hostiles_nearby": True, "hostiles_adjacent": False, "unexplored_cells": 900, "surroundings": dict(_surr98),
+         "stairs_up": [{"name": "stairs up", "blueprint": "StairsUp", "dist": 1, "dir": "W", "tx": 5, "ty": 17}], "stairs_down": [], "standing_on_stairs_up": False,
+         "visible_entities": [dict(_musket98), dict(_tinker98), dict(_far98)], "abilities": [dict(_lase98)] + [dict(a) for a in _other98],
+         "loot_sources": [{"kind": "chest", "name": "chest", "tx": 17, "ty": 16, "dist": 11}]}
+    s.update(kw)
+    return s
+
+
+def _q98(state, enemies=None):
+    brain.recent_positions.clear()
+    brain.RETREAT_TARGET_LEVEL = None
+    brain.TURRET_STATE["last"] = None
+    return brain.query_decision(state, took_damage=False, enemies=enemies or [])
+
+
+# the hazard list: the musket turret in line of sight only (the tinker robot is mobile, the far turret has no line of sight)
+assert [e["name"] for e in brain.turret_hazards(_state98())] == ["musket turret"]
+assert brain.is_fragile_shooter({"is_stationary": True, "max_hp": 5}) and not brain.is_fragile_shooter({"is_stationary": False, "max_hp": 5}) and not brain.is_fragile_shooter({"is_stationary": True, "max_hp": 80})
+# the death turn, as the brain saw it (turret not listed as an enemy, 10 of 24 HP, safe-rest territory): it used to REST; now it shoots the turret
+_d = _q98(_state98())
+assert _d["action"] == "USE_ABILITY:CommandLase:NE" and "Turret" in _d["reason"], _d
+# the same with the new mod: the turret listed as an enemy with 5 hp
+_new = _state98(visible_entities=[dict(_musket98, is_enemy=True, hp=5, max_hp=5)])
+_d = _q98(_new, enemies=[dict(_musket98, is_enemy=True, hp=5, max_hp=5)])
+assert _d["action"] == "USE_ABILITY:CommandLase:NE", _d
+# no ranged attack: walk to the stairs one step away; on them: leave and level first
+_noshot = _state98(abilities=[dict(a) for a in _other98])
+assert _q98(_noshot)["action"] == "NAVIGATE_TO_CELL:5,17"
+_on = _state98(abilities=[dict(a) for a in _other98], x=5, y=17, standing_on_stairs_up=True)
+_d = _q98(_on)
+assert _d["action"] == "USE_STAIRS_UP" and brain.RETREAT_TARGET_LEVEL == 4, (_d, brain.RETREAT_TARGET_LEVEL)
+# two turrets in view and stairs close: leave instead of trading shots
+_two = _state98(visible_entities=[dict(_musket98), dict(_musket98, dist=6, tx=12, ty=15, name="second musket turret")])
+_d = _q98(_two)
+assert _d["action"] == "NAVIGATE_TO_CELL:5,17", _d
+# no stairs near and nothing to shoot with: the doctrine steps aside, but resting and looting stay vetoed
+_stuck = _state98(abilities=[dict(a) for a in _other98], stairs_up=[], hp=10)
+_d = _q98(_stuck)
+assert _d["action"] != "REST" and not str(_d.get("reason", "")).startswith("Loot:"), _d
+# a turret that is out of sight does not stop him resting, and without one resting works as before
+_calm = _state98(visible_entities=[dict(_far98)], hostiles_nearby=False, stairs_up=[])
+assert _q98(_calm)["action"] == "REST"
+# the emergency retreat no longer fires just because a fragile Impossible shooter is in the list; a real Impossible mobile creature still does
+_frag = {"name": "x", "difficulty": "Impossible", "is_stationary": True, "max_hp": 5, "dist": 5, "dir": "NE"}
+assert brain.is_fragile_shooter(_frag)
+_csrc98 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _needle in ('obj.HasTag("Turret")', '\\"max_hp\\": {objMaxHp}', "objMaxHp = obj.baseHitpoints"):
+    assert _needle in _csrc98, f"the mod must contain {_needle}"
+assert _csrc98.count("{") == _csrc98.count("}"), "C# braces"
+brain.RETREAT_TARGET_LEVEL = None
+brain.TURRET_STATE["last"] = None
+print("  [OK] Test 98 Passed: replaying the Gen 22 state, a musket turret in line of sight is shot with Lase instead of resting or looting, two turrets or no ranged attack send him to the stairs up (and he levels first), out-of-sight turrets change nothing, and the mod counts Turret-tagged creatures as enemies and exports hit points.")

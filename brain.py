@@ -1813,7 +1813,7 @@ def choose_loot_action(game_state, zone_id, last_act, is_town):
     for k in [k for k, exp in LOOT_BLACKLIST.items() if exp <= LOOT_TURN]:
         del LOOT_BLACKLIST[k]
     sources = game_state.get("loot_sources") or []
-    if is_town or game_state.get("is_swimming") or not sources:
+    if is_town or game_state.get("is_swimming") or not sources or turret_hazards(game_state):
         LOOT_PURSUIT.update({"key": None, "turns": 0})
         LOOT_STREAK.update({"key": None, "count": 0})
         return None
@@ -3194,6 +3194,80 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     return enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
 
 
+# Turrets (HANDOFF issue 77). A level 3 character died to a musket turret that the mod exported with is_enemy false, rated Impossible (level 15), with only 5 hit points:
+# the brain walked toward a chest in its line of fire, then rested there at 41 percent. Turrets are fragile (5 hit points, armor 0 to 2) and fire every turn, so the doctrine
+# is: never rest or loot where one has a line of sight; shoot the nearest with a ready ranged attack; with two or more in view, or no ranged attack, leave by the stairs up
+# when they are close. The mod now also exports every entity's hp and max_hp and counts a Turret-tagged creature as an enemy; the blueprint test below keeps this working
+# with a state that predates that.
+TURRET_RANGE = 12
+TURRET_ATTACK_MAX_DIST = 9
+FRAGILE_MAX_HP = 15
+TURRET_STAIRS_RADIUS = 6
+TURRET_STATE = {"last": None}
+
+
+def is_fragile_shooter(e):
+    """A stationary creature with very few hit points (the mod exports `max_hp`): a turret-like shooter that is better killed than feared."""
+    mh = e.get("max_hp") or 0
+    return bool(e.get("is_stationary")) and 0 < mh <= FRAGILE_MAX_HP
+
+
+def turret_hazards(game_state):
+    """The turrets and fragile stationary shooters with a line of sight within TURRET_RANGE, nearest first. Read from the exported entities, whether or not the mod
+    called them enemies. A tinker robot that places turrets is mobile and not counted; its turrets are."""
+    out = []
+    for e in game_state.get("visible_entities") or []:
+        if e.get("is_companion"):
+            continue
+        label = f"{e.get('name', '')} {e.get('blueprint', '')}".lower()
+        is_turret = "turret" in label and "tinker" not in label
+        if not (is_turret or (e.get("is_enemy") and is_fragile_shooter(e))):
+            continue
+        if e.get("has_los") is False or (e.get("dist") if e.get("dist") is not None else 99) > TURRET_RANGE:
+            continue
+        out.append(e)
+    return sorted(out, key=lambda e: e.get("dist", 99))
+
+
+def turret_decision(game_state, abilities, hp_ratio, adj_threats):
+    """The turret doctrine; None when no turret is in view or something is already in melee reach (the normal combat rules handle that)."""
+    if adj_threats:
+        return None
+    hz = turret_hazards(game_state)
+    if not hz:
+        return None
+    px, py = game_state.get("x", 0), game_state.get("y", 0)
+    zone_id = game_state.get("zone_id", "")
+    cur_z = game_state.get("z", 10)
+    t = hz[0]
+    shooter = first_ready_by_priority(abilities, ("lase", "elemental_ray"))
+    can_shoot = bool(shooter and shooter.get("command")) and (t.get("dist") or 99) <= TURRET_ATTACK_MAX_DIST and t.get("dir")
+    up = None
+    if cur_z > 10:
+        ups = list(game_state.get("stairs_up") or [])
+        if KNOWN_STAIRS_UP.get(zone_id):
+            ups.append(KNOWN_STAIRS_UP[zone_id])
+        ups = [s for s in ups if s.get("tx") is not None and max(abs(s["tx"] - px), abs(s["ty"] - py)) <= TURRET_STAIRS_RADIUS]
+        up = min(ups, key=lambda s: max(abs(s["tx"] - px), abs(s["ty"] - py))) if ups else None
+    names = ", ".join(f"{e.get('name', 'turret')} ({e.get('dist')})" for e in hz[:3])
+
+    def retreat():
+        global RETREAT_TARGET_LEVEL
+        if game_state.get("standing_on_stairs_up"):
+            RETREAT_TARGET_LEVEL = game_state.get("level", 1) + 1
+            return {"action": "USE_STAIRS_UP", "reason": f"Turret nest ({names}): leaving by the stairs up and levelling before coming back"}
+        return {"action": f"NAVIGATE_TO_CELL:{up['tx']},{up['ty']}", "reason": f"Turret nest ({names}): walking to the stairs up at ({up['tx']}, {up['ty']})"}
+
+    if len(hz) >= 2 and up:
+        return retreat()
+    if can_shoot:
+        return {"action": f"USE_ABILITY:{shooter['command']}:{t['dir']}",
+                "reason": f"Turret ({t.get('name', 'turret')}, {t.get('dist')} tiles, {t.get('max_hp') or '?'} HP): shooting it with {shooter.get('name', 'a ranged attack')} instead of standing in its line of fire"}
+    if up:
+        return retreat()
+    return None
+
+
 DEAD_END_MIN_STEPS = 40         # a cleared stratum must have been worked for this many steps before the brain leaves it by the stairs up
 DEAD_END_ZONES = set()
 
@@ -3356,6 +3430,13 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     if fire_decision:
         return fire_decision
 
+    turret_move = turret_decision(game_state, abilities, hp_ratio, adj_threats)
+    if turret_move:
+        if TURRET_STATE["last"] != turret_move["action"]:
+            print(f"[TURRET] {turret_move['reason']}")
+        TURRET_STATE["last"] = turret_move["action"]
+        return turret_move
+
     # ==========================================================
     # EMERGENCY TACTICAL RETREAT TO STAIRS UP (Underground Defense)
     # ==========================================================
@@ -3363,7 +3444,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     is_overwhelmed = (cur_z > 10) and (
         (hp_ratio < 0.35) or
         (took_damage and hp_ratio < 0.45) or
-        any(e.get("difficulty") == "Impossible" for e in enemies)
+        any(e.get("difficulty") == "Impossible" and not is_fragile_shooter(e) for e in enemies)
     )
 
     if is_overwhelmed:
@@ -3509,7 +3590,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 return forage
 
         # 3. Rest until healed if safe and damaged below threshold (default 75%)
-        if hp_ratio < REST_HP_THRESHOLD and not took_damage and not is_swimming:
+        if hp_ratio < REST_HP_THRESHOLD and not took_damage and not is_swimming and not turret_hazards(game_state):
             pct = int(hp_ratio * 100)
             return {"action": "REST", "reason": f"Safe resting: HP at {pct}% (< {int(REST_HP_THRESHOLD*100)}%)"}
 
