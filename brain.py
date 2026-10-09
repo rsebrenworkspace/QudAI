@@ -416,10 +416,47 @@ def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
 SECTOR_STALL_LIMIT = 14
 SECTOR_PROGRESS = {"key": None, "best": None, "stall": 0}
 STAIRS_GIVEUP = set()       # (zone_id, stairs xy) the greedy fallback could not approach: delving to them is skipped
+# Stairs the engine could not route to get a bounded second chance (HANDOFF issue 92: written off at (57, 12) for good; the cause of the missing route is NOT known, it may be real). Only stairs written off for
+# lack of a route are in STAIRS_RETRY_META, never the deliberate dead-end give-ups. A retry uses the engine route ONLY (no greedy stepping): a failed retry costs one turn.
+STAIRS_RETRY_META = {}      # (zone_id, stairs xy) -> {"level", "turn", "pos", "retries"} at the last write-off
+STAIRS_RETRY_ACTIVE = set()
+STAIRS_RETRY_MAX = 3
+STAIRS_RETRY_TURNS = 150    # a retry is due this many turns after the write-off ...
+STAIRS_RETRY_DISTANCE = 12  # ... or when he is this far (Chebyshev) from where it failed ... or after he gains a level
+
+
+def note_stairs_unreachable(zone_id, xy, level, pos):
+    """Remembers where, when and at what level the engine failed to route to known stairs down, keeping the retry count."""
+    key = (zone_id, tuple(xy))
+    old = STAIRS_RETRY_META.get(key, {})
+    STAIRS_RETRY_META[key] = {"level": int(level or 1), "turn": TURN_CLOCK, "pos": tuple(pos) if pos else None, "retries": old.get("retries", 0)}
+
+
+def retry_given_up_stairs(zone_id, cur_lvl, cur_pos):
+    """Lifts the write-off of this zone's stairs down when something has changed since it (a level gained, a move of STAIRS_RETRY_DISTANCE cells, STAIRS_RETRY_TURNS turns),
+    at most STAIRS_RETRY_MAX times. True when it did. Never touches a dead-end give-up (those have no entry in STAIRS_RETRY_META)."""
+    sd = KNOWN_STAIRS_DOWN.get(zone_id)
+    if not sd:
+        return False
+    key = (zone_id, (sd.get("tx"), sd.get("ty")))
+    meta = STAIRS_RETRY_META.get(key)
+    if not meta or meta["retries"] >= STAIRS_RETRY_MAX or key in STAIRS_RETRY_ACTIVE:
+        return False
+    if key not in STAIRS_GIVEUP and key not in UNREACHABLE_SECTORS:
+        return False
+    far = bool(meta.get("pos") and cur_pos and max(abs(cur_pos[0] - meta["pos"][0]), abs(cur_pos[1] - meta["pos"][1])) >= STAIRS_RETRY_DISTANCE)
+    if not (int(cur_lvl or 1) > meta["level"] or far or TURN_CLOCK - meta["turn"] >= STAIRS_RETRY_TURNS):
+        return False
+    STAIRS_GIVEUP.discard(key)
+    UNREACHABLE_SECTORS.discard(key)
+    STAIRS_RETRY_ACTIVE.add(key)
+    meta["retries"] += 1
+    print(f"[STAIRS RETRY] Trying the stairs down at {key[1]} in {zone_id} again ({meta['retries']}/{STAIRS_RETRY_MAX}; level {meta['level']}->{cur_lvl}, {TURN_CLOCK - meta['turn']} turns, {'moved far' if far else 'same place'}): engine route only.")
+    return True
 SECTOR_GIVEUP = set()       # zone ids where even the nearest-unexplored-cell chase stalled: stop the water traversal there
 
 
-def sector_target_ok(zone_id, target, cur_pos, kind="centroid"):
+def sector_target_ok(zone_id, target, cur_pos, kind="centroid", level=None):
     """Records this turn's distance to the committed sector target. False (and blacklisted) once progress has stalled."""
     key = (zone_id, tuple(target)) if kind in ("centroid", "stairs") else (zone_id, kind)   # the nearest cell moves every step
     dist = max(abs(target[0] - cur_pos[0]), abs(target[1] - cur_pos[1]))
@@ -434,6 +471,7 @@ def sector_target_ok(zone_id, target, cur_pos, kind="centroid"):
         UNREACHABLE_SECTORS.add((zone_id, tuple(target)))
         if kind == "stairs":
             STAIRS_GIVEUP.add((zone_id, tuple(target)))
+            note_stairs_unreachable(zone_id, target, level, cur_pos)
         elif kind != "centroid":
             SECTOR_GIVEUP.add(zone_id)
         SECTOR_PROGRESS.update({"key": None, "best": None, "stall": 0})
@@ -3536,6 +3574,7 @@ def dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone
         usd = KNOWN_STAIRS_DOWN.get(up) if up else None
         if usd:
             STAIRS_GIVEUP.add((up, (usd.get("tx"), usd.get("ty"))))
+            STAIRS_RETRY_META.pop((up, (usd.get("tx"), usd.get("ty"))), None)      # a deliberate give-up is never retried
         return {"action": "USE_STAIRS_UP", "reason": f"Dead end: no way down from stratum {cur_z}; ascending the stairs up to leave it"}
     if game_state.get("reachable_edges") and not waiting:
         return None                     # the engine says an edge is reachable: the zone-exit logic goes first
@@ -3621,6 +3660,9 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     coords = last_action.split(":")[1].split(",")
                     blocked_target = (int(coords[0]), int(coords[1]))
                     UNREACHABLE_SECTORS.add((zone_id, blocked_target))
+                    _sdk = KNOWN_STAIRS_DOWN.get(zone_id)
+                    if _sdk and (_sdk.get("tx"), _sdk.get("ty")) == blocked_target:
+                        note_stairs_unreachable(zone_id, blocked_target, game_state.get("level"), (game_state.get("x"), game_state.get("y")))
                     print(f"[PATHFINDER BLOCKED]: Target {blocked_target} in zone {zone_id} is unreachable. Blacklisting.")
                 except Exception:
                     pass
@@ -3873,6 +3915,8 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             is_subterranean or (cur_lvl >= req_depth_lvl)
         )
 
+        if can_delve:
+            retry_given_up_stairs(zone_id, cur_lvl, cur_pos)        # a second look at stairs the engine could not route to (HANDOFF issue 92)
         if standing_on_sd and not stairs_given_up(zone_id):
             if can_delve:
                 if cur_lvl >= req_depth_lvl:
@@ -3903,8 +3947,16 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     if (zone_id, sd_pos) not in UNREACHABLE_SECTORS:
                         return {"action": f"NAVIGATE_TO_CELL:{sd_pos[0]},{sd_pos[1]}", "reason": f"{delve_type}: Navigating to stairs down at {sd_pos} to delve stratum {cur_z + 1} ({rec_str})"}
                     # The engine pathfinder reported no route (it may not swim). Greedy steps only as a guarded fallback.
-                    best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
-                    if best_m and sector_target_ok(zone_id, sd_pos, cur_pos, "stairs"):
+                    if (zone_id, sd_pos) in STAIRS_RETRY_ACTIVE:
+                        # a retry is engine-route only: no greedy stepping (it cost 45 turns of ping-pong the first time)
+                        STAIRS_RETRY_ACTIVE.discard((zone_id, sd_pos))
+                        STAIRS_GIVEUP.add((zone_id, sd_pos))
+                        note_stairs_unreachable(zone_id, sd_pos, cur_lvl, cur_pos)
+                        print(f"[STAIRS RETRY] Still no engine route to the stairs at {sd_pos}; given up again.")
+                        best_m = None
+                    else:
+                        best_m = get_best_move_towards(cur_pos, sd_pos, valid_moves)
+                    if best_m and sector_target_ok(zone_id, sd_pos, cur_pos, "stairs", cur_lvl):
                         return {"action": best_m, "reason": f"{delve_type}: no engine route to the stairs at {sd_pos}; stepping {best_m[5:]} toward them ({rec_str})"}
 
         dead_end = dead_end_ascent(game_state, zone_id, cur_z, cur_pos, standing_on_su, is_zone_cleared, is_retreating)

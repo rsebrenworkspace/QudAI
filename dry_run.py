@@ -5655,3 +5655,51 @@ finally:
 _src113 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 assert "is_zone_cleared, is_retreating)" in _src113, "the call site must pass the level-goal gate"
 print("  [OK] Test 113 Passed: in a cleared, worked stratum whose way down is held shut by a level goal he walks to the stairs up (even when the engine reports edges) and ascends without marking a dead end or giving up the stairs; with no gate, an unworked or uncleared stratum, or on the surface nothing changes, and the old dead end still fires when the stairs were given up.")
+
+
+# ---------------------------------------------------------------------------
+# Test 114: stairs the engine could not route to get a bounded second chance (human run 2026-10-09: written off at (57, 12) for the rest of the run; HANDOFF issue 92)
+# ---------------------------------------------------------------------------
+_Z114 = "JoppaWorld.11.20.1.1.13"
+_K114 = (_Z114, (73, 13))
+_saved114 = (dict(brain.KNOWN_STAIRS_DOWN), set(brain.STAIRS_GIVEUP), set(brain.UNREACHABLE_SECTORS), dict(brain.STAIRS_RETRY_META), set(brain.STAIRS_RETRY_ACTIVE), brain.TURN_CLOCK)
+try:
+    def _reset114():
+        brain.KNOWN_STAIRS_DOWN.clear(); brain.STAIRS_GIVEUP.clear(); brain.UNREACHABLE_SECTORS.clear(); brain.STAIRS_RETRY_META.clear(); brain.STAIRS_RETRY_ACTIVE.clear()
+        brain.KNOWN_STAIRS_DOWN[_Z114] = {"tx": 73, "ty": 13, "z": 13, "name": "stairs down"}
+        brain.TURN_CLOCK = 1000
+    _reset114()
+    assert brain.retry_given_up_stairs(_Z114, 6, (57, 12)) is False, "nothing written off: nothing to retry"
+    brain.note_stairs_unreachable(_Z114, (73, 13), 6, (57, 12)); brain.UNREACHABLE_SECTORS.add(_K114); brain.STAIRS_GIVEUP.add(_K114)
+    assert brain.retry_given_up_stairs(_Z114, 6, (57, 12)) is False, "same level, same place, no time passed: not yet"
+    brain.TURN_CLOCK = 1000 + brain.STAIRS_RETRY_TURNS - 1
+    assert brain.retry_given_up_stairs(_Z114, 6, (58, 12)) is False
+    assert brain.retry_given_up_stairs(_Z114, 7, (57, 12)) is True, "a level gained lifts the write-off"
+    assert _K114 not in brain.STAIRS_GIVEUP and _K114 not in brain.UNREACHABLE_SECTORS and _K114 in brain.STAIRS_RETRY_ACTIVE and brain.STAIRS_RETRY_META[_K114]["retries"] == 1
+    assert brain.retry_given_up_stairs(_Z114, 8, (57, 12)) is False, "a retry in progress is not restarted"
+    # a failed retry gives up again (what the greedy-fallback branch does) and the next trigger can lift it again
+    brain.STAIRS_RETRY_ACTIVE.discard(_K114); brain.STAIRS_GIVEUP.add(_K114); brain.note_stairs_unreachable(_Z114, (73, 13), 7, (57, 12))
+    assert brain.STAIRS_RETRY_META[_K114]["retries"] == 1, "the count survives a new write-off"
+    assert brain.retry_given_up_stairs(_Z114, 7, (30, 12)) is True, "moving 12 or more cells away lifts it"
+    # a dead-end give-up is never retried
+    _reset114(); brain.STAIRS_GIVEUP.add(_K114)
+    brain.TURN_CLOCK = 5000
+    assert brain.retry_given_up_stairs(_Z114, 9, (10, 10)) is False, "no retry entry: a deliberate give-up stays"
+    # multi-turn: the engine never finds a route; over 3000 turns the retries stay bounded and every retry ends at once
+    _reset114(); brain.note_stairs_unreachable(_Z114, (73, 13), 6, (57, 12)); brain.UNREACHABLE_SECTORS.add(_K114); brain.STAIRS_GIVEUP.add(_K114)
+    _acts114 = 0
+    for _t in range(1000, 4000):
+        brain.TURN_CLOCK = _t
+        if brain.retry_given_up_stairs(_Z114, 6, (57, 12)):
+            _acts114 += 1
+            brain.STAIRS_RETRY_ACTIVE.discard(_K114); brain.STAIRS_GIVEUP.add(_K114); brain.UNREACHABLE_SECTORS.add(_K114)
+            brain.note_stairs_unreachable(_Z114, (73, 13), 6, (57, 12))
+    assert _acts114 == brain.STAIRS_RETRY_MAX == 3, _acts114
+finally:
+    brain.KNOWN_STAIRS_DOWN.clear(); brain.KNOWN_STAIRS_DOWN.update(_saved114[0]); brain.STAIRS_GIVEUP.clear(); brain.STAIRS_GIVEUP.update(_saved114[1])
+    brain.UNREACHABLE_SECTORS.clear(); brain.UNREACHABLE_SECTORS.update(_saved114[2]); brain.STAIRS_RETRY_META.clear(); brain.STAIRS_RETRY_META.update(_saved114[3])
+    brain.STAIRS_RETRY_ACTIVE.clear(); brain.STAIRS_RETRY_ACTIVE.update(_saved114[4]); brain.TURN_CLOCK = _saved114[5]
+_src114 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "if (zone_id, sd_pos) in STAIRS_RETRY_ACTIVE:" in _src114 and "best_m = None" in _src114 and "retry_given_up_stairs(zone_id, cur_lvl, cur_pos)" in _src114, "the call site and the engine-route-only rule"
+assert "STAIRS_RETRY_META.pop((up, (usd.get" in _src114, "a dead-end give-up must erase any retry entry"
+print("  [OK] Test 114 Passed: stairs the engine could not route to are retried when a level is gained, he has moved 12 cells, or 150 turns have passed, at most 3 times (a 3,000-turn simulation shows exactly 3), a retry never steps greedily, a deliberate dead-end give-up is never retried, and a retry in progress is not restarted.")
