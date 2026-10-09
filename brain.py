@@ -624,6 +624,75 @@ def choose_inventory_action(game_state, template, is_town):
     return None
 
 
+# Proselytize outcome log (BACKLOG B11 stage 1, HANDOFF issue 80). Every Proselytize the brain sends is written to memory/proselytize_log.jsonl with the target's level and
+# our own level and Ego, and resolved a turn later from the companion list: "recruited" when a new companion appeared, else "not_recruited". `tools/proselytize_report.py`
+# turns the log into odds by level gap. Nothing here changes a decision.
+PROSELYTIZE_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "proselytize_log.jsonl")
+PROSELYTIZE_PENDING = {"rec": None, "wait": 0}
+
+
+def proselytize_target(game_state, direction):
+    """The entity a Proselytize aimed in `direction` is meant for: the nearest listed non-companion creature in that direction, else None."""
+    cands = [e for e in game_state.get("visible_entities") or [] if e.get("dir") == direction and not e.get("is_companion") and e.get("dist") is not None]
+    return min(cands, key=lambda e: e.get("dist", 99)) if cands else None
+
+
+def _write_proselytize(rec):
+    try:
+        with open(PROSELYTIZE_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + chr(10))
+    except Exception:
+        pass
+
+
+def record_proselytize_attempt(action, game_state):
+    """Called with the final action of a turn: notes a Proselytize attempt as pending. Never raises."""
+    try:
+        if not str(action).startswith("USE_ABILITY:CommandProselytize"):
+            return
+        parts = str(action).split(":")
+        d = parts[2] if len(parts) > 2 else None
+        t = proselytize_target(game_state, d) or {}
+        pend = PROSELYTIZE_PENDING["rec"]
+        if pend:
+            pend["outcome"] = "unresolved"
+            _write_proselytize(pend)
+        attrs = game_state.get("attributes") or {}
+        PROSELYTIZE_PENDING["rec"] = {
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S"), "turn": TURN_CLOCK, "zone": game_state.get("zone_id"), "dir": d,
+            "target": t.get("name"), "blueprint": t.get("blueprint"), "target_level": t.get("level"), "difficulty": t.get("difficulty"), "dist": t.get("dist"),
+            "hostile": t.get("is_enemy"), "stationary": t.get("is_stationary"), "our_level": game_state.get("level"), "ego": attrs.get("Ego"),
+            "hp": game_state.get("hp"), "max_hp": game_state.get("max_hp"),
+            "companions_before": [c.get("name") for c in game_state.get("companions") or []],
+        }
+        PROSELYTIZE_PENDING["wait"] = 2
+    except Exception:
+        pass
+
+
+def note_proselytize(game_state):
+    """Resolves the pending attempt from the companion list of the next states and logs it once. Never raises."""
+    try:
+        rec = PROSELYTIZE_PENDING["rec"]
+        if not rec:
+            return
+        comps = [c.get("name") for c in game_state.get("companions") or []]
+        before = rec.get("companions_before") or []
+        ab = next((a for a in game_state.get("abilities") or [] if a.get("command") == "CommandProselytize"), None)
+        recruited = len(comps) > len(before) or any(c not in before for c in comps)
+        PROSELYTIZE_PENDING["wait"] -= 1
+        if not recruited and PROSELYTIZE_PENDING["wait"] > 0:
+            return
+        rec["outcome"] = "recruited" if recruited else "not_recruited"
+        rec["fired"] = bool(ab and (ab.get("cooldown") or 0) > 0)
+        rec["gap"] = (rec["target_level"] - rec["our_level"]) if isinstance(rec.get("target_level"), int) and isinstance(rec.get("our_level"), int) else None
+        _write_proselytize(rec)
+        PROSELYTIZE_PENDING["rec"] = None
+        print(f"[PROSELYTIZE] {rec['outcome']}: {rec.get('target')} (level {rec.get('target_level')}, gap {rec['gap']}; our level {rec.get('our_level')}, Ego {rec.get('ego')})")
+    except Exception:
+        pass
+
+
 QUEST_SEEN = {"started": set(), "finished_steps": set(), "done": set(), "primed": False}
 
 
@@ -4024,6 +4093,7 @@ def main():
                 note_inventory_action(game_state)
                 note_avoid(game_state)
                 note_quests(game_state)
+                note_proselytize(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT
 
@@ -4319,6 +4389,7 @@ def main():
                 last_executed_action = action
                 last_executed_pos = cur_pos
                 last_action = action
+                record_proselytize_attempt(action, game_state)
                 if action.startswith("MOVE_"):
                     move_history.append(action)
                 recent_actions.append({"action": action, "reason": reason, "pos": cur_pos, "hp": hp})

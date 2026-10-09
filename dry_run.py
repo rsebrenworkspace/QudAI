@@ -5220,3 +5220,58 @@ assert _csrc98.count("{") == _csrc98.count("}"), "C# braces"
 brain.RETREAT_TARGET_LEVEL = None
 brain.TURRET_STATE["last"] = None
 print("  [OK] Test 98 Passed: replaying the Gen 22 state, a musket turret in line of sight is shot with Lase instead of resting or looting, two turrets or no ranged attack send him to the stairs up (and he levels first), out-of-sight turrets change nothing, and the mod counts Turret-tagged creatures as enemies and exports hit points.")
+
+
+# ---------------------------------------------------------------------------
+# Test 99: the Proselytize outcome log (BACKLOG B11 stage 1, HANDOFF issue 80)
+# ---------------------------------------------------------------------------
+import sys as _sys99
+_sys99.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools"))
+import proselytize_report as _pr
+_old99 = brain.PROSELYTIZE_LOG_PATH
+brain.PROSELYTIZE_LOG_PATH = _os.path.join(tempfile.mkdtemp(), "proselytize_log.jsonl")
+brain.PROSELYTIZE_PENDING.update({"rec": None, "wait": 0})
+try:
+    _goat = {"name": "goat", "blueprint": "Goat", "dist": 1, "dir": "W", "is_enemy": False, "is_companion": False, "level": 2, "difficulty": "Easy", "is_stationary": False}
+    _snap = {"name": "snapjaw warrior", "blueprint": "Snapjaw Warrior", "dist": 2, "dir": "NE", "is_enemy": True, "is_companion": False, "level": 6, "difficulty": "Tough", "is_stationary": False}
+    _s0 = {"zone_id": "Z1", "level": 3, "hp": 20, "max_hp": 24, "attributes": {"Ego": 21}, "companions": [], "visible_entities": [_goat, _snap],
+           "abilities": [{"command": "CommandProselytize", "cooldown": 0}]}
+    _log = lambda: _pr.load(brain.PROSELYTIZE_LOG_PATH)
+    # an attempt on the goat that works: a companion appears in the next state
+    brain.record_proselytize_attempt("MOVE_E", _s0)                                        # not a Proselytize: ignored
+    assert brain.PROSELYTIZE_PENDING["rec"] is None
+    brain.record_proselytize_attempt("USE_ABILITY:CommandProselytize:W", _s0)
+    assert brain.PROSELYTIZE_PENDING["rec"]["target"] == "goat" and brain.PROSELYTIZE_PENDING["rec"]["target_level"] == 2
+    _buf = _io.StringIO()
+    with _ctx.redirect_stdout(_buf):
+        brain.note_proselytize(dict(_s0, companions=[{"name": "goat"}], abilities=[{"command": "CommandProselytize", "cooldown": 25}]))
+    _r = _log()
+    assert len(_r) == 1 and _r[0]["outcome"] == "recruited" and _r[0]["gap"] == -1 and _r[0]["fired"] is True and _r[0]["ego"] == 21 and "[PROSELYTIZE] recruited: goat" in _buf.getvalue(), _r
+    assert brain.PROSELYTIZE_PENDING["rec"] is None
+    # an attempt that fails: waits two turns for a companion, then logs not_recruited
+    brain.record_proselytize_attempt("USE_ABILITY:CommandProselytize:NE", _s0)
+    brain.note_proselytize(dict(_s0, abilities=[{"command": "CommandProselytize", "cooldown": 24}]))
+    assert len(_log()) == 1, "still waiting for the second look"
+    brain.note_proselytize(dict(_s0, abilities=[{"command": "CommandProselytize", "cooldown": 23}]))
+    _r = _log()
+    assert len(_r) == 2 and _r[1]["outcome"] == "not_recruited" and _r[1]["gap"] == 3 and _r[1]["hostile"] is True and _r[1]["target"] == "snapjaw warrior", _r
+    # a new attempt while one is pending resolves the old one as unresolved; an aim with no listed target still logs, with no gap
+    brain.record_proselytize_attempt("USE_ABILITY:CommandProselytize:S", _s0)
+    brain.record_proselytize_attempt("USE_ABILITY:CommandProselytize:W", _s0)
+    assert _log()[-1]["outcome"] == "unresolved" and _log()[-1]["target"] is None
+    brain.note_proselytize({"companions": "x", "abilities": None})                          # garbage never raises
+    brain.note_proselytize(None)
+    # the report: the gap buckets and the counts
+    _rows = [dict(outcome="recruited", gap=-1, hostile=False), dict(outcome="not_recruited", gap=-1, hostile=False), dict(outcome="recruited", gap=0, hostile=True),
+             dict(outcome="not_recruited", gap=3, hostile=True), dict(outcome="not_recruited", gap=5, hostile=True), dict(outcome="unresolved", gap=1), dict(outcome="recruited", gap=None)]
+    _sum = {label: (n, k) for label, n, k in _pr.summarize(_rows)}
+    assert _sum["below our level (gap <= -1)"] == (2, 1) and _sum["same level (gap 0)"] == (1, 1) and _sum["3 above"] == (1, 0) and _sum["4 or more above"] == (1, 0) \
+        and _sum["1 above"] == (0, 0) and _sum["gap unknown (target not listed)"] == (1, 1), _sum
+    assert "1 unresolved" in _pr.format_report(_rows) and "hostile targets: 1/3" in _pr.format_report(_rows)
+    assert _pr.load(_os.path.join(tempfile.mkdtemp(), "none.jsonl")) == []
+finally:
+    brain.PROSELYTIZE_LOG_PATH = _old99
+    brain.PROSELYTIZE_PENDING.update({"rec": None, "wait": 0})
+_src99 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "record_proselytize_attempt(action, game_state)" in _src99 and "note_proselytize(game_state)" in _src99
+print("  [OK] Test 99 Passed: every Proselytize is logged with the target's level, ours and our Ego, resolved from the companion list as recruited or not_recruited (or unresolved), never raises, and the report gives the rate by level gap.")

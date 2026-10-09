@@ -66,5 +66,6 @@
 | `sync_mod.py` | Deploys the mod into Qud's mod folder [not reviewed] |
 | `ENGINE_INTERNALS.md` | Verified engine facts (stale in places, see HANDOFF issue 22) |
 | `tools/check_docs.py` | Compares the patch list, command list, test count, and paths in the docs against the code; run before every commit |
+| `tools/proselytize_report.py` | Odds of Proselytize by level gap, from `memory/proselytize_log.jsonl` (BACKLOG B11) |
 | `tools/qudai_console.py`, `tools/console_logic.py`, `QudAI_Console.bat` | The console window (GUI) and its testable logic (build/Player log parsing, state/trace views, lesson approval); see ARCHITECTURE "Console" |
 | `tools/git_report.py` | Read-only git health report (branch, ahead/behind, unmerged branches, untracked game data, repo health) with suggested next steps |
