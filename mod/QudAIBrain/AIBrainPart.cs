@@ -1110,7 +1110,12 @@ namespace QudAIBrain
                 try { byValue = obj.GetTag("Turret", null) != null; } catch { }
                 bool byName = bp.IndexOf("Turret", StringComparison.OrdinalIgnoreCase) >= 0 && bp.IndexOf("Tinker", StringComparison.OrdinalIgnoreCase) < 0;
                 if (bp.IndexOf("Turret", StringComparison.OrdinalIgnoreCase) >= 0 && turretDiagSeen.Add(bp))
-                    UnityEngine.Debug.Log("[QudAI Turret] " + bp + ": HasTag=" + byTag + " GetTag=" + byValue + " byName=" + byName);
+                {
+                    bool alive = false; int thp = -1;
+                    try { alive = obj.IsAlive; } catch { }
+                    try { thp = obj.hitpoints; } catch { }
+                    UnityEngine.Debug.Log("[QudAI Turret] " + bp + ": HasTag=" + byTag + " GetTag=" + byValue + " byName=" + byName + " IsAlive=" + alive + " hitpoints=" + thp);
+                }
                 return byTag || byValue || byName;
             }
             catch { return false; }
@@ -1119,6 +1124,17 @@ namespace QudAIBrain
         public static bool CheckIsEnemy(GameObject obj, GameObject player)
         {
             if (obj == null || player == null || obj == player || obj.IsPlayer()) return false;
+
+            // A turret is decided FIRST, before the IsAlive and corpse checks: the second game run of the turret doctrine (Gen 25) still listed it is_enemy false and logged no
+            // [QudAI Turret] line, so the test was never reached; an inanimate turret may well fail the IsAlive check above. It is an enemy while it has hit points and is not
+            // the player's own (a placed turret has a party leader: IsCompanion).
+            if (IsTurretObject(obj))
+            {
+                int turretHp = 1;
+                try { turretHp = obj.hitpoints; } catch { }
+                if (turretHp > 0 && !IsCompanion(obj, player)) return true;
+            }
+
             if (!obj.IsAlive) return false;
             if (obj.Blueprint != null && obj.Blueprint.EndsWith("Corpse")) return false;
 
@@ -2936,11 +2952,28 @@ namespace QudAIBrain
                 string cmd = action.Substring(12).Trim();
 
                 PreferredDirection = "";
+                Cell explicitCell = null;
                 if (cmd.Contains(":"))
                 {
                     string[] parts = cmd.Split(':');
                     cmd = parts[0].Trim();
-                    if (parts.Length > 1) PreferredDirection = parts[1].Trim().ToUpper();
+                    if (parts.Length > 1)
+                    {
+                        // "USE_ABILITY:CommandLase:W@25,12": the direction, then the exact cell the brain read from the exported entity (see below).
+                        string dirPart = parts[1].Trim();
+                        int at = dirPart.IndexOf('@');
+                        if (at >= 0)
+                        {
+                            string[] xy = dirPart.Substring(at + 1).Split(',');
+                            int ex, ey;
+                            if (xy.Length == 2 && int.TryParse(xy[0].Trim(), out ex) && int.TryParse(xy[1].Trim(), out ey))
+                            {
+                                try { explicitCell = player.CurrentCell?.ParentZone?.GetCell(ex, ey); } catch { }
+                            }
+                            dirPart = dirPart.Substring(0, at);
+                        }
+                        PreferredDirection = dirPart.Trim().ToUpper();
+                    }
                 }
 
                 if (string.IsNullOrEmpty(PreferredDirection))
@@ -3067,6 +3100,14 @@ namespace QudAIBrain
                             .FirstOrDefault();
                     }
                     targetCell = targetObj?.CurrentCell;
+                }
+
+                // An explicit cell from the brain wins over the direction search, and does not depend on CheckIsEnemy: a musket turret exported is_enemy false and the Lase went to the
+                // empty cell next to the player four times (HANDOFF issue 77, Gen 25: "on target none"). The line-of-sight and companion safety checks below still apply.
+                if (explicitCell != null)
+                {
+                    targetCell = explicitCell;
+                    targetObj = explicitCell.Objects == null ? null : explicitCell.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && !IsCompanion(o, player) && o.HasStat("Hitpoints"));
                 }
 
                 if (targetCell == null && !string.IsNullOrEmpty(PreferredDirection) && player.CurrentCell != null)

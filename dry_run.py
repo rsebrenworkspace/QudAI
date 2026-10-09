@@ -5188,11 +5188,11 @@ assert [e["name"] for e in brain.turret_hazards(_state98())] == ["musket turret"
 assert brain.is_fragile_shooter({"is_stationary": True, "max_hp": 5}) and not brain.is_fragile_shooter({"is_stationary": False, "max_hp": 5}) and not brain.is_fragile_shooter({"is_stationary": True, "max_hp": 80})
 # the death turn, as the brain saw it (turret not listed as an enemy, 10 of 24 HP, safe-rest territory): it used to REST; now it shoots the turret
 _d = _q98(_state98())
-assert _d["action"] == "USE_ABILITY:CommandLase:NE" and "Turret" in _d["reason"], _d
+assert _d["action"] == "USE_ABILITY:CommandLase:NE@10,14" and "Turret" in _d["reason"], _d
 # the same with the new mod: the turret listed as an enemy with 5 hp
 _new = _state98(visible_entities=[dict(_musket98, is_enemy=True, hp=5, max_hp=5)])
 _d = _q98(_new, enemies=[dict(_musket98, is_enemy=True, hp=5, max_hp=5)])
-assert _d["action"] == "USE_ABILITY:CommandLase:NE", _d
+assert _d["action"] == "USE_ABILITY:CommandLase:NE@10,14", _d
 # no ranged attack: walk to the stairs one step away; on them: leave and level first
 _noshot = _state98(abilities=[dict(a) for a in _other98])
 assert _q98(_noshot)["action"] == "NAVIGATE_TO_CELL:5,17"
@@ -5214,7 +5214,7 @@ assert _q98(_calm)["action"] == "REST"
 _frag = {"name": "x", "difficulty": "Impossible", "is_stationary": True, "max_hp": 5, "dist": 5, "dir": "NE"}
 assert brain.is_fragile_shooter(_frag)
 _csrc98 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
-for _needle in ("IsTurretObject(obj)", '\\"max_hp\\": {objMaxHp}', "objMaxHp = obj.baseHitpoints", "[QudAI Turret] "):
+for _needle in ("explicitCell", 'dirPart.IndexOf(\'@\')', "IsTurretObject(obj)", '\\"max_hp\\": {objMaxHp}', "objMaxHp = obj.baseHitpoints", "[QudAI Turret] "):
     assert _needle in _csrc98, f"the mod must contain {_needle}"
 assert _csrc98.count("{") == _csrc98.count("}"), "C# braces"
 brain.RETREAT_TARGET_LEVEL = None

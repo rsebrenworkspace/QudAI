@@ -3330,7 +3330,9 @@ def turret_decision(game_state, abilities, hp_ratio, adj_threats):
     if len(hz) >= 2 and up:
         return retreat()
     if can_shoot:
-        return {"action": f"USE_ABILITY:{shooter['command']}:{t['dir']}",
+        # The exact cell rides along ("...:W@25,12") so the mod aims at the turret itself, not at whatever its own enemy test finds (it found nothing in Gen 24 and 25).
+        aim = f"@{t['tx']},{t['ty']}" if t.get("tx") is not None and t.get("ty") is not None else ""
+        return {"action": f"USE_ABILITY:{shooter['command']}:{t['dir']}{aim}",
                 "reason": f"Turret ({t.get('name', 'turret')}, {t.get('dist')} tiles, {t.get('max_hp') or '?'} HP): shooting it with {shooter.get('name', 'a ranged attack')} instead of standing in its line of fire"}
     if up:
         return retreat()
