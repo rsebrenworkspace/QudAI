@@ -947,6 +947,58 @@ namespace QudAIBrain
             catch { return false; }
         }
 
+        // Diagnostic for "the engine finds no step to this cell" (HANDOFF issue 92: known stairs down at (73, 13) could not be routed to although a route exists).
+        // One line per target in Player.log: `[QudAI PathDiag]` with the target cell, its eight neighbours and the player's cell and neighbours. Legend per cell:
+        // x,y:  E explored / u unexplored,  P passable (Cell.IsPassable for the player) / x not,  S solid,  w wading-depth liquid,  W swimming-depth liquid,
+        // ! dangerous open liquid,  #n the engine's navigation weight for the player (GetNavigationWeightFor). Never acts, never throws, at most 40 lines per game session.
+        private static readonly HashSet<string> pathDiagSeen = new HashSet<string>();
+        private static readonly string[] pathDiagDirs = new string[] { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+
+        private static string PathDiagCell(Cell c, GameObject player)
+        {
+            if (c == null) return "none";
+            StringBuilder sb = new StringBuilder();
+            try { sb.Append(c.X).Append(',').Append(c.Y).Append(':'); } catch { }
+            try { sb.Append(c.IsExplored() ? "E" : "u"); } catch { sb.Append("?"); }
+            try { sb.Append(c.IsPassable(player, false) ? "P" : "x"); } catch { sb.Append("?"); }
+            try { if (c.IsSolid()) sb.Append("S"); } catch { }
+            try { if (c.HasWadingDepthLiquid()) sb.Append("w"); } catch { }
+            try { if (c.HasSwimmingDepthLiquid()) sb.Append("W"); } catch { }
+            try { if (c.GetDangerousOpenLiquidVolume() != null) sb.Append("!"); } catch { }
+            try { sb.Append("#").Append(c.GetNavigationWeightFor(player, false, false, false, false, false)); } catch { }
+            return sb.ToString();
+        }
+
+        private static void LogPathDiag(GameObject player, Cell target)
+        {
+            try
+            {
+                if (target == null || player == null) return;
+                string zid = target.ParentZone != null ? target.ParentZone.ZoneID : "?";
+                string key = zid + "|" + target.X + "," + target.Y;
+                if (pathDiagSeen.Count >= 40 || !pathDiagSeen.Add(key)) return;
+                StringBuilder sb = new StringBuilder();
+                sb.Append("[QudAI PathDiag] no engine step to ").Append(target.X).Append(',').Append(target.Y).Append(" in ").Append(zid);
+                sb.Append(" | target ").Append(PathDiagCell(target, player)).Append(" | around target");
+                foreach (string d in pathDiagDirs)
+                {
+                    Cell n = null;
+                    try { n = target.GetCellFromDirection(d, false); } catch { }
+                    sb.Append(" [").Append(d).Append(' ').Append(PathDiagCell(n, player)).Append(']');
+                }
+                Cell pc = player.CurrentCell;
+                sb.Append(" | player ").Append(PathDiagCell(pc, player)).Append(" | around player");
+                foreach (string d in pathDiagDirs)
+                {
+                    Cell n = null;
+                    try { if (pc != null) n = pc.GetCellFromDirection(d, false); } catch { }
+                    sb.Append(" [").Append(d).Append(' ').Append(PathDiagCell(n, player)).Append(']');
+                }
+                UnityEngine.Debug.Log(sb.ToString());
+            }
+            catch { }
+        }
+
         public static bool IsCompanion(GameObject obj, GameObject player)
         {
             if (obj == null || player == null || obj == player || obj.IsPlayer() || !IsStanding(obj)) return false;
@@ -3369,6 +3421,7 @@ namespace QudAIBrain
 
                         if (string.IsNullOrEmpty(step) || step == ".")
                         {
+                            LogPathDiag(player, targetCell);      // once per target: why does the engine find no step? (HANDOFF issue 92)
                             // Check open adjacent cells that reduce distance to targetCell
                             try
                             {

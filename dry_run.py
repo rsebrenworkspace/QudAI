@@ -5703,3 +5703,17 @@ _src114 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brai
 assert "if (zone_id, sd_pos) in STAIRS_RETRY_ACTIVE:" in _src114 and "best_m = None" in _src114 and "retry_given_up_stairs(zone_id, cur_lvl, cur_pos)" in _src114, "the call site and the engine-route-only rule"
 assert "STAIRS_RETRY_META.pop((up, (usd.get" in _src114, "a dead-end give-up must erase any retry entry"
 print("  [OK] Test 114 Passed: stairs the engine could not route to are retried when a level is gained, he has moved 12 cells, or 150 turns have passed, at most 3 times (a 3,000-turn simulation shows exactly 3), a retry never steps greedily, a deliberate dead-end give-up is never retried, and a retry in progress is not restarted.")
+
+
+# ---------------------------------------------------------------------------
+# Test 115: the path diagnostic exists in the mod and cannot throw or spam (HANDOFF issue 92)
+# ---------------------------------------------------------------------------
+_cs115 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _s in ("private static void LogPathDiag(GameObject player, Cell target)", "private static string PathDiagCell(Cell c, GameObject player)", "[QudAI PathDiag] no engine step to ",
+           "c.GetNavigationWeightFor(player, false, false, false, false, false)", "c.HasWadingDepthLiquid()", "c.HasSwimmingDepthLiquid()", "c.IsExplored()", "pathDiagSeen.Count >= 40",
+           "LogPathDiag(player, targetCell);"):
+    assert _s in _cs115, _s
+_body115 = _cs115[_cs115.index("private static void LogPathDiag(GameObject player, Cell target)"):_cs115.index("public static bool IsCompanion(GameObject obj, GameObject player)")]
+assert _body115.count("try") >= 3 and "catch { }" in _body115, "the diagnostic must be guarded"
+assert _cs115.count("{") == _cs115.count("}")
+print("  [OK] Test 115 Passed: the mod logs one guarded [QudAI PathDiag] line per target the engine cannot route to (target and neighbours: explored, passable, solid, wading, swimming, dangerous liquid, navigation weight), at most 40 per session.")
