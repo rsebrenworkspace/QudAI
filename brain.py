@@ -526,6 +526,51 @@ BORDER_RETREAT_RADIUS = 6
 OPPOSITE_DIR = {"N": "S", "S": "N", "E": "W", "W": "E"}
 
 
+# Swarms (HANDOFF issue 97, BACKLOG B10). Gen 28 (level 2, 22 HP) stepped into a zone and was ambushed by eleven giant dragonflies, each rated Average (level 1), one step from the border he
+# had just crossed, and died in about eight turns; the border retreat only fires for an "Impossible" hostile. A swarm is judged by what the engaged ones would DO to him: the catalogue's
+# damage per turn of each (the ledger's observed hit when it is larger), the strongest creature_threat.MAX_ENGAGED of them at once, against his current hit points.
+SWARM_MIN_COUNT = 3              # mobile hostiles in view before a swarm is considered
+SWARM_DIE_TURNS = 4.0            # retreat when the engaged ones would kill him in this many turns or fewer
+SWARM_RANGE = 10
+SWARM_UNKNOWN_DPS = 2.0          # a creature the catalogue does not know
+
+
+def player_gear(game_state):
+    """(armor value, average main-hand damage) from the state: what a swarm flag compares to see whether he has been upgraded."""
+    av = int(game_state.get("av") or 0)
+    melee = creature_threat._dice_average((game_state.get("melee") or {}).get("damage"))
+    return av, melee
+
+
+def pack_danger(game_state, enemies):
+    """{"n", "dps", "turns", "names"} for the mobile hostiles within SWARM_RANGE and line of sight, or None when there are none or his hit points are unknown."""
+    try:
+        hp = float(game_state.get("hp") or 0)
+        if hp <= 0:
+            return None
+        av = game_state.get("av")
+        mobile = [e for e in enemies or [] if not e.get("is_stationary") and not e.get("is_companion") and e.get("has_los") is not False
+                  and (e.get("dist") if e.get("dist") is not None else 99) <= SWARM_RANGE]
+        if not mobile:
+            return None
+        try:
+            led = danger_ledger._load()
+        except Exception:
+            led = {}
+        dps = []
+        for e in mobile:
+            entry = creature_threat.lookup(blueprint=e.get("blueprint"), name=e.get("name"))
+            rec = led.get(e.get("blueprint") or "") or {}
+            observed = (rec.get("total_damage", 0) / float(rec["hits"])) if rec.get("hits", 0) >= 2 else None
+            dps.append(creature_threat.damage_per_turn(entry, observed, av) if entry is not None else SWARM_UNKNOWN_DPS)
+        engaged = sorted(dps, reverse=True)[:creature_threat.MAX_ENGAGED]
+        total = sum(engaged)
+        names = ", ".join(sorted({str(e.get("name", "?")) for e in mobile})[:3])
+        return {"n": len(mobile), "dps": round(total, 1), "turns": (hp / total) if total > 0 else 999.0, "names": names}
+    except Exception:
+        return None
+
+
 def border_retreat_decision(game_state, zone_id, cur_pos, enemies):
     """A retreat decision through the border he arrived by, or None."""
     entry = LAST_ZONE_ENTRY
@@ -534,8 +579,15 @@ def border_retreat_decision(game_state, zone_id, cur_pos, enemies):
     danger = [e for e in enemies
               if e.get("difficulty") == "Impossible" and e.get("has_los") is not False and e.get("dist", 999) <= 10
               and not is_ignorable_stationary_enemy(e)]
+    swarm = None
     if not danger:
-        return None
+        swarm = pack_danger(game_state, [e for e in enemies if not is_ignorable_stationary_enemy(e)])
+        if not swarm or swarm["n"] < SWARM_MIN_COUNT or swarm["turns"] > SWARM_DIE_TURNS:
+            return None
+        flagged = ZONE_DANGER.flags.get(zone_id)
+        if flagged is not None and flagged.swarm and flagged.retreats >= zone_danger.SWARM_RETREAT_MAX:
+            print(f"[SWARM] Not retreating from {zone_id} again: {flagged.retreats} retreats already (the flag lapses on {flagged.lapse_text()}).")
+            return None
     ex, ey = entry.get("entry_pos", (None, None))
     if ex is None or max(abs(cur_pos[0] - ex), abs(cur_pos[1] - ey)) > BORDER_RETREAT_RADIUS:
         return None
@@ -543,6 +595,18 @@ def border_retreat_decision(game_state, zone_id, cur_pos, enemies):
     px, py = cur_pos
     on_border = (rev == "W" and px == 0) or (rev == "E" and px == 79) or (rev == "N" and py == 0) or (rev == "S" and py == 24)
     from_zone = entry.get("from_zone")
+    if swarm:
+        # NOT written into FAILED_ZONE_EXITS, which never lapses: the zone is flagged in the ledger instead, and the flag ends on a level gain, a gear upgrade or time.
+        av, melee = player_gear(game_state)
+        f = ZONE_DANGER.record_swarm(zone_id, swarm["names"], swarm["n"], game_state.get("level"), av, melee, TURN_CLOCK)
+        if f is not None:
+            f.retreats += 1
+            print(f"[SWARM RETREAT] {swarm['n']} hostiles ({swarm['names']}) would deal {swarm['dps']} a turn: {swarm['turns']:.1f} turns to live. {zone_id} is avoided until {f.lapse_text()}.")
+        why = (f"Swarm retreat: {swarm['n']} hostiles ({swarm['names']}) in view would kill me in about {swarm['turns']:.1f} turns; going back through the {rev} border I arrived by "
+               f"(I will not come back until I am stronger)")
+        if on_border:
+            return {"action": f"MOVE_{rev}", "reason": why, "flee_ok": True}
+        return {"action": f"NAVIGATE_ZONE_EXIT:{rev}", "reason": why, "flee_ok": True}
     if from_zone:
         FAILED_ZONE_EXITS.add((from_zone, OPPOSITE_DIR.get(rev, rev)))
     names = ", ".join(sorted({e.get("name", "?") for e in danger})[:3])
@@ -1110,7 +1174,16 @@ def note_zone_danger(game_state):
     try:
         zone = game_state.get("zone_id") or ""
         our_level = int(game_state.get("level") or 1)
+        _av, _melee = player_gear(game_state)
+        ZONE_DANGER.observe(_av, _melee, TURN_CLOCK)
         mobile = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_stationary")]
+        _pack = pack_danger(game_state, mobile)
+        if _pack and _pack["n"] >= SWARM_MIN_COUNT and _pack["turns"] <= SWARM_DIE_TURNS:
+            _old = ZONE_DANGER.flags.get(zone)
+            if not (_old is not None and _old.swarm and _old.active(our_level, ZONE_DANGER.now)):
+                _f = ZONE_DANGER.record_swarm(zone, _pack["names"], _pack["n"], our_level, _av, _melee, TURN_CLOCK)
+                if _f is not None:
+                    print(f"[ZONE DANGER] {zone}: swarm of {_pack['n']} ({_pack['names']}), {_pack['turns']:.1f} turns to live; entry avoided until {_f.lapse_text()}")
         trust_ratio = not has_ranged_opener(game_state)      # the melee-only ratio is a trigger only for a character with no opener; the engine's own difficulty always is
         worst, pack = None, 0.0
         for e in mobile:
@@ -1215,6 +1288,17 @@ def get_zone_exit_target(cur_pos, game_state=None):
 
     if not candidates:
         return (px, py), "No Reachable Exit", None
+
+    # A zone flagged for a swarm is not entered while another way on exists; the flag lapses (ZONE_DANGER) so this can never block him for good (HANDOFF issue 97).
+    _lvl = int((game_state or {}).get("level") or 1)
+    _swarm_blocked = [d for d in candidates if ZONE_DANGER.entry_blocked(_compute_adjacent_zone_id(cur_zone, d), _lvl)]
+    if _swarm_blocked:
+        _open = [d for d in candidates if d not in _swarm_blocked]
+        if _open:
+            print(f"[SWARM] Not entering the flagged zone to the {','.join(_swarm_blocked)}; choosing among {','.join(_open)}.")
+            candidates = _open
+        else:
+            print(f"[SWARM] The only way on leads into a flagged zone ({','.join(_swarm_blocked)}); it is entered anyway (no other exit).")
 
     # In subterranean strata (z > 10), prioritize directions suggested by unexplored boundaries / corridors
     cur_z = game_state.get("z", 10) if game_state else 10

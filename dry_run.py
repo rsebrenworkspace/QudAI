@@ -5855,6 +5855,96 @@ print("  [OK] Test 119 Passed: the console threat strip applies the danger ledge
 
 
 # ---------------------------------------------------------------------------
+# Test 122: the swarm retreat, and a swarm flag that can never become a permanent block (human run Gen 28, 2026-10-09; HANDOFF issue 97)
+# ---------------------------------------------------------------------------
+import random as _rnd122
+import zone_danger as _zd122
+_Z122, _PREV122 = "JoppaWorld.10.18.1.1.10", "JoppaWorld.10.18.2.1.10"       # PREV's west neighbour is Z
+assert _zd122.adjacent_zone(_PREV122, "W") == _Z122
+_fly122 = lambda d, los=True: {"name": "giant dragonfly [flying]", "blueprint": "GiantDragonfly", "dist": d, "has_los": los, "is_stationary": False, "is_enemy": True, "difficulty": "Average", "level": 1, "hp": 6}
+_gs122 = lambda **k: dict({"hp": 22, "max_hp": 22, "level": 2, "av": 2, "melee": {"damage": "1d2", "penetration": -1}, "zone_id": _Z122, "x": 78, "y": 6}, **k)
+_saved122 = (brain.ZONE_DANGER, brain.LAST_ZONE_ENTRY, brain.TURN_CLOCK, set(brain.FAILED_ZONE_EXITS), brain.CURRENT_ZONE_CHOSEN_EXIT, brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE,
+             set(brain.EXPLORED_ZONE_SET), brain.ZONE_HOPPING_DETECTED, dict(brain.EXIT_SUPPRESS_UNTIL))
+try:
+    def _fresh122(turn=2083):
+        brain.ZONE_DANGER = _zd122.Ledger(); brain.TURN_CLOCK = turn; brain.FAILED_ZONE_EXITS.clear(); brain.EXPLORED_ZONE_SET.clear()
+        brain.ZONE_HOPPING_DETECTED = False; brain.EXIT_SUPPRESS_UNTIL.clear(); brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+        brain.LAST_ZONE_ENTRY = {"from_zone": _PREV122, "to_zone": _Z122, "reverse_dir": "E", "entry_pos": (79, 6)}
+    _fresh122()
+    _swarm122 = [_fly122(1), _fly122(1), _fly122(1), _fly122(1), _fly122(3), _fly122(3), _fly122(4), _fly122(9), _fly122(10)]
+    _pk = brain.pack_danger(_gs122(), _swarm122)
+    assert _pk["n"] == 9 and _pk["turns"] < 2.0 and _pk["dps"] > 12, _pk
+    # the retreat: one step from the border he came through, a swarm that would kill him in under two turns
+    _d = brain.border_retreat_decision(_gs122(), _Z122, (78, 6), _swarm122)
+    assert _d and _d["action"] == "NAVIGATE_ZONE_EXIT:E" and "Swarm retreat" in _d["reason"] and _d["flee_ok"], _d
+    assert not brain.FAILED_ZONE_EXITS, "a swarm retreat must NOT write the permanent failed-exit list"
+    _f = brain.ZONE_DANGER.flags[_Z122]
+    assert _f.swarm and _f.retreats == 1 and brain.ZONE_DANGER.entry_blocked(_Z122, 2)
+    _d = brain.border_retreat_decision(_gs122(x=79), _Z122, (79, 6), _swarm122)
+    assert _d["action"] == "MOVE_E", "standing on the border: step across"
+    # what does not trigger it: too few, too weak for his hit points, far from the border he came by, nothing in view
+    _fresh122()
+    assert brain.border_retreat_decision(_gs122(), _Z122, (78, 6), _swarm122[:2]) is None, "two flies are not a swarm"
+    assert brain.border_retreat_decision(_gs122(hp=200, max_hp=200), _Z122, (78, 6), _swarm122) is None, "a swarm that cannot kill him in four turns is fought"
+    assert brain.border_retreat_decision(_gs122(), _Z122, (60, 6), _swarm122) is None, "too far from the entry border"
+    assert brain.border_retreat_decision(_gs122(), _Z122, (78, 6), []) is None
+    assert brain.border_retreat_decision(_gs122(), _Z122, (78, 6), [_fly122(d, los=False) for d in (1, 2, 3, 4)]) is None, "out of line of sight"
+    # the flag lapses on a level, on armor, on a better weapon, or on time: each alone
+    def _blocked122(level=2, av=2, melee=1.5, turn=2083):
+        _fresh122(); brain.border_retreat_decision(_gs122(), _Z122, (78, 6), _swarm122)
+        brain.ZONE_DANGER.observe(av, melee, turn)
+        return brain.ZONE_DANGER.entry_blocked(_Z122, level)
+    assert _blocked122() is True and _blocked122(level=3) is True and _blocked122(av=3) is True and _blocked122(melee=2.5) is True and _blocked122(turn=2083 + 799) is True
+    assert _blocked122(level=4) is False, "two levels"
+    assert _blocked122(av=4) is False, "two armor value"
+    assert _blocked122(melee=3.5) is False, "two average weapon damage"
+    assert _blocked122(turn=2083 + 800) is False, "the time backstop: never a permanent block"
+    # at most SWARM_RETREAT_MAX retreats from one zone, then he fights it instead of going in and out forever
+    _fresh122(); _n = 0
+    for _i in range(10):
+        brain.TURN_CLOCK += 5
+        if brain.border_retreat_decision(_gs122(), _Z122, (78, 6), _swarm122):
+            _n += 1
+    assert _n == _zd122.SWARM_RETREAT_MAX == 3, _n
+    # exits: while the flag holds, the exit into the flagged zone is not chosen if another exists; with only that one it is taken
+    def _pick122(turn, edges="NSEW", n=60):
+        picks = []
+        for _s in range(n):
+            _rnd122.seed(_s); brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None; brain.LAST_ZONE_ENTRY = None; brain.TURN_CLOCK = turn
+            brain.ZONE_DANGER.observe(2, 1.5, turn)
+            picks.append(brain.get_zone_exit_target((40, 12), {"zone_id": _PREV122, "z": 10, "x": 40, "y": 12, "level": 2, "reachable_edges": edges, "surroundings": {}})[2])
+        return picks
+    _fresh122(); brain.border_retreat_decision(_gs122(), _Z122, (78, 6), _swarm122)
+    _p1 = _pick122(2090)
+    assert "W" not in _p1 and set(_p1) <= {"N", "S", "E"}, set(_p1)
+    # the HARD rule on its own: B10's soft steering is switched off here, because it also prefers exits away from a flagged zone and would hide a broken block
+    _steer122 = brain.zone_danger.steer
+    brain.zone_danger.steer = lambda *a, **k: (None, None, None)
+    try:
+        _p2 = _pick122(2090)
+        assert "W" not in _p2 and {"N", "S", "E"} <= set(_p2), set(_p2)
+        _real122 = brain.ZONE_DANGER.entry_blocked
+        brain.ZONE_DANGER.entry_blocked = lambda z, l: False          # mutation: without the block the flagged exit IS chosen
+        assert "W" in _pick122(2090), "the test must be able to fail"
+        brain.ZONE_DANGER.entry_blocked = _real122
+    finally:
+        brain.zone_danger.steer = _steer122
+    assert set(_pick122(2090, edges="W")) == {"W"}, "the only way on is entered anyway: a swarm flag never walls him in"
+    # multi-turn: over 3,000 turns the flagged exit is closed at first and open again once the backstop has passed
+    _closed = _open = 0
+    for _t in range(2090, 5090, 150):
+        _pp = _pick122(_t, n=12)
+        if _t < 2083 + 800:
+            _closed += ("W" in _pp)
+        elif "W" in _pp:
+            _open += 1
+    assert _closed == 0 and _open >= 1, (_closed, _open)
+finally:
+    (brain.ZONE_DANGER, brain.LAST_ZONE_ENTRY, brain.TURN_CLOCK, _fa122, brain.CURRENT_ZONE_CHOSEN_EXIT, brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE, _ex122, brain.ZONE_HOPPING_DETECTED, _sp122) = _saved122
+    brain.FAILED_ZONE_EXITS.clear(); brain.FAILED_ZONE_EXITS.update(_fa122); brain.EXPLORED_ZONE_SET.clear(); brain.EXPLORED_ZONE_SET.update(_ex122)
+    brain.EXIT_SUPPRESS_UNTIL.clear(); brain.EXIT_SUPPRESS_UNTIL.update(_sp122)
+print("  [OK] Test 122 Passed: a swarm that would kill him within four turns (the Gen 28 dragonflies: nine in view, 1.4 turns) sends him back through the border he arrived by without touching the permanent failed-exit list, the zone's entry is closed only while another way on exists and lapses on two levels, two armor value, two average weapon damage or 800 turns (each alone), he retreats at most three times from one zone, and a 3,000-turn simulation shows the exit closed and then open again.")
+
 # Test 123: remembered dangerous turrets keep loot and exploration out of their reach and are never approached for a shot (human run Gen 29, 2026-10-09; HANDOFF issue 98)
 # ---------------------------------------------------------------------------
 _Z123 = "JoppaWorld.10.18.0.2.11"
