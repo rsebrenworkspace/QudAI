@@ -61,6 +61,7 @@
 | `chronicler.py` | Death processing, aphorism generation, `format_ancestral_memory_for_prompt` |
 | `dry_run.py` | Snapshot tests (`Test N` sections) [not reviewed] |
 | `twitch_bot.py` | IRC voting manager [not reviewed] |
+| `qudai_config.py` | The one place for the exchange folder (`EXCHANGE_DIR`, `QUDAI_EXCHANGE_DIR` override); the C# side builds the same path from the user profile |
 | `item_scoring.py` | Item scores per build (`build_profile`, `score_item`), loadout and junk decisions (`choose_equips`, `choose_drops`); data from `data/items.json` |
 | `item_evaluator.py` | Legacy name-matching rubric; only old dry-run tests use it |
 | `sync_mod.py` | Deploys the mod into Qud's mod folder [not reviewed] |

@@ -11,7 +11,7 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
-EXCHANGE_DIR = os.environ.get("QUDAI_EXCHANGE_DIR") or r"C:\Users\rsebr\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI"
+from qudai_config import EXCHANGE_DIR  # noqa: E402  (one config for the paths: qudai_config.py)
 
 
 def game_dir(exchange_dir=None):

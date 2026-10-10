@@ -39,3 +39,6 @@ twitch_config.json
 scratch/captures/
 scratch/saves/
 scratch/log_bundle.txt
+
+# One-off probes and scripts (AGENTS.md section 5); nothing in here is repo content
+scratch/
