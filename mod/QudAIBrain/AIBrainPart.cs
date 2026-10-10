@@ -1147,6 +1147,61 @@ namespace QudAIBrain
             catch { }
         }
 
+        // Diagnostic for a zone exit that cannot be reached or stepped (the three-zone hop loop, 2026-10-09). One `[QudAI ExitDiag]` line per zone, edge, reason and player cell:
+        // the edge, why (`no step` = the engine found no route; `move failed` = the step was refused), the player's cell and neighbours (PathDiagCell legend above), and the whole
+        // border row as one character per cell: . passable, W swimming-depth liquid, w wading-depth liquid, S solid or wall, x other impassable. Never acts, never throws, at most 60 lines per session.
+        private static readonly HashSet<string> exitDiagSeen = new HashSet<string>();
+
+        private static void LogExitDiag(GameObject player, char edgeChar, string why, string step)
+        {
+            try
+            {
+                Cell pc = player != null ? player.CurrentCell : null;
+                Zone z = pc != null ? pc.ParentZone : null;
+                if (z == null) return;
+                string key = z.ZoneID + "|" + edgeChar + "|" + why + "|" + pc.X + "," + pc.Y;
+                if (exitDiagSeen.Count >= 60 || !exitDiagSeen.Add(key)) return;
+                StringBuilder sb = new StringBuilder();
+                sb.Append("[QudAI ExitDiag] ").Append(edgeChar).Append(" exit of ").Append(z.ZoneID).Append(": ").Append(why);
+                if (!string.IsNullOrEmpty(step)) sb.Append(" (step ").Append(step).Append(')');
+                sb.Append(" | player ").Append(PathDiagCell(pc, player)).Append(" | around player");
+                foreach (string d in pathDiagDirs)
+                {
+                    Cell n = null;
+                    try { n = pc.GetCellFromDirection(d, false); } catch { }
+                    sb.Append(" [").Append(d).Append(' ').Append(PathDiagCell(n, player)).Append(']');
+                }
+                sb.Append(" | border ");
+                int len = (edgeChar == 'N' || edgeChar == 'S') ? z.Width : z.Height;
+                for (int i = 0; i < len; i++)
+                {
+                    Cell b = null;
+                    try
+                    {
+                        if (edgeChar == 'N') b = z.GetCell(i, 0);
+                        else if (edgeChar == 'S') b = z.GetCell(i, z.Height - 1);
+                        else if (edgeChar == 'E') b = z.GetCell(z.Width - 1, i);
+                        else b = z.GetCell(0, i);
+                    }
+                    catch { }
+                    char ch = '?';
+                    try
+                    {
+                        if (b == null) ch = '?';
+                        else if (b.IsPassable(player, false)) ch = '.';
+                        else if (b.HasSwimmingDepthLiquid()) ch = 'W';
+                        else if (b.HasWadingDepthLiquid()) ch = 'w';
+                        else if (b.IsSolid() || b.HasWall()) ch = 'S';
+                        else ch = 'x';
+                    }
+                    catch { }
+                    sb.Append(ch);
+                }
+                UnityEngine.Debug.Log(sb.ToString());
+            }
+            catch { }
+        }
+
         public static bool IsCompanion(GameObject obj, GameObject player)
         {
             if (obj == null || player == null || obj == player || obj.IsPlayer() || !IsStanding(obj)) return false;
@@ -3810,6 +3865,7 @@ namespace QudAIBrain
                     {
                         lastMoveFailed = true;
                         lastFailedDir = step.ToUpper();
+                        LogExitDiag(player, edgeChar, "move failed", step);
                         TryOpenDoorInDirection(player, step);
                     }
                     else
@@ -3828,6 +3884,7 @@ namespace QudAIBrain
                 {
                     lastMoveFailed = true;
                     lastFailedDir = edgeChar.ToString();
+                    LogExitDiag(player, edgeChar, "no step", null);
                     if (player.Energy != null) player.UseEnergy(1000, "Pass");
                     return;
                 }
