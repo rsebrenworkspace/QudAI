@@ -181,5 +181,16 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Size (my guess):** research small; a "get rid of a curse" routine only if one of the ways proves reliable and cheap.
 - **Risks:** an EMP also disables the character's own tech and companions' machines; burning grenades for an Ego point is not worth it for most items.
 
+### B18. Faction runs: items that change faction standing (note from the human, 2026-10-09; not promoted, to be planned together with character builds)
+- **Your words:** "So the artifacts revealed some interest side notes. Certain items can increase standing with factions. Notate that when we decide to start building not only character builds but faction runs."
+- **What we know `[verified in data 2026-10-09]`** (`data/items.json`, field `protect`, built by `tools/build_item_catalog.py` from the part `AddsRep`; one example read in the XML: `Blood-stained neck-ring` has `AddsRep Faction="Baboons" Value="400"`, an ape fur cloak has `AddsRep Faction="Apes" Value="-100"`, so a value can be negative):
+  - Wearing or carrying these items moves standing with their faction: Apes (fur cloak, gloves, hat, Ogre fur), Baboons (the neck-ring, Quartzfur items), Girsh (fangs), Mollusks, Entropic (Dazzle Cheek, Otherpearl, the Dead Tau figurine +300), Strangers (Dream Rondure, Mirrorshades), Issachari (banner, sun veil), Mechanimists (Silver Rondure), Seekers and Pariahs (figurines, +300), and creature kinds such as Trees, Cats, Birds, Winged Mammals, Insects, Antelopes, Goatfolk, Tortoises, Reptiles, Flowers, Water (Ruin of House Isner). The Nil Face raises every visible faction (`*allvisiblefactions:70`). Infection items move Fungi (+200) and the Consortium (-200).
+  - Other faction items: `FactionDeed` and `RandomFactionDeed`; the six Faces are relics.
+  - The brain already protects these from being dropped or sold (`protect`, reason `reputation:<Faction>`), but nothing chooses them on purpose, and one item can raise one faction while lowering another (the fur cloak).
+- **What it would mean for a faction run `[unverified]`:** a run aimed at one faction (for example Apes or Baboons for friendly territory, Mechanimists for Joppa and Grit Gate) would collect and wear its items, and avoid items that cost standing with it. A build and a faction are two separate plans that must not fight over the same slot.
+- **Depends on:** B9 (a faction-reputation export, promoted; without it we cannot see whether an item helped), B8 (merchants and trades: reputation changes prices), and the character-build work (`build_templates.py`). The item catalogue already carries the data.
+- **Size (my guess):** research small (how and when `AddsRep` applies: on equip, on pickup or continuously), implementation medium.
+- **Risks:** an item that raises one faction can make another hostile; reputation drops can turn peaceful settlements hostile (rule R7 is about our attacks, not theirs); do not mirror engine rules in Python (R3), export the engine's answer.
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.
