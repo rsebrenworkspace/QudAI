@@ -84,6 +84,14 @@ class Console(tk.Tk):
         self.btn_toggle = ttk.Button(btns, text="Engage AI", command=self.toggle_ai, state="disabled")
         for b in (self.btn_start, self.btn_toggle, self.btn_stop):
             b.pack(side="left", padx=4)
+        cap = ttk.LabelFrame(f, text="Capture logs for Claude (one click: every log, the brain's console and the code version go into scratch/captures/latest)")
+        cap.pack(fill="x", padx=12, pady=6)
+        ttk.Label(cap, text="What just happened?").pack(side="left", padx=6)
+        self.capture_note = tk.StringVar(value="")
+        ttk.Entry(cap, textvariable=self.capture_note, width=60).pack(side="left", padx=4, pady=6)
+        ttk.Button(cap, text="Capture logs", command=self.capture_clicked).pack(side="left", padx=6)
+        self.capture_var = tk.StringVar(value="")
+        ttk.Label(f, textvariable=self.capture_var, wraplength=1100, justify="left").pack(anchor="w", padx=16)
         game = ttk.LabelFrame(f, text="Game (Caves of Qud, through Steam)")
         game.pack(fill="x", padx=12, pady=6)
         self.btn_game_start = ttk.Button(game, text="Start game", command=self.start_game_clicked)
@@ -335,6 +343,7 @@ class Console(tk.Tk):
         ttk.Button(row, text="Copy view", command=self.logs_copy_view).pack(side="left", padx=2)
         ttk.Button(row, text="Copy bundle for Claude", command=self.logs_copy_bundle).pack(side="left", padx=2)
         ttk.Button(row, text="Save bundle", command=self.logs_save_bundle).pack(side="left", padx=2)
+        ttk.Button(row, text="Capture logs", command=self.capture_clicked).pack(side="left", padx=8)
         self.logs_status = tk.StringVar(value="Pick a source and a filter. The bundle holds mod health, the last state, the mod lines, the trace and the exit choices.")
         ttk.Label(f, textvariable=self.logs_status, wraplength=1100, justify="left").pack(anchor="w", padx=4)
         self.logs_text = self._text(f)
@@ -365,6 +374,18 @@ class Console(tk.Tk):
         self.clipboard_clear()
         self.clipboard_append(text)
         self.logs_status.set(f"Copied the bundle ({len(text):,} characters). Paste it into the chat.")
+
+    def capture_clicked(self):
+        try:
+            folder, text, copied = cl.capture_logs(self.capture_note.get().strip(), list(self.console_lines), EX)
+        except Exception as e:                      # noqa: BLE001  a capture must never kill the window
+            self.capture_var.set(f"Capture failed: {e}")
+            return
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        msg = f"Captured {len(copied)} file(s) to {folder} (also scratch/captures/latest). The bundle is on the clipboard; tell Claude 'captured'."
+        self.capture_var.set(msg)
+        self.logs_status.set(msg)
 
     def logs_save_bundle(self):
         ok, where = cl.save_bundle(cl.log_bundle(EX))
