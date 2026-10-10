@@ -6767,7 +6767,7 @@ _ds140 = _cl140.describe_state(_st140)
 assert "Psychic glimmer: 31" in _ds140 and "PSYCHIC HUNTER in view: Shwubas-No-Longer" in _ds140, _ds140
 assert "PSYCHIC HUNTER" not in _cl140.describe_state(dict(_st140, visible_entities=[])) and "Psychic glimmer: 31" in _cl140.describe_state(dict(_st140, visible_entities=[]))
 _c140 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
-for _s in ("private static bool IsPsychicHunter(GameObject o)", 'o.HasProperty("PsychicHunter") || o.Blueprint == "PsychicSeekerHunter"', "private static int PlayerGlimmer(GameObject player)",
+for _s in ("private static bool IsPsychicHunter(GameObject o)", 'o.HasStringProperty("PsychicHunter")', 'o.GetStringProperty("PsychicHunter", "") == "true"', 'o.Blueprint == "PsychicSeekerHunter"', "private static int PlayerGlimmer(GameObject player)",
            "player.GetPsychicGlimmer(null)", 'sb.Append("\\"psychic_glimmer\\": " + PlayerGlimmer(player) + ",");'):
     assert _s in _c140, _s
 assert _c140.count("IsPsychicHunter(obj)") == 1 and _c140.count("IsPsychicHunter(currentTarget)") == 1 and _c140.count("{") == _c140.count("}")
