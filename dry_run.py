@@ -6609,3 +6609,13 @@ for _t135 in range(60):
 assert _w135["hand"] != "15515", f"with a digging ability the hammer is not wielded for digging, got {_w135['hand']}"
 _reset131()
 print("  [OK] Test 135 Passed: an ability that digs (Burrowing Claws today, the list in DIG_ABILITY_COMMANDS) takes the digging-tool bonus away, so the equip choice goes back to the shield and weapon rules")
+
+
+# Test 136: the mod does not light or equip a torch while the Ambient Light toggle is on (human, 2026-10-09; HANDOFF issue 114)
+# ---------------------------------------------------------------------------
+_cs136 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+_i136 = _cs136.index("private static void EnsureLightSource(GameObject player)")
+_j136 = _cs136.index("var body = player.GetPart<Body>();", _i136)
+assert 'a.Command == "CommandAmbientLight" && a.ToggleState' in _cs136[_i136:_j136] and "return;" in _cs136[_i136:_j136].split("CommandAmbientLight")[1], "the ambient-light check comes first and returns"
+assert _cs136.count("{") == _cs136.count("}")
+print("  [OK] Test 136 Passed: EnsureLightSource returns before lighting or fetching a torch while the Ambient Light toggle is on")

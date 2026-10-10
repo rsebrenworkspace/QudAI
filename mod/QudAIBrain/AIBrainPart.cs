@@ -1697,6 +1697,15 @@ namespace QudAIBrain
         {
             if (player == null || player.CurrentCell == null || player.CurrentCell.ParentZone == null) return;
 
+            // Light Manipulation's Ambient Light toggle lights him by itself (human, 2026-10-09: "Ambient light does provide light"; it also hid what the light did, because a torch
+            // was always equipped as well). While it is on, no torch is lit or fetched from the pack.
+            try
+            {
+                var lightAbilities = player.GetPart<ActivatedAbilities>();
+                if (lightAbilities?.AbilityByGuid != null && lightAbilities.AbilityByGuid.Values.Any(a => a != null && a.Command == "CommandAmbientLight" && a.ToggleState)) return;
+            }
+            catch { }
+
             var body = player.GetPart<Body>();
             if (body == null) return;
 
