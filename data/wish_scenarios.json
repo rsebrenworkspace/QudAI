@@ -261,6 +261,42 @@
     "a cursed item (a Gentling Mask) is never put on"
    ],
    "tests": "Test 126"
+  },
+  {
+   "id": "psychic-hunter",
+   "title": "Psychic hunter (BACKLOG B25)",
+   "why": "See how the brain meets a psychic hunter in the open, and what the damage per step looks like. The mod marks hunters (`psychic_hunter`) and the console shows PSYCHIC HUNTER in view.",
+   "setup": [
+    "Take a SNAPSHOT first (Control tab): a hunter can kill the character quickly (Gen 31 died to one).",
+    "Go to an open area. Pause the AI. Do not turn godmode on if you want to see the damage.",
+    "Wish for the hunter, then Engage and press Capture logs a few turns later (with a note)."
+   ],
+   "wishes": [
+    {
+     "cmd": "seekerhunter",
+     "confidence": "named",
+     "kind": "command",
+     "note": "the game's wish handler for a Seeker hunter (an osprey, harrier ... by glimmer), found in the code (PsychicHunterSystem.SeekerWish); the killer of Gen 31 was this kind; untried, tell me what it did. `seekerhunter:3` is probably a count"
+    },
+    {
+     "cmd": "extrasolohunter",
+     "confidence": "named",
+     "kind": "command",
+     "note": "a lone extradimensional hunter (a creature near your level with the `PsychicHunter` property); untried"
+    },
+    {
+     "cmd": "extraculthunter",
+     "confidence": "named",
+     "kind": "command",
+     "note": "a cult hunter (a member of a faction chosen by level); untried, and the mod's hunter mark may not cover it"
+    }
+   ],
+   "watch": [
+    "the console state view: PSYCHIC HUNTER in view",
+    "HP per move in the trace (the human says some hunters damage every step)",
+    "what the brain does: fights, uses abilities, retreats, or rests"
+   ],
+   "tests": "Test 141"
   }
  ]
 }

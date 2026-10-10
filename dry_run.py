@@ -6772,3 +6772,11 @@ for _s in ("private static bool IsPsychicHunter(GameObject o)", 'o.HasProperty("
     assert _s in _c140, _s
 assert _c140.count("IsPsychicHunter(obj)") == 1 and _c140.count("IsPsychicHunter(currentTarget)") == 1 and _c140.count("{") == _c140.count("}")
 print("  [OK] Test 140 Passed: the mod exports the player's glimmer and marks psychic hunters (the engine's PsychicHunter property and the seeker blueprint), the post-mortem prints the glimmer and a hunter column, and the console shows the glimmer and a hunter in view")
+
+
+# Test 141: the Lab has a psychic-hunter card with the game's own wish names (BACKLOG B25)
+# ---------------------------------------------------------------------------
+_h141 = next(s for s in _cl.load_wish_scenarios() if s["id"] == "psychic-hunter")
+assert [w["cmd"] for w in _h141["wishes"]] == ["seekerhunter", "extrasolohunter", "extraculthunter"] and all(w["kind"] == "command" for w in _h141["wishes"])
+assert "SNAPSHOT" in " ".join(_h141["setup"]) and "PSYCHIC HUNTER" in " ".join(_h141["watch"])
+print("  [OK] Test 141 Passed: the Lab card for psychic hunters wishes seekerhunter, extrasolohunter and extraculthunter (the names from the game's wish handlers), starts with a snapshot, and says what to watch")
