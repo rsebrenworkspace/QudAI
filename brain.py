@@ -708,7 +708,13 @@ class AutolevelBreaker:
 # protected (reputation trophies, quest items, relics), unidentified, equipped or weightless. Every drop is logged WITH WHERE it was left, so it can be fetched.
 INV_MAX_DROPS = 5
 INV_FAIL_LIMIT = 2
-INV_STATE = {"sig": None, "pending": None, "fails": {}, "profiles": {}}
+INV_STATE = {"sig": None, "pending": None, "fails": {}, "profiles": {}, "equip_hist": [], "flip_lock": {}, "equip_last": None}
+# Equip flip guard (HANDOFF issue 110): a shield and a weapon each assume a free hand, but with one hand taken (a torch) they push each other out of it, and every equip "succeeds":
+# the human's capture 2026-10-09_230516 holds 70 swaps in a row (eyeless crab shell, masterwork stun rod, stun rod). An item that was equipped within the last EQUIP_FLIP_WINDOW
+# equips and has been displaced since is not equipped again for EQUIP_FLIP_LOCK_TURNS; the lock lapses, so a changed situation is judged afresh.
+EQUIP_FLIP_WINDOW = 6
+EQUIP_FLIP_LOCK_TURNS = 600
+EQUIP_SHIELD_WINS_LOCK_TURNS = 3000      # when a shield and a weapon fight over a hand the SHIELD wins (human, 2026-10-09: the shield "has saved precious hit points"); the carried weapons wait this long
 INV_LAST_SEQ = {"seq": 0}
 ITEM_DROP_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "item_drops.jsonl")
 
@@ -732,8 +738,28 @@ def choose_inventory_action(game_state, template, is_town):
     items = [dict(i, blueprint=i.get("blueprint"), weight=(i.get("weight") or 0) / max(1, i.get("count") or 1)) for i in inv
              if i.get("id") and not INV_STATE["fails"].get(i.get("id"), 0) >= INV_FAIL_LIMIT]
     profile = _inv_profile(template)
-    # 1. equip: one clear upgrade per turn, never an unidentified item (its real stats are unknown)
-    for it, slot, why in item_scoring.choose_equips([i for i in items if i.get("identified") is not False or i.get("equipped")], profile):
+    # 1. equip: one clear upgrade per turn, never an unidentified item (its real stats are unknown), never an item that keeps getting displaced (flip lock)
+    hist = INV_STATE.setdefault("equip_hist", [])
+    lock = INV_STATE.setdefault("flip_lock", {})
+    last = INV_STATE.get("equip_last")                  # an equip counts only once a later state shows the item worn: a refused equip that is retried is not a flip
+    if last is not None:
+        INV_STATE["equip_last"] = None
+        if any(i.get("id") == last and i.get("equipped") for i in inv):
+            hist.append(last)
+            del hist[:-EQUIP_FLIP_WINDOW * 2]
+    for it, slot, why in item_scoring.choose_equips([i for i in items if (i.get("identified") is not False or i.get("equipped")) and (i.get("equipped") or lock.get(i["id"], -1) <= TURN_CLOCK)], profile):
+        if it["id"] in hist[-EQUIP_FLIP_WINDOW:] and not it.get("equipped"):
+            if item_scoring._entry(it).get("group") == "shield":
+                # a shield and a weapon are fighting over one hand: wear the shield and keep every carried weapon out of the way for a long while
+                for other in items:
+                    if not other.get("equipped") and item_scoring._entry(other).get("group") == "melee_weapon":
+                        lock[other["id"]] = TURN_CLOCK + EQUIP_SHIELD_WINS_LOCK_TURNS
+                print(f"[INVENTORY] equip flip: {it.get('name')} and a weapon keep pushing each other out of a hand; the shield wins, the carried weapons wait {EQUIP_SHIELD_WINS_LOCK_TURNS} turns.")
+            else:
+                lock[it["id"]] = TURN_CLOCK + EQUIP_FLIP_LOCK_TURNS
+                print(f"[INVENTORY] equip flip: {it.get('name')} was equipped a moment ago and pushed out again; leaving it for {EQUIP_FLIP_LOCK_TURNS} turns.")
+                continue
+        INV_STATE["equip_last"] = it["id"]
         INV_STATE["pending"] = {"kind": "equip", "ids": [it["id"]], "reasons": {it["id"]: why}, "names": {it["id"]: it.get("name")}}
         return {"action": f"EQUIP_ITEM:{it['id']}", "reason": f"Inventory: equipping {it.get('name')} in {slot} ({why})"}
     # 2. drop junk
@@ -1652,7 +1678,8 @@ def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False,
             continue
         info = surroundings.get(d, "").lower()
         if "[blocked:" in info or "impassable" in info or "wall" in info:
-            if any(k in info for k in DESTRUCTIBLE_OBSTACLE_KEYWORDS):
+            # `[breakable]` is the mod's answer (a solid, ownerless object with hit points, outside a settlement); the name list is only the older fallback (R3)
+            if "[breakable]" in info or any(k in info for k in DESTRUCTIBLE_OBSTACLE_KEYWORDS):
                 dx, dy = CARDINAL_OFFSETS[d]
                 nx, ny = px + dx, py + dy
                 dist_to_target = (nx - tx) ** 2 + (ny - ty) ** 2
@@ -1665,6 +1692,9 @@ def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False,
         candidates.sort(key=lambda x: x[0])
         best_score, best_d, best_info = candidates[0]
         clean_tag = next((k for k in DESTRUCTIBLE_OBSTACLE_KEYWORDS if k in best_info), "wall")
+        if "[breakable]" in best_info:
+            m = re.search(r"\[blocked: ([^\]]+)\]", best_info.replace("[blocked: impassable terrain]", ""))
+            clean_tag = m.group(1) if m else "breakable obstacle"
         return best_d, clean_tag
     return None, None
 
@@ -4541,6 +4571,16 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             ))
             return {"action": ranked[0], "reason": f"{zone_label}: scouting zone frontier {ranked[0]}"}
 
+        # Boxed in with no open move (human capture 2026-10-09_223859: entombed in marl, hundreds of WAIT and PASS turns): dig out through what the mod marks
+        # `[BREAKABLE]`, or, when the only way out is a companion, swap with it (the guard decides). Never in a settlement (R7).
+        if not is_town_zone(game_state):
+            _bd, _binfo = find_burrow_direction(surroundings, cur_pos, (game_state.get("unexplored_centroid_x", cur_pos[0]), game_state.get("unexplored_centroid_y", cur_pos[1])), is_town=False)
+            if _bd:
+                _act, _why = guard_companion_blocked_burrow(f"ATTACK_WALL:{_bd}", f"{zone_label}: boxed in, no open moves: burrowing through {_binfo} ({_bd}).", surroundings, cur_pos)
+                return {"action": _act, "reason": _why}
+            _comp = [d for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"] if "[companion" in surroundings.get(d, "").lower()]
+            if _comp:
+                return {"action": f"MOVE_{_comp[0]}", "reason": f"{zone_label}: boxed in, the only way out is a companion: swapping places with it."}
         return {"action": "WAIT", "reason": f"{zone_label}: no open moves"}
 
     # ==========================================================

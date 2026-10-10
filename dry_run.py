@@ -4705,7 +4705,7 @@ print("  [OK] Test 87 Passed: scores follow the build's skills and stats, equip 
 # ---------------------------------------------------------------------------
 import tempfile as _tf88
 def _inv_reset():
-    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.INV_LAST_SEQ["seq"] = 0
+    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}, "equip_hist": [], "flip_lock": {}, "equip_last": None}); brain.INV_LAST_SEQ["seq"] = 0
 _inv_reset()
 _old_log = brain.ITEM_DROP_LOG_PATH
 brain.ITEM_DROP_LOG_PATH = _os.path.join(_tf88.mkdtemp(), "item_drops.jsonl")
@@ -5864,7 +5864,7 @@ def _gs120(ground, **k):
     return dict({"zone_id": "JoppaWorld.10.18.0.2.10", "inventory": [_row120("w1", "Cloth Robe", eq=True), _row120("w2", "Staff", eq=True)], "ground_items": ground,
                  "carry_weight": 48, "max_carry_weight": 225}, **k)
 def _reset120():
-    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.INV_LAST_SEQ["seq"] = 0
+    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}, "equip_hist": [], "flip_lock": {}, "equip_last": None}); brain.INV_LAST_SEQ["seq"] = 0
     brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
 _saved120 = set(brain.UNREACHABLE_SECTORS)
 try:
@@ -5949,7 +5949,7 @@ assert item_scoring.with_inventory(_prof121, [])["owns_shield"] is False and ite
 _tm121 = build_templates.BUILD_TEMPLATES["auspicious_beginnings"]
 _gs121 = lambda bp, w: {"zone_id": "z", "inventory": _pack121, "carry_weight": 48, "max_carry_weight": 225,
                         "ground_items": [{"id": "g1", "blueprint": bp, "name": bp.lower(), "dist": 4, "tx": 64, "ty": 19, "weight": w, "identified": True}]}
-brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
+brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}, "equip_hist": [], "flip_lock": {}, "equip_last": None}); brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
 print("  [OK] Test 121 Passed: the caster melee factor is 0.7, the armor upgrade margin is still 2.0, a two-handed weapon is charged the shield penalty only when a shield is carried or worn (the scorer sees the pack through with_inventory in the equip rule, the drop rule and the ground pickup), and a 1d6 sword now beats a 1d2 staff for a caster.")
 
 # Test 122: the swarm retreat, and a swarm flag that can never become a permanent block (human run Gen 28, 2026-10-09; HANDOFF issue 97)
@@ -6148,7 +6148,7 @@ _it126 = lambda i, bp, ident=True, partial=False, eq=False, cursed=False: {"id":
                                                                       "identified": ident, "partial": partial, "cursed": cursed}
 _gs126 = lambda inv, **k: dict({"inventory": inv, "hp": 34, "max_hp": 34, "sifrah_examine": False}, **k)
 def _reset126():
-    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.INV_LAST_SEQ["seq"] = 0
+    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}, "equip_hist": [], "flip_lock": {}, "equip_last": None}); brain.INV_LAST_SEQ["seq"] = 0
     brain.EXAMINE_STATE["tries"].clear(); brain.EXAMINE_STATE["warned"] = False
 try:
     _reset126()
@@ -6219,7 +6219,7 @@ _flag126 = dict(_it126("m2", "Chain Mail", cursed=True))
 assert any(a[0]["id"] == "m2" for a in _is126.choose_equips(_bare126 + [_flag126], _prof126)), "the engine's cursed flag is not read for decisions"
 _gp126 = {"zone_id": "z", "inventory": _bare126, "carry_weight": 10, "max_carry_weight": 200,
           "ground_items": [{"id": "g1", "blueprint": "Chain Mail", "name": "chain mail", "dist": 3, "tx": 5, "ty": 5, "weight": 20, "identified": True, "cursed": True}]}
-brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
+brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}, "equip_hist": [], "flip_lock": {}, "equip_last": None}); brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
 assert brain.choose_ground_pickup(_gp126, build_templates.BUILD_TEMPLATES["auspicious_beginnings"], False) is not None, "a cursed upgrade on the ground is fetched like any other"
 # the mod side
 _cs126 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
@@ -6233,7 +6233,7 @@ _ug126 = lambda i, bp="Grappling Gun", dist=4, w=5, cursed=False, ident=False: {
 _gu126 = lambda ground, inv=None, **k: dict({"zone_id": "z", "inventory": inv if inv is not None else [_it126("w1", "Cloth Robe", eq=True)], "carry_weight": 40, "max_carry_weight": 225, "ground_items": ground}, **k)
 _tm126 = build_templates.BUILD_TEMPLATES["auspicious_beginnings"]
 def _greset126():
-    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
+    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}, "equip_hist": [], "flip_lock": {}, "equip_last": None}); brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
 _greset126()
 _d = brain.choose_ground_pickup(_gu126([_ug126("u1")]), _tm126, False)
 assert _d and _d["action"] == "NAVIGATE_TO_CELL:64,19" and "unidentified" in _d["reason"], ("walk to an unidentified item", _d)
@@ -6371,3 +6371,120 @@ _w129 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools"
 for _s in ('text="Save snapshot"', 'text="Restore selected"', "def snapshot_clicked(self)", "def restore_clicked(self)", "messagebox.askyesno(\"Restore snapshot\"", "cl.restore_snapshot(snap[\"folder\"])"):
     assert _s in _w129, _s
 print("  [OK] Test 129 Passed: a snapshot copies the newest save folder with its summary, restore is refused while the game runs and keeps what it replaces (also when the folder is gone), the list ignores the replaced copies, and the capture's latest folder is refreshed in place")
+
+
+# Test 130: boxed in by diggable rock he used to pass forever; the mod now says what is breakable (human capture 2026-10-09_223859; HANDOFF issue 109)
+# ---------------------------------------------------------------------------
+import copy as _copy130
+_MARL130 = "[BREAKABLE], [BLOCKED: impassable terrain], [BLOCKED: marl]"
+_PLAIN130 = "[BLOCKED: impassable terrain], [BLOCKED: marl]"
+# the helper: the mod's tag decides; the name list is only the older fallback and was NOT extended with rock names (R3)
+_s130 = {d: _MARL130 for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]}
+_d130, _i130 = brain.find_burrow_direction(_s130, (53, 22), (60, 5))
+assert _d130 in ("N", "NE", "E", "NW") and _i130 == "marl", (_d130, _i130)
+assert brain.find_burrow_direction({d: _PLAIN130 for d in _s130}, (53, 22), (60, 5)) == (None, None), "no tag, no name in the old list: nothing to dig"
+assert brain.find_burrow_direction(_s130, (53, 22), (60, 5), is_town=True) == (None, None), "never in a town"
+# the whole decision: entombed in marl, no open move
+def _pocket130(**over):
+    st = _copy130.deepcopy(sealed_pocket_state)
+    st["surroundings"] = {d: _MARL130 for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]}
+    st["companions"] = []
+    st["x"], st["y"] = 53, 22
+    st["hp"], st["max_hp"] = 37, 37
+    st.update(over)
+    return st
+def _reset130():
+    brain.CURRENT_TRACKED_ZONE = "JoppaWorld.11.17.0.1.10"; brain.current_zone_id = "JoppaWorld.11.17.0.1.10"
+    brain.visit_counts.clear(); brain.recent_positions.clear(); brain.stuck_autoexplore_zones.add("JoppaWorld.11.17.0.1.10")
+    brain.COMPANION_BLOCK.update({"pos": None, "tries": 0})
+_reset130()
+_dec130 = brain.query_decision(_pocket130(zone_id="JoppaWorld.11.17.0.1.10"), took_damage=False, enemies=[])
+assert _dec130["action"].startswith("ATTACK_WALL:"), f"entombed in diggable rock he must dig, got {_dec130}"
+assert "marl" in _dec130["reason"], _dec130["reason"]
+# with a companion standing in the one open cell he swaps with it first (the older guard), and still never just waits forever
+_st130 = _pocket130(zone_id="JoppaWorld.11.17.0.1.10")
+_st130["surroundings"]["SE"] = "[COMPANION: salty tarred eyeless crab]"
+_reset130()
+_dec130 = brain.query_decision(_st130, took_damage=False, enemies=[])
+assert _dec130["action"] == "MOVE_SE", f"the companion in the only way out is swapped with, got {_dec130}"
+# a companion and nothing breakable: swap, do not wait
+_st130b = _pocket130(zone_id="JoppaWorld.11.17.0.1.10")
+_st130b["surroundings"] = {d: _PLAIN130 for d in _st130b["surroundings"]}
+_st130b["surroundings"]["SE"] = "[COMPANION: salty tarred eyeless crab]"
+_reset130()
+assert brain.query_decision(_st130b, took_damage=False, enemies=[])["action"] == "MOVE_SE"
+# a settlement: never digs (R7)
+_reset130()
+_town130 = brain.query_decision(_pocket130(zone_id="JoppaWorld.11.17.0.1.10", is_settlement=True), took_damage=False, enemies=[])
+assert not _town130["action"].startswith("ATTACK_WALL"), _town130
+# the mod side: one helper decides what is breakable, the breaker and the export both use it, and the zone-exit step now hacks at a wall in its way
+_cs130 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "private static GameObject FindBreakableObstacle(" in _cs130 and "GameObject target = FindBreakableObstacle(player, cell);" in _cs130
+assert '"[BREAKABLE]"' in _cs130 and "FindBreakableObstacle(player, cell) != null" in _cs130
+_zi130 = _cs130.index('LogExitDiag(player, edgeChar, "move failed", step);')
+assert "TryBreakPathObstacle(player, player.CurrentCell?.GetCellFromDirection(step, false), step)" in _cs130[_zi130 - 700:_zi130], "the zone-exit step breaks an obstacle before it gives up"
+assert _cs130.count("{") == _cs130.count("}")
+print("  [OK] Test 130 Passed: the mod tags breakable obstacles and Python digs through what is tagged (not by a name list), boxed in with nothing open he digs or swaps with a companion in the only way out instead of waiting, never in a settlement, and the zone-exit step breaks a wall in its way")
+
+
+# Test 131: a shield and a weapon fighting over one free hand are not swapped forever (human capture 2026-10-09_230516, 70 equips in a row; HANDOFF issue 110)
+# ---------------------------------------------------------------------------
+_tpl131 = build_templates.BUILD_TEMPLATES["esper_ited_away"]
+def _it131(i, bp, name, eq=False, w=5):
+    return {"id": i, "blueprint": bp, "name": name, "count": 1, "weight": w, "equipped": eq, "identified": True}
+def _world131():
+    # one contested hand: the torch holds the other one. Whatever is equipped into "Hand" pushes the previous occupant out (the engine's behaviour in the capture).
+    return {"hand": "33176", "items": {"35290": _it131("35290", "EyelessCrabShell", "eyeless crab shell", w=19), "30415": _it131("30415", "Stun Rod", "stun rod", w=2),
+                                          "33176": _it131("33176", "Stun Rod", "masterwork stun rod", eq=True, w=2),
+                                          "26346": _it131("26346", "Iron Buckler", "iron buckler", eq=True, w=9), "19027": _it131("19027", "Torch", "torch", eq=True, w=1),
+                                          "15506": _it131("15506", "Woven Tunic", "woven tunic", eq=True, w=5)}}
+def _state131(world):
+    for k, it in world["items"].items():
+        if k in ("35290", "30415", "33176"):
+            it["equipped"] = (k == world["hand"])
+    return {"zone_id": "Z131", "inventory": [dict(it) for it in world["items"].values()], "carry_weight": 40, "max_carry_weight": 240, "hp": 40, "max_hp": 40}
+def _reset131():
+    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}, "equip_hist": [], "flip_lock": {}, "equip_last": None})
+_reset131()
+_w131 = _world131()
+_equips131, _quiet131 = [], 0
+for _turn131 in range(80):
+    brain.TURN_CLOCK += 1
+    _d131 = brain.choose_inventory_action(_state131(_w131), _tpl131, False)
+    if _d131 and _d131["action"].startswith("EQUIP_ITEM:"):
+        _id131 = _d131["action"].split(":")[1]
+        _w131["hand"] = _id131
+        _equips131.append(_id131)
+        _quiet131 = 0
+    elif _d131 is None:
+        _quiet131 += 1
+assert len(_equips131) <= 6, f"he must settle, not swap forever: {len(_equips131)} equips {_equips131[:12]}"
+assert _w131["hand"] == "35290", f"the shield wins the hand (human: it saves hit points), got {_w131['hand']}"
+assert brain.INV_STATE["flip_lock"].get("30415") and brain.INV_STATE["flip_lock"].get("33176"), "the carried weapons wait"
+assert _quiet131 >= 60, f"after settling the inventory step is quiet, got {_quiet131}"
+assert len(set(_equips131)) <= 3
+_shield_turn131 = brain.TURN_CLOCK
+# the lock lapses: after EQUIP_FLIP_LOCK_TURNS the item is judged afresh (and flips at most a couple more times, then is locked again)
+brain.TURN_CLOCK += brain.EQUIP_FLIP_LOCK_TURNS + 5
+brain.INV_STATE["sig"] = None
+_more131 = 0
+for _turn131 in range(40):
+    brain.TURN_CLOCK += 1
+    _d131 = brain.choose_inventory_action(_state131(_w131), _tpl131, False)
+    if _d131 and _d131["action"].startswith("EQUIP_ITEM:"):
+        _w131["hand"] = _d131["action"].split(":")[1]
+        _more131 += 1
+assert _more131 == 0, f"the weapons wait much longer than the ordinary lock, so nothing flips after 600 turns: {_more131}"
+assert _w131["hand"] == "35290"
+# ordinary upgrades are untouched: a better item is still equipped once, and a second upgrade later is not mistaken for a flip
+_reset131()
+_w131b = _world131()
+_w131b["items"]["30415"]["blueprint"] = "Stun Rod"
+_s131 = _state131(_w131b)
+_first131 = brain.choose_inventory_action(_s131, _tpl131, False)
+assert _first131 is None or _first131["action"].startswith("EQUIP_ITEM:")
+_reset131()
+brain.INV_STATE["equip_hist"] = ["999"]
+assert brain.EQUIP_FLIP_WINDOW == 6 and brain.EQUIP_FLIP_LOCK_TURNS == 600
+_reset131()
+print("  [OK] Test 131 Passed: a shield and a weapon that push each other out of one hand settle after a few swaps instead of looping (the capture's 70-swap cycle), the shield ends up worn and the carried weapons wait, nothing flips when the ordinary lock lapses, and ordinary equips are untouched")

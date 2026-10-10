@@ -256,13 +256,15 @@ namespace QudAIBrain
         // The engine pathfinder routes THROUGH trees and plant walls (it expects the walker to hack through), but a step into an
         // occluding cell used to be refused here, so such a path always failed. If the blocker is a solid, ownerless, non-creature
         // object with hit points, attack it, and report the swing in last_burrow exactly like ATTACK_WALL does.
-        private static bool TryBreakPathObstacle(GameObject player, Cell cell, string dir)
+        // The engine's answer to "may he hack through this cell?": a solid, ownerless, non-creature, non-door object with hit points, outside a settlement (R7).
+        // Used to break it (TryBreakPathObstacle) and exported as the `[BREAKABLE]` tag in `surroundings`, so Python never guesses from a material name (R3):
+        // its own list of names lacked marl, and he sat entombed in marl passing turns (human capture 2026-10-09_223859).
+        private static GameObject FindBreakableObstacle(GameObject player, Cell cell)
         {
             try
             {
-                if (player == null || cell == null || cell.Objects == null) return false;
-                if (IsSettlementZone(player.CurrentCell?.ParentZone)) return false;
-                GameObject target = null;
+                if (player == null || cell == null || cell.Objects == null) return null;
+                if (IsSettlementZone(player.CurrentCell?.ParentZone)) return null;
                 foreach (GameObject o in cell.Objects)
                 {
                     if (o == null || o.IsPlayer() || o.Brain != null || o.HasPart("Brain") || o.HasPart("Door")) continue;
@@ -270,9 +272,19 @@ namespace QudAIBrain
                     if (o.IsOwned() || !string.IsNullOrEmpty(o.Owner) || o.HasProperty("Owned") || o.HasProperty("OwnedBy")) continue;
                     var phys = o.GetPart<Physics>();
                     if (phys == null || !phys.Solid || !o.HasStat("Hitpoints")) continue;
-                    target = o;
-                    break;
+                    return o;
                 }
+            }
+            catch { }
+            return null;
+        }
+
+        private static bool TryBreakPathObstacle(GameObject player, Cell cell, string dir)
+        {
+            try
+            {
+                if (player == null || cell == null || cell.Objects == null) return false;
+                GameObject target = FindBreakableObstacle(player, cell);
                 if (target == null) return false;
 
                 int energyBefore = player.Energy?.Value ?? 0;
@@ -2678,6 +2690,8 @@ namespace QudAIBrain
             }
             catch { }
 
+            try { if (FindBreakableObstacle(player, cell) != null) names.Insert(0, "[BREAKABLE]"); } catch { }
+
             return names.Count > 0 ? string.Join(", ", names) : "Empty ground";
         }
 
@@ -3957,6 +3971,13 @@ namespace QudAIBrain
 
                     if (!moved || !zoneOrCellChanged)
                     {
+                        // The engine's edge route goes through diggable walls (marl, shale, trees); a refused step with one in the way is hacked at, as NAVIGATE_TO_CELL does.
+                        if (TryBreakPathObstacle(player, player.CurrentCell?.GetCellFromDirection(step, false), step))
+                        {
+                            lastMoveFailed = false;
+                            lastFailedDir = "";
+                            return;
+                        }
                         lastMoveFailed = true;
                         lastFailedDir = step.ToUpper();
                         LogExitDiag(player, edgeChar, "move failed", step);
