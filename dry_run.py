@@ -6093,3 +6093,31 @@ for _s in ("if not clear and is_dangerous_turret(closest, game_state):", "[Turre
            "near_dangerous_turret(game_state, (s[\"tx\"], s[\"ty\"]))", "near_dangerous_turret(game_state, (x, y))"):
     assert _s in _src123, _s
 print("  [OK] Test 123 Passed: a turret whose shots would hurt at full health is remembered even when a wall hides it, loot and frontier targets within 10 cells of it are skipped (a mutation without the memory walks to the rack), it is forgotten when killed or unseen for 1,500 turns, and neither combat path maneuvers toward a dangerous turret to get a line of sight: it steps away.")
+
+
+# ---------------------------------------------------------------------------
+# Test 125: the console starts and stops the game through Steam (human, 2026-10-09; HANDOFF issue 100)
+# ---------------------------------------------------------------------------
+import tools.console_logic as _cl125
+assert _cl125.STEAM_APP_ID == 333640 and _cl125.GAME_EXE == "CoQ.exe" and _cl125.steam_launch_url() == "steam://rungameid/333640"
+# process check, with an injected runner: tasklist prints the image name when it runs, and a notice when it does not
+assert _cl125.game_running(lambda cmd: (0, "CoQ.exe                      12345 Console        1    1,234,567 K")) is True
+assert _cl125.game_running(lambda cmd: (0, "INFO: No tasks are running which match the specified criteria.")) is False
+assert _cl125.game_running(lambda cmd: (_ for _ in ()).throw(OSError("no tasklist"))) is False, "a failing check reads as not running"
+_seen125 = []
+assert _cl125.game_running(lambda cmd: (_seen125.append(cmd) or (0, ""))) is False and _seen125[0][:3] == ["tasklist", "/FI", "IMAGENAME eq CoQ.exe"]
+# start: hands the steam:// address to the opener; a failing opener is reported, not raised
+_urls125 = []
+assert _cl125.start_game(opener=_urls125.append)[0] is True and _urls125 == ["steam://rungameid/333640"]
+assert _cl125.start_game(opener=lambda u: (_ for _ in ()).throw(OSError("no steam")))[0] is False
+# stop: polite first, forced only on request
+_cmds125 = []
+assert _cl125.stop_game(force=False, runner=lambda cmd: (_cmds125.append(cmd) or (0, "SUCCESS: Sent termination signal")))[0] is True and _cmds125[-1] == ["taskkill", "/IM", "CoQ.exe"]
+assert _cl125.stop_game(force=True, runner=lambda cmd: (_cmds125.append(cmd) or (0, "SUCCESS")))[0] is True and _cmds125[-1] == ["taskkill", "/IM", "CoQ.exe", "/F"]
+assert _cl125.stop_game(force=False, runner=lambda cmd: (128, "ERROR: The process \"CoQ.exe\" not found."))[0] is False
+# the window: the buttons exist and the force close is only offered while the game is still up
+_win125 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
+for _s in ('text="Start game"', 'text="Stop game"', 'text="Start game + brain"', 'text="Stop brain + game"', "def start_all(self)", "def stop_all(self)", "def _offer_force_close(self)",
+           "if cl.game_running() and messagebox.askyesno", "cl.stop_game(force=False)", "cl.stop_game(force=True)"):
+    assert _s in _win125, _s
+print("  [OK] Test 125 Passed: the console reads the game's state from tasklist (a failing check counts as not running), starts it by handing steam://rungameid/333640 to Steam, closes it politely first and force-closes only when asked (and only if it is still running), and the Control tab has the four buttons and a status line.")

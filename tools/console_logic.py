@@ -164,6 +164,56 @@ def llm_headroom(trace_path=None, n=400):
     return OK, text
 
 
+# ---------------------------------------------------------------------------
+# Game control: start and stop Caves of Qud from the console (HANDOFF issue 100)
+# ---------------------------------------------------------------------------
+STEAM_APP_ID = 333640                 # appmanifest_333640.acf: "Caves of Qud" [verified in the Steam library folder]
+GAME_EXE = "CoQ.exe"                  # the game folder holds CoQ.exe [verified]
+
+
+def _run_text(cmd):
+    """Runs a command without a console window and returns (exit code, combined output)."""
+    import subprocess
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    p = subprocess.run(cmd, capture_output=True, text=True, creationflags=flags, timeout=15)
+    return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+
+def game_running(runner=None):
+    """True while CoQ.exe is a running process (tasklist). `runner(cmd) -> (code, text)` is injectable for tests."""
+    try:
+        _code, text = (runner or _run_text)(["tasklist", "/FI", f"IMAGENAME eq {GAME_EXE}", "/NH"])
+        return GAME_EXE.lower() in text.lower()
+    except Exception:
+        return False
+
+
+def steam_launch_url(app_id=STEAM_APP_ID):
+    return f"steam://rungameid/{app_id}"
+
+
+def start_game(opener=None):
+    """Asks Steam to launch the game (it starts Steam if needed). -> (ok, text). `opener(url)` is injectable for tests."""
+    try:
+        if opener is None:
+            os.startfile(steam_launch_url())            # Windows: hands the steam:// address to Steam
+        else:
+            opener(steam_launch_url())
+        return True, "Asked Steam to start Caves of Qud."
+    except Exception as e:                              # noqa: BLE001
+        return False, f"Could not start the game: {e}"
+
+
+def stop_game(force=False, runner=None):
+    """Closes the game: a polite close request first (the game can save), `force=True` ends it at once. -> (ok, text)."""
+    try:
+        cmd = ["taskkill", "/IM", GAME_EXE] + (["/F"] if force else [])
+        code, text = (runner or _run_text)(cmd)
+        return code == 0, (text.strip() or ("closed" if code == 0 else f"taskkill exit {code}"))
+    except Exception as e:                              # noqa: BLE001
+        return False, f"Could not stop the game: {e}"
+
+
 def flag_on(exchange_dir=None):
     return os.path.exists(os.path.join(exchange_dir or EXCHANGE_DIR, "active.flag"))
 

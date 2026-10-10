@@ -82,6 +82,16 @@ class Console(tk.Tk):
         self.btn_toggle = ttk.Button(btns, text="Engage AI", command=self.toggle_ai, state="disabled")
         for b in (self.btn_start, self.btn_toggle, self.btn_stop):
             b.pack(side="left", padx=4)
+        game = ttk.LabelFrame(f, text="Game (Caves of Qud, through Steam)")
+        game.pack(fill="x", padx=12, pady=6)
+        self.btn_game_start = ttk.Button(game, text="Start game", command=self.start_game_clicked)
+        self.btn_game_stop = ttk.Button(game, text="Stop game", command=self.stop_game_clicked)
+        self.btn_all_start = ttk.Button(game, text="Start game + brain", command=self.start_all)
+        self.btn_all_stop = ttk.Button(game, text="Stop brain + game", command=self.stop_all)
+        for b in (self.btn_game_start, self.btn_game_stop, self.btn_all_start, self.btn_all_stop):
+            b.pack(side="left", padx=4, pady=6)
+        self.game_var = tk.StringVar(value="Game status: checking...")
+        ttk.Label(game, textvariable=self.game_var).pack(side="left", padx=12)
         self.status_var = tk.StringVar(value="Brain not running.")
         ttk.Label(f, textvariable=self.status_var, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=16, pady=6)
         ttk.Label(f, text="The brain starts PAUSED. 'Engage AI' lets it play; press again to pause. This is the same as pressing Enter in the brain's own window.\n"
@@ -358,6 +368,49 @@ class Console(tk.Tk):
     def _running(self):
         return bool(self.proc and self.proc.poll() is None)
 
+    # ----------------------------------------------------------------- game control (HANDOFF issue 100)
+    def _game_poll(self):
+        """Refreshes the game status text off the UI thread (tasklist takes a moment)."""
+        def work():
+            up = cl.game_running()
+            self.after(0, lambda: self._game_status(up))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _game_status(self, up):
+        self._game_up = up
+        self.game_var.set("Game status: RUNNING" if up else "Game status: not running")
+        self.btn_game_start.configure(state="disabled" if up else "normal")
+        self.btn_game_stop.configure(state="normal" if up else "disabled")
+
+    def start_game_clicked(self):
+        ok, text = cl.start_game()
+        self._log(f"--- {text} ---")
+        if not ok:
+            messagebox.showerror("QudAI", text)
+        self.after(4000, self._game_poll)
+
+    def stop_game_clicked(self):
+        ok, text = cl.stop_game(force=False)
+        self._log(f"--- game close requested: {text} ---")
+        self.after(6000, self._offer_force_close)
+
+    def _offer_force_close(self):
+        """A polite close can leave the game up (for example behind a confirmation). Offer the hard stop only if it is still running."""
+        if cl.game_running() and messagebox.askyesno("QudAI", "The game is still running. Force it to close now? (Anything since the last save is lost.)"):
+            ok, text = cl.stop_game(force=True)
+            self._log(f"--- game force-closed: {text} ---")
+        self._game_poll()
+
+    def start_all(self):
+        if not cl.game_running():
+            self.start_game_clicked()
+        self.start_brain()
+
+    def stop_all(self):
+        self.stop_brain()
+        if cl.game_running():
+            self.stop_game_clicked()
+
     def _sync_buttons(self):
         running = self._running()
         self.btn_start.configure(state="disabled" if running else "normal")
@@ -434,6 +487,9 @@ class Console(tk.Tk):
         widget.yview_moveto(top)
 
     def _tick(self):
+        self._game_ticks = getattr(self, "_game_ticks", 0) + 1
+        if self._game_ticks % 2 == 1:
+            self._game_poll()
         try:
             self._sync_buttons()
             state_path = os.path.join(EX, "last_state.json")
