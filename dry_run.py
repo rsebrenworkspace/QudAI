@@ -6780,3 +6780,26 @@ _h141 = next(s for s in _cl.load_wish_scenarios() if s["id"] == "psychic-hunter"
 assert [w["cmd"] for w in _h141["wishes"]] == ["seekerhunter", "extrasolohunter", "extraculthunter"] and all(w["kind"] == "command" for w in _h141["wishes"])
 assert "SNAPSHOT" in " ".join(_h141["setup"]) and "PSYCHIC HUNTER" in " ".join(_h141["watch"])
 print("  [OK] Test 141 Passed: the Lab card for psychic hunters wishes seekerhunter, extrasolohunter and extraculthunter (the names from the game's wish handlers), starts with a snapshot, and says what to watch")
+
+
+# Test 142: the first sight of a psychic hunter or thrall in a zone is logged once (BACKLOG B25, HANDOFF issue 123)
+# ---------------------------------------------------------------------------
+_old142 = brain.HUNTER_LOG_PATH
+brain.HUNTER_LOG_PATH = _os.path.join(tempfile.mkdtemp(), "hunter_log.jsonl")
+try:
+    brain.HUNTER_SEEN.update({"zone": None, "keys": set()}); brain.TURN_CLOCK = 77
+    _e142 = lambda name, bp, **k: dict({"name": name, "blueprint": bp, "level": 8, "difficulty": "Average", "hp": 30, "dist": 7, "has_los": True}, **k)
+    _s142 = {"zone_id": "Z1", "psychic_glimmer": 24, "hp": 42, "level": 8, "visible_entities": [
+        _e142("Kuruwur-No-Longer, Ptoh's 28th Osprey", "PsychicSeekerHunter", psychic_hunter=True), _e142("salamander and psychic thrall", "Salamander", level=1),
+        _e142("Kushworem-No-Longer, servant of Ptoh", "Novice of the Sightless Way 3", psychic_hunter=False), _e142("snapjaw", "Snapjaw", level=1)]}
+    brain.note_hunters(_s142); brain.note_hunters(_s142)
+    _rows142 = [json.loads(l) for l in open(brain.HUNTER_LOG_PATH, encoding="utf-8")]
+    assert [r["kind"] for r in _rows142] == ["hunter", "thrall", "named, unmarked"], _rows142
+    assert _rows142[0]["psychic_glimmer"] == 24 and _rows142[0]["turn"] == 77 and _rows142[0]["dist"] == 7 and _rows142[0]["zone"] == "Z1", _rows142[0]
+    brain.note_hunters(dict(_s142, zone_id="Z2"))
+    assert len(open(brain.HUNTER_LOG_PATH, encoding="utf-8").read().splitlines()) == 6, "a new zone logs the same hunter again (it followed him)"
+    brain.note_hunters({}); brain.note_hunters({"visible_entities": None})
+finally:
+    brain.HUNTER_LOG_PATH = _old142; brain.HUNTER_SEEN.update({"zone": None, "keys": set()})
+assert "hunter_log.jsonl" in _cl.MEMORY_FILES and "hunter_log.jsonl" in _cl.DATA_FILES
+print("  [OK] Test 142 Passed: a psychic hunter, its thrall and a named unmarked creature are each logged once per zone with distance, level, rating and glimmer, a new zone logs them again, and the capture and the console include the log")

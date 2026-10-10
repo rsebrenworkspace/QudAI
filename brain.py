@@ -1398,6 +1398,39 @@ def has_ranged_opener(game_state):
         return False
 
 
+# Hunter sightings (BACKLOG B25, HANDOFF issue 123). The first time a psychic hunter or one of its thralls comes into view, one line goes to memory/hunter_log.jsonl: when, where, how
+# far, how strong, and the glimmer. Gen 32 met an Osprey, four thralls and a second named hunter and nobody could tell which were wished and which were random; this log answers that
+# in the next run, and it is the data for a hunter plan (distance at first sight, how many, how strong).
+HUNTER_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "hunter_log.jsonl")
+HUNTER_SEEN = {"zone": None, "keys": set()}
+
+
+def note_hunters(game_state):
+    """Logs each psychic hunter or thrall the first time it is in view in a zone. Never raises."""
+    try:
+        zone = game_state.get("zone_id")
+        if HUNTER_SEEN["zone"] != zone:
+            HUNTER_SEEN["zone"], HUNTER_SEEN["keys"] = zone, set()
+        for e in game_state.get("visible_entities") or []:
+            name = str(e.get("name", ""))
+            hunter = bool(e.get("psychic_hunter"))
+            thrall = "psychic thrall" in name
+            if not (hunter or thrall or "-No-Longer" in name):
+                continue
+            key = (name, e.get("blueprint"))
+            if key in HUNTER_SEEN["keys"]:
+                continue
+            HUNTER_SEEN["keys"].add(key)
+            rec = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "turn": TURN_CLOCK, "zone": zone, "kind": "hunter" if hunter else ("thrall" if thrall else "named, unmarked"),
+                   "name": name, "blueprint": e.get("blueprint"), "level": e.get("level"), "difficulty": e.get("difficulty"), "hp": e.get("hp"), "dist": e.get("dist"),
+                   "has_los": e.get("has_los"), "psychic_glimmer": game_state.get("psychic_glimmer"), "player_hp": game_state.get("hp"), "player_level": game_state.get("level")}
+            print(f"[HUNTER] {rec['kind']}: {name} ({e.get('blueprint')}, level {e.get('level')}, {e.get('difficulty')}) at distance {e.get('dist')}; glimmer {rec['psychic_glimmer']}")
+            with open(HUNTER_LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec) + chr(10))
+    except Exception:
+        pass
+
+
 def note_zone_danger(game_state):
     """Flags the current zone when a mobile hostile in view is out of our class, or when the hostiles in view together are. Prints `[ZONE DANGER]` once per new flag. Never acts, never raises."""
     try:
@@ -4804,6 +4837,7 @@ def main():
                 note_loot(game_state)
                 note_inventory_action(game_state)
                 note_throw_result(game_state)
+                note_hunters(game_state)
                 note_avoid(game_state)
                 note_quests(game_state)
                 note_zone_danger(game_state)
