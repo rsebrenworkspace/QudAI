@@ -92,6 +92,21 @@ class Console(tk.Tk):
         ttk.Button(cap, text="Capture logs", command=self.capture_clicked).pack(side="left", padx=6)
         self.capture_var = tk.StringVar(value="")
         ttk.Label(f, textvariable=self.capture_var, wraplength=1100, justify="left").pack(anchor="w", padx=16)
+        snap = ttk.LabelFrame(f, text="Saved-game snapshots (save in the game first; restore needs the game closed; kept in scratch/saves)")
+        snap.pack(fill="x", padx=12, pady=6)
+        srow = ttk.Frame(snap)
+        srow.pack(fill="x")
+        ttk.Label(srow, text="Note").pack(side="left", padx=6)
+        self.snapshot_note = tk.StringVar(value="")
+        ttk.Entry(srow, textvariable=self.snapshot_note, width=40).pack(side="left", padx=4, pady=4)
+        ttk.Button(srow, text="Save snapshot", command=self.snapshot_clicked).pack(side="left", padx=6)
+        ttk.Button(srow, text="Restore selected", command=self.restore_clicked).pack(side="left", padx=6)
+        self.snapshot_list = tk.Listbox(snap, height=4, exportselection=False)
+        self.snapshot_list.pack(fill="x", padx=6, pady=2)
+        self.snapshot_var = tk.StringVar(value="")
+        ttk.Label(snap, textvariable=self.snapshot_var, wraplength=1100, justify="left").pack(anchor="w", padx=6)
+        self._snapshots = []
+        self.refresh_snapshots()
         game = ttk.LabelFrame(f, text="Game (Caves of Qud, through Steam)")
         game.pack(fill="x", padx=12, pady=6)
         self.btn_game_start = ttk.Button(game, text="Start game", command=self.start_game_clicked)
@@ -374,6 +389,35 @@ class Console(tk.Tk):
         self.clipboard_clear()
         self.clipboard_append(text)
         self.logs_status.set(f"Copied the bundle ({len(text):,} characters). Paste it into the chat.")
+
+    def refresh_snapshots(self):
+        self._snapshots = cl.list_snapshots()
+        self.snapshot_list.delete(0, "end")
+        for s in self._snapshots:
+            self.snapshot_list.insert("end", f"{s['stamp']}   {s['note'] or '(no note)'}   |   {s['summary']}")
+
+    def snapshot_clicked(self):
+        try:
+            folder, text = cl.snapshot_save(self.snapshot_note.get().strip())
+        except Exception as e:                      # noqa: BLE001  a snapshot must never kill the window
+            self.snapshot_var.set(f"Snapshot failed: {e}")
+            return
+        self.snapshot_var.set(text)
+        self.refresh_snapshots()
+
+    def restore_clicked(self):
+        sel = self.snapshot_list.curselection()
+        if not sel:
+            self.snapshot_var.set("Pick a snapshot in the list first.")
+            return
+        snap = self._snapshots[sel[0]]
+        if cl.game_running():
+            self.snapshot_var.set("Close the game first (Stop game): it would write over the restored files.")
+            return
+        if not messagebox.askyesno("Restore snapshot", f"Replace the current save with this snapshot?\n\n{snap['summary']}\n\nWhat it replaces is copied to scratch/saves/_replaced first."):
+            return
+        ok, text = cl.restore_snapshot(snap["folder"])
+        self.snapshot_var.set(text)
 
     def capture_clicked(self):
         try:
