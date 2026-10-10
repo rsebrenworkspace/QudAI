@@ -661,9 +661,12 @@ namespace QudAIBrain
                     int n = 1; try { n = it.Count; } catch { }
                     int w = 0; try { w = it.Weight; } catch { }
                     bool ident = true; try { ident = it.Understood(); } catch { }
+                    bool partial = false; try { partial = !ident && it.PartiallyUnderstood(); } catch { }
+                    bool cursed = false; try { cursed = it.HasPart("Cursed"); } catch { }
                     entries.Add("{\"id\": \"" + EscapeJson(it.ID ?? "") + "\", \"blueprint\": \"" + EscapeJson(bp) + "\", \"name\": \"" +
                                 EscapeJson(StripQudFormatting(it.DisplayNameOnly ?? bp)) + "\", \"count\": " + n + ", \"weight\": " + w +
-                                ", \"equipped\": " + (eq ? "true" : "false") + ", \"identified\": " + (ident ? "true" : "false") + "}");
+                                ", \"equipped\": " + (eq ? "true" : "false") + ", \"identified\": " + (ident ? "true" : "false") +
+                                ", \"partial\": " + (partial ? "true" : "false") + ", \"cursed\": " + (cursed ? "true" : "false") + "}");
                     if (entries.Count >= MaxInventoryExport) break;
                 }
             }
@@ -750,6 +753,52 @@ namespace QudAIBrain
             RecordInventoryAction("equip", ok, failed, player);
         }
 
+        // ---- Examine unidentified items (HANDOFF issue 102, BACKLOG B15, human promotion 2026-10-09) ----
+        // The engine's own Examine inventory action (Examiner part): a d100 roll by Intelligence, or the Sifrah minigame when OptionSifrahExamine is on (a modal screen the mod cannot answer, so
+        // the command refuses in that case and Python reads `sifrah_examine`). Reported as last_inventory_action kind "examine": ok = "id|name after|outcome" with outcome understood, partial,
+        // partial again, unchanged or gone (broken), failed = "id:reason". The engine charges its own turn; the central UseEnergy below is the one the loop relies on (R4), so the event is
+        // told not to charge (OverrideEnergyCost with 0).
+        private static void ExecuteExamineItem(GameObject player, string id)
+        {
+            var ok = new List<string>(); var failed = new List<string>();
+            try
+            {
+                id = (id ?? "").Trim();
+                Cell cell = player.CurrentCell;
+                Zone zone = cell != null ? cell.ParentZone : null;
+                bool refuse = cell == null || zone == null || zone.IsWorldMap();
+                try { if (player.AreHostilesNearby()) refuse = true; } catch { }
+                bool sifrah = true; try { sifrah = Options.SifrahExamine; } catch { }
+                GameObject item = FindInventoryItem(player, id);
+                if (refuse) failed.Add(id + ":refused here");
+                else if (sifrah) failed.Add(id + ":Sifrah examine is on");
+                else if (item == null) failed.Add(id + ":not in pack");
+                else
+                {
+                    string before = StripQudFormatting(item.DisplayNameOnly ?? item.Blueprint ?? "");
+                    bool wasPartial = false;
+                    try { wasPartial = item.PartiallyUnderstood(); } catch { }
+                    bool ran = false;
+                    string err = null;
+                    try { ran = InventoryActionEvent.Check(item, player, item, "Examine", true, true, true, false, false, 0, 0, 0, null, null, null, null); }
+                    catch (Exception ex) { err = ex.GetType().Name; }
+                    GameObject after = FindInventoryItem(player, id);       // an item that broke may no longer be in the pack
+                    if (after == null) ok.Add(id + "|" + before + "|gone");
+                    else
+                    {
+                        bool u = false, p = false;
+                        try { u = after.Understood(); p = after.PartiallyUnderstood(); } catch { }
+                        string outcome = u ? "understood" : (p ? (wasPartial ? "partial again" : "partial") : "unchanged");
+                        string nameAfter = StripQudFormatting(after.DisplayNameOnly ?? after.Blueprint ?? "");
+                        if (!ran && outcome == "unchanged") failed.Add(id + ":" + (err ?? "the game did not run Examine"));
+                        else ok.Add(id + "|" + nameAfter + "|" + outcome);
+                    }
+                }
+            }
+            catch (Exception ex) { failed.Add("error:" + ex.GetType().Name); }
+            RecordInventoryAction("examine", ok, failed, player);
+        }
+
         // ---- Ground equipment (HANDOFF issue 96, BACKLOG B16, human promotion 2026-10-09) ----
         // The loot step only takes what the engine's autoget policy accepts, which skips weapons and armor, so the gear that killed snapjaws drop stayed on the ground while a level 5
         // character still wore AV 1 and swung a 1d2 staff (Gen 27). Export: `ground_items`, unowned takeable armor, weapons and shields within GroundItemRadius, never one the player
@@ -793,9 +842,10 @@ namespace QudAIBrain
                     string bp = o.Blueprint ?? "";
                     int w = 0; try { var ph = o.GetPart<Physics>(); w = ph != null ? ph.Weight : 0; } catch { }
                     bool ident = true; try { ident = o.Understood(); } catch { }
+                    bool cursedG = false; try { cursedG = o.HasPart("Cursed"); } catch { }
                     entries.Add(Tuple.Create(d, "{\"id\": \"" + EscapeJson(o.ID ?? "") + "\", \"blueprint\": \"" + EscapeJson(bp) + "\", \"name\": \"" +
                         EscapeJson(StripQudFormatting(o.DisplayNameOnly ?? bp)) + "\", \"dist\": " + d + ", \"tx\": " + o.CurrentCell.X + ", \"ty\": " + o.CurrentCell.Y +
-                        ", \"weight\": " + w + ", \"identified\": " + (ident ? "true" : "false") + "}"));
+                        ", \"weight\": " + w + ", \"identified\": " + (ident ? "true" : "false") + ", \"cursed\": " + (cursedG ? "true" : "false") + "}"));
                 }
             }
             catch { }
@@ -1794,6 +1844,7 @@ namespace QudAIBrain
                 string questsJson = BuildQuestsJson(out finishedQuestsJson);
                 string inventoryJson = BuildInventoryJson(player);
                 string groundItemsJson = BuildGroundItemsJson(player, currentCell?.ParentZone, currentCell, isSwimming);
+                bool sifrahExamineOn = true; try { sifrahExamineOn = Options.SifrahExamine; } catch { }
                 int carryNow = 0, carryMax = 0;
                 try { carryNow = player.GetCarriedWeight(); carryMax = player.GetMaxCarriedWeight(); } catch { }
                 bool canButcher = !isSwimming && player.HasSkill("CookingAndGathering_Butchery") && corpsesNearby > 0;
@@ -1979,6 +2030,7 @@ namespace QudAIBrain
                 sb.Append($"\"food_sources\": [{string.Join(",", foodSourceEntries)}],");
                 sb.Append($"\"loot_sources\": [{string.Join(",", lootSourceEntries)}],");
                 sb.Append($"\"ground_items\": {groundItemsJson},");
+                sb.Append($"\"sifrah_examine\": {(sifrahExamineOn ? "true" : "false")},");
                 sb.Append($"\"inventory\": {inventoryJson},");
                 sb.Append($"\"carry_weight\": {carryNow}, \"max_carry_weight\": {carryMax},");
                 sb.Append($"\"avoid_tagged\": {avoidTaggedTotal},");
@@ -2805,6 +2857,15 @@ namespace QudAIBrain
                 lastMoveFailed = false;
                 lastFailedDir = "";
                 ExecuteEquipItem(player, action.Substring(11));
+                player.UseEnergy(1000, "Inventory");
+                return;
+            }
+
+            if (act.StartsWith("EXAMINE_ITEM:"))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                ExecuteExamineItem(player, action.Substring(13));
                 player.UseEnergy(1000, "Inventory");
                 return;
             }

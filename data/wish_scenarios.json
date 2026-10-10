@@ -231,6 +231,36 @@
     "Player.log: [QudAI Inventory] take ok=1"
    ],
    "tests": "Test 120"
+  },
+  {
+   "id": "artifact-examine",
+   "title": "Examine an unidentified artifact (B15 stage 1)",
+   "why": "Check that he examines an unidentified item by himself, finishes a half-understood one, and then treats it like any other item (issue 102).",
+   "setup": [
+    "Quiet zone, no hostiles, full health. Options in the game: 'Sifrah: examine' must be OFF (last_state.json shows sifrah_examine false).",
+    "Wish the item. An item that arrives understood will not be examined: try another blueprint, or use one from a kill."
+   ],
+   "wishes": [
+    {
+     "cmd": "Grappling Gun",
+     "confidence": "named",
+     "note": "an artifact (examine complexity 3); the human found one unidentified in a pack, a wished one may arrive understood",
+     "kind": "blueprint"
+    },
+    {
+     "cmd": "Telemetric Visor",
+     "confidence": "named",
+     "note": "complexity 5; the item that needed a second examine in the human's experiment may have been this or the monocle",
+     "kind": "blueprint"
+    }
+   ],
+   "watch": [
+    "last_state.json: the item has identified false, then true; partial true in between",
+    "[INVENTORY] examined ...: understood (or partial, then understood on the next look)",
+    "no examine with the minigame on, below 80 percent HP, or in a town",
+    "a cursed item (a Gentling Mask) is never put on"
+   ],
+   "tests": "Test 126"
   }
  ]
 }

@@ -737,6 +737,40 @@ def choose_inventory_action(game_state, template, is_town):
     return None
 
 
+# Examine unidentified items (BACKLOG B15, HANDOFF issue 102). The human examined nine artifacts by hand: no failures, one needed a second look (a partial success first). The mod now
+# exports `partial` and `cursed` per item and `sifrah_examine` (the minigame option: a modal screen the mod cannot answer), and `EXAMINE_ITEM:<id>` runs the engine's own Examine.
+# Phase A only, one per safe moment, at 80 percent hit points or better, a few tries per item. Partly understood items first: one more look finishes them. Once an item is
+# understood the inventory step scores it like any other (equip if it is an upgrade); the existing scorer cannot see utility effects, which is stage 2.
+EXAMINE_MAX_TRIES = 4
+EXAMINE_MIN_HP_RATIO = 0.8
+EXAMINE_STATE = {"tries": {}, "warned": False}
+
+
+def choose_examine_action(game_state, is_town):
+    """EXAMINE_ITEM for one unidentified or half-understood item in the pack, or None. Phase A only: the caller guarantees no combat."""
+    inv = game_state.get("inventory")
+    if is_town or game_state.get("is_swimming") or game_state.get("is_on_fire") or not isinstance(inv, list) or not inv:
+        return None
+    mx = game_state.get("max_hp") or 0
+    if mx and (game_state.get("hp") or 0) / float(mx) < EXAMINE_MIN_HP_RATIO:
+        return None
+    cands = [i for i in inv if i.get("id") and i.get("identified") is False and not i.get("equipped") and EXAMINE_STATE["tries"].get(i["id"], 0) < EXAMINE_MAX_TRIES]
+    if not cands:
+        return None
+    if game_state.get("sifrah_examine") is not False:
+        # True: the minigame is on and the mod would refuse; missing: the mod predates the command. Either way, do nothing (and say so once).
+        if not EXAMINE_STATE["warned"]:
+            EXAMINE_STATE["warned"] = True
+            print("[EXAMINE] Unidentified items in the pack, but the examine minigame (Sifrah) is on or the mod is too old to say; turn off 'Sifrah: examine' in the game options to let him examine.")
+        return None
+    cands.sort(key=lambda i: 0 if i.get("partial") else 1)
+    it = cands[0]
+    EXAMINE_STATE["tries"][it["id"]] = EXAMINE_STATE["tries"].get(it["id"], 0) + 1
+    why = "partly understood, one more look" if it.get("partial") else "unidentified"
+    INV_STATE["pending"] = {"kind": "examine", "ids": [it["id"]], "reasons": {it["id"]: why}, "names": {it["id"]: it.get("name")}}
+    return {"action": f"EXAMINE_ITEM:{it['id']}", "reason": f"Examine: trying to identify {it.get('name')} ({why}; attempt {EXAMINE_STATE['tries'][it['id']]} of {EXAMINE_MAX_TRIES})"}
+
+
 # Ground equipment (BACKLOG B16, HANDOFF issue 96). The loot step only takes what the engine's autoget accepts, so the weapons and armor killed creatures drop stayed on the ground
 # while a level 5 character still wore AV 1 and swung a 1d2 staff (Gen 27). The mod exports `ground_items` (unowned, takeable, never one we dropped) and `TAKE_ITEM:<id>` takes one
 # from the player's cell or an adjacent one. The decision uses the SAME scorer as the inventory (`item_scoring.choose_equips`): an item is fetched only when that scorer would equip it,
@@ -765,7 +799,7 @@ def choose_ground_pickup(game_state, template, is_town):
             continue
         if (game_state.get("zone_id"), (g.get("tx"), g.get("ty"))) in UNREACHABLE_SECTORS:
             continue                  # the engine reported no route to that cell
-        cand = {"id": gid, "blueprint": g.get("blueprint"), "name": g.get("name"), "count": 1, "weight": g.get("weight") or 0, "equipped": False, "identified": True}
+        cand = {"id": gid, "blueprint": g.get("blueprint"), "name": g.get("name"), "count": 1, "weight": g.get("weight") or 0, "equipped": False, "identified": True, "cursed": bool(g.get("cursed"))}
         wins = [(it, slot, why) for it, slot, why in item_scoring.choose_equips(items + [cand], profile) if it.get("id") == gid]
         if not wins or item_scoring.score_item(item_scoring._entry(cand), item_scoring.with_inventory(profile, items + [cand]))[0] < GROUND_MIN_SCORE:
             continue                  # not an upgrade, or an empty slot that a worthless item would "fill"
@@ -920,7 +954,12 @@ def note_inventory_action(game_state):
         for item in la.get("ok", []):
             iid, _, name = str(item).partition("|")
             INV_STATE["fails"].pop(iid, None)
-            if la.get("kind") == "take":
+            if la.get("kind") == "examine":
+                shown, _, outcome = name.rpartition("|")
+                print(f"[INVENTORY] examined {shown}: {outcome}")
+                if outcome in ("understood", "gone"):
+                    EXAMINE_STATE["tries"].pop(iid, None)
+            elif la.get("kind") == "take":
                 print(f"[INVENTORY] took {name} from the ground: {(pend.get('reasons') or {}).get(iid, '')}")
                 GROUND_STATE.update({"id": None, "turns": 0})
             elif la.get("kind") == "drop":
@@ -4131,6 +4170,11 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         ground_decision = choose_ground_pickup(game_state, template, is_town)
         if ground_decision:
             return ground_decision
+
+        # 3E. Examine unidentified items (BACKLOG B15, issue 102). Phase A only.
+        examine_decision = choose_examine_action(game_state, is_town)
+        if examine_decision:
+            return examine_decision
 
         # 4. Top-off ammo while area is secure (only if we have spare ammo in inventory!)
         if has_missile and max_ammo > 0 and ammo < max_ammo and inv_ammo > 0:

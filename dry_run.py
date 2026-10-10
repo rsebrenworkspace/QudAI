@@ -6093,3 +6093,80 @@ for _s in ("if not clear and is_dangerous_turret(closest, game_state):", "[Turre
            "near_dangerous_turret(game_state, (s[\"tx\"], s[\"ty\"]))", "near_dangerous_turret(game_state, (x, y))"):
     assert _s in _src123, _s
 print("  [OK] Test 123 Passed: a turret whose shots would hurt at full health is remembered even when a wall hides it, loot and frontier targets within 10 cells of it are skipped (a mutation without the memory walks to the rack), it is forgotten when killed or unseen for 1,500 turns, and neither combat path maneuvers toward a dangerous turret to get a line of sight: it steps away.")
+
+
+# ---------------------------------------------------------------------------
+# Test 126: examining unidentified items and never equipping a cursed one (BACKLOG B15 stage 1, HANDOFF issue 102)
+# ---------------------------------------------------------------------------
+import item_scoring as _is126
+_inv126 = lambda *items: list(items)
+_it126 = lambda i, bp, ident=True, partial=False, eq=False, cursed=False: {"id": i, "blueprint": bp, "name": "weird artifact" if not ident else bp.lower(), "count": 1, "weight": 5, "equipped": eq,
+                                                                      "identified": ident, "partial": partial, "cursed": cursed}
+_gs126 = lambda inv, **k: dict({"inventory": inv, "hp": 34, "max_hp": 34, "sifrah_examine": False}, **k)
+def _reset126():
+    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.INV_LAST_SEQ["seq"] = 0
+    brain.EXAMINE_STATE["tries"].clear(); brain.EXAMINE_STATE["warned"] = False
+try:
+    _reset126()
+    _worn = _it126("e1", "Cloth Robe", eq=True)
+    _two = _inv126(_worn, _it126("a1", "Grappling Gun", ident=False), _it126("a2", "Telemetric Visor", ident=False, partial=True))
+    _d = brain.choose_examine_action(_gs126(_two), False)
+    assert _d and _d["action"] == "EXAMINE_ITEM:a2" and "one more look" in _d["reason"], ("a partly understood item first", _d)
+    assert brain.INV_STATE["pending"]["kind"] == "examine"
+    _d = brain.choose_examine_action(_gs126(_inv126(_worn, _it126("a1", "Grappling Gun", ident=False))), False)
+    assert _d and _d["action"] == "EXAMINE_ITEM:a1"
+    # nothing to do, or not now
+    assert brain.choose_examine_action(_gs126(_inv126(_worn, _it126("a3", "Slip Ring"))), False) is None, "everything understood"
+    assert brain.choose_examine_action(_gs126(_inv126(_it126("a4", "Slip Ring", ident=False, eq=True))), False) is None, "a worn item is not examined"
+    assert brain.choose_examine_action(_gs126(_two), True) is None, "never in a town"
+    assert brain.choose_examine_action(_gs126(_two, hp=20), False) is None, "below 80 percent hit points"
+    assert brain.choose_examine_action(_gs126(_two, is_on_fire=True), False) is None and brain.choose_examine_action(_gs126(_two, is_swimming=True), False) is None
+    # the minigame is on, or the mod predates the command: nothing, said once
+    assert brain.choose_examine_action(_gs126(_two, sifrah_examine=True), False) is None and brain.EXAMINE_STATE["warned"] is True
+    _gs_old = _gs126(_two); _gs_old.pop("sifrah_examine")
+    assert brain.choose_examine_action(_gs_old, False) is None, "no sifrah_examine field: an old mod, do not send a command it does not know"
+    # multi-turn: an item that never gets understood is tried EXAMINE_MAX_TRIES times and then left alone
+    _reset126()
+    _n = 0
+    for _t in range(30):
+        _d = brain.choose_examine_action(_gs126(_inv126(_worn, _it126("a1", "Grappling Gun", ident=False))), False)
+        if _d is None:
+            break
+        _n += 1
+    assert _n == brain.EXAMINE_MAX_TRIES == 4, _n
+    # the game's report: understood or gone clears the count; a partial result keeps it, and the inventory step looks again
+    _reset126()
+    brain.EXAMINE_STATE["tries"]["a1"] = 2
+    brain.INV_STATE["pending"] = {"kind": "examine", "ids": ["a1"], "reasons": {"a1": "unidentified"}, "names": {"a1": "weird artifact"}}
+    brain.INV_STATE["sig"] = ("x",)
+    brain.note_inventory_action({"last_inventory_action": {"seq": 1, "kind": "examine", "ok": ["a1|masterwork grappling gun|understood"], "failed": [], "zone": "z", "x": 1, "y": 1}})
+    assert "a1" not in brain.EXAMINE_STATE["tries"] and brain.INV_STATE["sig"] is None
+    brain.EXAMINE_STATE["tries"]["a2"] = 1
+    brain.note_inventory_action({"last_inventory_action": {"seq": 2, "kind": "examine", "ok": ["a2|goggles|partial"], "failed": [], "zone": "z", "x": 1, "y": 1}})
+    assert brain.EXAMINE_STATE["tries"]["a2"] == 1
+    brain.note_inventory_action({"last_inventory_action": {"seq": 3, "kind": "examine", "ok": ["a3|weird artifact|gone"], "failed": [], "zone": "z", "x": 1, "y": 1}})
+    brain.note_inventory_action({"last_inventory_action": {"seq": 4, "kind": "examine", "ok": [], "failed": ["a4:Sifrah examine is on"], "zone": "z", "x": 1, "y": 1}})
+    assert brain.INV_STATE["fails"].get("a4") == 1
+finally:
+    _reset126()
+# cursed items: never equipped, from the pack or the ground; a worn one stays in its own slot logic
+_prof126 = _is126.build_profile(build_templates.BUILD_TEMPLATES["auspicious_beginnings"])
+assert _is126.is_cursed({"cursed": True}) and _is126.is_cursed({"blueprint": "Gentling Mask"}) and not _is126.is_cursed({"blueprint": "Telescopic Monocle"})
+_bare126 = [_it126("w1", "Cloth Robe", eq=True)]
+_mask126 = _it126("m1", "Gentling Mask")                      # AV 1 in the Face slot: the scorer would wear it in an empty slot
+assert not any(a[0]["id"] == "m1" for a in _is126.choose_equips(_bare126 + [_mask126], _prof126)), "a cursed mask is never put on"
+_flag126 = dict(_it126("m2", "Chain Mail", cursed=True))
+assert not any(a[0]["id"] == "m2" for a in _is126.choose_equips(_bare126 + [_flag126], _prof126)), "the engine's cursed flag wins over the blueprint"
+assert any(a[0]["id"] == "m3" for a in _is126.choose_equips(_bare126 + [_it126("m3", "Chain Mail")], _prof126)), "an ordinary upgrade is still worn"
+_gp126 = {"zone_id": "z", "inventory": _bare126, "carry_weight": 10, "max_carry_weight": 200,
+          "ground_items": [{"id": "g1", "blueprint": "Chain Mail", "name": "chain mail", "dist": 3, "tx": 5, "ty": 5, "weight": 20, "identified": True, "cursed": True}]}
+brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
+assert brain.choose_ground_pickup(_gp126, build_templates.BUILD_TEMPLATES["auspicious_beginnings"], False) is None, "a cursed item on the ground is not fetched"
+# the mod side
+_cs126 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _s in ("private static void ExecuteExamineItem(GameObject player, string id)", 'act.StartsWith("EXAMINE_ITEM:")', 'ExecuteExamineItem(player, action.Substring(13));',
+           'InventoryActionEvent.Check(item, player, item, "Examine", true, true, true, false, false, 0, 0, 0, null, null, null, null)', "Options.SifrahExamine", "Sifrah examine is on",
+           'RecordInventoryAction("examine", ok, failed, player);', 'it.PartiallyUnderstood()', 'it.HasPart("Cursed")', '\\"sifrah_examine\\"', '\\"partial\\": "', '\\"cursed\\": "'):
+    assert _s in _cs126, _s
+assert _cs126.count("{") == _cs126.count("}")
+print("  [OK] Test 126 Passed: he examines one unidentified item at a time (a half-understood one first), only in Phase A at 80 percent hit points or better, never with the minigame on or with an old mod, an item that never yields is tried four times and then left alone, the game's examine report clears or keeps the count and makes the inventory step look again, a cursed item (by the engine's flag or the six known blueprints) is never worn and never fetched from the ground, and the mod exports partial, cursed and sifrah_examine and runs the engine's Examine through the inventory action event.")
