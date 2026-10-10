@@ -103,7 +103,7 @@ def parse_player_log(text):
         checks.append(("Harmony patches", OK if got == want else BAD, f"{got}/{want} applied"))
     else:
         checks.append(("Harmony patches", UNKNOWN, "no 'Patch check' line yet"))
-    errs = [l for l in text.splitlines() if "[QudAI" in l and re.search(r"exception|\berror\b|failed(?!=0)", l, re.IGNORECASE)]   # "failed=0" is a success report
+    errs = [l for l in text.splitlines() if "[QudAI" in l and "[QudAI ExitDiag]" not in l and "[QudAI PathDiag]" not in l and re.search(r"exception|\berror\b|failed(?!=0)", l, re.IGNORECASE)]   # "failed=0" is a success report
     if errs:
         checks.append(("Mod errors", WARN, f"{len(errs)} line(s); last: {errs[-1].strip()[:200]}"))
     else:
@@ -376,6 +376,70 @@ def colour_tag(line):
 def filter_lines(lines, needle):
     needle = (needle or "").strip().lower()
     return [l for l in lines if needle in l.lower()] if needle else list(lines)
+
+
+# ---------------------------------------------------------------------------
+# Logs tab (BACKLOG B19): the log lines Claude asks for, one click away, and a bundle to paste
+# ---------------------------------------------------------------------------
+MOD_LINES = "Player.log: mod lines ([QudAI ...])"
+LOG_SOURCES = (MOD_LINES, "Player.log: everything", "Decision trace", "Exit choices", "Build log", "Examine log")
+LOG_QUICK_FILTERS = ("", "ExitDiag", "PathDiag", "PATH_OBSTACLE", "ATTACK_WALL", "Inventory", "Loot", "SWARM", "TURRET", "STAIRS", "Exception")
+BUNDLE_PATH = os.path.join(REPO, "scratch", "log_bundle.txt")
+BUNDLE_MAX_CHARS = 60_000
+
+
+def log_lines(source, needle="", n=200, exchange_dir=None, repo=None):
+    """The last `n` lines of one log source that contain `needle` (case-insensitive). Never raises; a missing file gives a one-line notice."""
+    gd = game_dir(exchange_dir)
+    mem = os.path.join(repo or REPO, "memory")
+    n = max(1, int(n or 200))
+    if source == "Decision trace":
+        lines = [format_trace_row(r) for r in tail_jsonl(os.path.join(mem, "decision_trace.jsonl"), max(n * 4, 400))]
+    elif source == "Exit choices":
+        lines = tail_lines(os.path.join(mem, "exit_choices.jsonl"), max(n * 4, 400))
+    elif source == "Examine log":
+        lines = tail_lines(os.path.join(mem, "examine_log.jsonl"), max(n * 4, 400))
+    elif source == "Build log":
+        lines = tail_lines(os.path.join(gd, "build_log.txt"), max(n * 4, 400))
+    else:
+        lines = read_text(os.path.join(gd, "Player.log"), 4_000_000).splitlines()
+        if source != "Player.log: everything":
+            lines = [l for l in lines if "[QudAI" in l]
+    out = filter_lines(lines, needle)[-n:]
+    return out or [f"(no lines: {source}" + (f", filter '{needle}'" if needle else "") + ", or the file is missing)"]
+
+
+def state_brief(state):
+    """The few fields that explain where he is and why a move may fail, for the bundle."""
+    s = state or {}
+    keys = ("zone_id", "x", "y", "hp", "max_hp", "level", "is_swimming", "reachable_edges", "autoexplore_stuck", "zone_fully_explored", "unexplored_cells",
+            "last_move_failed", "last_failed_dir", "last_burrow", "hostiles_nearby", "equipped_summary", "surroundings")
+    return "\n".join(f"{k}: {json.dumps(s[k])[:600]}" for k in keys if k in s) or "(no state)"
+
+
+def log_bundle(exchange_dir=None, repo=None, n_mod=150, n_trace=80, n_exits=15):
+    """One text block with everything Claude usually asks for: mod health, the last state, mod lines, trace rows, exit choices. Capped at BUNDLE_MAX_CHARS (the newest part is kept)."""
+    ex = exchange_dir or EXCHANGE_DIR
+    parts = [f"QudAI log bundle {time.strftime('%Y-%m-%d %H:%M:%S')}"]
+    parts.append("== Mod health ==\n" + "\n".join(f"{name}: {status} {detail}" for name, status, detail in mod_health(ex)))
+    parts.append("== Last state ==\n" + state_brief(read_json(os.path.join(ex, "last_state.json"), {})))
+    parts.append(f"== Player.log, mod lines (last {n_mod}) ==\n" + "\n".join(log_lines(MOD_LINES, "", n_mod, ex, repo)))
+    parts.append(f"== Decision trace (last {n_trace}) ==\n" + "\n".join(log_lines("Decision trace", "", n_trace, ex, repo)))
+    parts.append(f"== Exit choices (last {n_exits}) ==\n" + "\n".join(log_lines("Exit choices", "", n_exits, ex, repo)))
+    text = "\n\n".join(parts)
+    return text if len(text) <= BUNDLE_MAX_CHARS else "(older part cut)\n" + text[-BUNDLE_MAX_CHARS:]
+
+
+def save_bundle(text, path=None):
+    """Write the bundle to scratch/log_bundle.txt (git-ignored) so it can be attached or read by path. -> (ok, path_or_error)."""
+    path = path or BUNDLE_PATH
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        return True, path
+    except OSError as e:
+        return False, str(e)
 
 
 # ---------------------------------------------------------------------------

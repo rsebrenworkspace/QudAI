@@ -6250,3 +6250,39 @@ _b126 = brain.choose_ground_pickup(_gu126([_ug126("u6", bp="Geomagnetic Disc")])
 assert _a126 and _b126 and _a126["action"] == _b126["action"]
 _greset126()
 print("  [OK] Test 126 Passed: he examines one unidentified item at a time (a half-understood one first), only in Phase A at 80 percent hit points or better, never with the minigame on or with an old mod, an item that never yields is tried four times and then left alone, the game's examine report clears or keeps the count and makes the inventory step look again, a cursed item is judged like any other (no blacklist: the human's rule, using what a player cannot see would be cheating), and the mod exports partial, cursed and sifrah_examine and runs the engine's Examine through the inventory action event.")
+
+
+# Test 127: the console's Logs tab: filtered log views and a bundle to paste (BACKLOG B19, HANDOFF issue 106)
+# ---------------------------------------------------------------------------
+import tools.console_logic as _cl127
+_gd127 = tempfile.mkdtemp()
+_ex127 = _os.path.join(_gd127, "QudAI")
+_repo127 = tempfile.mkdtemp()
+_os.makedirs(_ex127); _os.makedirs(_os.path.join(_repo127, "memory"))
+with open(_os.path.join(_gd127, "Player.log"), "w", encoding="utf-8") as _f:
+    _f.write("Unity noise\n[QudAI] PlayerTurn patch ACTIVE\n[QudAI Patch check: 10/10 applied\n[QudAI ExitDiag] W exit of Z: swim route (step NW)\n[QudAI PATH_OBSTACLE] Breaking shale\nmore noise\n")
+with open(_os.path.join(_repo127, "memory", "decision_trace.jsonl"), "w", encoding="utf-8") as _f:
+    for _i in range(5):
+        _f.write(json.dumps({"t": _i, "hp": 30, "action": "MOVE_N", "reason": "r%d" % _i}) + chr(10))
+_mod127 = _cl127.log_lines(_cl127.MOD_LINES, "", 50, _ex127, _repo127)
+assert len(_mod127) == 4 and all("[QudAI" in l for l in _mod127), _mod127
+assert _cl127.log_lines(_cl127.MOD_LINES, "exitdiag", 50, _ex127, _repo127) == ["[QudAI ExitDiag] W exit of Z: swim route (step NW)"], "filter is case-insensitive"
+assert len(_cl127.log_lines("Player.log: everything", "", 50, _ex127, _repo127)) == 6
+assert len(_cl127.log_lines("Decision trace", "", 3, _ex127, _repo127)) == 3, "the last n lines"
+assert "no lines" in _cl127.log_lines("Exit choices", "", 5, _ex127, _repo127)[0], "a missing file is a notice, not an error"
+assert "no lines" in _cl127.log_lines(_cl127.MOD_LINES, "zzz", 5, _ex127, _repo127)[0]
+_b127 = _cl127.log_bundle(_ex127, _repo127)
+for _h in ("== Mod health ==", "== Last state ==", "== Player.log, mod lines", "== Decision trace", "== Exit choices"):
+    assert _h in _b127, _h
+assert "swim route" in _b127 and len(_b127) <= _cl127.BUNDLE_MAX_CHARS + 40
+_ok127, _p127 = _cl127.save_bundle(_b127, _os.path.join(tempfile.mkdtemp(), "sub", "bundle.txt"))
+assert _ok127 and open(_p127, encoding="utf-8").read() == _b127, "the bundle is saved, creating its folder"
+assert _cl127.save_bundle("x", _os.path.join(_gd127, "Player.log", "nope", "b.txt"))[0] is False, "a failed save is reported"
+# a diagnostic line that says "failed" is not a mod error
+_chk127 = dict((n, s) for n, s, _d in _cl127.parse_player_log("[QudAI] PlayerTurn patch ACTIVE\n[QudAI Patch check: 10/10 applied\n[QudAI ExitDiag] N exit of Z: move failed (step NW)\n"))
+assert _chk127["Mod errors"] == _cl127.OK, _chk127
+# the window has the tab and the buttons
+_w127 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
+for _s in ('"Logs"', "def _build_logs(self)", "def show_logs(self)", 'text="Copy bundle for Claude"', 'text="Save bundle"', 'text="Copy view"', "cl.log_bundle(EX)"):
+    assert _s in _w127, _s
+print("  [OK] Test 127 Passed: the Logs tab reads the mod lines, trace and exit choices with a case-insensitive filter and a last-n limit, a missing file gives a notice, the bundle holds health, state, mod lines, trace and exits (capped), saving reports failure, and a diagnostic line is not counted as a mod error")
