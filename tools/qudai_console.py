@@ -10,6 +10,7 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -51,9 +52,9 @@ class Console(tk.Tk):
         nb = ttk.Notebook(root)
         root.add(nb, weight=3)
         root.add(self._build_bottom(root), weight=2)
-        self.tab_control, self.tab_health, self.tab_live, self.tab_review, self.tab_memory, self.tab_lab, self.tab_items, self.tab_quests = (ttk.Frame(nb) for _ in range(8))
+        self.tab_control, self.tab_health, self.tab_live, self.tab_review, self.tab_memory, self.tab_lab, self.tab_items, self.tab_quests, self.tab_logs = (ttk.Frame(nb) for _ in range(9))
         for tab, name in ((self.tab_control, "Control"), (self.tab_health, "Mod health"), (self.tab_live, "Live"), (self.tab_review, "Review"), (self.tab_memory, "Memory"),
-                          (self.tab_lab, "Lab"), (self.tab_items, "Items"), (self.tab_quests, "Quests")):
+                          (self.tab_lab, "Lab"), (self.tab_items, "Items"), (self.tab_quests, "Quests"), (self.tab_logs, "Logs")):
             nb.add(tab, text=name)
         self._build_control()
         self._build_health()
@@ -62,6 +63,7 @@ class Console(tk.Tk):
         self._build_memory()
         self._build_lab()
         self._build_items()
+        self._build_logs()
         ttk.Label(self.tab_quests, text="Quest log (read-only, from the last state)").pack(anchor="w", padx=4)
         self.quest_text = self._text(self.tab_quests)
 
@@ -313,6 +315,61 @@ class Console(tk.Tk):
         ttk.Label(b, text="Dropped items (zone, cell, why): go back for them with this").pack(anchor="w", padx=4)
         self.drop_text = self._text(b)
 
+    # ------------------------------------------------------------------ Logs tab (BACKLOG B19)
+    def _build_logs(self):
+        f = self.tab_logs
+        row = ttk.Frame(f)
+        row.pack(fill="x", padx=4, pady=2)
+        ttk.Label(row, text="Source").pack(side="left")
+        self.log_source = tk.StringVar(value=cl.MOD_LINES)
+        ttk.Combobox(row, textvariable=self.log_source, values=cl.LOG_SOURCES, width=34, state="readonly").pack(side="left", padx=4)
+        ttk.Label(row, text="Filter").pack(side="left")
+        self.log_filter = tk.StringVar(value="")
+        ttk.Combobox(row, textvariable=self.log_filter, values=cl.LOG_QUICK_FILTERS, width=16).pack(side="left", padx=4)
+        ttk.Label(row, text="Last").pack(side="left")
+        self.log_count = tk.IntVar(value=200)
+        ttk.Spinbox(row, from_=10, to=2000, increment=50, textvariable=self.log_count, width=6).pack(side="left", padx=4)
+        self.log_auto = tk.BooleanVar(value=False)
+        ttk.Checkbutton(row, text="Auto-refresh", variable=self.log_auto).pack(side="left", padx=6)
+        ttk.Button(row, text="Refresh", command=self.show_logs).pack(side="left", padx=2)
+        ttk.Button(row, text="Copy view", command=self.logs_copy_view).pack(side="left", padx=2)
+        ttk.Button(row, text="Copy bundle for Claude", command=self.logs_copy_bundle).pack(side="left", padx=2)
+        ttk.Button(row, text="Save bundle", command=self.logs_save_bundle).pack(side="left", padx=2)
+        self.logs_status = tk.StringVar(value="Pick a source and a filter. The bundle holds mod health, the last state, the mod lines, the trace and the exit choices.")
+        ttk.Label(f, textvariable=self.logs_status, wraplength=1100, justify="left").pack(anchor="w", padx=4)
+        self.logs_text = self._text(f)
+        self.log_source.trace_add("write", lambda *_: self.show_logs())
+        self.log_filter.trace_add("write", lambda *_: self.show_logs())
+
+    def _logs_args(self):
+        try:
+            n = int(self.log_count.get())
+        except (tk.TclError, ValueError):
+            n = 200
+        return self.log_source.get(), self.log_filter.get(), n
+
+    def show_logs(self):
+        source, needle, n = self._logs_args()
+        lines = cl.log_lines(source, needle, n, EX)
+        self._set(self.logs_text, "\n".join(lines))
+        self.logs_text.see("end")
+        self.logs_status.set(f"{len(lines)} line(s) from {source}" + (f", filter '{needle}'" if needle else "") + f", {time.strftime('%H:%M:%S')}")
+
+    def logs_copy_view(self):
+        self.clipboard_clear()
+        self.clipboard_append(self.logs_text.get("1.0", "end").rstrip())
+        self.logs_status.set("Copied what is shown. Paste it into the chat.")
+
+    def logs_copy_bundle(self):
+        text = cl.log_bundle(EX)
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self.logs_status.set(f"Copied the bundle ({len(text):,} characters). Paste it into the chat.")
+
+    def logs_save_bundle(self):
+        ok, where = cl.save_bundle(cl.log_bundle(EX))
+        self.logs_status.set(f"Saved the bundle to {where}" if ok else f"Could not save the bundle: {where}")
+
     @staticmethod
     def _text(parent):
         wrap = ttk.Frame(parent)
@@ -504,6 +561,8 @@ class Console(tk.Tk):
                 self._set(self.trace_text, cl.trace_text(TRACE))
                 self.trace_text.see("end")
                 self._draw_feed()
+            if self.log_auto.get():
+                self.show_logs()
             if self._changed("drops", DROPS):
                 self._set(self.drop_text, cl.drop_log_text(DROPS))
         except Exception as e:  # a refresh must never kill the window

@@ -192,5 +192,11 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Size (my guess):** research small (how and when `AddsRep` applies: on equip, on pickup or continuously), implementation medium.
 - **Risks:** an item that raises one faction can make another hostile; reputation drops can turn peaceful settlements hostile (rule R7 is about our attacks, not theirs); do not mirror engine rules in Python (R3), export the engine's answer.
 
+### B19. A Logs tab in the console (human, 2026-10-09: "Having the CL does help ... We will have to implement more of those in the addon tools so I can assist you easier when you need logs."; promoted the same day, built on `feat/console-log-tab`)
+- **Why:** during the exit-loop work Claude needed `Player.log` lines (`ExitDiag`, `PATH_OBSTACLE`), the decision trace and the last state; each one was a grep the human had to run in a terminal (and the human's terminal is PowerShell, which has no `grep`).
+- **Built `[verified in code]`:** a Logs tab with a source picker (mod lines from `Player.log`, all of `Player.log`, decision trace, exit choices, build log, examine log), a filter box with quick filters, a last-N count, optional auto-refresh, **Copy view**, **Copy bundle for Claude** (mod health, last state, mod lines, trace rows, exit choices in one block) and **Save bundle** (`scratch/log_bundle.txt`, git-ignored). Test 127.
+- **Later, if wanted:** more sources (the brain's console output is not saved to a file today), a "since the last restart" filter, and a button that opens the exchange folder. Not started.
+- **Risks:** none for the game (read-only); the bundle can hold a few thousand lines, so it is capped at 60,000 characters (newest kept).
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.
