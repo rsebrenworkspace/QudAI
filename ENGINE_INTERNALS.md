@@ -775,6 +775,9 @@ Vanilla Caves of Qud's native pathfinder (`FasterDMapAutoexplore.FindAutoexplore
 ### 14.26 Diggable rock (2026-10-09, `[verified in data]` from `Walls.xml`)
 - `Marl` (AV 6, 300 hit points), `Shale` (AV 10, 200), `Sandstone`, `Halite` (rock salt, AV 10, 500) and the other sedimentary rocks inherit `BaseSedimentaryRock` and are ordinary solid objects with hit points, so a melee attack wears them down: with the nanopneumatic jackhammer (2d4) shale went in 4 swings `[verified in game 2026-10-09]`. The engine's edge pathfinder routes through them `[verified in game: ExitDiag steps into Marl]`. Nothing here is special to a digging tool; a weak weapon only takes longer.
 
+### 14.28 Foamcrete (2026-10-10, `[verified in data]` `Walls.xml`; the failed swings `[verified in game 2026-10-10]`)
+- `Foamcrete` is a wall with AV 40 and 100 hit points (heat and cold resistance 75), an ordinary solid object with hit points, so the mod's `[BREAKABLE]` tag applies to it, yet the nanopneumatic jackhammer (2d4, penetration 4) did no damage in 34 swings (`HP 100 -> 100/100`): the wall's armor value is far above what the weapon can penetrate (14.23). Having hit points is therefore NOT the same as being breakable by a given weapon; only the engine's damage report says which. The Qud ruins built of it include one-cell-wide winding mazes with an arconaut and a shrine to Antithrishid, the Mahogany Terror of Nalep, in `JoppaWorld.10.15`.
+
 ---
 *End of Engine Internals Manual.*
 

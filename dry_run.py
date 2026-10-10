@@ -6619,3 +6619,62 @@ _j136 = _cs136.index("var body = player.GetPart<Body>();", _i136)
 assert 'a.Command == "CommandAmbientLight" && a.ToggleState' in _cs136[_i136:_j136] and "return;" in _cs136[_i136:_j136].split("CommandAmbientLight")[1], "the ambient-light check comes first and returns"
 assert _cs136.count("{") == _cs136.count("}")
 print("  [OK] Test 136 Passed: EnsureLightSource returns before lighting or fetching a torch while the Ambient Light toggle is on")
+
+
+# Test 138: a foamcrete pocket with a companion in the way out: unbreakable wall kinds are learned once, and he swaps out instead of pacing for 300 turns (human capture 2026-10-10_000943; HANDOFF issue 116)
+# ---------------------------------------------------------------------------
+_Z138 = "JoppaWorld.10.15.0.2.10"
+_WALL138 = "[BREAKABLE], [BLOCKED: impassable terrain], [BLOCKED: foamcrete]"
+_DIRS138 = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0), "NE": (1, -1), "NW": (-1, -1), "SE": (1, 1), "SW": (-1, 1)}
+_FREE138 = {(48, 17), (49, 17), (48, 16), (48, 15), (48, 14)}
+def _surr138(pos, comp):
+    out = {}
+    for d, (dx, dy) in _DIRS138.items():
+        q = (pos[0] + dx, pos[1] + dy)
+        out[d] = "[COMPANION: scorpiock]" if q == comp else ("Empty ground" if q in _FREE138 else _WALL138)
+    return out
+def _reset138():
+    brain.BURROW_BLOCKED.clear(); brain.BURROW_PROGRESS.clear(); brain.BURROW_BLOCKED_NAMES.clear(); brain.BURROW_LAST_SEQ["seq"] = 0
+    brain.COMPANION_BLOCK.update({"pos": None, "tries": 0}); brain.visit_counts.clear(); brain.TURN_CLOCK = 5000
+# learning: three swings that did no damage write the KIND of wall off, so a different foamcrete cell is skipped at once
+_reset138()
+for _seq138 in (1, 2, 3):
+    brain.note_burrow_progress({"zone_id": _Z138, "last_burrow": {"seq": _seq138, "dir": "NW", "name": "foamcrete", "x": 47, "y": 16, "has_hp": True, "hp_before": 100, "hp_after": 100, "max_hp": 100, "destroyed": False}})
+assert "foamcrete" in brain.BURROW_BLOCKED_NAMES, brain.BURROW_BLOCKED_NAMES
+assert brain.name_blocked_dirs({"S": _WALL138, "E": "Empty ground", "N": "[BLOCKED: marl]"}) == {"S"}, "only the learned kind is skipped"
+_a138, _r138 = brain.guard_blocked_burrow("ATTACK_WALL:S", "x", {"S": _WALL138, "N": _WALL138}, (49, 17), _Z138)
+assert not _a138.startswith("ATTACK_WALL:"), "a foamcrete cell he never swung at is still skipped"
+brain.TURN_CLOCK += brain.BURROW_BLOCK_TURNS + 1
+assert brain.name_blocked_dirs({"S": _WALL138}) == set(), "the lesson lapses"
+# the whole pocket, turn by turn: the loop breaker keeps asking for ATTACK_WALL; the guard must get him out through the companion
+_reset138()
+brain.BURROW_BLOCKED_NAMES["foamcrete"] = brain.TURN_CLOCK + 400
+_pos138, _comp138 = (49, 17), (48, 16)
+_log138 = []
+for _t138 in range(40):
+    brain.TURN_CLOCK += 1
+    brain.visit_counts[_pos138] += 1
+    _s138 = _surr138(_pos138, _comp138)
+    _act138, _why138 = brain.guard_blocked_burrow("ATTACK_WALL:S", "loop breaker", _s138, _pos138, _Z138)
+    _log138.append(_act138)
+    if _act138.startswith("MOVE_"):
+        _dx138, _dy138 = _DIRS138[_act138[5:]]
+        _dest138 = (_pos138[0] + _dx138, _pos138[1] + _dy138)
+        if _dest138 == _comp138:
+            _comp138, _pos138 = _pos138, _dest138          # the engine swaps places with a companion
+        elif _dest138 in _FREE138:
+            _pos138 = _dest138
+    if _pos138 in ((48, 16), (48, 15), (48, 14)):
+        break
+assert _pos138 in ((48, 16), (48, 15), (48, 14)), f"he must get out through the companion, not pace the pocket: {_log138}"
+assert _t138 <= 20, f"and soon: {_t138} turns, {_log138}"
+assert not any(a.startswith("ATTACK_WALL") for a in _log138), "no more swings at a wall kind that does nothing"
+# a pocket with no companion is not turned into a swap
+_reset138()
+brain.BURROW_BLOCKED_NAMES["foamcrete"] = brain.TURN_CLOCK + 400
+for _p138 in ((48, 17), (49, 17)):
+    brain.visit_counts[_p138] = 9
+_a138, _ = brain.guard_blocked_burrow("ATTACK_WALL:S", "x", _surr138((49, 17), (30, 30)), (49, 17), _Z138)
+assert _a138.startswith("MOVE_") and "swap" not in _, (_a138, _)
+_reset138()
+print("  [OK] Test 138 Passed: three damage-free swings write off a whole kind of wall (and the lesson lapses), a sealed foamcrete pocket with a companion in the way out is left by swapping places within a few turns instead of pacing, and no companion means no swap")

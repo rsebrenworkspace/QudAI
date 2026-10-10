@@ -2085,6 +2085,10 @@ BURROW_BLOCK_TURNS = 400
 BURROW_BLOCKED = {}             # (zone_id, x, y) -> TURN_CLOCK value until which this obstacle is not burrowed
 BURROW_PROGRESS = {}            # (zone_id, x, y) -> {"stalled": int}
 BURROW_LAST_SEQ = {"seq": 0}
+# What he has learned about a KIND of obstacle, from the engine's own reports (not a rule copied into Python): a foamcrete wall (AV 40) took no damage from the jackhammer, so every foamcrete
+# wall is written off for a while, not one cell at a time (human capture 2026-10-10_000943: 30 swings at foamcrete cells one by one, then a two-cell ping-pong for 300 turns).
+BURROW_BLOCKED_NAMES = {}       # lower-case obstacle name -> TURN_CLOCK value until which no cell of that name is burrowed
+POCKET_REVISITS = 3             # a free move to a cell visited this often is a pocket, not a way out
 
 
 def note_burrow_progress(game_state):
@@ -2111,6 +2115,7 @@ def note_burrow_progress(game_state):
         prog["stalled"] += 1
         if prog["stalled"] >= BURROW_STALL_LIMIT:
             BURROW_BLOCKED[key] = TURN_CLOCK + BURROW_BLOCK_TURNS
+            BURROW_BLOCKED_NAMES[str(name).lower()] = TURN_CLOCK + BURROW_BLOCK_TURNS
             print(f"[BURROW] {name} took no damage in {BURROW_STALL_LIMIT} swings (HP {lb.get('hp_after')}/{lb.get('max_hp')}). Writing it off.")
             _written_off_obstacle_blocks_frontier(game_state)
     else:
@@ -2124,6 +2129,14 @@ def _written_off_obstacle_blocks_frontier(game_state):
     zone_id = game_state.get("zone_id")
     if FRONTIER_COMMIT["zone"] == zone_id and FRONTIER_COMMIT["target"] is not None:
         _frontier_write_off(zone_id, FRONTIER_COMMIT["target"], "its path runs through an obstacle that cannot be broken")
+
+
+def name_blocked_dirs(surroundings):
+    """Directions whose blocked cell is a kind of obstacle already learned to be unbreakable (BURROW_BLOCKED_NAMES)."""
+    live = [n for n, exp in BURROW_BLOCKED_NAMES.items() if exp > TURN_CLOCK]
+    if not live:
+        return set()
+    return {d for d in CARDINAL_OFFSETS if any(f"[blocked: {n}]" in (surroundings.get(d) or "").lower() for n in live)}
 
 
 def blocked_burrow_dirs(zone_id, cur_pos):
@@ -2144,7 +2157,7 @@ def guard_blocked_burrow(action, reason, surroundings, cur_pos, zone_id, is_town
     parts = action.split(":")
     if len(parts) < 2:
         return action, reason
-    bad = blocked_burrow_dirs(zone_id, cur_pos)
+    bad = blocked_burrow_dirs(zone_id, cur_pos) | name_blocked_dirs(surroundings)
     if parts[1].strip().upper() not in bad:
         return action, reason
     alt, info = find_burrow_direction(surroundings, cur_pos, None, is_town=is_town, exclude=bad)
@@ -2152,8 +2165,20 @@ def guard_blocked_burrow(action, reason, surroundings, cur_pos, zone_id, is_town
         return f"ATTACK_WALL:{alt}", f"[Burrow] {parts[1]} is unbreakable; trying {info} ({alt}) instead."
     moves = [m for m in get_valid_moves(surroundings, cur_pos, None, is_in_combat=False)
              if "[companion" not in surroundings.get(m[5:], "").lower()]
+    comp_dirs = [d for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"] if "[companion" in surroundings.get(d, "").lower()]
+    visits = lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])]
+    if comp_dirs and all(visits(m) >= POCKET_REVISITS for m in moves):
+        # Every free cell is one he has been in again and again: a sealed pocket with a companion standing in the way out (a one-cell-wide foamcrete corridor, human capture 2026-10-10).
+        # The free cells do not count as an exit: swap with the companion, and every third try wait a turn so it can move.
+        st = COMPANION_BLOCK
+        if st["pos"] != cur_pos:
+            st["pos"], st["tries"] = cur_pos, 0
+        st["tries"] += 1
+        if st["tries"] % 3 == 0:
+            return "WAIT", f"[Burrow] {parts[1]} is unbreakable and the free cells are a pocket; waiting a turn for the companion at {comp_dirs[0]} to move."
+        return f"MOVE_{comp_dirs[0]}", f"[Burrow] {parts[1]} is unbreakable and the free cells are a pocket; swapping places with the companion at {comp_dirs[0]}."
     if moves:
-        moves.sort(key=lambda m: visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])])
+        moves.sort(key=visits)
         return moves[0], f"[Burrow] {parts[1]} is unbreakable and nothing else is breakable; taking the least-visited free move."
     return "PASS", f"[Burrow] {parts[1]} is unbreakable and nothing else is breakable; passing the turn."
 
