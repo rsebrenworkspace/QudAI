@@ -6719,3 +6719,34 @@ _a138, _ = brain.guard_blocked_burrow("ATTACK_WALL:S", "x", _surr138((49, 17), (
 assert _a138.startswith("MOVE_") and "swap" not in _, (_a138, _)
 _reset138()
 print("  [OK] Test 138 Passed: three damage-free swings write off a whole kind of wall (and the lesson lapses), a sealed foamcrete pocket with a companion in the way out is left by swapping places within a few turns instead of pacing, and no companion means no swap")
+
+
+# Test 139: the throw is offered in a crowd even with something adjacent, and the test switch hides combat abilities (human, 2026-10-10; HANDOFF issue 117)
+# ---------------------------------------------------------------------------
+brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1}); brain.TURN_CLOCK = 3000
+_adj139 = {"N": "boar"}
+assert brain.throw_option(_gs137(), [_en137()], adj_threats=_adj139) is None, "one hostile and something adjacent: still no throw"
+_two139 = [_en137(dist=1, tx=11, name="boar"), _en137(name="snapjaw")]
+_o139 = brain.throw_option(_gs137(), _two139, adj_threats=_adj139)
+assert _o139 and "snapjaw" in _o139, "two hostiles in view: the throw is offered at the one at range even with the other adjacent"
+assert brain.throw_option(_gs137(companions=[{"name": "crab", "tx": 12, "ty": 10}]), _two139, adj_threats=_adj139) is None, "a companion on the line still blocks it (R8)"
+brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1}); brain.TURN_CLOCK = 0
+# the test switch
+_ab139 = [{"name": n, "command": c, "cooldown": 0, "usable": True, "active": False} for n, c in (("Sprint", "CommandToggleRunning"), ("Lase", "CommandLase"), ("Teleport Other", "CommandTeleportOther"),
+          ("Intimidate", "CommandIntimidate"), ("Stunning Force", "CommandStunningForce"), ("Ambient Light", "CommandAmbientLight"), ("Dig", "CommandDig"), ("Harvest Plants", "CommandHarvestToggle"))]
+_st139 = {"abilities": _ab139, "hp": 40}
+assert brain.TEST_NO_COMBAT_ABILITIES is False and brain.apply_test_switches(_st139) is _st139, "off by default: the state is untouched"
+_old139 = brain.TEST_NO_COMBAT_ABILITIES
+brain.TEST_NO_COMBAT_ABILITIES = True
+try:
+    _f139 = brain.apply_test_switches(_st139)
+    assert sorted(a["command"] for a in _f139["abilities"]) == ["CommandAmbientLight", "CommandDig", "CommandHarvestToggle", "CommandToggleRunning"], _f139["abilities"]
+    assert _f139["hp"] == 40 and len(_st139["abilities"]) == 8, "a copy: the original state is not changed"
+    assert brain.apply_test_switches(None) is None and brain.apply_test_switches({})["abilities"] == []
+finally:
+    brain.TEST_NO_COMBAT_ABILITIES = _old139
+_b139 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "game_state = apply_test_switches(game_state)" in _b139 and 'os.environ.get("QUDAI_TEST_NO_COMBAT_ABILITIES") == "1"' in _b139
+_w139 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
+assert 'env["QUDAI_TEST_NO_COMBAT_ABILITIES"] = "1"' in _w139 and "TEST: hide combat abilities from the brain" in _w139
+print("  [OK] Test 139 Passed: with two hostiles in view the throw is offered at the one at range even when another is adjacent (a lone adjacent hostile and a companion on the line still block it), and the off-by-default test switch hides combat abilities from the brain and keeps the non-combat ones")

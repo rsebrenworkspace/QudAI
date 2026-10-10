@@ -77,6 +77,8 @@ class Console(tk.Tk):
         self.model_box.grid(row=0, column=1, padx=6)
         ttk.Button(top, text="Refresh models", command=self.refresh_models).grid(row=0, column=2)
         ttk.Label(top, text="Applies the next time you press Start (sets QUDAI_LM_MODEL).").grid(row=1, column=1, sticky="w", padx=6)
+        self.test_no_abilities = tk.BooleanVar(value=False)
+        ttk.Checkbutton(top, text="TEST: hide combat abilities from the brain (applies the next time you press Start)", variable=self.test_no_abilities).grid(row=2, column=1, sticky="w", padx=6, pady=4)
         btns = ttk.Frame(f)
         btns.pack(fill="x", padx=12, pady=4)
         self.btn_start = ttk.Button(btns, text="Start brain", command=self.start_brain)
@@ -456,6 +458,10 @@ class Console(tk.Tk):
             env["QUDAI_LM_MODEL"] = model
         else:
             env.pop("QUDAI_LM_MODEL", None)
+        if self.test_no_abilities.get():
+            env["QUDAI_TEST_NO_COMBAT_ABILITIES"] = "1"          # TEST SWITCH: the brain does not see his combat abilities
+        else:
+            env.pop("QUDAI_TEST_NO_COMBAT_ABILITIES", None)
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
             self.proc = subprocess.Popen([sys.executable, "-u", "brain.py"], cwd=REPO, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
