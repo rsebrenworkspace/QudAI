@@ -323,7 +323,7 @@ To discriminate (do this on the next hang, **before restarting the game**):
 ## Next steps (written 2026-10-10 for a fresh start; the human sets the order)
 
 **Decisions and checks that are the human's**
-1. Look in the game options for "Sifrah: psychic combat" and its automatic setting (`SifrahPsychicCombat`, `SifrahPsychicCombatAuto`): "locked in psychic battle" killed Gen 32 in 5 turns and may be a mini-game the brain cannot play (issue 122, ENGINE_INTERNALS 14.29).
+1. ~~Check the game options for Sifrah psychic combat~~ answered 2026-10-10: there is no such option; "locked in psychic battle" is the Sunder Mind mutation (a hunter's) and the locked player loses his turns, so a defense must come BEFORE the lock (ENGINE_INTERNALS 14.29, BACKLOG B25).
 2. Choose the answer to a psychic hunter (BACKLOG B25): kill it first with Lase, banish it with Teleport Other, break line of sight, avoid new zones, or get "favored" with the Seekers of the Sightless Way (the wiki says that stops seeker hunters; BACKLOG B18). Hunters bring thralls (some Very Tough) and the engine rates the hunter itself Average, so a rating rule will not catch it; the mod now marks it (`psychic_hunter`).
 3. How many times was `seekerhunter` wished for Gen 32? (The thralls and the cult hunter at glimmer 24 do not fit the wiki otherwise.)
 
