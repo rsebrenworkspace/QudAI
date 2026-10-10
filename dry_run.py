@@ -6746,7 +6746,7 @@ try:
 finally:
     brain.TEST_NO_COMBAT_ABILITIES = _old139
 _b139 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
-assert "game_state = apply_test_switches(game_state)" in _b139 and 'os.environ.get("QUDAI_TEST_NO_COMBAT_ABILITIES") == "1"' in _b139
+assert "TEST SWITCH ON: combat abilities are hidden" in _b139 and "game_state = apply_test_switches(game_state)" in _b139 and 'os.environ.get("QUDAI_TEST_NO_COMBAT_ABILITIES") == "1"' in _b139
 _w139 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
 assert 'env["QUDAI_TEST_NO_COMBAT_ABILITIES"] = "1"' in _w139 and "TEST: hide combat abilities from the brain" in _w139
 print("  [OK] Test 139 Passed: with two hostiles in view the throw is offered at the one at range even when another is adjacent (a lone adjacent hostile and a companion on the line still block it), and the off-by-default test switch hides combat abilities from the brain and keeps the non-combat ones")

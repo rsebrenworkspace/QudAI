@@ -4734,6 +4734,8 @@ def main():
 
     print("==================================================")
     print(" Caves of Qud Autonomous Agent (Hierarchical)")
+    if TEST_NO_COMBAT_ABILITIES:
+        print(" *** TEST SWITCH ON: combat abilities are hidden from the brain (QUDAI_TEST_NO_COMBAT_ABILITIES=1). Not a normal run. ***")
     print(" Connecting to LM Studio on port 1234...")
     detect_lm_studio_model()
     print(" Status: MANUAL MODE")
