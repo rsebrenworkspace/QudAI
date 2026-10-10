@@ -750,6 +750,102 @@ namespace QudAIBrain
             RecordInventoryAction("equip", ok, failed, player);
         }
 
+        // ---- Ground equipment (HANDOFF issue 96, BACKLOG B16, human promotion 2026-10-09) ----
+        // The loot step only takes what the engine's autoget policy accepts, which skips weapons and armor, so the gear that killed snapjaws drop stayed on the ground while a level 5
+        // character still wore AV 1 and swung a 1d2 staff (Gen 27). Export: `ground_items`, unowned takeable armor, weapons and shields within GroundItemRadius, never one the player
+        // dropped (DroppedByPlayer) or the loot step gave up on (AutoexploreSuppressed), never in a settlement. Command: TAKE_ITEM:<id> takes one from the player's cell or an adjacent one
+        // and nothing else: Python decides whether it is an upgrade (the same scorer as the inventory) and the existing EQUIP_ITEM wears it.
+        private const int GroundItemRadius = 10;
+        private const int MaxGroundItems = 12;
+
+        public static bool IsGroundEquipment(GameObject o, GameObject player)
+        {
+            try
+            {
+                if (o == null || o == player || o.IsPlayer() || o.CurrentCell == null) return false;
+                if (o.HasPart("Brain") || o.HasPart("Mimic") || o.HasPart("Combat") || o.HasPart("NaturalEquipment")) return false;
+                if (!(o.HasPart("Armor") || o.HasPart("MeleeWeapon") || o.HasPart("Shield") || o.HasPart("MissileWeapon"))) return false;
+                if (o.IsOwned() || !string.IsNullOrEmpty(o.Owner)) return false;
+                if (o.HasProperty("Owned") || o.HasProperty("OwnedBy")) return false;
+                if (o.GetIntProperty("AutoexploreSuppressed", 0) > 0 || o.GetIntProperty("DroppedByPlayer", 0) > 0) return false;
+                var phys = o.GetPart<Physics>();
+                if (phys == null || !phys.Takeable) return false;
+                string bp = o.Blueprint ?? "";
+                if (bp.EndsWith("Corpse") || o.HasPart("Door") || o.HasPart("StairsUp") || o.HasPart("StairsDown")) return false;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static string BuildGroundItemsJson(GameObject player, Zone zone, Cell here, bool swimming)
+        {
+            var entries = new List<Tuple<int, string>>();
+            try
+            {
+                if (zone == null || here == null || swimming || zone.IsWorldMap() || IsSettlementZone(zone)) return "[]";
+                foreach (GameObject o in GetSafeZoneObjects(zone))
+                {
+                    if (o == null || o.CurrentCell == null) continue;
+                    int d = Math.Max(Math.Abs(o.CurrentCell.X - here.X), Math.Abs(o.CurrentCell.Y - here.Y));
+                    if (d > GroundItemRadius) continue;
+                    if (!IsGroundEquipment(o, player)) continue;
+                    if (!LootWeightOk(o, player)) continue;
+                    string bp = o.Blueprint ?? "";
+                    int w = 0; try { var ph = o.GetPart<Physics>(); w = ph != null ? ph.Weight : 0; } catch { }
+                    bool ident = true; try { ident = o.Understood(); } catch { }
+                    entries.Add(Tuple.Create(d, "{\"id\": \"" + EscapeJson(o.ID ?? "") + "\", \"blueprint\": \"" + EscapeJson(bp) + "\", \"name\": \"" +
+                        EscapeJson(StripQudFormatting(o.DisplayNameOnly ?? bp)) + "\", \"dist\": " + d + ", \"tx\": " + o.CurrentCell.X + ", \"ty\": " + o.CurrentCell.Y +
+                        ", \"weight\": " + w + ", \"identified\": " + (ident ? "true" : "false") + "}"));
+                }
+            }
+            catch { }
+            return "[" + string.Join(",", entries.OrderBy(e => e.Item1).Take(MaxGroundItems).Select(e => e.Item2)) + "]";
+        }
+
+        private static void ExecuteTakeItem(GameObject player, string id)
+        {
+            var ok = new List<string>(); var failed = new List<string>();
+            try
+            {
+                id = (id ?? "").Trim();
+                Cell cell = player.CurrentCell;
+                Zone zone = cell != null ? cell.ParentZone : null;
+                bool refuse = cell == null || zone == null || zone.IsWorldMap() || IsSettlementZone(zone);
+                try { if (player.AreHostilesNearby()) refuse = true; } catch { }
+                if (refuse) failed.Add(id + ":refused here");
+                else
+                {
+                    GameObject item = null;
+                    var cells = new List<Cell> { cell };
+                    var adj = cell.GetLocalAdjacentCells();
+                    if (adj != null) cells.AddRange(adj);
+                    foreach (Cell c in cells)
+                    {
+                        if (c == null || c.Objects == null) continue;
+                        item = c.Objects.FirstOrDefault(o => o != null && o.ID == id);
+                        if (item != null) break;
+                    }
+                    if (item == null) failed.Add(id + ":not within reach");
+                    else if (!IsGroundEquipment(item, player)) failed.Add(id + ":not takeable equipment");
+                    else if (!LootWeightOk(item, player)) failed.Add(id + ":too heavy");
+                    else
+                    {
+                        string name = StripQudFormatting(item.DisplayNameOnly ?? item.Blueprint ?? "");
+                        bool taken = false;
+                        try { taken = player.TakeObject(item); } catch { }
+                        if (taken) ok.Add(id + "|" + name);
+                        else
+                        {
+                            try { item.SetIntProperty("AutoexploreSuppressed", 1); } catch { }
+                            failed.Add(id + ":TakeObject refused");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) { failed.Add("error:" + ex.GetType().Name); }
+            RecordInventoryAction("take", ok, failed, player);
+        }
+
         // ---- Loot (HANDOFF issue 59, BACKLOG B6, human decision 2026-10-06: "take everything unowned") ----
         // Engine facts (ENGINE_INTERNALS 14.9): the game's own autoexplore treats unowned, unopened containers as goals
         // (GameObject.ShouldAutoexploreAsChest) and ground items through CanAutoget/ShouldAutoget. Opening a chest with the "Open"
@@ -1697,6 +1793,7 @@ namespace QudAIBrain
                 string finishedQuestsJson;
                 string questsJson = BuildQuestsJson(out finishedQuestsJson);
                 string inventoryJson = BuildInventoryJson(player);
+                string groundItemsJson = BuildGroundItemsJson(player, currentCell?.ParentZone, currentCell, isSwimming);
                 int carryNow = 0, carryMax = 0;
                 try { carryNow = player.GetCarriedWeight(); carryMax = player.GetMaxCarriedWeight(); } catch { }
                 bool canButcher = !isSwimming && player.HasSkill("CookingAndGathering_Butchery") && corpsesNearby > 0;
@@ -1881,6 +1978,7 @@ namespace QudAIBrain
                 sb.Append($"\"corpses_nearby\": {corpsesNearby},");
                 sb.Append($"\"food_sources\": [{string.Join(",", foodSourceEntries)}],");
                 sb.Append($"\"loot_sources\": [{string.Join(",", lootSourceEntries)}],");
+                sb.Append($"\"ground_items\": {groundItemsJson},");
                 sb.Append($"\"inventory\": {inventoryJson},");
                 sb.Append($"\"carry_weight\": {carryNow}, \"max_carry_weight\": {carryMax},");
                 sb.Append($"\"avoid_tagged\": {avoidTaggedTotal},");
@@ -2707,6 +2805,15 @@ namespace QudAIBrain
                 lastMoveFailed = false;
                 lastFailedDir = "";
                 ExecuteEquipItem(player, action.Substring(11));
+                player.UseEnergy(1000, "Inventory");
+                return;
+            }
+
+            if (act.StartsWith("TAKE_ITEM:"))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                ExecuteTakeItem(player, action.Substring(10));
                 player.UseEnergy(1000, "Inventory");
                 return;
             }

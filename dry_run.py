@@ -5855,6 +5855,102 @@ print("  [OK] Test 119 Passed: the console threat strip applies the danger ledge
 
 
 # ---------------------------------------------------------------------------
+# Test 120: equipment on the ground is fetched only when the inventory scorer would wear it (BACKLOG B16, HANDOFF issue 96)
+# ---------------------------------------------------------------------------
+_tm120 = build_templates.BUILD_TEMPLATES["auspicious_beginnings"]
+_row120 = lambda i, bp, eq=False, n=1, w=5, ident=True: {"id": i, "blueprint": bp, "name": bp, "count": n, "weight": w, "equipped": eq, "identified": ident}
+_g120 = lambda i, bp, dist=5, w=10, ident=True: {"id": i, "blueprint": bp, "name": bp.lower(), "dist": dist, "tx": 60 + dist, "ty": 19, "weight": w, "identified": ident}
+def _gs120(ground, **k):
+    return dict({"zone_id": "JoppaWorld.10.18.0.2.10", "inventory": [_row120("w1", "Cloth Robe", eq=True), _row120("w2", "Staff", eq=True)], "ground_items": ground,
+                 "carry_weight": 48, "max_carry_weight": 225}, **k)
+def _reset120():
+    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.INV_LAST_SEQ["seq"] = 0
+    brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
+_saved120 = set(brain.UNREACHABLE_SECTORS)
+try:
+    _reset120()
+    # a clear armor upgrade five tiles away: walk to it; next to it: take it, naming it by id
+    _d = brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 5)]), _tm120, False)
+    assert _d and _d["action"] == "NAVIGATE_TO_CELL:65,19" and "Ground equipment" in _d["reason"], _d
+    _d = brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 1)]), _tm120, False)
+    assert _d and _d["action"] == "TAKE_ITEM:g1" and brain.INV_STATE["pending"]["kind"] == "take", _d
+    # not an upgrade by the inventory scorer (the margin): nothing; and the same scorer decides, so it is never fetched and then dropped again
+    _reset120()
+    assert brain.choose_ground_pickup(_gs120([_g120("g2", "Cloth Robe", 3, 5)]), _tm120, False) is None, "equal to what he wears"
+    assert brain.choose_ground_pickup(_gs120([_g120("g3", "Bark Armor", 3, 12)]), _tm120, False) is None, "AV +1 but DV -1 does not clear the margin"
+    # guards
+    assert brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 5)]), _tm120, True) is None, "never in a town"
+    assert brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 5, ident=False)]), _tm120, False) is None, "never an unidentified item"
+    assert brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 5, w=60)], carry_weight=200), _tm120, False) is None, "too heavy for the pack"
+    assert brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 14)]), _tm120, False) is None, "beyond the pickup distance"
+    assert brain.choose_ground_pickup(_gs120([]), _tm120, False) is None and brain.choose_ground_pickup({"inventory": []}, _tm120, False) is None
+    brain.UNREACHABLE_SECTORS.add(("JoppaWorld.10.18.0.2.10", (65, 19)))
+    assert brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 5)]), _tm120, False) is None, "the engine found no route to it"
+    brain.UNREACHABLE_SECTORS.discard(("JoppaWorld.10.18.0.2.10", (65, 19)))
+    # the nearest upgrade wins
+    _d = brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 8), _g120("g4", "Chain Mail", 2)]), _tm120, False)
+    assert _d and _d["action"] == "NAVIGATE_TO_CELL:62,19", _d
+    # a multi-turn walk that never arrives is written off after GROUND_PURSUIT_MAX turns and the item is not chased again
+    _reset120()
+    _n = 0
+    while True:
+        _d = brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 5)]), _tm120, False)
+        if not _d:
+            break
+        _n += 1
+        assert _n <= brain.GROUND_PURSUIT_MAX, "the walk must end"
+    assert _n == brain.GROUND_PURSUIT_MAX and "g1" in brain.GROUND_STATE["blacklist"]
+    assert brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 1)]), _tm120, False) is None, "a written-off item stays written off"
+    # the game's report: a take that worked resets the walk; one that was refused counts toward the failure limit
+    _reset120()
+    brain.INV_STATE["pending"] = {"kind": "take", "ids": ["g1"], "reasons": {"g1": "scores 7.5 vs 3 worn"}, "names": {"g1": "chain mail"}}
+    brain.note_inventory_action({"last_inventory_action": {"seq": 1, "kind": "take", "ok": ["g1|chain mail"], "failed": [], "zone": "z", "x": 1, "y": 1}})
+    assert brain.INV_STATE["sig"] is None and brain.GROUND_STATE["id"] is None
+    brain.note_inventory_action({"last_inventory_action": {"seq": 2, "kind": "take", "ok": [], "failed": ["g5:TakeObject refused"], "zone": "z", "x": 1, "y": 1}})
+    brain.note_inventory_action({"last_inventory_action": {"seq": 3, "kind": "take", "ok": [], "failed": ["g5:TakeObject refused"], "zone": "z", "x": 1, "y": 1}})
+    assert brain.choose_ground_pickup(_gs120([_g120("g5", "Chain Mail", 1)]), _tm120, False) is None, "refused twice: not offered again"
+finally:
+    _reset120(); brain.UNREACHABLE_SECTORS.clear(); brain.UNREACHABLE_SECTORS.update(_saved120)
+# the mod side: export, command, and the rules that keep it from fighting the drop logic
+_cs120 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _s in ("public static bool IsGroundEquipment(GameObject o, GameObject player)", "private static string BuildGroundItemsJson(GameObject player, Zone zone, Cell here, bool swimming)",
+           "private static void ExecuteTakeItem(GameObject player, string id)", 'act.StartsWith("TAKE_ITEM:")', 'ExecuteTakeItem(player, action.Substring(10));',
+           'GetIntProperty("DroppedByPlayer", 0) > 0', 'GetIntProperty("AutoexploreSuppressed", 0) > 0', "phys.Takeable", "IsSettlementZone(zone)", "player.AreHostilesNearby()",
+           '\\"ground_items\\": {groundItemsJson}', 'RecordInventoryAction("take", ok, failed, player);', "LootWeightOk(item, player)"):
+    assert _s in _cs120, _s
+assert _cs120.count("{") == _cs120.count("}")
+print("  [OK] Test 120 Passed: a weapon or armor on the ground is fetched (walk, then TAKE_ITEM by id) only when the inventory scorer would wear it and it scores positive, never in a town, unidentified, too heavy, out of range, unreachable or refused twice, a walk that never arrives is written off after 40 turns, the game's take report is handled, and the mod exports only unowned takeable equipment the player did not drop and takes it only next to the player with no hostiles near.")
+
+
+# ---------------------------------------------------------------------------
+# Test 121: the caster weapon factor is 0.7 and a two-handed weapon costs a shield only when he owns one (human, 2026-10-09; HANDOFF issue 96)
+# ---------------------------------------------------------------------------
+import item_scoring
+assert item_scoring.CASTER_MELEE_MULT == 0.7 and item_scoring.DOMINATED_MARGIN == 2.0, "the armor margin stays at 2.0 (human: no reason to lower it)"
+_prof121 = item_scoring.build_profile(build_templates.BUILD_TEMPLATES["auspicious_beginnings"])
+_prof121 = dict(_prof121, caster=True, wants_shield=True, weapon_skills=[])
+_row121 = lambda i, bp, eq=False, w=10: {"id": i, "blueprint": bp, "name": bp, "count": 1, "weight": w, "equipped": eq, "identified": True}
+_pack121 = [_row121("w1", "Cloth Robe", True, 5), _row121("w2", "Staff", True, 5)]
+_sword121 = _row121("g", "Two-Handed Sword", False, 20)
+_s_no = item_scoring.score_item(item_scoring._entry(_sword121), item_scoring.with_inventory(_prof121, _pack121 + [_sword121]))
+assert not any("two-handed" in r for r in _s_no[2]), ("no shield owned: no two-handed penalty", _s_no)
+_acts = item_scoring.choose_equips(_pack121 + [_sword121], _prof121)
+assert any(a[0]["id"] == "g" and a[1] == "Hand" for a in _acts), ("a 1d6 sword beats a 1d2 staff for a caster now", _acts)
+_shield_bp121 = next(bp for bp, e in _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "items.json"), encoding="utf-8"))["items"].items() if e.get("group") == "shield")
+_shield121 = _row121("s1", _shield_bp121, False, 10)
+if True:
+    _with121 = _pack121 + [_shield121, _sword121]
+    assert item_scoring.with_inventory(_prof121, _with121)["owns_shield"] is True
+    _s_yes = item_scoring.score_item(item_scoring._entry(_sword121), item_scoring.with_inventory(_prof121, _with121))
+    assert any("two-handed while he owns a shield" in r for r in _s_yes[2]) and _s_yes[0] < _s_no[0] - 4, (_s_yes, _s_no)
+assert item_scoring.with_inventory(_prof121, [])["owns_shield"] is False and item_scoring.with_inventory(_prof121, None)["owns_shield"] is False
+# the Gen 27 scene: the bronze two-handed sword is now fetched from the ground; bark armor (AV +1, DV -1, +1.5 against a margin of 2.0) still is not
+_tm121 = build_templates.BUILD_TEMPLATES["auspicious_beginnings"]
+_gs121 = lambda bp, w: {"zone_id": "z", "inventory": _pack121, "carry_weight": 48, "max_carry_weight": 225,
+                        "ground_items": [{"id": "g1", "blueprint": bp, "name": bp.lower(), "dist": 4, "tx": 64, "ty": 19, "weight": w, "identified": True}]}
+brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
+print("  [OK] Test 121 Passed: the caster melee factor is 0.7, the armor upgrade margin is still 2.0, a two-handed weapon is charged the shield penalty only when a shield is carried or worn (the scorer sees the pack through with_inventory in the equip rule, the drop rule and the ground pickup), and a 1d6 sword now beats a 1d2 staff for a caster.")
+
 # Test 122: the swarm retreat, and a swarm flag that can never become a permanent block (human run Gen 28, 2026-10-09; HANDOFF issue 97)
 # ---------------------------------------------------------------------------
 import random as _rnd122
