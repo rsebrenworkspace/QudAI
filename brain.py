@@ -42,8 +42,20 @@ except ValueError:
     LM_EXTRA_PAYLOAD = {}
 
 # Pacing and Thresholds
-EXPLORE_STEP_DELAY = 0.25  # Seconds per exploration turn (250ms makes movement comfortable to watch)
-COMBAT_STEP_DELAY = 0.20   # Seconds per combat action
+def env_float(name, default, low=0.0, high=5.0):
+    """A float from the environment, clamped to [low, high]; the default when unset or unreadable."""
+    try:
+        v = float(os.environ.get(name) or default)
+    except ValueError:
+        return default
+    return max(low, min(high, v))
+
+
+# The loop only acts when the game has written a fresh state.json (the brain deletes it after reading), so this pause is pure added latency, never a race: an exploration turn
+# measured 0.30 s of which 0.25 s was this sleep (decision traces, 2026-10-09, 1,600 turns). 0.10 makes exploration about 50 percent faster; QUDAI_EXPLORE_DELAY tunes it
+# (0.25 was the old "comfortable to watch" value; the floor is whatever the game needs per turn). Combat keeps its pace: the model call (about 3 s) dominates it anyway.
+EXPLORE_STEP_DELAY = env_float("QUDAI_EXPLORE_DELAY", 0.10)
+COMBAT_STEP_DELAY = env_float("QUDAI_COMBAT_DELAY", 0.20)
 REST_HP_THRESHOLD = 0.75   # Only rest when HP drops below 75% of max HP
 
 if not os.path.exists(EXCHANGE_DIR):

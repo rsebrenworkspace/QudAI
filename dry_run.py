@@ -6093,3 +6093,22 @@ for _s in ("if not clear and is_dangerous_turret(closest, game_state):", "[Turre
            "near_dangerous_turret(game_state, (s[\"tx\"], s[\"ty\"]))", "near_dangerous_turret(game_state, (x, y))"):
     assert _s in _src123, _s
 print("  [OK] Test 123 Passed: a turret whose shots would hurt at full health is remembered even when a wall hides it, loot and frontier targets within 10 cells of it are skipped (a mutation without the memory walks to the rack), it is forgotten when killed or unseen for 1,500 turns, and neither combat path maneuvers toward a dangerous turret to get a line of sight: it steps away.")
+
+
+# ---------------------------------------------------------------------------
+# Test 124: exploration pacing is configurable and about 50 percent faster by default (human, 2026-10-09; HANDOFF issue 99)
+# ---------------------------------------------------------------------------
+_saved124 = {k: _os.environ.get(k) for k in ("QUDAI_T124",)}
+try:
+    _os.environ.pop("QUDAI_T124", None)
+    assert brain.env_float("QUDAI_T124", 0.1) == 0.1, "unset: the default"
+    _os.environ["QUDAI_T124"] = "0.05"; assert brain.env_float("QUDAI_T124", 0.1) == 0.05
+    _os.environ["QUDAI_T124"] = "oops"; assert brain.env_float("QUDAI_T124", 0.1) == 0.1, "unreadable: the default"
+    _os.environ["QUDAI_T124"] = "-3"; assert brain.env_float("QUDAI_T124", 0.1) == 0.0, "clamped at the low end"
+    _os.environ["QUDAI_T124"] = "99"; assert brain.env_float("QUDAI_T124", 0.1) == 5.0, "clamped at the high end"
+finally:
+    _os.environ.pop("QUDAI_T124", None)
+assert brain.EXPLORE_STEP_DELAY <= 0.10 and brain.COMBAT_STEP_DELAY == 0.20, "exploration 0.25 -> 0.10 (about 0.30 s a turn -> 0.15 s); combat unchanged"
+_src124 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "time.sleep(EXPLORE_STEP_DELAY)" in _src124 and "time.sleep(COMBAT_STEP_DELAY)" in _src124
+print("  [OK] Test 124 Passed: the exploration pause is read from QUDAI_EXPLORE_DELAY (the combat pause from QUDAI_COMBAT_DELAY), clamped and falling back to the default on a bad value, and the default exploration pause is 0.10 s instead of 0.25 s while combat keeps 0.20 s.")
