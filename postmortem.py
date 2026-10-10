@@ -92,6 +92,8 @@ def build_postmortem(death_data, last_state, rows, generation=None):
     models = sorted({str(r.get("model")) for r in rows if r.get("model")})
     if models:
         out.append(f"- Combat model(s) this run: {', '.join(models)}")
+    if last_state.get("psychic_glimmer") is not None:
+        out.append(f"- Psychic glimmer {last_state.get('psychic_glimmer')} (the engine's number; -1 means the mod could not read it). Hunters are placed when a new zone is entered, more likely with high glimmer (BACKLOG B25).")
     out.append(f"- Final HP {last_state.get('hp', '?')}/{max_hp or '?'} | effects: {', '.join(last_state.get('effects', [])) or 'none'} | position ({last_state.get('x', '?')}, {last_state.get('y', '?')}) z={last_state.get('z', '?')}")
     out.append("")
 
@@ -100,10 +102,10 @@ def build_postmortem(death_data, last_state, rows, generation=None):
     pets = [e for e in ents if e.get("is_companion")]
     out.append("## Who was in view at the end")
     if foes:
-        out.append("| hostile | dist | dir | engine rating | level | line of sight |")
-        out.append("|---|---|---|---|---|---|")
+        out.append("| hostile | dist | dir | engine rating | level | line of sight | psychic hunter |")
+        out.append("|---|---|---|---|---|---|---|")
         for e in foes[:12]:
-            out.append(f"| {str(e.get('name')).replace('|', '/')} | {e.get('dist')} | {e.get('dir')} | {e.get('difficulty')} | {e.get('level')} | {e.get('has_los')} |")
+            out.append(f"| {str(e.get('name')).replace('|', '/')} | {e.get('dist')} | {e.get('dir')} | {e.get('difficulty')} | {e.get('level')} | {e.get('has_los')} | {'YES' if e.get('psychic_hunter') else ''} |")
     else:
         out.append("No hostile in the last exported state.")
     if pets:
