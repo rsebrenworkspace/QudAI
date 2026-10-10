@@ -297,7 +297,18 @@ def choose_equips(inventory, profile):
         e = _entry(it)
         if e.get("group") == "armor" and e.get("slot"):
             by_slot.setdefault(e["slot"], []).append((score_item(e, profile)[0], it, e))
+    # Slots already held by something that is not armor for that slot (a jackhammer stowed on the back): armor never evicts it (human capture 2026-10-09: a cape took
+    # the hammer's place and he was left with a stun rod). `slots` is the mod's list of the body parts an equipped item sits on.
+    occupied = set()
+    for it in inventory:
+        if it.get("equipped"):
+            e = _entry(it)
+            for s in it.get("slots") or []:
+                if not (e.get("group") == "armor" and e.get("slot") == s):
+                    occupied.add(s)
     for slot, cands in by_slot.items():
+        if slot in occupied:
+            continue
         cands.sort(key=lambda c: -c[0])
         worn = [c for c in cands if c[1].get("equipped")]
         best = cands[0]

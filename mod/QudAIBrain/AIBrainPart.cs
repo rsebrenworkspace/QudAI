@@ -665,12 +665,29 @@ namespace QudAIBrain
                         if (worn != null && !items.Contains(worn)) items.Add(worn);
                 }
                 catch { }
+                // Which body slots each worn item occupies (a two-handed weapon sits on several; the human saw a cape evict a jackhammer from "Back": Python could not know the
+                // slot was taken). Engine truth, exported as `slots` per item (R2); the body part type names are the ones the equipment summary prints.
+                var slotsById = new Dictionary<string, List<string>>();
+                try
+                {
+                    var body = player.GetPart<Body>();
+                    if (body != null)
+                        foreach (var part in body.GetParts())
+                        {
+                            if (part == null || part.Equipped == null) continue;
+                            string wid = part.Equipped.ID ?? "";
+                            if (!slotsById.ContainsKey(wid)) slotsById[wid] = new List<string>();
+                            slotsById[wid].Add(part.Type ?? "");
+                        }
+                }
+                catch { }
                 foreach (GameObject it in items)
                 {
                     if (it == null) continue;
                     try { if (it.HasPart("NaturalEquipment")) continue; } catch { }
                     string bp = it.Blueprint ?? "";
                     bool eq = false; try { eq = it.Equipped != null; } catch { }
+                    List<string> mySlots = null; try { slotsById.TryGetValue(it.ID ?? "", out mySlots); } catch { }
                     int n = 1; try { n = it.Count; } catch { }
                     int w = 0; try { w = it.Weight; } catch { }
                     bool ident = true; try { ident = it.Understood(); } catch { }
@@ -679,7 +696,8 @@ namespace QudAIBrain
                     entries.Add("{\"id\": \"" + EscapeJson(it.ID ?? "") + "\", \"blueprint\": \"" + EscapeJson(bp) + "\", \"name\": \"" +
                                 EscapeJson(StripQudFormatting(it.DisplayNameOnly ?? bp)) + "\", \"count\": " + n + ", \"weight\": " + w +
                                 ", \"equipped\": " + (eq ? "true" : "false") + ", \"identified\": " + (ident ? "true" : "false") +
-                                ", \"partial\": " + (partial ? "true" : "false") + ", \"cursed\": " + (cursed ? "true" : "false") + "}");
+                                ", \"partial\": " + (partial ? "true" : "false") + ", \"cursed\": " + (cursed ? "true" : "false") +
+                                ", \"slots\": [" + string.Join(",", (mySlots ?? new List<string>()).Select(s => "\"" + EscapeJson(s) + "\"")) + "]}");
                     if (entries.Count >= MaxInventoryExport) break;
                 }
             }

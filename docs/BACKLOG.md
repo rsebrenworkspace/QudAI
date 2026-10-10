@@ -212,5 +212,12 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Depends on:** the artifacts utility table (B15 stage 2, not promoted) and a C# export of the free body slots (R2) if the brain should decide where a light goes.
 - **Size (my guess):** research small.
 
+### B23. Weapons that need charges or ammo (note from the human, 2026-10-09, from an inventory screenshot: "Inventory shows all weapons we currently have need charges. Its an ammo issue."; not promoted)
+- **What the screenshot and the state show `[verified in game state 2026-10-09]`:** both stun rods `[no cell]`, the masterwork grappling gun `[no cell]`, the masterwork dart gun `[empty]`, the sturdy short bow `[empty]` (three `wooden arrow` are in the pack), `has_missile_weapon: false`, `inventory_ammo: 0`. The three jackhammers carry no such marker (they have an energy-cell socket; whether they hold a charge was not read). So the only weapon that works at full strength is the one he is not wielding.
+- **What the brain does today `[verified in code]`:** the scorer prices a weapon by its dice and skill and does not see a missing cell or an empty chamber; `RELOAD` exists only for the equipped missile weapon; the loot step does not look for energy cells or ammunition. The catalogue knows a `Wooden Arrow` (group melee_weapon) and no `Energy Cell` blueprint by that name was found in a quick look (`[unverified]`: the group list in `build_item_catalog.py` has `EnergyCell`).
+- **Directions (none started):** (1) export per item whether it is loaded (the mod already prints `[no cell]` and `[empty]` in the item name), and have the scorer discount a weapon that cannot fire; (2) value energy cells and matching ammunition in the loot and ground-pickup steps, and load them (reload an unequipped weapon, or equip then reload); (3) let a ranged build carry only weapons it can feed. A stun rod without a cell is still a 1d2 stick, so the loss for melee is small; the bow with arrows in the pack is the cheap win.
+- **Depends on:** B15 stage 2 (utility and power) and B21 (digging tool), and the C# `slots` export that issue 112 adds.
+- **Size (my guess):** research small, first step (discount unloaded weapons, load a bow that has arrows) small to medium.
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.
