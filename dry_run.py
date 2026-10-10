@@ -5880,7 +5880,8 @@ try:
     assert brain.choose_ground_pickup(_gs120([_g120("g3", "Bark Armor", 3, 12)]), _tm120, False) is None, "AV +1 but DV -1 does not clear the margin"
     # guards
     assert brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 5)]), _tm120, True) is None, "never in a town"
-    assert brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 5, ident=False)]), _tm120, False) is None, "never an unidentified item"
+    _d = brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 5, ident=False)]), _tm120, False)
+    assert _d and "unidentified" in _d["reason"], "an unidentified item is fetched to be EXAMINED, never scored (B15, issue 102; Test 126 covers the rules)"
     assert brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 5, w=60)], carry_weight=200), _tm120, False) is None, "too heavy for the pack"
     assert brain.choose_ground_pickup(_gs120([_g120("g1", "Chain Mail", 14)]), _tm120, False) is None, "beyond the pickup distance"
     assert brain.choose_ground_pickup(_gs120([]), _tm120, False) is None and brain.choose_ground_pickup({"inventory": []}, _tm120, False) is None
@@ -6164,9 +6165,30 @@ brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {
 assert brain.choose_ground_pickup(_gp126, build_templates.BUILD_TEMPLATES["auspicious_beginnings"], False) is None, "a cursed item on the ground is not fetched"
 # the mod side
 _cs126 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
-for _s in ("private static void ExecuteExamineItem(GameObject player, string id)", 'act.StartsWith("EXAMINE_ITEM:")', 'ExecuteExamineItem(player, action.Substring(13));',
+for _s in ("private static void ExecuteExamineItem(GameObject player, string id)", 'o.HasPart("Examiner") && !o.Understood()', 'act.StartsWith("EXAMINE_ITEM:")', 'ExecuteExamineItem(player, action.Substring(13));',
            'InventoryActionEvent.Check(item, player, item, "Examine", true, true, true, false, false, 0, 0, 0, null, null, null, null)', "Options.SifrahExamine", "Sifrah examine is on",
            'RecordInventoryAction("examine", ok, failed, player);', 'it.PartiallyUnderstood()', 'it.HasPart("Cursed")', '\\"sifrah_examine\\"', '\\"partial\\": "', '\\"cursed\\": "'):
     assert _s in _cs126, _s
 assert _cs126.count("{") == _cs126.count("}")
+# the ground gap: unidentified items are fetched for examining, judged by nothing but safety
+_ug126 = lambda i, bp="Grappling Gun", dist=4, w=5, cursed=False, ident=False: {"id": i, "blueprint": bp, "name": "weird artifact", "dist": dist, "tx": 60 + dist, "ty": 19, "weight": w, "identified": ident, "cursed": cursed}
+_gu126 = lambda ground, inv=None, **k: dict({"zone_id": "z", "inventory": inv if inv is not None else [_it126("w1", "Cloth Robe", eq=True)], "carry_weight": 40, "max_carry_weight": 225, "ground_items": ground}, **k)
+_tm126 = build_templates.BUILD_TEMPLATES["auspicious_beginnings"]
+def _greset126():
+    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
+_greset126()
+_d = brain.choose_ground_pickup(_gu126([_ug126("u1")]), _tm126, False)
+assert _d and _d["action"] == "NAVIGATE_TO_CELL:64,19" and "unidentified" in _d["reason"], ("walk to an unidentified item", _d)
+_d = brain.choose_ground_pickup(_gu126([_ug126("u1", dist=1)]), _tm126, False)
+assert _d and _d["action"] == "TAKE_ITEM:u1", _d
+assert brain.choose_ground_pickup(_gu126([_ug126("u2", cursed=True)]), _tm126, False) is None, "an unidentified item that is cursed is left"
+assert brain.choose_ground_pickup(_gu126([_ug126("u3", bp="Gentling Mask")]), _tm126, False) is None, "a known cursed blueprint is left even without the engine flag"
+_many126 = [_it126("w1", "Cloth Robe", eq=True)] + [_it126(f"k{n}", "Slip Ring", ident=False) for n in range(6)]
+assert brain.choose_ground_pickup(_gu126([_ug126("u4")], inv=_many126), _tm126, False) is None, "six unknowns carried: no more"
+assert brain.choose_ground_pickup(_gu126([_ug126("u5", w=120)], carry_weight=40), _tm126, False) is None, "would take the pack past 60 percent of capacity"
+# the real blueprint plays no part: a junk-looking and a prize-looking unknown are treated alike
+_a126 = brain.choose_ground_pickup(_gu126([_ug126("u6", bp="Slip Ring")]), _tm126, False); _greset126()
+_b126 = brain.choose_ground_pickup(_gu126([_ug126("u6", bp="Geomagnetic Disc")]), _tm126, False)
+assert _a126 and _b126 and _a126["action"] == _b126["action"]
+_greset126()
 print("  [OK] Test 126 Passed: he examines one unidentified item at a time (a half-understood one first), only in Phase A at 80 percent hit points or better, never with the minigame on or with an old mod, an item that never yields is tried four times and then left alone, the game's examine report clears or keeps the count and makes the inventory step look again, a cursed item (by the engine's flag or the six known blueprints) is never worn and never fetched from the ground, and the mod exports partial, cursed and sifrah_examine and runs the engine's Examine through the inventory action event.")

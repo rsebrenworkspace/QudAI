@@ -813,7 +813,9 @@ namespace QudAIBrain
             {
                 if (o == null || o == player || o.IsPlayer() || o.CurrentCell == null) return false;
                 if (o.HasPart("Brain") || o.HasPart("Mimic") || o.HasPart("Combat") || o.HasPart("NaturalEquipment")) return false;
-                if (!(o.HasPart("Armor") || o.HasPart("MeleeWeapon") || o.HasPart("Shield") || o.HasPart("MissileWeapon"))) return false;
+                bool unidentifiedArtifact = false;
+                try { unidentifiedArtifact = o.HasPart("Examiner") && !o.Understood(); } catch { }        // an unidentified item of any kind: the examine step reveals it (B15)
+                if (!(o.HasPart("Armor") || o.HasPart("MeleeWeapon") || o.HasPart("Shield") || o.HasPart("MissileWeapon") || unidentifiedArtifact)) return false;
                 if (o.IsOwned() || !string.IsNullOrEmpty(o.Owner)) return false;
                 if (o.HasProperty("Owned") || o.HasProperty("OwnedBy")) return false;
                 if (o.GetIntProperty("AutoexploreSuppressed", 0) > 0 || o.GetIntProperty("DroppedByPlayer", 0) > 0) return false;
