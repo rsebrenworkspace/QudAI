@@ -178,6 +178,8 @@ def build_entry(cat, name):
     why = protect_reasons(parts)
     if why:
         e["protect"] = why
+    if "DiggingTool" in parts:
+        e["digger"] = True                                                  # the engine marks digging tools with this part (Pickaxe, Nanopneumatic Jackhammer): they cut through rock
     if grp in ("armor", "shield"):
         a = parts.get("Armor") or parts.get("Shield") or {}
         e.update({"slot": a.get("WornOn", ""), "av": num(a.get("AV"), 0), "dv": num(a.get("DV"), 0), "ma": num(a.get("MA")), "armor_attrs": a})

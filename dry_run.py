@@ -6540,3 +6540,72 @@ assert bool(_acts133) == (_scores133[1] >= _scores133[0] + _is133.DOMINATED_MARG
 _cs133 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
 assert "slotsById" in _cs133 and '\\"slots\\": [' in _cs133 and "part.Equipped.ID" in _cs133 and _cs133.count("{") == _cs133.count("}")
 print("  [OK] Test 133 Passed: the mod exports the body slots each worn item occupies, and armor never takes a slot a weapon holds (a free slot is still filled and a worn cloak is still upgraded)")
+
+
+# Test 134: until stronger items turn up the digging hammer is wielded ahead of a shield and a stun rod (human decision 2026-10-09; HANDOFF issue 113)
+# ---------------------------------------------------------------------------
+import item_scoring as _is134
+assert _is134.item_info("Nanopneumatic Jackhammer").get("digger") is True and _is134.item_info("Pickaxe").get("digger") is True, "the catalogue tags the engine's DiggingTool items"
+assert not _is134.item_info("Stun Rod").get("digger") and not _is134.item_info("Long Sword").get("digger")
+_p134 = _is134.with_inventory(_is134.build_profile(build_templates.BUILD_TEMPLATES["esper_ited_away"]), [{"blueprint": "Iron Buckler", "equipped": True}])
+_hs134 = _is134.score_item(_is134._entry({"blueprint": "Nanopneumatic Jackhammer"}), _p134)[0]
+_rs134 = _is134.score_item(_is134._entry({"blueprint": "Stun Rod"}), _p134)[0]
+assert _hs134 > _rs134 + _is134.DOMINATED_MARGIN, (_hs134, _rs134)
+def _w134():
+    w = _world131()
+    w["items"]["15515"] = _it131("15515", "Nanopneumatic Jackhammer", "nanopneumatic jackhammer", w=16)
+    return w
+def _state134(w):
+    for k in ("35290", "30415", "33176", "15515"):
+        w["items"][k]["equipped"] = (k == w["hand"])
+    return {"zone_id": "Z134", "inventory": [dict(it) for it in w["items"].values()], "carry_weight": 60, "max_carry_weight": 240, "hp": 40, "max_hp": 40}
+_reset131()
+_w134o = _w134()
+_equips134 = []
+for _t134 in range(60):
+    brain.TURN_CLOCK += 1
+    _d134 = brain.choose_inventory_action(_state134(_w134o), _tpl131, False)
+    if _d134 and _d134["action"].startswith("EQUIP_ITEM:"):
+        _w134o["hand"] = _d134["action"].split(":")[1]          # the two-handed hammer takes both hands; whatever else was in the contested hand is out
+        _equips134.append(_w134o["hand"])
+assert _w134o["hand"] == "15515", f"the hammer ends up wielded, got {_w134o['hand']} after {_equips134}"
+assert len(_equips134) <= 3, f"and he settles, not swaps: {_equips134}"
+# a shield is not fetched while the hammer is wielded
+_acts134 = _is134.choose_equips(_state134(dict(_w134(), hand="15515"))["inventory"], _p134)
+assert not any(a[1] == "Hand" and _is134._entry(a[0]).get("group") == "shield" for a in _acts134), _acts134
+# without a digger nothing changes: the shield and the rod behave as in Test 131
+_reset131()
+_w134b = _world131()
+for _t134 in range(60):
+    brain.TURN_CLOCK += 1
+    _d134 = brain.choose_inventory_action(_state131(_w134b), _tpl131, False)
+    if _d134 and _d134["action"].startswith("EQUIP_ITEM:"):
+        _w134b["hand"] = _d134["action"].split(":")[1]
+assert _w134b["hand"] == "35290", "no hammer carried: the shield still wins the hand"
+_reset131()
+print("  [OK] Test 134 Passed: the catalogue tags digging tools from the engine's part, the jackhammer outscores a stun rod even while he owns a shield, he ends up wielding it and settles, no shield is fetched while it is wielded, and without a digger the shield still wins")
+
+
+# Test 135: with an ability that digs, a digging tool is no longer worth a hand (human, 2026-10-09: "if ability is acquired that allows digging, change equip able options"; HANDOFF issue 113)
+# ---------------------------------------------------------------------------
+_claws135 = {"abilities": [{"name": "Burrowing Claws", "command": "CommandToggleBurrowingClaws", "cooldown": 0, "usable": True, "active": True}]}
+assert brain.has_dig_ability(_claws135) and not brain.has_dig_ability({"abilities": [{"command": "CommandLase"}]}) and not brain.has_dig_ability({})
+assert "CommandToggleBurrowingClaws" in brain.DIG_ABILITY_COMMANDS
+_pd135 = brain._inv_profile(_tpl131, _claws135)
+_pn135 = brain._inv_profile(_tpl131, {})
+assert _pd135["digs_by_ability"] is True and _pn135["digs_by_ability"] is False
+_hd135 = _is134.score_item(_is134._entry({"blueprint": "Nanopneumatic Jackhammer"}), _is134.with_inventory(_pd135, [{"blueprint": "Iron Buckler", "equipped": True}]))
+_hn135 = _is134.score_item(_is134._entry({"blueprint": "Nanopneumatic Jackhammer"}), _is134.with_inventory(_pn135, [{"blueprint": "Iron Buckler", "equipped": True}]))
+assert abs((_hn135[0] - _hd135[0]) - _is134.DIGGER_BONUS) < 1e-9 and any("no bonus" in r for r in _hd135[2]), (_hd135, _hn135)
+# the whole decision: the same pack, but he owns Burrowing Claws, ends up as in Test 131 (the shield wins the hand), not with the hammer
+_reset131()
+_w135 = _w134()
+for _t135 in range(60):
+    brain.TURN_CLOCK += 1
+    _s135 = dict(_state134(_w135), **_claws135)
+    _d135 = brain.choose_inventory_action(_s135, _tpl131, False)
+    if _d135 and _d135["action"].startswith("EQUIP_ITEM:"):
+        _w135["hand"] = _d135["action"].split(":")[1]
+assert _w135["hand"] != "15515", f"with a digging ability the hammer is not wielded for digging, got {_w135['hand']}"
+_reset131()
+print("  [OK] Test 135 Passed: an ability that digs (Burrowing Claws today, the list in DIG_ABILITY_COMMANDS) takes the digging-tool bonus away, so the equip choice goes back to the shield and weapon rules")

@@ -29,6 +29,7 @@ SKILL_MATCH_MULT = 1.5
 OFF_SKILL_MULT = 0.45                        # an untrained weapon is still a weapon, but an inferior one
 CASTER_MELEE_MULT = 0.7             # was 0.35 (human, 2026-10-09): the brain's stand-and-fight rule makes a caster melee anyway, with a 1d2 staff at level 5 (Gen 27)
 TWO_HANDED_WITH_SHIELD = -5.0       # only charged when he actually owns a shield (human, 2026-10-09; profile["owns_shield"], see with_inventory)
+DIGGER_BONUS = 8.0                           # a digging tool (the catalogue's `digger`, from the engine's DiggingTool part): human, 2026-10-09, "until we get items that can get the model out of being caged in, the hammer is probably the better bet; as we discover more powerful items let's run it this way". Big enough to beat a shield-and-rod pair.
 SHIELD_BONUS = 4.0                           # for a build that trains Shield
 RANGED_BONUS = 8.0                           # a firearm for a build that trains that firearm skill
 WEIGHT_FREE = {"heavy": 40, "normal": 25, "light": 18}   # carried weight an item may have before it is penalised, by build type
@@ -205,6 +206,11 @@ def score_item(item, profile):
         if item.get("two_handed") and profile["wants_shield"] and profile.get("owns_shield"):
             base += TWO_HANDED_WITH_SHIELD
             reasons.append(f"two-handed while he owns a shield: {TWO_HANDED_WITH_SHIELD:g}")
+        if item.get("digger") and not profile.get("digs_by_ability"):
+            base += DIGGER_BONUS
+            reasons.append(f"digging tool: +{DIGGER_BONUS:g}")
+        elif item.get("digger"):
+            reasons.append("digging tool, but an ability already digs: no bonus")
         score += base
         pen = _weight_penalty(weight, profile)
         if pen:
@@ -328,7 +334,10 @@ def choose_equips(inventory, profile):
             worn = [c for c in guns if c[1].get("equipped")]
             if not guns[0][1].get("equipped") and (not worn or guns[0][0] >= worn[0][0] + DOMINATED_MARGIN):
                 actions.append((guns[0][1], "Missile", f"firearm scores {guns[0][0]:g}" + (f" vs {worn[0][0]:g} held" if worn else "")))
-    if profile["wants_shield"]:
+    # A two-handed weapon (the digging hammer) leaves no hand for a shield: wielded, or about to be, it ends the shield question for now.
+    two_handed = any(_entry(it).get("two_handed") for it in inventory if it.get("equipped") and _entry(it).get("group") == "melee_weapon") \
+        or any(a[1] == "Hand" and _entry(a[0]).get("two_handed") and _entry(a[0]).get("group") == "melee_weapon" for a in actions)
+    if profile["wants_shield"] and not two_handed:
         shields = [(score_item(_entry(it), profile)[0], it) for it in inventory if _entry(it).get("group") == "shield"]
         if shields:
             shields.sort(key=lambda c: -c[0])
