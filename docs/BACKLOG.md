@@ -171,5 +171,15 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Size (my guess):** C# small to medium, Python small, tests medium.
 - **Risks:** a pickup and drop loop if the take rule and the drop rule disagree (so they must share one scorer, and a taken item must never be a drop candidate in the same state); carrying too much weight; walking toward loot while hostiles are near (Phase A only, with the same guards as the loot step); equipping while in danger.
 
+### B17. Removing a cursed item (idea from the human, 2026-10-09: "Put the EMP in the backlog. I am sure you will encounter it later."; not promoted)
+- **Policy `[human, 2026-10-09]`:** there is no cursed blacklist; he may equip a cursed item and live with it. This item is about what to do AFTER it happens, if that is ever worth doing (the character should only use what a player could know).
+- **What a curse is `[verified in code]`** (ENGINE_INTERNALS 14.25): the part `Cursed`, "Cannot be removed once equipped", an active part that only blocks removal while it `IsReady`; it is not ready when the item is EMPed, broken or rusted. Six blueprints carry it (Psychal Fleshgun, Gentling Collar, Gentling Mask, Inhibitor Cuff, BarathrumiteSafetyBand, Cyclopean Prism). The Gentling Mask (AV 1, Ego -1) holds the Face slot in the lab character.
+- **Tried in game `[verified in game 2026-10-09]`:** an `EMPGrenade1` thrown one tile away, and again at the character's own tile: the mask could not be removed either time. Probable reason `[inferred from the IL]`: the EMP pulses a creature's worn items only if the creature is EMP-sensitive (electronics or cybernetics), and an ordinary human is not.
+- **Unknown `[unknown]`:** whether the mask or the character is `IsEMPSensitive` at all; what breaks or rusts a non-metal item; what sets the property `CursedBodyRebuildAllowUnequip` read by `Body.Rebuild`; whether a body rebuild (a mutation or anatomy change) frees a cursed item; whether losing the limb drops it.
+- **Next experiments, cheapest first:** (1) a mod diagnostic exporting `IsEMPSensitive`, `IsBroken` and `IsRusted` per item and for the player (a small C# change, needs a restart); (2) make the character EMP-sensitive (a cybernetic or an electronic item) and throw the grenade again; (3) find what breaks an armor item; (4) look for who sets the body rebuild property.
+- **Depends on:** nothing; it matters only when a cursed item is actually worn and in the way (for example the Face slot taken by a mask while a better eyewear is carried).
+- **Size (my guess):** research small; a "get rid of a curse" routine only if one of the ways proves reliable and cheap.
+- **Risks:** an EMP also disables the character's own tech and companions' machines; burning grenades for an Ego point is not worth it for most items.
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.
