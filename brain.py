@@ -3829,8 +3829,56 @@ def lethal_adjacent_guard(decision, adj_threats, enemies, abilities):
     return new
 
 
+# Hunter protocol (BACKLOG B25, HANDOFF issue 124; the human, 2026-10-10: "That plan has teeth and I like it"). A psychic hunter casts Sunder Mind ("for up to 10 rounds ... dealing damage each
+# round", 12 tiles away with line of sight in Gen 32), and a player locked in that battle PASSES HIS TURNS (ENGINE_INTERNALS 14.29), so nothing decided after the lock matters. The
+# only chance is before it: while a hunter the mod marks (`psychic_hunter`) is in view, shoot it at once with a ready Lase (clear line, not through a companion), and banish it with
+# Teleport Other when it is close and Lase cannot be used. Thralls and everything else are left to the normal logic. The model does not choose this: it rated the first hunter Average
+# and kited it for 70 turns.
+HUNTER_LASE_MAX_DIST = 10
+HUNTER_BANISH_MAX_DIST = 6
+HUNTER_PROTOCOL_STATE = {"last": None}
+
+
+def hunter_protocol_decision(game_state):
+    """USE_ABILITY decision against a marked psychic hunter in view, or None."""
+    ents = game_state.get("visible_entities") or []
+    hunters = sorted([e for e in ents if e.get("psychic_hunter") and e.get("is_enemy") and e.get("has_los") is not False
+                      and e.get("tx") is not None and e.get("ty") is not None and isinstance(e.get("dist"), (int, float)) and (e.get("hp") is None or e.get("hp") > 0)],
+                     key=lambda e: e["dist"])
+    if not hunters:
+        return None
+    px, py = game_state.get("x"), game_state.get("y")
+    if px is None or py is None:
+        return None
+    abilities = game_state.get("abilities") or []
+    companions = game_state.get("companions", [])
+    surroundings = game_state.get("surroundings")
+    ab_lase = find_ready_ability(abilities, "lase")
+    ab_banish = find_ready_ability(abilities, "teleport_other")
+    for h in hunters:
+        tx, ty, d = h["tx"], h["ty"], h["dist"]
+        direction = get_step_direction((px, py), (tx, ty))
+        if not direction:
+            continue
+        clear, _why = is_line_of_fire_clear((px, py), (tx, ty), companions=companions, target_entity=h, surroundings=surroundings)
+        if ab_lase and ab_lase.get("command") and d <= HUNTER_LASE_MAX_DIST and clear:
+            return {"action": f"USE_ABILITY:{ab_lase['command']}:{direction}@{tx},{ty}",
+                    "reason": f"[HUNTER PROTOCOL] {h.get('name')} (psychic hunter, {d} tiles) is in view: Lase it before it can lock him in a psychic battle."}
+        if ab_banish and ab_banish.get("command") and d <= HUNTER_BANISH_MAX_DIST and clear:
+            return {"action": f"USE_ABILITY:{ab_banish['command']}:{direction}@{tx},{ty}",
+                    "reason": f"[HUNTER PROTOCOL] {h.get('name')} (psychic hunter, {d} tiles) is close and Lase is not available: Teleport Other sends it away."}
+    return None
+
+
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
-    """The decision for this turn: `_query_decision`, the lethal-adjacent guard, then the stand-and-fight rule."""
+    """The decision for this turn: the hunter protocol, else `_query_decision`, the lethal-adjacent guard, then the stand-and-fight rule."""
+    hunter_move = hunter_protocol_decision(game_state)
+    if hunter_move:
+        if HUNTER_PROTOCOL_STATE["last"] != hunter_move["action"]:
+            print(hunter_move["reason"])
+        HUNTER_PROTOCOL_STATE["last"] = hunter_move["action"]
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return hunter_move
     STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
     decision = _query_decision(game_state, took_damage, enemies, suppress_autolevel)
     decision = lethal_adjacent_guard(decision, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])

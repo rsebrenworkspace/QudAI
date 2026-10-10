@@ -6803,3 +6803,37 @@ finally:
     brain.HUNTER_LOG_PATH = _old142; brain.HUNTER_SEEN.update({"zone": None, "keys": set()})
 assert "hunter_log.jsonl" in _cl.MEMORY_FILES and "hunter_log.jsonl" in _cl.DATA_FILES
 print("  [OK] Test 142 Passed: a psychic hunter, its thrall and a named unmarked creature are each logged once per zone with distance, level, rating and glimmer, a new zone logs them again, and the capture and the console include the log")
+
+
+# Test 143: the hunter protocol: Lase a marked psychic hunter in view before it can cast, banish it when it is close and Lase is not available (BACKLOG B25, HANDOFF issue 124)
+# ---------------------------------------------------------------------------
+_h143 = lambda **k: dict({"name": "Kuruwur-No-Longer, Ptoh's 28th Osprey", "blueprint": "PsychicSeekerHunter", "is_enemy": True, "psychic_hunter": True, "has_los": True, "tx": 18, "ty": 10, "dist": 8, "hp": 30, "level": 8, "difficulty": "Average"}, **k)
+_ab143 = lambda **ready: [{"name": n, "command": c, "cooldown": 0 if ready.get(n, True) else 5, "usable": ready.get(n, True), "active": False} for n, c in (("Lase", "CommandLase"), ("Teleport Other", "CommandTeleportOther"))]
+_s143 = lambda ents, abil=None, **k: dict({"x": 10, "y": 10, "hp": 42, "max_hp": 42, "visible_entities": ents, "abilities": abil if abil is not None else _ab143(), "companions": [], "surroundings": {}}, **k)
+_d143 = brain.hunter_protocol_decision(_s143([_h143()]))
+assert _d143 and _d143["action"] == "USE_ABILITY:CommandLase:E@18,10" and "HUNTER PROTOCOL" in _d143["reason"], _d143
+assert brain.hunter_protocol_decision(_s143([_h143(psychic_hunter=False, name="psychic thrall")])) is None, "a thrall or any other creature is not the protocol's business"
+assert brain.hunter_protocol_decision(_s143([_h143(has_los=False)])) is None, "no line of sight: it cannot cast and the protocol cannot shoot"
+assert brain.hunter_protocol_decision(_s143([_h143(dist=11, tx=21)])) is None, "beyond Lase range, Teleport Other too far: normal logic"
+assert brain.hunter_protocol_decision(_s143([_h143(hp=0)])) is None, "a dead hunter"
+assert brain.hunter_protocol_decision(_s143([])) is None and brain.hunter_protocol_decision({}) is None
+# a companion on the line: no shot through the pet (R8)
+assert brain.hunter_protocol_decision(_s143([_h143()], companions=[{"name": "scorpiock", "tx": 14, "ty": 10}])) is None
+assert brain.hunter_protocol_decision(_s143([_h143()], companions=[{"name": "scorpiock", "tx": 14, "ty": 14}]))["action"].startswith("USE_ABILITY:CommandLase")
+# Lase spent: banish when close, not when far
+_nolase143 = _ab143(Lase=False)
+_close143 = brain.hunter_protocol_decision(_s143([_h143(tx=14, dist=4)], _nolase143))
+assert _close143 and _close143["action"] == "USE_ABILITY:CommandTeleportOther:E@14,10", _close143
+assert brain.hunter_protocol_decision(_s143([_h143()], _nolase143)) is None, "at 8 tiles and no Lase the banish is out of range: normal logic"
+# the combat-ability test switch (hidden abilities) leaves nothing to use
+assert brain.hunter_protocol_decision(_s143([_h143()], [])) is None
+# the nearest hunter first, and a second hunter is used when the first has no clear line
+_two143 = [_h143(name="far", tx=19, dist=9), _h143(name="near", tx=14, dist=4)]
+assert "near" in brain.hunter_protocol_decision(_s143(_two143))["reason"]
+# it is the first thing the decision pipeline does
+brain.HUNTER_PROTOCOL_STATE["last"] = None
+_q143 = brain.query_decision(_s143([_h143()]), False, [_h143()])
+assert _q143["action"] == "USE_ABILITY:CommandLase:E@18,10", _q143
+_b143 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "hunter_move = hunter_protocol_decision(game_state)" in _b143
+print("  [OK] Test 143 Passed: a marked psychic hunter in view is Lased at once through a clear line (never through a companion), banished with Teleport Other when it is close and Lase is spent, ignored when out of sight or range or when the abilities are hidden, thralls are left alone, and it is the first thing the decision pipeline does")
