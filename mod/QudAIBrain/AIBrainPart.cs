@@ -1393,11 +1393,12 @@ namespace QudAIBrain
             catch { return null; }
         }
 
-        // The engine's own marks for a psychic hunter (PsychicHunterSystem, ENGINE_INTERNALS 14.29): the extradimensional solo hunter and deviant get the string property `PsychicHunter`,
-        // the seeker hunters are the blueprint `PsychicSeekerHunter`. Cult hunters were not read and may be missed.
+        // The engine's own marks for a psychic hunter (PsychicHunterSystem, ENGINE_INTERNALS 14.29): the solo, deviant AND cult hunters get the STRING property `PsychicHunter` (SetStringProperty);
+        // `HasProperty` did not see it (a cult hunter, "Kushworem-No-Longer, servant of Ptoh", blueprint "Novice of the Sightless Way 3", killed Gen 32 unmarked), so the string property is read
+        // directly. The seeker hunters are also the blueprint `PsychicSeekerHunter`.
         private static bool IsPsychicHunter(GameObject o)
         {
-            try { return o != null && (o.HasProperty("PsychicHunter") || o.Blueprint == "PsychicSeekerHunter"); } catch { return false; }
+            try { return o != null && (o.HasStringProperty("PsychicHunter") || o.GetStringProperty("PsychicHunter", "") == "true" || o.HasProperty("PsychicHunter") || o.Blueprint == "PsychicSeekerHunter"); } catch { return false; }
         }
 
         private static int PlayerGlimmer(GameObject player)
