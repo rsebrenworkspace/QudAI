@@ -504,6 +504,27 @@ def prune_captures(out_dir, keep=CAPTURE_KEEP):
     return gone
 
 
+def refresh_latest(folder, latest):
+    """Makes `latest` a copy of `folder` without ever removing the folder itself (Windows refuses to remove one that Explorer or a shell has open: the first version
+    did, and left `latest` empty). Stale files are deleted one by one, then the new ones are copied over."""
+    import shutil
+    os.makedirs(latest, exist_ok=True)
+    for name in os.listdir(latest):
+        path = os.path.join(latest, name)
+        try:
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                os.remove(path)
+        except OSError:
+            pass
+    for name in os.listdir(folder):
+        try:
+            shutil.copy2(os.path.join(folder, name), os.path.join(latest, name))
+        except OSError:
+            pass
+
+
 def capture_logs(note="", console_lines=(), exchange_dir=None, repo=None, out_dir=None, keep=CAPTURE_KEEP, git_runner=None, stamp=None):
     """Copies every log into scratch/captures/<stamp>/ and refreshes scratch/captures/latest/. Writes info.txt (note, time, code version, mod health),
     brain_console.txt (what the console window showed) and bundle.txt. -> (folder, text for the clipboard, [names copied])."""
@@ -527,11 +548,112 @@ def capture_logs(note="", console_lines=(), exchange_dir=None, repo=None, out_di
     text = f"Capture {stamp} | note: {note or '(none)'} | folder: {folder}\n\n" + log_bundle(exchange_dir, repo)
     with open(os.path.join(folder, "bundle.txt"), "w", encoding="utf-8") as f:
         f.write(text)
-    latest = os.path.join(out_dir, "latest")
-    shutil.rmtree(latest, ignore_errors=True)
-    shutil.copytree(folder, latest)
+    refresh_latest(folder, os.path.join(out_dir, "latest"))
     prune_captures(out_dir, keep)
     return folder, text, copied
+
+
+# ---------------------------------------------------------------------------
+# Saved-game snapshots (BACKLOG B20 stage 2): copy the character's save folder aside, and put it back
+# ---------------------------------------------------------------------------
+SNAPSHOT_DIR = os.path.join(REPO, "scratch", "saves")
+SAVE_MAIN = "Primary.sav.gz"           # a save folder is a GUID holding Primary.sav.gz, Primary.json, Cache.db [verified on disk 2026-10-09]
+
+
+def saves_dir(exchange_dir=None):
+    return os.path.join(game_dir(exchange_dir), "Synced", "Saves")
+
+
+def newest_save(saves=None, exchange_dir=None):
+    """The save folder whose Primary.sav.gz was written last: the character being played [inferred]. -> (folder path, mtime) or (None, 0)."""
+    saves = saves or saves_dir(exchange_dir)
+    best = (None, 0.0)
+    try:
+        names = os.listdir(saves)
+    except OSError:
+        return best
+    for n in names:
+        try:
+            m = os.path.getmtime(os.path.join(saves, n, SAVE_MAIN))
+        except OSError:
+            continue
+        if m > best[1]:
+            best = (os.path.join(saves, n), m)
+    return best
+
+
+def save_summary(folder):
+    """One line about a save folder from its Primary.json (name, level, place, turn, when it was saved)."""
+    j = read_json(os.path.join(folder, "Primary.json"), {}) or {}
+    return f"{j.get('Name', '?')}, level {j.get('Level', '?')}, {j.get('Location', '?')}, turn {j.get('Turn', '?')}, saved {j.get('SaveTime', '?')}"
+
+
+def _slug(text):
+    return re.sub(r"[^A-Za-z0-9]+", "-", text or "").strip("-")[:40]
+
+
+def snapshot_save(note="", saves=None, out_dir=None, stamp=None, exchange_dir=None):
+    """Copies the newest save folder to scratch/saves/<stamp>[_note]/save/ with meta.json. -> (snapshot folder, text). The game should have just saved (the human saves in game first)."""
+    import shutil
+    src, mtime = newest_save(saves, exchange_dir)
+    if not src:
+        return None, "No save folder found (looked for a GUID folder with " + SAVE_MAIN + ")."
+    out_dir = out_dir or SNAPSHOT_DIR
+    stamp = stamp or time.strftime("%Y-%m-%d_%H%M%S")
+    dest = os.path.join(out_dir, stamp + ("_" + _slug(note) if _slug(note) else ""))
+    os.makedirs(dest, exist_ok=True)
+    shutil.copytree(src, os.path.join(dest, "save"), dirs_exist_ok=True)
+    meta = {"guid": os.path.basename(src), "note": note, "stamp": stamp, "source": src, "save_mtime": mtime, "summary": save_summary(src), "game_running": game_running()}
+    with open(os.path.join(dest, "meta.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+    age = int(time.time() - mtime)
+    return dest, f"Saved a snapshot of {meta['summary']} (the save file is {age // 60} min {age % 60} s old; save in the game first if that is not recent)."
+
+
+def list_snapshots(out_dir=None):
+    """Snapshots newest first: dicts with folder, stamp, note, summary."""
+    out_dir = out_dir or SNAPSHOT_DIR
+    rows = []
+    try:
+        names = sorted(os.listdir(out_dir), reverse=True)
+    except OSError:
+        return rows
+    for n in names:
+        meta = read_json(os.path.join(out_dir, n, "meta.json"))
+        if isinstance(meta, dict) and os.path.isdir(os.path.join(out_dir, n, "save")):
+            rows.append({"folder": os.path.join(out_dir, n), "stamp": meta.get("stamp", n), "note": meta.get("note", ""), "summary": meta.get("summary", ""), "guid": meta.get("guid", "")})
+    return rows
+
+
+def restore_snapshot(folder, saves=None, out_dir=None, running=None, exchange_dir=None):
+    """Puts a snapshot back as its save folder. Refuses while the game runs (it would overwrite the files again). The folder it replaces is first copied to
+    scratch/saves/_replaced/<stamp>_<guid>. -> (ok, text)."""
+    import shutil
+    if (running if running is not None else game_running()):
+        return False, "Close the game first: it would write over the restored files."
+    meta = read_json(os.path.join(folder, "meta.json"), {}) or {}
+    guid = meta.get("guid")
+    snap = os.path.join(folder, "save")
+    if not guid or not os.path.isdir(snap):
+        return False, "That snapshot has no meta.json or no save folder."
+    saves = saves or saves_dir(exchange_dir)
+    target = os.path.join(saves, guid)
+    out_dir = out_dir or SNAPSHOT_DIR
+    replaced = None
+    try:
+        if os.path.isdir(target):
+            replaced = os.path.join(out_dir, "_replaced", time.strftime("%Y-%m-%d_%H%M%S") + "_" + guid)
+            shutil.copytree(target, replaced, dirs_exist_ok=True)
+            for name in os.listdir(target):
+                path = os.path.join(target, name)
+                if os.path.isdir(path):
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    os.remove(path)
+        shutil.copytree(snap, target, dirs_exist_ok=True)
+    except OSError as e:
+        return False, f"Restore failed: {e}" + (f" (the previous save is copied to {replaced})" if replaced else "")
+    return True, f"Restored {meta.get('summary', guid)}." + (f" What it replaced is in {replaced}." if replaced else "")
 
 
 # ---------------------------------------------------------------------------

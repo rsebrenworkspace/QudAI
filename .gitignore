@@ -37,4 +37,5 @@ twitch_config.json
 
 # Console log captures (one-button capture, BACKLOG B20)
 scratch/captures/
+scratch/saves/
 scratch/log_bundle.txt

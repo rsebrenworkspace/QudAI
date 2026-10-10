@@ -6326,3 +6326,48 @@ for _s in ('text="Capture logs"', "def capture_clicked(self)", "cl.capture_logs(
     assert _s in _w128, _s
 assert "scratch/captures/" in open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".gitignore"), encoding="utf-8").read()
 print("  [OK] Test 128 Passed: one click copies every log (missing ones skipped) into a stamped folder and into scratch/captures/latest with info (note, code version, mod health), the brain console and a bundle; old folders are pruned, latest and unrelated files are not; the folder is git-ignored")
+
+
+# Test 129: saved-game snapshots and a capture folder that cannot end up empty (BACKLOG B20 stage 2, HANDOFF issue 108)
+# ---------------------------------------------------------------------------
+import tools.console_logic as _cl129
+_saves129 = tempfile.mkdtemp(); _out129 = tempfile.mkdtemp()
+for _g, _m in (("aaa", 1000), ("bbb", 2000)):
+    _d = _os.path.join(_saves129, _g); _os.makedirs(_d)
+    open(_os.path.join(_d, "Primary.sav.gz"), "w").write(_g)
+    open(_os.path.join(_d, "Primary.json"), "w").write(json.dumps({"Name": "N" + _g, "Level": 3, "Location": "salt marsh", "Turn": 9, "SaveTime": "t"}))
+    _os.utime(_os.path.join(_d, "Primary.sav.gz"), (_m, _m))
+_os.makedirs(_os.path.join(_saves129, "empty"))
+assert _cl129.newest_save(_saves129)[0] == _os.path.join(_saves129, "bbb"), "the newest Primary.sav.gz wins; a folder without one is ignored"
+assert _cl129.newest_save(_os.path.join(_saves129, "nope"))[0] is None
+_snap129, _txt129 = _cl129.snapshot_save("before the boss!", _saves129, _out129, "2026-10-09_230000")
+assert _os.path.basename(_snap129) == "2026-10-09_230000_before-the-boss", _snap129
+assert open(_os.path.join(_snap129, "save", "Primary.sav.gz")).read() == "bbb" and "Nbbb, level 3, salt marsh" in _txt129
+assert _cl129.snapshot_save("x", _os.path.join(_saves129, "nope"), _out129)[0] is None, "no save folder is reported, not raised"
+_rows129 = _cl129.list_snapshots(_out129)
+assert len(_rows129) == 1 and _rows129[0]["note"] == "before the boss!" and _rows129[0]["guid"] == "bbb"
+# restore: refused while the game runs, otherwise the folder is replaced and the old one kept
+open(_os.path.join(_saves129, "bbb", "Primary.sav.gz"), "w").write("CHANGED")
+_ok129, _t129 = _cl129.restore_snapshot(_snap129, _saves129, _out129, running=True)
+assert not _ok129 and "Close the game" in _t129 and open(_os.path.join(_saves129, "bbb", "Primary.sav.gz")).read() == "CHANGED"
+_ok129, _t129 = _cl129.restore_snapshot(_snap129, _saves129, _out129, running=False)
+assert _ok129 and open(_os.path.join(_saves129, "bbb", "Primary.sav.gz")).read() == "bbb"
+_rep129 = _os.listdir(_os.path.join(_out129, "_replaced"))
+assert len(_rep129) == 1 and open(_os.path.join(_out129, "_replaced", _rep129[0], "Primary.sav.gz")).read() == "CHANGED", "what was replaced is kept"
+assert len(_cl129.list_snapshots(_out129)) == 1, "the _replaced folder is not listed as a snapshot"
+assert _cl129.restore_snapshot(_os.path.join(_out129, "nothing"), _saves129, _out129, running=False)[0] is False
+# a restore into a save folder that does not exist yet still works
+_os.rename(_os.path.join(_saves129, "bbb"), _os.path.join(_saves129, "gone"))
+assert _cl129.restore_snapshot(_snap129, _saves129, _out129, running=False)[0] is True and _os.path.exists(_os.path.join(_saves129, "bbb", "Primary.sav.gz"))
+# the capture's `latest` folder is refreshed in place and never removed (the first version removed it and could leave it empty)
+_src129 = tempfile.mkdtemp(); _lat129 = _os.path.join(tempfile.mkdtemp(), "latest"); _os.makedirs(_lat129)
+open(_os.path.join(_src129, "info.txt"), "w").write("new"); open(_os.path.join(_lat129, "stale.txt"), "w").write("old"); open(_os.path.join(_lat129, "info.txt"), "w").write("old")
+_cl129.refresh_latest(_src129, _lat129)
+assert sorted(_os.listdir(_lat129)) == ["info.txt"] and open(_os.path.join(_lat129, "info.txt")).read() == "new"
+_cap129 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "console_logic.py"), encoding="utf-8").read()
+assert "shutil.rmtree(latest" not in _cap129, "latest is never removed"
+# the window
+_w129 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
+for _s in ('text="Save snapshot"', 'text="Restore selected"', "def snapshot_clicked(self)", "def restore_clicked(self)", "messagebox.askyesno(\"Restore snapshot\"", "cl.restore_snapshot(snap[\"folder\"])"):
+    assert _s in _w129, _s
+print("  [OK] Test 129 Passed: a snapshot copies the newest save folder with its summary, restore is refused while the game runs and keeps what it replaces (also when the folder is gone), the list ignores the replaced copies, and the capture's latest folder is refreshed in place")
