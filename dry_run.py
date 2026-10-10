@@ -6458,9 +6458,12 @@ for _turn131 in range(80):
         _quiet131 = 0
     elif _d131 is None:
         _quiet131 += 1
-assert len(_equips131) <= 4, f"he must settle, not swap forever: {len(_equips131)} equips {_equips131[:12]}"
+assert len(_equips131) <= 6, f"he must settle, not swap forever: {len(_equips131)} equips {_equips131[:12]}"
+assert _w131["hand"] == "35290", f"the shield wins the hand (human: it saves hit points), got {_w131['hand']}"
+assert brain.INV_STATE["flip_lock"].get("30415") and brain.INV_STATE["flip_lock"].get("33176"), "the carried weapons wait"
 assert _quiet131 >= 60, f"after settling the inventory step is quiet, got {_quiet131}"
 assert len(set(_equips131)) <= 3
+_shield_turn131 = brain.TURN_CLOCK
 # the lock lapses: after EQUIP_FLIP_LOCK_TURNS the item is judged afresh (and flips at most a couple more times, then is locked again)
 brain.TURN_CLOCK += brain.EQUIP_FLIP_LOCK_TURNS + 5
 brain.INV_STATE["sig"] = None
@@ -6471,7 +6474,8 @@ for _turn131 in range(40):
     if _d131 and _d131["action"].startswith("EQUIP_ITEM:"):
         _w131["hand"] = _d131["action"].split(":")[1]
         _more131 += 1
-assert _more131 <= 3, f"a lapsed lock may flip again only a little: {_more131}"
+assert _more131 == 0, f"the weapons wait much longer than the ordinary lock, so nothing flips after 600 turns: {_more131}"
+assert _w131["hand"] == "35290"
 # ordinary upgrades are untouched: a better item is still equipped once, and a second upgrade later is not mistaken for a flip
 _reset131()
 _w131b = _world131()
@@ -6483,4 +6487,4 @@ _reset131()
 brain.INV_STATE["equip_hist"] = ["999"]
 assert brain.EQUIP_FLIP_WINDOW == 6 and brain.EQUIP_FLIP_LOCK_TURNS == 600
 _reset131()
-print("  [OK] Test 131 Passed: a shield and a weapon that push each other out of one hand settle after a few swaps instead of looping (the capture's 70-swap cycle), stay quiet afterwards, flip only a little when the lock lapses, and ordinary equips are untouched")
+print("  [OK] Test 131 Passed: a shield and a weapon that push each other out of one hand settle after a few swaps instead of looping (the capture's 70-swap cycle), the shield ends up worn and the carried weapons wait, nothing flips when the ordinary lock lapses, and ordinary equips are untouched")

@@ -714,6 +714,7 @@ INV_STATE = {"sig": None, "pending": None, "fails": {}, "profiles": {}, "equip_h
 # equips and has been displaced since is not equipped again for EQUIP_FLIP_LOCK_TURNS; the lock lapses, so a changed situation is judged afresh.
 EQUIP_FLIP_WINDOW = 6
 EQUIP_FLIP_LOCK_TURNS = 600
+EQUIP_SHIELD_WINS_LOCK_TURNS = 3000      # when a shield and a weapon fight over a hand the SHIELD wins (human, 2026-10-09: the shield "has saved precious hit points"); the carried weapons wait this long
 INV_LAST_SEQ = {"seq": 0}
 ITEM_DROP_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "item_drops.jsonl")
 
@@ -748,9 +749,16 @@ def choose_inventory_action(game_state, template, is_town):
             del hist[:-EQUIP_FLIP_WINDOW * 2]
     for it, slot, why in item_scoring.choose_equips([i for i in items if (i.get("identified") is not False or i.get("equipped")) and (i.get("equipped") or lock.get(i["id"], -1) <= TURN_CLOCK)], profile):
         if it["id"] in hist[-EQUIP_FLIP_WINDOW:] and not it.get("equipped"):
-            lock[it["id"]] = TURN_CLOCK + EQUIP_FLIP_LOCK_TURNS
-            print(f"[INVENTORY] equip flip: {it.get('name')} was equipped a moment ago and pushed out again; leaving it for {EQUIP_FLIP_LOCK_TURNS} turns.")
-            continue
+            if item_scoring._entry(it).get("group") == "shield":
+                # a shield and a weapon are fighting over one hand: wear the shield and keep every carried weapon out of the way for a long while
+                for other in items:
+                    if not other.get("equipped") and item_scoring._entry(other).get("group") == "melee_weapon":
+                        lock[other["id"]] = TURN_CLOCK + EQUIP_SHIELD_WINS_LOCK_TURNS
+                print(f"[INVENTORY] equip flip: {it.get('name')} and a weapon keep pushing each other out of a hand; the shield wins, the carried weapons wait {EQUIP_SHIELD_WINS_LOCK_TURNS} turns.")
+            else:
+                lock[it["id"]] = TURN_CLOCK + EQUIP_FLIP_LOCK_TURNS
+                print(f"[INVENTORY] equip flip: {it.get('name')} was equipped a moment ago and pushed out again; leaving it for {EQUIP_FLIP_LOCK_TURNS} turns.")
+                continue
         INV_STATE["equip_last"] = it["id"]
         INV_STATE["pending"] = {"kind": "equip", "ids": [it["id"]], "reasons": {it["id"]: why}, "names": {it["id"]: it.get("name")}}
         return {"action": f"EQUIP_ITEM:{it['id']}", "reason": f"Inventory: equipping {it.get('name')} in {slot} ({why})"}
