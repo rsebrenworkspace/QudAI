@@ -6134,7 +6134,7 @@ try:
         if _d is None:
             break
         _n += 1
-    assert _n == brain.EXAMINE_MAX_TRIES == 4, _n
+    assert _n == brain.EXAMINE_MAX_TRIES == 6, _n
     # the game's report: understood or gone clears the count; a partial result keeps it, and the inventory step looks again
     _reset126()
     brain.EXAMINE_STATE["tries"]["a1"] = 2
@@ -6148,6 +6148,22 @@ try:
     brain.note_inventory_action({"last_inventory_action": {"seq": 3, "kind": "examine", "ok": ["a3|weird artifact|gone"], "failed": [], "zone": "z", "x": 1, "y": 1}})
     brain.note_inventory_action({"last_inventory_action": {"seq": 4, "kind": "examine", "ok": [], "failed": ["a4:Sifrah examine is on"], "zone": "z", "x": 1, "y": 1}})
     assert brain.INV_STATE["fails"].get("a4") == 1
+    # every result is logged for measuring the odds
+    _old126 = brain.EXAMINE_LOG_PATH
+    brain.EXAMINE_LOG_PATH = _os.path.join(tempfile.mkdtemp(), "examine_log.jsonl")
+    try:
+        _reset126()
+        _g = _gs126(_inv126(_worn, _it126("a7", "Dart Gun", ident=False)), attributes={"Intelligence": 17})
+        _dd = brain.choose_examine_action(_g, False)
+        brain.note_inventory_action({"last_inventory_action": {"seq": 11, "kind": "examine", "ok": ["a7|pistol|partial"], "failed": [], "zone": "z", "x": 1, "y": 1}})
+        brain.choose_examine_action(_g, False)
+        brain.note_inventory_action({"last_inventory_action": {"seq": 12, "kind": "examine", "ok": [], "failed": ["a7:the game did not run Examine"], "zone": "z", "x": 1, "y": 1}})
+        _rows = [_json.loads(l) for l in open(brain.EXAMINE_LOG_PATH, encoding="utf-8")]
+        assert len(_rows) == 2 and _rows[0]["outcome"] == "partial" and _rows[0]["blueprint"] == "Dart Gun" and _rows[0]["attempt"] == 1 and _rows[0]["intelligence"] == 17, _rows
+        assert _rows[1]["outcome"].startswith("failed:") and _rows[1]["attempt"] == 2, _rows
+    finally:
+        brain.EXAMINE_LOG_PATH = _old126
+    assert brain.EXAMINE_MAX_TRIES == 6
 finally:
     _reset126()
 # cursed items: never equipped, from the pack or the ground; a worn one stays in its own slot logic

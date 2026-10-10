@@ -741,7 +741,17 @@ def choose_inventory_action(game_state, template, is_town):
 # exports `partial` and `cursed` per item and `sifrah_examine` (the minigame option: a modal screen the mod cannot answer), and `EXAMINE_ITEM:<id>` runs the engine's own Examine.
 # Phase A only, one per safe moment, at 80 percent hit points or better, a few tries per item. Partly understood items first: one more look finishes them. Once an item is
 # understood the inventory step scores it like any other (equip if it is an upgrade); the existing scorer cannot see utility effects, which is stage 2.
-EXAMINE_MAX_TRIES = 4
+EXAMINE_MAX_TRIES = 6           # was 4: night-vision goggles (complexity 3, Intelligence 17) failed twice before they were understood in the human's first run (2026-10-09)
+EXAMINE_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "examine_log.jsonl")
+
+
+def log_examine(record):
+    """One JSON line per examine result (and per refusal): what, the outcome, the attempt and the character's Intelligence, so the odds can be measured instead of guessed. Never raises."""
+    try:
+        with open(EXAMINE_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + chr(10))
+    except Exception:
+        pass
 EXAMINE_MIN_HP_RATIO = 0.8
 EXAMINE_STATE = {"tries": {}, "warned": False}
 
@@ -767,7 +777,8 @@ def choose_examine_action(game_state, is_town):
     it = cands[0]
     EXAMINE_STATE["tries"][it["id"]] = EXAMINE_STATE["tries"].get(it["id"], 0) + 1
     why = "partly understood, one more look" if it.get("partial") else "unidentified"
-    INV_STATE["pending"] = {"kind": "examine", "ids": [it["id"]], "reasons": {it["id"]: why}, "names": {it["id"]: it.get("name")}}
+    INV_STATE["pending"] = {"kind": "examine", "ids": [it["id"]], "reasons": {it["id"]: why}, "names": {it["id"]: it.get("name")}, "blueprints": {it["id"]: it.get("blueprint")},
+                            "attempt": EXAMINE_STATE["tries"][it["id"]], "intelligence": ((game_state.get("attributes") or {}).get("Intelligence"))}
     return {"action": f"EXAMINE_ITEM:{it['id']}", "reason": f"Examine: trying to identify {it.get('name')} ({why}; attempt {EXAMINE_STATE['tries'][it['id']]} of {EXAMINE_MAX_TRIES})"}
 
 
@@ -973,6 +984,8 @@ def note_inventory_action(game_state):
             if la.get("kind") == "examine":
                 shown, _, outcome = name.rpartition("|")
                 print(f"[INVENTORY] examined {shown}: {outcome}")
+                log_examine({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "id": iid, "before": (pend.get("names") or {}).get(iid), "after": shown, "outcome": outcome,
+                             "blueprint": (pend.get("blueprints") or {}).get(iid), "attempt": pend.get("attempt"), "intelligence": pend.get("intelligence")})
                 if outcome in ("understood", "gone"):
                     EXAMINE_STATE["tries"].pop(iid, None)
             elif la.get("kind") == "take":
@@ -986,6 +999,9 @@ def note_inventory_action(game_state):
                 print(f"[INVENTORY] equipped {name}: {(pend.get('reasons') or {}).get(iid, '')}")
         for item in la.get("failed", []):
             iid = str(item).split(":", 1)[0]
+            if la.get("kind") == "examine":
+                log_examine({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "id": iid, "before": (pend.get("names") or {}).get(iid), "outcome": "failed: " + str(item).split(":", 1)[-1],
+                             "blueprint": (pend.get("blueprints") or {}).get(iid), "attempt": pend.get("attempt"), "intelligence": pend.get("intelligence")})
             INV_STATE["fails"][iid] = INV_STATE["fails"].get(iid, 0) + 1
             print(f"[INVENTORY] {la.get('kind')} refused for {item} (attempt {INV_STATE['fails'][iid]} of {INV_FAIL_LIMIT})")
     except Exception:

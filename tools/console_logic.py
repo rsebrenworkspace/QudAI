@@ -444,7 +444,7 @@ def log_lab_use(scenario_id, note="", path=None):
 MEMORY_KINDS = ("lesson", "chronicle", "postmortem", "run", "lab", "data")
 MEMORY_KIND_NAMES = {"lesson": "Ancestral lessons", "chronicle": "Chronicles", "postmortem": "Post-mortems", "run": "Run records",
                      "lab": "Model lab results", "data": "Live data (used by the brain: view only)"}
-DATA_FILES = ("ability_stats.json", "danger_ledger.json", "exit_choices.jsonl", "item_drops.jsonl", "decision_trace.jsonl", "decision_trace.jsonl.1", "generation_counter.json")
+DATA_FILES = ("ability_stats.json", "danger_ledger.json", "exit_choices.jsonl", "item_drops.jsonl", "examine_log.jsonl", "decision_trace.jsonl", "decision_trace.jsonl.1", "generation_counter.json")
 VIEW_ONLY_KINDS = ("data",)
 
 
