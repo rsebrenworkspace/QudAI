@@ -1147,6 +1147,128 @@ namespace QudAIBrain
             catch { }
         }
 
+        // Diagnostic for a zone exit that cannot be reached or stepped (the three-zone hop loop, 2026-10-09). One `[QudAI ExitDiag]` line per zone, edge, reason and player cell:
+        // the edge, why (`no step` = the engine found no route; `move failed` = the step was refused), the player's cell and neighbours (PathDiagCell legend above), and the whole
+        // border row as one character per cell: . passable, W swimming-depth liquid the player may enter, X swimming-depth liquid it may not, w wading-depth liquid, S solid or wall, x other impassable. Never acts, never throws, at most 150 lines per session.
+        private static readonly HashSet<string> exitDiagSeen = new HashSet<string>();
+
+        private static void LogExitDiag(GameObject player, char edgeChar, string why, string step)
+        {
+            try
+            {
+                Cell pc = player != null ? player.CurrentCell : null;
+                Zone z = pc != null ? pc.ParentZone : null;
+                if (z == null) return;
+                string key = z.ZoneID + "|" + edgeChar + "|" + why + "|" + pc.X + "," + pc.Y;
+                if (exitDiagSeen.Count >= 150 || !exitDiagSeen.Add(key)) return;
+                StringBuilder sb = new StringBuilder();
+                sb.Append("[QudAI ExitDiag] ").Append(edgeChar).Append(" exit of ").Append(z.ZoneID).Append(": ").Append(why);
+                if (!string.IsNullOrEmpty(step))
+                {
+                    sb.Append(" (step ").Append(step).Append(')');
+                    Cell dest = null;
+                    try { dest = pc.GetCellFromDirection(step, false); } catch { }
+                    sb.Append(" dest ").Append(PathDiagCell(dest, player));
+                    try { if (dest != null && dest.Objects != null) foreach (GameObject o in dest.Objects) { if (o != null) sb.Append(" holds ").Append(o.Blueprint); } } catch { }
+                }
+                sb.Append(" | player ").Append(PathDiagCell(pc, player)).Append(" | around player");
+                foreach (string d in pathDiagDirs)
+                {
+                    Cell n = null;
+                    try { n = pc.GetCellFromDirection(d, false); } catch { }
+                    sb.Append(" [").Append(d).Append(' ').Append(PathDiagCell(n, player)).Append(']');
+                }
+                sb.Append(" | border ");
+                int len = (edgeChar == 'N' || edgeChar == 'S') ? z.Width : z.Height;
+                for (int i = 0; i < len; i++)
+                {
+                    Cell b = null;
+                    try
+                    {
+                        if (edgeChar == 'N') b = z.GetCell(i, 0);
+                        else if (edgeChar == 'S') b = z.GetCell(i, z.Height - 1);
+                        else if (edgeChar == 'E') b = z.GetCell(z.Width - 1, i);
+                        else b = z.GetCell(0, i);
+                    }
+                    catch { }
+                    char ch = '?';
+                    try
+                    {
+                        if (b == null) ch = '?';
+                        else if (b.HasSwimmingDepthLiquid()) ch = b.IsPassable(player, false) ? 'W' : 'X';
+                        else if (b.IsPassable(player, false)) ch = '.';
+                        else if (b.HasWadingDepthLiquid()) ch = 'w';
+                        else if (b.IsSolid() || b.HasWall()) ch = 'S';
+                        else ch = 'x';
+                    }
+                    catch { }
+                    sb.Append(ch);
+                }
+                UnityEngine.Debug.Log(sb.ToString());
+            }
+            catch { }
+        }
+
+        // First step of a route to the given edge that may swim (HANDOFF issue 105: the only way out of three zones was a lake, and the engine's edge step found none).
+        // Dijkstra over the zone's cells: a step costs 1, a swimming-depth cell 3 (dry land is preferred); cells that are not passable for the player, solid, walls or
+        // dangerous open liquid (acid, lava) are never entered. With allowSwim false the same search is dry-only, which tells whether the edge is reachable without swimming. Returns a direction or null.
+        private static string SwimExitStep(GameObject player, char edgeChar, bool allowSwim)
+        {
+            try
+            {
+                Cell pc = player != null ? player.CurrentCell : null;
+                Zone z = pc != null ? pc.ParentZone : null;
+                if (z == null) return null;
+                int w = z.Width, h = z.Height;
+                int[] dist = new int[w * h];
+                int[] prev = new int[w * h];
+                bool[] done = new bool[w * h];
+                for (int i = 0; i < dist.Length; i++) { dist[i] = int.MaxValue; prev[i] = -1; }
+                int start = pc.Y * w + pc.X;
+                dist[start] = 0;
+                int[] dxs = { 0, 1, 1, 1, 0, -1, -1, -1 };
+                int[] dys = { -1, -1, 0, 1, 1, 1, 0, -1 };
+                while (true)
+                {
+                    int cur = -1, best = int.MaxValue;
+                    for (int i = 0; i < dist.Length; i++) if (!done[i] && dist[i] < best) { best = dist[i]; cur = i; }
+                    if (cur < 0) return null;
+                    done[cur] = true;
+                    int cx = cur % w, cy = cur / w;
+                    bool onEdge = (edgeChar == 'W' && cx == 0) || (edgeChar == 'E' && cx == w - 1) || (edgeChar == 'N' && cy == 0) || (edgeChar == 'S' && cy == h - 1);
+                    if (onEdge && cur != start)
+                    {
+                        int at = cur;
+                        while (prev[at] != start && prev[at] >= 0) at = prev[at];
+                        int sx = at % w - pc.X, sy = at / w - pc.Y;
+                        for (int k = 0; k < 8; k++) if (dxs[k] == sx && dys[k] == sy) return pathDiagDirs[k];
+                        return null;
+                    }
+                    for (int k = 0; k < 8; k++)
+                    {
+                        int nx = cx + dxs[k], ny = cy + dys[k];
+                        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                        int ni = ny * w + nx;
+                        if (done[ni]) continue;
+                        Cell nc = z.GetCell(nx, ny);
+                        if (nc == null) continue;
+                        bool ok = false, swim = false;
+                        try
+                        {
+                            ok = nc.IsPassable(player, false) && !nc.IsSolid() && !nc.HasWall() && nc.GetDangerousOpenLiquidVolume() == null;
+                            swim = ok && nc.HasSwimmingDepthLiquid();
+                            if (swim && !allowSwim) ok = false;
+                        }
+                        catch { ok = false; }
+                        if (!ok) continue;
+                        int nd = dist[cur] + (swim ? 3 : 1);
+                        if (nd < dist[ni]) { dist[ni] = nd; prev[ni] = cur; }
+                    }
+                }
+            }
+            catch { return null; }
+        }
+
         public static bool IsCompanion(GameObject obj, GameObject player)
         {
             if (obj == null || player == null || obj == player || obj.IsPlayer() || !IsStanding(obj)) return false;
@@ -3731,11 +3853,26 @@ namespace QudAIBrain
                     return;
                 }
 
-                try
+                // The engine's edge step does not route through deep water and, when the only way out is a lake, it hands back a step that leads nowhere (the player walks to the
+                // shore and back: HANDOFF issue 105). So: if the edge cannot be reached dry but can be reached by swimming, take the swimming route; otherwise the engine decides.
+                if (SwimExitStep(player, edgeChar, false) == null)
                 {
-                    AutoAct.TryFindEdgeStep(edgeChar, out step);
+                    string lakeStep = SwimExitStep(player, edgeChar, true);
+                    if (!string.IsNullOrEmpty(lakeStep))
+                    {
+                        step = lakeStep;
+                        LogExitDiag(player, edgeChar, "swim route (no dry route)", lakeStep);
+                    }
                 }
-                catch { }
+
+                if (string.IsNullOrEmpty(step) || step == ".")
+                {
+                    try
+                    {
+                        AutoAct.TryFindEdgeStep(edgeChar, out step);
+                    }
+                    catch { }
+                }
 
                 // Fallback: Check open border cells on requested edge if TryFindEdgeStep didn't find a direct step
                 if (string.IsNullOrEmpty(step) || step == ".")
@@ -3775,6 +3912,17 @@ namespace QudAIBrain
                     catch { }
                 }
 
+                // Last resort before giving up: a route that may swim (a lake can be the only way out of a zone).
+                if (string.IsNullOrEmpty(step) || step == ".")
+                {
+                    string swimStep = SwimExitStep(player, edgeChar, true);
+                    if (!string.IsNullOrEmpty(swimStep))
+                    {
+                        step = swimStep;
+                        LogExitDiag(player, edgeChar, "swim route", swimStep);
+                    }
+                }
+
                 // If no complex path step found, check if player is directly adjacent to the target edge border
                 if (string.IsNullOrEmpty(step) || step == ".")
                 {
@@ -3799,6 +3947,7 @@ namespace QudAIBrain
                     int pyBefore = player.CurrentCell?.Y ?? -1;
                     string zoneBefore = player.CurrentCell?.ParentZone?.ZoneID;
 
+                    LogExitDiag(player, edgeChar, "step", step);      // every distinct (zone, edge, cell) once: shows what the engine's step is when he oscillates
                     bool moved = player.Move(step);
                     bool zoneOrCellChanged = (player.CurrentCell != null && (
                         player.CurrentCell.ParentZone?.ZoneID != zoneBefore ||
@@ -3810,6 +3959,7 @@ namespace QudAIBrain
                     {
                         lastMoveFailed = true;
                         lastFailedDir = step.ToUpper();
+                        LogExitDiag(player, edgeChar, "move failed", step);
                         TryOpenDoorInDirection(player, step);
                     }
                     else
@@ -3828,6 +3978,7 @@ namespace QudAIBrain
                 {
                     lastMoveFailed = true;
                     lastFailedDir = edgeChar.ToString();
+                    LogExitDiag(player, edgeChar, "no step", null);
                     if (player.Energy != null) player.UseEnergy(1000, "Pass");
                     return;
                 }
