@@ -3,7 +3,7 @@
 - **Backlog item:** B15 (docs/BACKLOG.md)
 - **Branch:** `docs/artifacts-research` (notes only)
 - **Owner:** human drives the in-game experiments; Claude reads the engine and explains
-- **Status:** First pass done 2026-10-09 (code and state only); in-game experiments still open
+- **Status:** First pass done 2026-10-09; the human's examine experiment is recorded below; build not started
 - **Budget:** one session
 
 ## Purpose
@@ -23,6 +23,27 @@ The pack held nine unidentified items. The mod exports each item's REAL blueprin
 | weird artifact | GlitterGrenade1 | 1 |
 
 All have `identified: false` (the mod's `Understood()`). So the brain can already read what they are, which a player cannot: any use of that knowledge is a policy choice (see below).
+
+## The human's experiment (2026-10-09, lab character, Intelligence 17) `[verified in game and state]`
+- The human examined all nine items one at a time (they could not see what they were). **No failures at all**, so no failure effect was observed (no explosion, no breakage).
+- One item, eyewear, revealed itself only as "goggles" on the first examine (a PARTIAL success: the item's `Examiner` has an `Alternate` appearance, and the manual says a partial success narrows the function) and needed a **second examine** for the full description.
+- After the experiment `last_state.json` shows every item `identified: true`, with these names: slip ring; **masterwork grappling gun** (a quality prefix appears once understood); nanopneumatic jackhammer (x3); telescopic monocle (stack of 2); geomagnetic disc; telemetric visor; **glitter grenade mk I**. None was equipped by the existing equip step (the scorer rates them 0 to 4.5; see below). A brief engage also made the inventory step drop a slime-stained staff (the war hammer replaced it).
+- Not answered yet: whether a Sifrah minigame screen ever appeared.
+
+## What the blueprints say (`ObjectBlueprints/Items.xml`, `[verified in data]`)
+| item | what it is | `Examiner Complexity` |
+|---|---|---|
+| Telescopic Monocle | Face eyewear, `Toolbox UnpoweredInspectBonus="5"`: an **inspector** item that improves examine rolls when worn | 3 |
+| Telemetric Visor | Face eyewear, tech scanner (`IntPropertyChanger TechScannerEquipped`), needs an energy cell | 5 |
+| Slip Ring | arm bracelet, `SlipRing ActivationChance="5" SaveBonus="15"`, runs on oil, gel, ink or slime | 5 |
+| Grappling Gun | pistol-skill gun, `GrapplingGun Force="4500"`, range 8, needs an energy cell | 3 |
+| Geomagnetic Disc | thrown, `GeomagneticDisc Damage="2d6" Bounces="5"`, needs an energy cell | 6 |
+| Nanopneumatic Jackhammer | two-handed Cudgel weapon 2d4 with `DiggingTool` and `Drill`, needs an energy cell; `Examiner Alternate="UnknownClub"` (looks like a club until understood) | 2 |
+| Glitter Grenade | gas grenade, `GlitterGas` | not listed |
+`data/items.json` keeps only a few part types, so it cannot see these effects: the scorer rates the monocle and visor 0, the slip ring 0, the grappling gun 1.65, the disc 3.0 and the jackhammer 4.5 (below the war hammer worn).
+
+## A safety finding from the same inventory `[verified in data and state]`
+The worn **Gentling Mask** has the part `Cursed` (`Armor AV="1" Ego="-1"`). Only six blueprints carry it (Psychal Fleshgun, Gentling Collar, Gentling Mask, Inhibitor Cuff, BarathrumiteSafetyBand, Cyclopean Prism); there are also `RemoveCursedOnUnequip` and `CursedCybernetics` parts. A cursed item is the reason the Face slot cannot take the monocle or the visor, and the equip step and the ground pickup (B16) have no idea: neither checks `Cursed`. The effect of the curse on unequipping was not read `[unverified]`.
 
 ## Questions and answers
 1. **What is an artifact?** `[verified in game data: Manual.xml, Data.xml]` an item "so technologically complex that few understand it"; unidentified ones use placeholder names (`BaseUnknown` "weird artifact", `UnknownOddTrinket` "odd trinket") and lose their `Examiner` until understood. Tonics count too.
