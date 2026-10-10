@@ -18,7 +18,7 @@ import creature_threat
 
 # Paths
 # QUDAI_EXCHANGE_DIR overrides the folder (tests point it at a temp dir so they can never touch the real game files).
-EXCHANGE_DIR = os.environ.get("QUDAI_EXCHANGE_DIR") or r"C:\Users\rsebr\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI"
+from qudai_config import EXCHANGE_DIR  # noqa: E402  (one config for the paths: qudai_config.py)
 STATE_FILE = os.path.join(EXCHANGE_DIR, "state.json")
 ACTION_FILE = os.path.join(EXCHANGE_DIR, "action.json")
 FLAG_FILE = os.path.join(EXCHANGE_DIR, "active.flag")

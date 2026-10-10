@@ -26,7 +26,8 @@ namespace QudAIBrain
     [HarmonyPatch(typeof(XRLCore), "PlayerTurn")]
     public static class AIPlayerTurnPatch
     {
-        private const string ExchangeDir = @"C:\Users\rsebr\AppData\LocalLow\Freehold Games\CavesOfQud\QudAI";
+        // The same folder qudai_config.py names: the game's data folder for the current Windows user (no user name in the code).
+        private static readonly string ExchangeDir = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile), "AppData", "LocalLow", "Freehold Games", "CavesOfQud", "QudAI");
         public static string FlagFile => Path.Combine(ExchangeDir, "active.flag");
         public static string ExchangeFile(string name) { return Path.Combine(ExchangeDir, name); }
         private static string StateFile => Path.Combine(ExchangeDir, "state.json");

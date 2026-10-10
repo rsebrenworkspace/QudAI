@@ -6488,3 +6488,29 @@ brain.INV_STATE["equip_hist"] = ["999"]
 assert brain.EQUIP_FLIP_WINDOW == 6 and brain.EQUIP_FLIP_LOCK_TURNS == 600
 _reset131()
 print("  [OK] Test 131 Passed: a shield and a weapon that push each other out of one hand settle after a few swaps instead of looping (the capture's 70-swap cycle), the shield ends up worn and the carried weapons wait, nothing flips when the ordinary lock lapses, and ordinary equips are untouched")
+
+
+# Test 132: one config for the exchange folder, no user name in the code (AGENTS.md section 5; HANDOFF issue 111)
+# ---------------------------------------------------------------------------
+import subprocess as _sp132
+_here132 = _os.path.dirname(_os.path.abspath(__file__))
+_env132 = {k: v for k, v in _os.environ.items() if k != "QUDAI_EXCHANGE_DIR"}
+_out132 = _sp132.run([_sys.executable, "-c", "import qudai_config as c; print(c.EXCHANGE_DIR); print(c.DEFAULT_EXCHANGE_DIR)"], cwd=_here132, env=_env132, capture_output=True, text=True).stdout.split(chr(10))
+_default132 = _os.path.join(_os.path.expanduser("~"), "AppData", "LocalLow", "Freehold Games", "CavesOfQud", "QudAI")
+assert _out132[0].strip() == _default132 and _out132[1].strip() == _default132, _out132
+_over132 = _sp132.run([_sys.executable, "-c", "import qudai_config as c; print(c.EXCHANGE_DIR)"], cwd=_here132, env=dict(_env132, QUDAI_EXCHANGE_DIR=r"X:\elsewhere"), capture_output=True, text=True).stdout.strip()
+assert _over132 == r"X:\elsewhere", _over132
+import qudai_config as _qc132
+assert _qc132.EXCHANGE_DIR == brain.EXCHANGE_DIR, "brain.py takes its folder from the one config"
+for _rel132 in ("brain.py", "twitch_bot.py", _os.path.join("tools", "console_logic.py")):
+    assert "from qudai_config import EXCHANGE_DIR" in open(_os.path.join(_here132, _rel132), encoding="utf-8").read(), _rel132
+# no user name anywhere in the shipped source (the same idea as tools/check_docs.py)
+for _dp132, _dn132, _fn132 in _os.walk(_here132):
+    _dn132[:] = [d for d in _dn132 if d not in ("scratch", "memory", "chronicles", ".git", "__pycache__", "data")]
+    for _f132 in _fn132:
+        if _f132.endswith((".py", ".cs")) and _f132 != "dry_run.py":      # this test names the string it looks for
+            assert "rsebr" not in open(_os.path.join(_dp132, _f132), encoding="utf-8", errors="ignore").read().lower(), f"user name hard-coded in {_f132}"
+_cs132 = open(_os.path.join(_here132, "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "private static readonly string ExchangeDir = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile)" in _cs132
+assert "private const string ExchangeDir" not in _cs132 and _cs132.count("{") == _cs132.count("}")
+print("  [OK] Test 132 Passed: qudai_config.py is the one place for the exchange folder (the current user's game data folder, QUDAI_EXCHANGE_DIR overrides it), brain, twitch bot and console use it, the mod builds the same path from the user profile, and no source file carries a user name")
