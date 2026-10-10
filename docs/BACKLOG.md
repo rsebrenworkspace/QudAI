@@ -219,5 +219,12 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Depends on:** B15 stage 2 (utility and power) and B21 (digging tool), and the C# `slots` export that issue 112 adds.
 - **Size (my guess):** research small, first step (discount unloaded weapons, load a bow that has arrows) small to medium.
 
+### B21. Keep a digging tool (human, 2026-10-09: "We may have to prioritize digging and hammers for indepth runs in the loot list." and "Until we get items that can get the model out of being caged in the hammer is probably the better bet."; first step promoted and built on `feat/digger-priority`)
+- **Why:** with rock around him (marl, shale, sandstone) the engine's routes go through walls; a wielded digging tool (the Nanopneumatic Jackhammer, the Pickaxe) breaks them, and without one he sat entombed (HANDOFF issues 109, 112).
+- **Engine truth `[verified in data]`:** the part `DiggingTool` marks the tool (Pickaxe, Nanopneumatic Jackhammer; the jackhammer also has an energy-cell socket and a `Drill` part). Natural diggers (Burrowing Claws, drill beaks) carry it too.
+- **Built (first step, issue 113):** the catalogue tags `digger`; the scorer adds `DIGGER_BONUS`, so a carried digging tool is wielded ahead of a stun rod and a shield; no shield is fetched while a two-handed weapon is wielded. The human's rule: run it this way until stronger items turn up, then revisit.
+- **Not built:** fetching a digging tool from the ground when none is carried (the ground pickup uses the same scorer, so it may already do so: `[unverified]`), choosing between a pickaxe and a jackhammer by charge (does digging drain the cell? `[unknown]`), and never dropping the last digger (a high score already protects it from the junk rule).
+- **Risks:** the shield was saving hit points in the delve fights; a two-handed hammer gives that up.
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.
