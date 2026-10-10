@@ -230,6 +230,9 @@ def describe_state(s):
     L.append(f"Zone: {s.get('zone_name') or '?'}  ({s.get('zone_id') or '?'})   cell {s.get('x', '?')},{s.get('y', '?')}   unexplored cells: {s.get('unexplored_cells', '?')}")
     L.append(f"Hunger: {s.get('hunger_level', '?')}   food: {s.get('food_count', '?')}   water drams: {s.get('water_drams', '?')}   companion: {'yes' if s.get('has_companion') else 'no'}")
     L.append(f"Hostiles nearby: {s.get('hostiles_nearby')}   adjacent: {s.get('hostiles_adjacent')}   on fire: {s.get('is_on_fire')}")
+    if s.get("psychic_glimmer") is not None:
+        hunters = [e.get("name", "?") for e in (s.get("visible_entities") or []) if e.get("psychic_hunter")]
+        L.append(f"Psychic glimmer: {s.get('psychic_glimmer')}" + (f"   PSYCHIC HUNTER in view: {', '.join(hunters)}" if hunters else ""))
     L.append(f"Carrying {s.get('carry_weight', '?')} of {s.get('max_carry_weight', '?')}   avoid-tagged vines: {s.get('avoid_tagged', 0)}")
     if s.get("equipped_summary"):
         L.append(f"Wearing: {s['equipped_summary']}")

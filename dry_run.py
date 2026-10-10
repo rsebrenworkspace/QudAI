@@ -6750,3 +6750,25 @@ assert "TEST SWITCH ON: combat abilities are hidden" in _b139 and "game_state = 
 _w139 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
 assert 'env["QUDAI_TEST_NO_COMBAT_ABILITIES"] = "1"' in _w139 and "TEST: hide combat abilities from the brain" in _w139
 print("  [OK] Test 139 Passed: with two hostiles in view the throw is offered at the one at range even when another is adjacent (a lone adjacent hostile and a companion on the line still block it), and the off-by-default test switch hides combat abilities from the brain and keeps the non-combat ones")
+
+
+# Test 140: psychic glimmer and hunters are exported and shown (BACKLOG B25 step 1, HANDOFF issue 120)
+# ---------------------------------------------------------------------------
+import postmortem as _pm140
+import tools.console_logic as _cl140
+_st140 = {"hp": 16, "max_hp": 42, "level": 8, "psychic_glimmer": 31, "x": 47, "y": 1, "visible_entities": [
+    {"name": "Shwubas-No-Longer", "is_enemy": True, "dist": 3, "dir": "N", "difficulty": "Impossible", "level": 20, "has_los": True, "psychic_hunter": True},
+    {"name": "snapjaw", "is_enemy": True, "dist": 6, "dir": "E", "difficulty": "Trivial", "level": 1, "has_los": True, "psychic_hunter": False}]}
+_md140 = _pm140.build_postmortem({"player_name": "Nashrouun", "death_reason": "Your head was exploded"}, _st140, [], generation=31)
+assert "Psychic glimmer 31" in _md140 and "BACKLOG B25" in _md140
+assert "| psychic hunter |" in _md140 and "| Shwubas-No-Longer | 3 | N | Impossible | 20 | True | YES |" in _md140 and "| snapjaw | 6 | E | Trivial | 1 | True |  |" in _md140, _md140
+assert "Psychic glimmer" not in _pm140.build_postmortem({}, {"hp": 1}, []), "an old mod that does not export it: no line"
+_ds140 = _cl140.describe_state(_st140)
+assert "Psychic glimmer: 31" in _ds140 and "PSYCHIC HUNTER in view: Shwubas-No-Longer" in _ds140, _ds140
+assert "PSYCHIC HUNTER" not in _cl140.describe_state(dict(_st140, visible_entities=[])) and "Psychic glimmer: 31" in _cl140.describe_state(dict(_st140, visible_entities=[]))
+_c140 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _s in ("private static bool IsPsychicHunter(GameObject o)", 'o.HasProperty("PsychicHunter") || o.Blueprint == "PsychicSeekerHunter"', "private static int PlayerGlimmer(GameObject player)",
+           "player.GetPsychicGlimmer(null)", 'sb.Append("\\"psychic_glimmer\\": " + PlayerGlimmer(player) + ",");'):
+    assert _s in _c140, _s
+assert _c140.count("IsPsychicHunter(obj)") == 1 and _c140.count("IsPsychicHunter(currentTarget)") == 1 and _c140.count("{") == _c140.count("}")
+print("  [OK] Test 140 Passed: the mod exports the player's glimmer and marks psychic hunters (the engine's PsychicHunter property and the seeker blueprint), the post-mortem prints the glimmer and a hunter column, and the console shows the glimmer and a hunter in view")
