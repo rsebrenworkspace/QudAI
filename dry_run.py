@@ -6514,3 +6514,29 @@ _cs132 = open(_os.path.join(_here132, "mod", "QudAIBrain", "AIBrainPart.cs"), en
 assert "private static readonly string ExchangeDir = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile)" in _cs132
 assert "private const string ExchangeDir" not in _cs132 and _cs132.count("{") == _cs132.count("}")
 print("  [OK] Test 132 Passed: qudai_config.py is the one place for the exchange folder (the current user's game data folder, QUDAI_EXCHANGE_DIR overrides it), brain, twitch bot and console use it, the mod builds the same path from the user profile, and no source file carries a user name")
+
+
+# Test 133: armor never evicts a weapon from a body slot it occupies (human capture 2026-10-09: a cape took the jackhammer's place on the back; HANDOFF issue 112)
+# ---------------------------------------------------------------------------
+import item_scoring as _is133
+_p133 = _is133.build_profile(build_templates.BUILD_TEMPLATES["esper_ited_away"])
+_row133 = lambda i, bp, name, eq=False, slots=None: {"id": i, "blueprint": bp, "name": name, "count": 1, "weight": 5, "equipped": eq, "identified": True, "slots": slots or []}
+_hammer133 = _row133("h1", "Nanopneumatic Jackhammer", "nanopneumatic jackhammer", eq=True, slots=["Back", "Hand", "Hand"])
+_cape133 = _row133("c1", "Worn Burnoose", "worn burnoose")
+_acts133 = _is133.choose_equips([_hammer133, _cape133, _row133("t1", "Woven Tunic", "woven tunic", eq=True, slots=["Body"])], _p133)
+assert not any(a[0]["id"] == "c1" for a in _acts133), f"the cape must not take the hammer's slot: {_acts133}"
+# the same pack WITHOUT the slot information shows the old behaviour (the slot looked empty)
+_old133 = _is133.choose_equips([dict(_hammer133, slots=[]), _cape133], _p133)
+assert any(a[0]["id"] == "c1" for a in _old133), "without `slots` the cape was equipped (this is the bug the export fixes)"
+# an empty back slot still gets the cape, and a worn cloak is still upgraded by a clearly better one
+_acts133 = _is133.choose_equips([_row133("h1", "Nanopneumatic Jackhammer", "nanopneumatic jackhammer", eq=True, slots=["Hand", "Hand"]), _cape133], _p133)
+assert any(a[0]["id"] == "c1" for a in _acts133), "a free back slot is still filled"
+_cloak133 = _row133("c2", "Leather Cloak", "leather cloak", eq=True, slots=["Back"])
+_cape2133 = _row133("c3", "Worn Burnoose", "worn burnoose")
+_scores133 = (_is133.score_item(_is133._entry(_cloak133), _p133)[0], _is133.score_item(_is133._entry(_cape2133), _p133)[0])
+_acts133 = _is133.choose_equips([_cloak133, _cape2133], _p133)
+assert bool(_acts133) == (_scores133[1] >= _scores133[0] + _is133.DOMINATED_MARGIN), (_scores133, _acts133)
+# the mod exports it
+_cs133 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "slotsById" in _cs133 and '\\"slots\\": [' in _cs133 and "part.Equipped.ID" in _cs133 and _cs133.count("{") == _cs133.count("}")
+print("  [OK] Test 133 Passed: the mod exports the body slots each worn item occupies, and armor never takes a slot a weapon holds (a free slot is still filled and a worn cloak is still upgraded)")
