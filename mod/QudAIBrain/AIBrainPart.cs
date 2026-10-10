@@ -1204,8 +1204,8 @@ namespace QudAIBrain
 
         // First step of a route to the given edge that may swim (HANDOFF issue 105: the only way out of three zones was a lake, and the engine's edge step found none).
         // Dijkstra over the zone's cells: a step costs 1, a swimming-depth cell 3 (dry land is preferred); cells that are not passable for the player, solid, walls or
-        // dangerous open liquid (acid, lava) are never entered. Only used after the engine's own edge step and path step found nothing. Returns a direction or null.
-        private static string SwimExitStep(GameObject player, char edgeChar)
+        // dangerous open liquid (acid, lava) are never entered. With allowSwim false the same search is dry-only, which tells whether the edge is reachable without swimming. Returns a direction or null.
+        private static string SwimExitStep(GameObject player, char edgeChar, bool allowSwim)
         {
             try
             {
@@ -1250,6 +1250,7 @@ namespace QudAIBrain
                         {
                             ok = nc.IsPassable(player, false) && !nc.IsSolid() && !nc.HasWall() && nc.GetDangerousOpenLiquidVolume() == null;
                             swim = ok && nc.HasSwimmingDepthLiquid();
+                            if (swim && !allowSwim) ok = false;
                         }
                         catch { ok = false; }
                         if (!ok) continue;
@@ -3845,11 +3846,26 @@ namespace QudAIBrain
                     return;
                 }
 
-                try
+                // The engine's edge step does not route through deep water and, when the only way out is a lake, it hands back a step that leads nowhere (the player walks to the
+                // shore and back: HANDOFF issue 105). So: if the edge cannot be reached dry but can be reached by swimming, take the swimming route; otherwise the engine decides.
+                if (SwimExitStep(player, edgeChar, false) == null)
                 {
-                    AutoAct.TryFindEdgeStep(edgeChar, out step);
+                    string lakeStep = SwimExitStep(player, edgeChar, true);
+                    if (!string.IsNullOrEmpty(lakeStep))
+                    {
+                        step = lakeStep;
+                        LogExitDiag(player, edgeChar, "swim route (no dry route)", lakeStep);
+                    }
                 }
-                catch { }
+
+                if (string.IsNullOrEmpty(step) || step == ".")
+                {
+                    try
+                    {
+                        AutoAct.TryFindEdgeStep(edgeChar, out step);
+                    }
+                    catch { }
+                }
 
                 // Fallback: Check open border cells on requested edge if TryFindEdgeStep didn't find a direct step
                 if (string.IsNullOrEmpty(step) || step == ".")
@@ -3892,7 +3908,7 @@ namespace QudAIBrain
                 // Last resort before giving up: a route that may swim (a lake can be the only way out of a zone).
                 if (string.IsNullOrEmpty(step) || step == ".")
                 {
-                    string swimStep = SwimExitStep(player, edgeChar);
+                    string swimStep = SwimExitStep(player, edgeChar, true);
                     if (!string.IsNullOrEmpty(swimStep))
                     {
                         step = swimStep;
