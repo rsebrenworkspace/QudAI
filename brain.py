@@ -719,11 +719,21 @@ INV_LAST_SEQ = {"seq": 0}
 ITEM_DROP_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "item_drops.jsonl")
 
 
-def _inv_profile(template):
+# Abilities that dig through rock by themselves (human, 2026-10-09: "if ability is acquired that allows digging, change equip able options"). With one of these a
+# digging tool is no longer worth a hand. Burrowing Claws is the only one known; add a command here when another is found (the ability list is the mod's `abilities`).
+DIG_ABILITY_COMMANDS = ("CommandToggleBurrowingClaws",)
+
+
+def has_dig_ability(game_state):
+    cmds = {c.lower() for c in DIG_ABILITY_COMMANDS}
+    return any(str(a.get("command", "")).lower() in cmds for a in (game_state.get("abilities") or []) if isinstance(a, dict))
+
+
+def _inv_profile(template, game_state=None):
     name = template.get("name", "")
     if name not in INV_STATE["profiles"]:
         INV_STATE["profiles"][name] = item_scoring.build_profile(template)
-    return INV_STATE["profiles"][name]
+    return dict(INV_STATE["profiles"][name], digs_by_ability=has_dig_ability(game_state or {}))
 
 
 def choose_inventory_action(game_state, template, is_town):
@@ -737,7 +747,7 @@ def choose_inventory_action(game_state, template, is_town):
     # The mod's `weight` is the STACK's total (12 torches report 12, verified in game 2026-10-06); the scorer thinks per unit, so convert.
     items = [dict(i, blueprint=i.get("blueprint"), weight=(i.get("weight") or 0) / max(1, i.get("count") or 1)) for i in inv
              if i.get("id") and not INV_STATE["fails"].get(i.get("id"), 0) >= INV_FAIL_LIMIT]
-    profile = _inv_profile(template)
+    profile = _inv_profile(template, game_state)
     # 1. equip: one clear upgrade per turn, never an unidentified item (its real stats are unknown), never an item that keeps getting displaced (flip lock)
     hist = INV_STATE.setdefault("equip_hist", [])
     lock = INV_STATE.setdefault("flip_lock", {})
@@ -844,7 +854,7 @@ def choose_ground_pickup(game_state, template, is_town):
     if is_town or game_state.get("is_swimming") or not isinstance(ground, list) or not ground or not isinstance(inv, list) or not inv:
         return None
     items = [dict(i, blueprint=i.get("blueprint"), weight=(i.get("weight") or 0) / max(1, i.get("count") or 1)) for i in inv if i.get("id")]
-    profile = _inv_profile(template)
+    profile = _inv_profile(template, game_state)
     carried, cap = game_state.get("carry_weight") or 0, game_state.get("max_carry_weight") or 0
     unidentified_carried = sum(1 for i in inv if i.get("identified") is False)
     for g in sorted(ground, key=lambda e: e.get("dist", 99)):

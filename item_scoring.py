@@ -206,9 +206,11 @@ def score_item(item, profile):
         if item.get("two_handed") and profile["wants_shield"] and profile.get("owns_shield"):
             base += TWO_HANDED_WITH_SHIELD
             reasons.append(f"two-handed while he owns a shield: {TWO_HANDED_WITH_SHIELD:g}")
-        if item.get("digger"):
+        if item.get("digger") and not profile.get("digs_by_ability"):
             base += DIGGER_BONUS
             reasons.append(f"digging tool: +{DIGGER_BONUS:g}")
+        elif item.get("digger"):
+            reasons.append("digging tool, but an ability already digs: no bonus")
         score += base
         pen = _weight_penalty(weight, profile)
         if pen:

@@ -6584,3 +6584,28 @@ for _t134 in range(60):
 assert _w134b["hand"] == "35290", "no hammer carried: the shield still wins the hand"
 _reset131()
 print("  [OK] Test 134 Passed: the catalogue tags digging tools from the engine's part, the jackhammer outscores a stun rod even while he owns a shield, he ends up wielding it and settles, no shield is fetched while it is wielded, and without a digger the shield still wins")
+
+
+# Test 135: with an ability that digs, a digging tool is no longer worth a hand (human, 2026-10-09: "if ability is acquired that allows digging, change equip able options"; HANDOFF issue 113)
+# ---------------------------------------------------------------------------
+_claws135 = {"abilities": [{"name": "Burrowing Claws", "command": "CommandToggleBurrowingClaws", "cooldown": 0, "usable": True, "active": True}]}
+assert brain.has_dig_ability(_claws135) and not brain.has_dig_ability({"abilities": [{"command": "CommandLase"}]}) and not brain.has_dig_ability({})
+assert "CommandToggleBurrowingClaws" in brain.DIG_ABILITY_COMMANDS
+_pd135 = brain._inv_profile(_tpl131, _claws135)
+_pn135 = brain._inv_profile(_tpl131, {})
+assert _pd135["digs_by_ability"] is True and _pn135["digs_by_ability"] is False
+_hd135 = _is134.score_item(_is134._entry({"blueprint": "Nanopneumatic Jackhammer"}), _is134.with_inventory(_pd135, [{"blueprint": "Iron Buckler", "equipped": True}]))
+_hn135 = _is134.score_item(_is134._entry({"blueprint": "Nanopneumatic Jackhammer"}), _is134.with_inventory(_pn135, [{"blueprint": "Iron Buckler", "equipped": True}]))
+assert abs((_hn135[0] - _hd135[0]) - _is134.DIGGER_BONUS) < 1e-9 and any("no bonus" in r for r in _hd135[2]), (_hd135, _hn135)
+# the whole decision: the same pack, but he owns Burrowing Claws, ends up as in Test 131 (the shield wins the hand), not with the hammer
+_reset131()
+_w135 = _w134()
+for _t135 in range(60):
+    brain.TURN_CLOCK += 1
+    _s135 = dict(_state134(_w135), **_claws135)
+    _d135 = brain.choose_inventory_action(_s135, _tpl131, False)
+    if _d135 and _d135["action"].startswith("EQUIP_ITEM:"):
+        _w135["hand"] = _d135["action"].split(":")[1]
+assert _w135["hand"] != "15515", f"with a digging ability the hammer is not wielded for digging, got {_w135['hand']}"
+_reset131()
+print("  [OK] Test 135 Passed: an ability that digs (Burrowing Claws today, the list in DIG_ABILITY_COMMANDS) takes the digging-tool bonus away, so the equip choice goes back to the shield and weapon rules")
