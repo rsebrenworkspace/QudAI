@@ -805,7 +805,7 @@ GROUND_STATE = {"id": None, "turns": 0, "blacklist": set()}
 
 
 # Unidentified items on the ground (BACKLOG B15, HANDOFF issue 102): fetched so the examine step can reveal them, and NEVER judged by their real blueprint (the human's rule: he learns
-# only by examining; the one hidden fact he may use is `cursed`, a safety check). A cap on how many unidentified items he carries and on the pack weight keeps this from hoarding.
+# only by examining; nothing hidden is used, `cursed` included). A cap on how many unidentified items he carries and on the pack weight keeps this from hoarding.
 UNIDENTIFIED_PICKUP_MAX_CARRIED = 6
 UNIDENTIFIED_PICKUP_WEIGHT_SHARE = 0.6
 
@@ -831,14 +831,13 @@ def choose_ground_pickup(game_state, template, is_town):
         if (game_state.get("zone_id"), (g.get("tx"), g.get("ty"))) in UNREACHABLE_SECTORS:
             continue                  # the engine reported no route to that cell
         if g.get("identified") is False:
-            # to be examined, not scored: its real blueprint is not used. Refuse a cursed one (safety), and keep the pack from filling with unknowns.
-            if item_scoring.is_cursed({"blueprint": g.get("blueprint"), "cursed": g.get("cursed")}):      # safety is the one use of what it really is
-                continue
+            # to be examined, not scored: its real blueprint is not used, and neither is `cursed` (human, 2026-10-09: a cursed item is part of the game's luck; using what a player
+            # could not see would be cheating). Keep the pack from filling with unknowns.
             if unidentified_carried >= UNIDENTIFIED_PICKUP_MAX_CARRIED or (cap and carried + (g.get("weight") or 0) > UNIDENTIFIED_PICKUP_WEIGHT_SHARE * cap):
                 continue
             why = "unidentified: to examine it"
         else:
-            cand = {"id": gid, "blueprint": g.get("blueprint"), "name": g.get("name"), "count": 1, "weight": g.get("weight") or 0, "equipped": False, "identified": True, "cursed": bool(g.get("cursed"))}
+            cand = {"id": gid, "blueprint": g.get("blueprint"), "name": g.get("name"), "count": 1, "weight": g.get("weight") or 0, "equipped": False, "identified": True}
             wins = [(it, slot, why) for it, slot, why in item_scoring.choose_equips(items + [cand], profile) if it.get("id") == gid]
             if not wins or item_scoring.score_item(item_scoring._entry(cand), item_scoring.with_inventory(profile, items + [cand]))[0] < GROUND_MIN_SCORE:
                 continue              # not an upgrade, or an empty slot that a worthless item would "fill"

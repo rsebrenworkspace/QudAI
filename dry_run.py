@@ -6140,7 +6140,7 @@ for _s in ('text="Start game"', 'text="Stop game"', 'text="Start game + brain"',
     assert _s in _win125, _s
 print("  [OK] Test 125 Passed: the console reads the game's state from tasklist (a failing check counts as not running), starts it by handing steam://rungameid/333640 to Steam, closes it politely first and force-closes only when asked (and only if it is still running), and the Control tab has the four buttons and a status line.")
 
-# Test 126: examining unidentified items and never equipping a cursed one (BACKLOG B15 stage 1, HANDOFF issue 102)
+# Test 126: examining unidentified items; cursed items are not special-cased (BACKLOG B15 stage 1, HANDOFF issue 102)
 # ---------------------------------------------------------------------------
 import item_scoring as _is126
 _inv126 = lambda *items: list(items)
@@ -6209,19 +6209,18 @@ try:
     assert brain.EXAMINE_MAX_TRIES == 6
 finally:
     _reset126()
-# cursed items: never equipped, from the pack or the ground; a worn one stays in its own slot logic
+# cursed items are NOT treated specially (human, 2026-10-09: it is the nature of the game, and using what a player cannot see would be cheating; bad luck is accepted)
 _prof126 = _is126.build_profile(build_templates.BUILD_TEMPLATES["auspicious_beginnings"])
-assert _is126.is_cursed({"cursed": True}) and _is126.is_cursed({"blueprint": "Gentling Mask"}) and not _is126.is_cursed({"blueprint": "Telescopic Monocle"})
+assert not hasattr(_is126, "is_cursed") and not hasattr(_is126, "CURSED_BLUEPRINTS"), "no cursed blacklist"
 _bare126 = [_it126("w1", "Cloth Robe", eq=True)]
-_mask126 = _it126("m1", "Gentling Mask")                      # AV 1 in the Face slot: the scorer would wear it in an empty slot
-assert not any(a[0]["id"] == "m1" for a in _is126.choose_equips(_bare126 + [_mask126], _prof126)), "a cursed mask is never put on"
+_mask126 = _it126("m1", "Gentling Mask")                      # AV 1 in the Face slot: the scorer wears it in an empty slot, curse or not
+assert any(a[0]["id"] == "m1" for a in _is126.choose_equips(_bare126 + [_mask126], _prof126)), "the mask is judged like any item"
 _flag126 = dict(_it126("m2", "Chain Mail", cursed=True))
-assert not any(a[0]["id"] == "m2" for a in _is126.choose_equips(_bare126 + [_flag126], _prof126)), "the engine's cursed flag wins over the blueprint"
-assert any(a[0]["id"] == "m3" for a in _is126.choose_equips(_bare126 + [_it126("m3", "Chain Mail")], _prof126)), "an ordinary upgrade is still worn"
+assert any(a[0]["id"] == "m2" for a in _is126.choose_equips(_bare126 + [_flag126], _prof126)), "the engine's cursed flag is not read for decisions"
 _gp126 = {"zone_id": "z", "inventory": _bare126, "carry_weight": 10, "max_carry_weight": 200,
           "ground_items": [{"id": "g1", "blueprint": "Chain Mail", "name": "chain mail", "dist": 3, "tx": 5, "ty": 5, "weight": 20, "identified": True, "cursed": True}]}
 brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}}); brain.GROUND_STATE.update({"id": None, "turns": 0}); brain.GROUND_STATE["blacklist"].clear()
-assert brain.choose_ground_pickup(_gp126, build_templates.BUILD_TEMPLATES["auspicious_beginnings"], False) is None, "a cursed item on the ground is not fetched"
+assert brain.choose_ground_pickup(_gp126, build_templates.BUILD_TEMPLATES["auspicious_beginnings"], False) is not None, "a cursed upgrade on the ground is fetched like any other"
 # the mod side
 _cs126 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
 for _s in ("private static void ExecuteExamineItem(GameObject player, string id)", 'o.HasPart("Examiner") && !o.Understood()', 'act.StartsWith("EXAMINE_ITEM:")', 'ExecuteExamineItem(player, action.Substring(13));',
@@ -6240,8 +6239,8 @@ _d = brain.choose_ground_pickup(_gu126([_ug126("u1")]), _tm126, False)
 assert _d and _d["action"] == "NAVIGATE_TO_CELL:64,19" and "unidentified" in _d["reason"], ("walk to an unidentified item", _d)
 _d = brain.choose_ground_pickup(_gu126([_ug126("u1", dist=1)]), _tm126, False)
 assert _d and _d["action"] == "TAKE_ITEM:u1", _d
-assert brain.choose_ground_pickup(_gu126([_ug126("u2", cursed=True)]), _tm126, False) is None, "an unidentified item that is cursed is left"
-assert brain.choose_ground_pickup(_gu126([_ug126("u3", bp="Gentling Mask")]), _tm126, False) is None, "a known cursed blueprint is left even without the engine flag"
+assert brain.choose_ground_pickup(_gu126([_ug126("u2", cursed=True)]), _tm126, False) is not None, "an unidentified item is fetched whether or not it is cursed (the flag is not read)"
+assert brain.choose_ground_pickup(_gu126([_ug126("u3", bp="Gentling Mask")]), _tm126, False) is not None, "and a known cursed blueprint is not refused either"
 _many126 = [_it126("w1", "Cloth Robe", eq=True)] + [_it126(f"k{n}", "Slip Ring", ident=False) for n in range(6)]
 assert brain.choose_ground_pickup(_gu126([_ug126("u4")], inv=_many126), _tm126, False) is None, "six unknowns carried: no more"
 assert brain.choose_ground_pickup(_gu126([_ug126("u5", w=120)], carry_weight=40), _tm126, False) is None, "would take the pack past 60 percent of capacity"
@@ -6250,4 +6249,4 @@ _a126 = brain.choose_ground_pickup(_gu126([_ug126("u6", bp="Slip Ring")]), _tm12
 _b126 = brain.choose_ground_pickup(_gu126([_ug126("u6", bp="Geomagnetic Disc")]), _tm126, False)
 assert _a126 and _b126 and _a126["action"] == _b126["action"]
 _greset126()
-print("  [OK] Test 126 Passed: he examines one unidentified item at a time (a half-understood one first), only in Phase A at 80 percent hit points or better, never with the minigame on or with an old mod, an item that never yields is tried four times and then left alone, the game's examine report clears or keeps the count and makes the inventory step look again, a cursed item (by the engine's flag or the six known blueprints) is never worn and never fetched from the ground, and the mod exports partial, cursed and sifrah_examine and runs the engine's Examine through the inventory action event.")
+print("  [OK] Test 126 Passed: he examines one unidentified item at a time (a half-understood one first), only in Phase A at 80 percent hit points or better, never with the minigame on or with an old mod, an item that never yields is tried four times and then left alone, the game's examine report clears or keeps the count and makes the inventory step look again, a cursed item is judged like any other (no blacklist: the human's rule, using what a player cannot see would be cheating), and the mod exports partial, cursed and sifrah_examine and runs the engine's Examine through the inventory action event.")
