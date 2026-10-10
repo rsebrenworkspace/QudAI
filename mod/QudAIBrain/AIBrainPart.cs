@@ -214,6 +214,99 @@ namespace QudAIBrain
 
         private static string LastBurrowJson() { return "\"last_burrow\": " + lastBurrowJson + ","; }
 
+        // ---- Throwing (BACKLOG B24, HANDOFF issue 115) ----
+        // `thrown_weapon`: the first thrown weapon the engine's own AI would throw (GameObject.GetFirstThrownWeapon: id, name, blueprint, whether it sits in the thrown slot), or null.
+        // `last_throw`: the result of the last THROW_ITEM (R5: a structured result, not a guess from coordinates): seq, ok, reason, weapon, x, y.
+        private static int throwSeq = 0;
+        private static string lastThrowJson = "null";
+
+        private static string LastThrowJson() { return "\"last_throw\": " + lastThrowJson + ","; }
+
+        private static GameObject FindThrownWeapon(GameObject player)
+        {
+            try { return player?.GetFirstThrownWeapon(o => true, p => true); } catch { return null; }
+        }
+
+        private static string ThrownWeaponJson(GameObject player)
+        {
+            try
+            {
+                GameObject w = FindThrownWeapon(player);
+                if (w == null) return "\"thrown_weapon\": null,";
+                bool inSlot = false; try { inSlot = w.IsEquippedAsThrownWeapon(); } catch { }
+                return "\"thrown_weapon\": {\"id\": \"" + EscapeJson(w.ID ?? "") + "\", \"name\": \"" + EscapeJson(StripQudFormatting(w.DisplayNameOnly ?? w.Blueprint ?? "")) +
+                       "\", \"blueprint\": \"" + EscapeJson(w.Blueprint ?? "") + "\", \"in_thrown_slot\": " + (inSlot ? "true" : "false") + "},";
+            }
+            catch { return "\"thrown_weapon\": null,"; }
+        }
+
+        // The total hit points of the hostile creatures in the zone: a thrown weapon that handles its own throw is judged by whether this drops.
+        private static int HostileHitpointTotal(GameObject player, Zone zone)
+        {
+            int total = 0;
+            try
+            {
+                foreach (GameObject o in GetSafeZoneObjects(zone))
+                {
+                    try { if (o != null && !o.IsPlayer() && CheckIsEnemy(o, player)) total += Math.Max(0, o.hitpoints); } catch { }
+                }
+            }
+            catch { }
+            return total;
+        }
+
+        private static void RecordThrow(bool ok, string reason, GameObject weapon, Cell cell)
+        {
+            throwSeq++;
+            lastThrowJson = "{\"seq\": " + throwSeq + ", \"ok\": " + (ok ? "true" : "false") + ", \"reason\": \"" + EscapeJson(reason ?? "") + "\", \"weapon\": \"" +
+                            EscapeJson(weapon != null ? StripQudFormatting(weapon.DisplayNameOnly ?? "") : "") + "\", \"x\": " + (cell != null ? cell.X : -1) + ", \"y\": " + (cell != null ? cell.Y : -1) + "}";
+            UnityEngine.Debug.Log("[QudAI THROW] " + (ok ? "threw " : "refused: ") + (reason ?? "") + (weapon != null ? " (" + StripQudFormatting(weapon.DisplayNameOnly ?? "") + ")" : ""));
+        }
+
+        // Throws the first thrown weapon at an enemy in the target cell with the engine's own PerformThrow. Refuses (and says why) when there is no thrown weapon, no hostile creature in the
+        // cell, a companion in the cell or on the line (R8), no line of sight, the cell is out of the weapon's range, or the zone is a peaceful settlement (R7).
+        private static void ExecuteThrow(GameObject player, Cell targetCell)
+        {
+            GameObject weapon = null;
+            try
+            {
+                if (player == null || targetCell == null) { RecordThrow(false, "no target cell", null, targetCell); return; }
+                Cell current = player.CurrentCell;
+                if (current == null) { RecordThrow(false, "player has no cell", null, targetCell); return; }
+                if (IsSettlementZone(current.ParentZone)) { RecordThrow(false, "peaceful settlement", null, targetCell); return; }
+                weapon = FindThrownWeapon(player);
+                if (weapon == null) { RecordThrow(false, "no thrown weapon", null, targetCell); return; }
+                GameObject targetObj = targetCell.Objects?.FirstOrDefault(o => o != null && !o.IsPlayer() && CheckIsEnemy(o, player));
+                if (targetObj == null) { RecordThrow(false, "no hostile creature in the cell", weapon, targetCell); return; }
+                if (targetCell.Objects.Any(o => o != null && IsCompanion(o, player))) { RecordThrow(false, "a companion is in the target cell", weapon, targetCell); return; }
+                if (GetLineBetween(current, targetCell).Any(c => c.Objects != null && c.Objects.Any(o => o != null && IsCompanion(o, player)))) { RecordThrow(false, "a companion is in the line of fire", weapon, targetCell); return; }
+                bool los = true; try { los = player.HasLOSTo(targetCell); } catch { }
+                if (!los) { RecordThrow(false, "no line of sight", weapon, targetCell); return; }
+                int dist = Math.Max(Math.Abs(targetCell.X - current.X), Math.Abs(targetCell.Y - current.Y));
+                int range = 6;
+                try { range = player.GetBaseThrowRange(weapon, targetObj, targetCell, dist); } catch { }
+                if (range > 0 && dist > range) { RecordThrow(false, "out of range (" + dist + " > " + range + ")", weapon, targetCell); return; }
+
+                int phase = 0; try { phase = player.GetPhase(); } catch { }
+                var path = MissileWeapon.CalculateMissilePath(current.ParentZone, current.X, current.Y, targetCell.X, targetCell.Y, true, true, false, player);
+                int hpBefore = HostileHitpointTotal(player, current.ParentZone);
+                bool ret = player.PerformThrow(weapon, targetCell, targetObj, path, phase, null, null, null);
+                int hpAfter = HostileHitpointTotal(player, current.ParentZone);
+                // Some thrown weapons handle the throw themselves and make PerformThrow return false: the geomagnetic disc cancels the normal throw in its own BeforeThrown handler, flies and
+                // bounces by itself and stays in the thrown slot [verified in game 2026-10-10: it hit 10, 5, 8 and 8 and killed two salthoppers while the call returned false]. So success is
+                // "it returned true, or the weapon left the thrown slot, or the hostiles in the zone lost hit points". The reason carries the numbers.
+                bool stillWorn = true; try { stillWorn = weapon.Equipped != null; } catch { }
+                bool thrown = ret || !stillWorn || hpAfter < hpBefore;
+                RecordThrow(thrown, (ret ? "PerformThrow returned true" : "PerformThrow returned false") + (stillWorn ? ", weapon still in the thrown slot" : ", weapon left the thrown slot") +
+                                    ", hostile hit points " + hpBefore + " -> " + hpAfter + " (distance " + dist + ", base range " + range + ")", weapon, targetCell);
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[QudAI THROW Exception] " + ex.ToString());
+                RecordThrow(false, "exception: " + ex.GetType().Name, weapon, targetCell);
+            }
+        }
+
         // ---- Ability use log (HANDOFF issue 52): what the last USE_ABILITY did to the ability's cooldown, so "it works" is
         // measured instead of assumed. Python (note_ability_use) turns it into memory/ability_stats.json.
         private static int abilityUseSeq = 0;
@@ -2272,6 +2365,8 @@ namespace QudAIBrain
                 sb.Append($"\"nearest_unexplored_dist\": {(minUnexpDist != int.MaxValue ? minUnexpDist : -1)},");
                 sb.Append(BuildFrontierJson(player, currentCell, isAutoexploreStuck || isZoneFullyExplored));
                 sb.Append(LastBurrowJson());
+                sb.Append(ThrownWeaponJson(player));
+                sb.Append(LastThrowJson());
                 sb.Append(LastAbilityUseJson());
                 sb.Append(LastLootJson());
                 sb.Append(LastInvActionJson());
@@ -2792,6 +2887,30 @@ namespace QudAIBrain
             if (act == "RELOAD")
             {
                 ExecuteReload(player);
+                return;
+            }
+
+            if (act.StartsWith("THROW_ITEM"))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                int ttx = -1, tty = -1;
+                try
+                {
+                    if (act.Contains("@"))
+                    {
+                        string[] tparts = act.Split('@')[1].Split(',');
+                        if (tparts.Length == 2) { int.TryParse(tparts[0], out ttx); int.TryParse(tparts[1], out tty); }
+                    }
+                }
+                catch { }
+                Cell throwCell = null;
+                try { if (ttx >= 0 && tty >= 0 && ttx < 80 && tty < 25) throwCell = player.CurrentCell?.ParentZone?.GetCell(ttx, tty); } catch { }
+                ExecuteThrow(player, throwCell);
+                if (player.Energy != null && player.Energy.Value >= 1000)
+                {
+                    player.UseEnergy(1000, "Throw");
+                }
                 return;
             }
 
