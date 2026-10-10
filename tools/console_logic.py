@@ -443,6 +443,98 @@ def save_bundle(text, path=None):
 
 
 # ---------------------------------------------------------------------------
+# One-button capture (BACKLOG B20): every log Claude uses, copied into one folder, plus a bundle for the clipboard
+# ---------------------------------------------------------------------------
+CAPTURE_DIR = os.path.join(REPO, "scratch", "captures")
+CAPTURE_KEEP = 20                      # timestamped folders kept; `latest` is always the newest
+CAPTURE_MAX_BYTES = 2_500_000          # per copied file: the newest part is kept
+CAPTURE_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{6}")
+GAME_FILES = ("Player.log", "Player-prev.log", "build_log.txt", "game_log.txt")
+EXCHANGE_FILES = ("last_state.json", "last_action_executed.txt", "active.flag", "mutation_ranking.txt")
+MEMORY_FILES = ("decision_trace.jsonl", "decision_trace.jsonl.1", "exit_choices.jsonl", "examine_log.jsonl", "danger_ledger.json", "item_drops.jsonl",
+                "proselytize_log.jsonl", "ability_stats.json", "lab_runs.jsonl", "generation_counter.json")
+
+
+def capture_files(exchange_dir=None, repo=None):
+    """(name in the capture, source path) for every log worth keeping. Missing sources are skipped at copy time."""
+    gd = game_dir(exchange_dir)
+    ex = exchange_dir or EXCHANGE_DIR
+    mem = os.path.join(repo or REPO, "memory")
+    return ([(f, os.path.join(gd, f)) for f in GAME_FILES] + [("exchange_" + f, os.path.join(ex, f)) for f in EXCHANGE_FILES]
+            + [(f, os.path.join(mem, f)) for f in MEMORY_FILES])
+
+
+def copy_tail(src, dst, max_bytes=CAPTURE_MAX_BYTES):
+    """Copies the last `max_bytes` of a file. -> bytes written, or None when the source is missing or unreadable."""
+    try:
+        size = os.path.getsize(src)
+        with open(src, "rb") as f:
+            if size > max_bytes:
+                f.seek(size - max_bytes)
+            data = f.read()
+        with open(dst, "wb") as g:
+            g.write(data)
+        return len(data)
+    except OSError:
+        return None
+
+
+def git_info(repo=None, runner=None):
+    """Branch, short commit and the number of modified tracked files, so a capture says which code produced it."""
+    def run(args):
+        try:
+            code, text = (runner or _run_text)(["git", "-C", repo or REPO] + args)
+            return text.strip() if code == 0 else ""
+        except Exception:                                   # noqa: BLE001
+            return ""
+    lines = [l for l in run(["status", "--short", "-uno"]).splitlines() if l.strip() and "worktrees" not in l]
+    return f"branch {run(['rev-parse', '--abbrev-ref', 'HEAD']) or '?'}, commit {run(['rev-parse', '--short', 'HEAD']) or '?'}, {len(lines)} modified tracked file(s)"
+
+
+def prune_captures(out_dir, keep=CAPTURE_KEEP):
+    """Deletes the oldest timestamped capture folders beyond `keep` (never `latest`, never anything not named like a stamp)."""
+    import shutil
+    try:
+        names = sorted(n for n in os.listdir(out_dir) if CAPTURE_STAMP.match(n) and os.path.isdir(os.path.join(out_dir, n)))
+    except OSError:
+        return []
+    gone = names[:-keep] if keep > 0 else names
+    for n in gone:
+        shutil.rmtree(os.path.join(out_dir, n), ignore_errors=True)
+    return gone
+
+
+def capture_logs(note="", console_lines=(), exchange_dir=None, repo=None, out_dir=None, keep=CAPTURE_KEEP, git_runner=None, stamp=None):
+    """Copies every log into scratch/captures/<stamp>/ and refreshes scratch/captures/latest/. Writes info.txt (note, time, code version, mod health),
+    brain_console.txt (what the console window showed) and bundle.txt. -> (folder, text for the clipboard, [names copied])."""
+    import shutil
+    out_dir = out_dir or CAPTURE_DIR
+    stamp = stamp or time.strftime("%Y-%m-%d_%H%M%S")
+    folder = os.path.join(out_dir, stamp)
+    os.makedirs(folder, exist_ok=True)
+    copied = []
+    for name, src in capture_files(exchange_dir, repo):
+        n = copy_tail(src, os.path.join(folder, name))
+        if n is not None:
+            copied.append(name)
+    health = "\n".join(f"{name}: {status} {detail}" for name, status, detail in mod_health(exchange_dir))
+    info = (f"QudAI capture {stamp}\nnote: {note or '(none)'}\ncode: {git_info(repo, git_runner)}\ngame running: {game_running()}\n"
+            f"copied: {', '.join(copied) or '(nothing)'}\n\n== Mod health ==\n{health}\n")
+    with open(os.path.join(folder, "info.txt"), "w", encoding="utf-8") as f:
+        f.write(info)
+    with open(os.path.join(folder, "brain_console.txt"), "w", encoding="utf-8") as f:
+        f.write("\n".join(console_lines or []))
+    text = f"Capture {stamp} | note: {note or '(none)'} | folder: {folder}\n\n" + log_bundle(exchange_dir, repo)
+    with open(os.path.join(folder, "bundle.txt"), "w", encoding="utf-8") as f:
+        f.write(text)
+    latest = os.path.join(out_dir, "latest")
+    shutil.rmtree(latest, ignore_errors=True)
+    shutil.copytree(folder, latest)
+    prune_captures(out_dir, keep)
+    return folder, text, copied
+
+
+# ---------------------------------------------------------------------------
 # Review: runs, lessons, drop log
 # ---------------------------------------------------------------------------
 def list_runs(runs_dir):

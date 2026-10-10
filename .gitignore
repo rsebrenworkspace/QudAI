@@ -34,3 +34,7 @@ twitch_config.json
 *.user
 *.swp
 *.swo
+
+# Console log captures (one-button capture, BACKLOG B20)
+scratch/captures/
+scratch/log_bundle.txt

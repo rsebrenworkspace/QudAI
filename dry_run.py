@@ -6286,3 +6286,43 @@ _w127 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools"
 for _s in ('"Logs"', "def _build_logs(self)", "def show_logs(self)", 'text="Copy bundle for Claude"', 'text="Save bundle"', 'text="Copy view"', "cl.log_bundle(EX)"):
     assert _s in _w127, _s
 print("  [OK] Test 127 Passed: the Logs tab reads the mod lines, trace and exit choices with a case-insensitive filter and a last-n limit, a missing file gives a notice, the bundle holds health, state, mod lines, trace and exits (capped), saving reports failure, and a diagnostic line is not counted as a mod error")
+
+
+# Test 128: one-button log capture (BACKLOG B20, HANDOFF issue 107)
+# ---------------------------------------------------------------------------
+import tools.console_logic as _cl128
+_gd128 = tempfile.mkdtemp(); _ex128 = _os.path.join(_gd128, "QudAI"); _repo128 = tempfile.mkdtemp(); _out128 = tempfile.mkdtemp()
+_os.makedirs(_ex128); _os.makedirs(_os.path.join(_repo128, "memory"))
+open(_os.path.join(_gd128, "Player.log"), "w", encoding="utf-8").write("[QudAI] hello" + chr(10))
+open(_os.path.join(_gd128, "build_log.txt"), "w", encoding="utf-8").write("[t] Success :)" + chr(10))
+open(_os.path.join(_ex128, "last_state.json"), "w", encoding="utf-8").write('{"zone_id": "Z", "x": 1, "y": 2}')
+open(_os.path.join(_repo128, "memory", "exit_choices.jsonl"), "w", encoding="utf-8").write('{"zone": "Z"}' + chr(10))
+_fake128 = lambda cmd: (0, "main" if "--abbrev-ref" in cmd else ("abc1234" if "--short" in cmd else ""))
+_f128, _txt128, _got128 = _cl128.capture_logs("stuck in the middle", ["brain line 1", "brain line 2"], _ex128, _repo128, _out128, git_runner=_fake128, stamp="2026-10-09_120000")
+assert _f128 == _os.path.join(_out128, "2026-10-09_120000")
+for _n in ("Player.log", "build_log.txt", "exchange_last_state.json", "exit_choices.jsonl"):
+    assert _n in _got128 and _os.path.exists(_os.path.join(_f128, _n)), _n
+assert "Player-prev.log" not in _got128, "a missing source is skipped, not an error"
+_info128 = open(_os.path.join(_f128, "info.txt"), encoding="utf-8").read()
+assert "stuck in the middle" in _info128 and "branch main, commit abc1234" in _info128 and "== Mod health ==" in _info128
+assert open(_os.path.join(_f128, "brain_console.txt"), encoding="utf-8").read() == "brain line 1" + chr(10) + "brain line 2"
+assert "stuck in the middle" in _txt128 and _f128 in _txt128 and "== Last state ==" in _txt128 and _os.path.exists(_os.path.join(_f128, "bundle.txt"))
+assert _os.path.exists(_os.path.join(_out128, "latest", "info.txt")), "latest is refreshed"
+# a second capture replaces latest and keeps the first folder; pruning keeps the newest N stamped folders and never touches latest
+_cl128.capture_logs("second", [], _ex128, _repo128, _out128, git_runner=_fake128, stamp="2026-10-09_120100")
+assert "second" in open(_os.path.join(_out128, "latest", "info.txt"), encoding="utf-8").read() and _os.path.isdir(_f128)
+_cl128.capture_logs("third", [], _ex128, _repo128, _out128, keep=2, git_runner=_fake128, stamp="2026-10-09_120200")
+assert sorted(n for n in _os.listdir(_out128) if n != "latest") == ["2026-10-09_120100", "2026-10-09_120200"], _os.listdir(_out128)
+open(_os.path.join(_out128, "keep_me.txt"), "w").write("x")
+_cl128.prune_captures(_out128, keep=1)
+assert _os.path.exists(_os.path.join(_out128, "keep_me.txt")) and _os.path.isdir(_os.path.join(_out128, "latest")), "only stamped folders are pruned"
+# a big file keeps its newest part
+_big128 = _os.path.join(_gd128, "big.log"); open(_big128, "wb").write(b"A" * 100 + b"B" * 50)
+assert _cl128.copy_tail(_big128, _os.path.join(_gd128, "big.copy"), 60) == 60 and open(_os.path.join(_gd128, "big.copy"), "rb").read() == b"A" * 10 + b"B" * 50
+assert _cl128.copy_tail(_os.path.join(_gd128, "nope.log"), _os.path.join(_gd128, "x"), 10) is None
+# the window and the ignore file
+_w128 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
+for _s in ('text="Capture logs"', "def capture_clicked(self)", "cl.capture_logs(", "list(self.console_lines)"):
+    assert _s in _w128, _s
+assert "scratch/captures/" in open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".gitignore"), encoding="utf-8").read()
+print("  [OK] Test 128 Passed: one click copies every log (missing ones skipped) into a stamped folder and into scratch/captures/latest with info (note, code version, mod health), the brain console and a bundle; old folders are pruned, latest and unrelated files are not; the folder is git-ignored")
