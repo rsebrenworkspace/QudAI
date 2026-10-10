@@ -386,6 +386,8 @@ def pick_frontier_target(game_state, cur_pos, zone_id, last_act=None):
             continue
         if any(max(abs(x - ax), abs(y - ay)) <= zone_danger.AVOID_RADIUS for ax, ay in avoid_pts):
             continue          # near where something out of our class was last seen
+        if near_dangerous_turret(game_state, (x, y)):
+            continue          # inside the reach of a remembered dangerous turret (HANDOFF issue 98)
         targets.append(tg)
     if not targets:
         FRONTIER_COMMIT.update({"zone": None, "target": None})
@@ -2051,6 +2053,8 @@ def choose_loot_action(game_state, zone_id, last_act, is_town):
         key = (zone_id, s.get("tx"), s.get("ty"))
         if key in LOOT_BLACKLIST:
             continue
+        if s.get("tx") is not None and s.get("ty") is not None and near_dangerous_turret(game_state, (s["tx"], s["ty"])):
+            continue                  # a dangerous turret covers it (HANDOFF issue 98)
         rank = (s.get("dist", 999), 0 if s.get("kind") == "chest" else 1)
         if best is None or rank < best[0]:
             best = (rank, key, s)
@@ -2745,7 +2749,12 @@ VALID ACTIONS:
                     ctx = closest.get("tx", px)
                     cty = closest.get("ty", py)
                     clear, reason = is_line_of_fire_clear((px, py), (ctx, cty), companions=companions, blocked_set=blocked_coords, target_entity=closest, surroundings=surroundings)
-                    if not clear:
+                    if not clear and is_dangerous_turret(closest, game_state):
+                        # never walk toward a dangerous turret to get a shot at it: it out-damages him from where it stands (Gen 29)
+                        away = step_away_from((px, py), (ctx, cty), valid_moves) or (open_moves[0] if open_moves else "WAIT")
+                        action = away
+                        thought = f"[Turret standoff] {closest.get('name', 'turret')} is occluded and would hurt at full health; not maneuvering into its line of fire, stepping away."
+                    elif not clear:
                         ab_sunder = find_ready_ability(abilities, "sunder_mind")
                         s_dir = get_step_direction((px, py), (ctx, cty))
                         if ab_sunder and ab_sunder.get("command") and s_dir:
@@ -2996,6 +3005,11 @@ def fallback_esper(game_state, enemies, adj_threats, open_moves, valid_moves, ab
                         return {"action": f"USE_ABILITY:{ab_lase['command']}:{alt_dir}", "reason": f"[{template['name']} Fallback] Obstacle protection: redirecting Lase to unblocked {alt.get('name')} ({alt_dir})"}
                     if has_missile and ammo > 0:
                         return {"action": f"FIRE_MISSILE@{alt_tx},{alt_ty}", "reason": f"[{template['name']} Fallback] Obstacle protection: redirecting missile to unblocked {alt.get('name')}"}
+
+            # A dangerous turret is never approached for a shot (HANDOFF issue 98)
+            if closest_enemy and is_dangerous_turret(closest_enemy, game_state):
+                away = step_away_from(cur_pos, (c_tx, c_ty), valid_moves) or (open_moves[0] if open_moves else "WAIT")
+                return {"action": away, "reason": f"[{template['name']} Fallback] Turret standoff: not maneuvering toward {c_name}, stepping away"}
 
             # If primary target is occluded by a wall or corner, maneuver along corridor to establish line of sight instead of waiting or fleeing!
             best_step = get_best_move_towards(cur_pos, (c_tx, c_ty), valid_moves, surroundings)
@@ -3467,6 +3481,78 @@ def is_fragile_shooter(e):
     if entry is not None and not (entry.get("is_ranged") or entry.get("ranged")):
         return False        # a rooted vine such as the jilted lover (5 HP, no ranged attack) is not a shooter: no Lase charges on it (human run, 2026-10-08, t1668)
     return True
+
+
+# Known dangerous turrets (HANDOFF issue 98). Gen 29 (level 4, 29 HP) spent 25 turns "maneuvering to establish line of sight" to a laser turret behind a wall, then the loot step walked him
+# to a weapon rack two tiles from it, and one shot (a laser rifle, 1d12 with penetration 5, about 16 on average against his armor) took 27 of his 29 HP. `turret_hazards` only sees a turret
+# with a line of sight, so the moment a wall hid it every guard fell away. A turret does not move: remember where each dangerous one is, keep deliberate walking (loot, frontier) out of
+# its reach, and never walk toward one to get a shot at it.
+TURRET_MEMORY = {}              # zone_id -> {(x, y): {"name", "turn", "dangerous"}}
+TURRET_MEMORY_TTL = 1500        # turns after which a turret not seen again is forgotten
+TURRET_AVOID_RADIUS = 10        # loot and frontier targets this close (Chebyshev) to a remembered dangerous turret are skipped
+TURRET_FORGET_RADIUS = 3        # standing this close to a remembered turret's cell with no turret listed there means it is gone (killed)
+
+
+def _is_turret_entity(e):
+    label = f"{e.get('name', '')} {e.get('blueprint', '')}".lower()
+    return ("turret" in label and "tinker" not in label) or bool(e.get("is_enemy") and is_fragile_shooter(e))
+
+
+def is_dangerous_turret(e, game_state):
+    """A turret-like entity whose shots would hurt at FULL hit points (the same engine-damage rule as the nest tolerance); one the catalogue does not know counts as dangerous."""
+    if not _is_turret_entity(e) or e.get("is_companion"):
+        return False
+    full = dict(game_state, hp=game_state.get("max_hp") or game_state.get("hp"))
+    return not nest_is_tolerable([e], full)
+
+
+def note_turrets(game_state):
+    """Remembers each turret in the entity list (with or without line of sight) and forgets expired or killed ones. Never raises."""
+    try:
+        zone = game_state.get("zone_id") or ""
+        if not zone:
+            return
+        mem = TURRET_MEMORY.setdefault(zone, {})
+        seen = []
+        for e in game_state.get("visible_entities") or []:
+            if e.get("tx") is None or e.get("ty") is None or not _is_turret_entity(e) or e.get("is_companion"):
+                continue
+            pos = (int(e["tx"]), int(e["ty"]))
+            seen.append(pos)
+            dangerous = is_dangerous_turret(e, game_state)
+            if pos not in mem and dangerous:
+                print(f"[TURRET MEMORY] {e.get('name', 'turret')} at {pos} in {zone}: dangerous, loot and exploration keep {TURRET_AVOID_RADIUS} cells away.")
+            mem[pos] = {"name": e.get("name", "turret"), "turn": TURN_CLOCK, "dangerous": dangerous}
+        px, py = game_state.get("x"), game_state.get("y")
+        for pos in list(mem):
+            if TURN_CLOCK - mem[pos]["turn"] > TURRET_MEMORY_TTL:
+                del mem[pos]
+            elif px is not None and max(abs(pos[0] - px), abs(pos[1] - py)) <= TURRET_FORGET_RADIUS and not any(max(abs(pos[0] - s[0]), abs(pos[1] - s[1])) <= 1 for s in seen):
+                del mem[pos]
+    except Exception:
+        pass
+
+
+def dangerous_turret_points(game_state):
+    """Cells of the remembered dangerous turrets in this zone."""
+    mem = TURRET_MEMORY.get(game_state.get("zone_id") or "") or {}
+    return [pos for pos, v in mem.items() if v.get("dangerous")]
+
+
+def near_dangerous_turret(game_state, xy, radius=None):
+    r = TURRET_AVOID_RADIUS if radius is None else radius
+    return any(max(abs(xy[0] - p[0]), abs(xy[1] - p[1])) <= r for p in dangerous_turret_points(game_state))
+
+
+def step_away_from(cur_pos, target, valid_moves):
+    """The move that most increases the distance to `target`, or None when no move does (never a step toward it)."""
+    best, best_d = None, max(abs(cur_pos[0] - target[0]), abs(cur_pos[1] - target[1]))
+    for m in valid_moves or []:
+        dx, dy = CARDINAL_OFFSETS.get(m[5:], (0, 0))
+        d = max(abs(cur_pos[0] + dx - target[0]), abs(cur_pos[1] + dy - target[1]))
+        if d > best_d:
+            best, best_d = m, d
+    return best
 
 
 TURRET_TOLERABLE_SHARE = 0.5     # a nest is not worth fleeing when the damage it deals while we close in is below this share of our current hit points
@@ -4350,6 +4436,7 @@ def main():
                 note_avoid(game_state)
                 note_quests(game_state)
                 note_zone_danger(game_state)
+                note_turrets(game_state)
                 note_proselytize(game_state)
                 current_zone_id = zone_id
                 zone_step_count = ZONE_STEP_COUNT

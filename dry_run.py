@@ -5852,3 +5852,56 @@ try:
 finally:
     _dl119.LEDGER_PATH = _saved119; _dl119.reset_cache()
 print("  [OK] Test 119 Passed: the console threat strip applies the danger ledger as the brain does and shows 'Impossible (engine: Average)' for a creature the ledger has proven dangerous to this character, leaves unknown creatures at the engine's rating, and does not raise the rating for a character with enough HP.")
+
+
+# ---------------------------------------------------------------------------
+# Test 123: remembered dangerous turrets keep loot and exploration out of their reach and are never approached for a shot (human run Gen 29, 2026-10-09; HANDOFF issue 98)
+# ---------------------------------------------------------------------------
+_Z123 = "JoppaWorld.10.18.0.2.11"
+_laser123 = {"name": "laser turret", "blueprint": "LaserTurret", "tx": 58, "ty": 14, "is_enemy": True, "is_stationary": True, "max_hp": 45, "hp": 45, "has_los": False, "dist": 6, "level": 15, "difficulty": "Impossible"}
+_vine123 = {"name": "seed-spitting vine", "blueprint": "Seed-Spitting Vine", "tx": 30, "ty": 5, "is_enemy": True, "is_stationary": True, "max_hp": 5, "hp": 5, "has_los": False, "dist": 8}
+_gs123 = lambda ents=(), **k: dict({"zone_id": _Z123, "x": 56, "y": 11, "hp": 29, "max_hp": 29, "av": 2, "level": 4, "visible_entities": list(ents)}, **k)
+_saved123 = (dict(brain.TURRET_MEMORY), brain.TURN_CLOCK, dict(brain.LOOT_BLACKLIST), brain.LOOT_TURN)
+try:
+    brain.TURRET_MEMORY.clear(); brain.TURN_CLOCK = 5000; brain.LOOT_BLACKLIST.clear()
+    assert brain.is_dangerous_turret(_laser123, _gs123()) is True, "a laser rifle (1d12, penetration 5) hurts a 29 HP character"
+    assert brain.is_dangerous_turret(_vine123, dict(_gs123(), hp=40, max_hp=40, av=1)) is False, "a seed vine does not at full health"
+    assert brain.is_dangerous_turret({"name": "goat", "blueprint": "Goat", "is_enemy": True}, _gs123()) is False
+    # remembered although a wall hides it (has_los False): the old guards only saw a turret in line of sight
+    brain.note_turrets(_gs123([_laser123, _vine123]))
+    assert brain.dangerous_turret_points(_gs123()) == [(58, 14)], brain.TURRET_MEMORY
+    assert brain.near_dangerous_turret(_gs123(), (60, 15)) and not brain.near_dangerous_turret(_gs123(), (30, 5)) and not brain.near_dangerous_turret(_gs123(), (80, 20))
+    # the chest two tiles from the turret is not walked to; a chest elsewhere still is
+    _near = {"kind": "chest", "name": "weapon rack", "tx": 60, "ty": 15, "dist": 4}
+    _far = {"kind": "chest", "name": "chest", "tx": 40, "ty": 5, "dist": 9}
+    assert brain.choose_loot_action(_gs123(loot_sources=[_near]), _Z123, None, False) is None, "the weapon rack beside the laser turret"
+    _d = brain.choose_loot_action(_gs123(loot_sources=[_near, _far]), _Z123, None, False)
+    assert _d and _d["action"] == "NAVIGATE_TO_CELL:40,5", _d
+    # mutation: without the memory he walks to the rack (the Gen 29 death)
+    _mem123 = dict(brain.TURRET_MEMORY); brain.TURRET_MEMORY.clear()
+    _d = brain.choose_loot_action(_gs123(loot_sources=[_near]), _Z123, None, False)
+    assert _d and _d["action"] == "NAVIGATE_TO_CELL:60,15", ("the test must be able to fail", _d)
+    brain.TURRET_MEMORY.update(_mem123)
+    # frontier targets inside its reach are skipped
+    brain.FRONTIER_COMMIT.update({"zone": None, "target": None}); brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
+    _fs = _gs123(frontier_targets=[{"x": 59, "y": 13, "dist": 3, "q": "SE"}, {"x": 20, "y": 3, "dist": 40, "q": "NW"}])
+    assert brain.pick_frontier_target(_fs, (56, 11), _Z123)[0] == (20, 3)
+    brain.FRONTIER_COMMIT.update({"zone": None, "target": None}); brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
+    # forgetting: a turret that is gone (we stand next to its cell and it is not listed) and one not seen for TURRET_MEMORY_TTL turns
+    brain.note_turrets(_gs123([], x=57, y=13))
+    assert brain.dangerous_turret_points(_gs123()) == [], "killed: standing beside the cell and nothing there"
+    brain.note_turrets(_gs123([_laser123])); assert brain.dangerous_turret_points(_gs123()) == [(58, 14)]
+    brain.TURN_CLOCK = 5000 + brain.TURRET_MEMORY_TTL + 1
+    brain.note_turrets(_gs123([]))
+    assert brain.dangerous_turret_points(_gs123()) == [], "not seen for 1,500 turns"
+    # the helper that replaces "maneuver toward it": a step that increases the distance, never one that decreases it
+    assert brain.step_away_from((56, 11), (58, 14), ["MOVE_N", "MOVE_S", "MOVE_E", "MOVE_W", "MOVE_NW"]) in ("MOVE_N", "MOVE_NW"), "both raise the distance from 3 to 4; south and east do not"
+    assert brain.step_away_from((56, 11), (58, 14), ["MOVE_S", "MOVE_E", "MOVE_W"]) is None, "none of these raises the distance"
+    assert brain.step_away_from((56, 11), (58, 14), ["MOVE_S", "MOVE_SE"]) is None, "only steps toward it: none offered"
+finally:
+    brain.TURRET_MEMORY.clear(); brain.TURRET_MEMORY.update(_saved123[0]); brain.TURN_CLOCK = _saved123[1]; brain.LOOT_BLACKLIST.clear(); brain.LOOT_BLACKLIST.update(_saved123[2])
+_src123 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+for _s in ("if not clear and is_dangerous_turret(closest, game_state):", "[Turret standoff]", "if closest_enemy and is_dangerous_turret(closest_enemy, game_state):", "note_turrets(game_state)",
+           "near_dangerous_turret(game_state, (s[\"tx\"], s[\"ty\"]))", "near_dangerous_turret(game_state, (x, y))"):
+    assert _s in _src123, _s
+print("  [OK] Test 123 Passed: a turret whose shots would hurt at full health is remembered even when a wall hides it, loot and frontier targets within 10 cells of it are skipped (a mutation without the memory walks to the rack), it is forgotten when killed or unseen for 1,500 turns, and neither combat path maneuvers toward a dangerous turret to get a line of sight: it steps away.")
