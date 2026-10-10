@@ -765,6 +765,12 @@ Vanilla Caves of Qud's native pathfinder (`FasterDMapAutoexplore.FindAutoexplore
 - `[verified in state 2026-10-09]` the mod's inventory export carries each unidentified item's real `blueprint` while the game shows "weird artifact": a pack held a Grappling Gun, three Nanopneumatic Jackhammers, two Telescopic Monocles, a Geomagnetic Disc, a Telemetric Visor, a Glitter Grenade and a Slip Ring, all with `identified` false.
 - `[unknown]` the default of `OptionSifrahExamine`, the roll table of `Stat.RollResult`, the event that triggers Examine from code, and what each `ExamineFailure` does.
 
+### 14.25 Cursed items and how to take one off (2026-10-09, `[verified in code]` from the IL unless marked)
+- The part `Cursed` (description rule "Cannot be removed once equipped.") is an active part (`IActivePart`). While it `IsReady` it refuses to let the wearer unequip the item with the message "You can't remove <item>." Only six blueprints carry it: Psychal Fleshgun, Gentling Collar, Gentling Mask (AV 1, Ego -1), Inhibitor Cuff, BarathrumiteSafetyBand, Cyclopean Prism (`RevealInDescription="true"` on the mask: the description says so once the item is understood). The parts `RemoveCursedOnUnequip` and `CursedCybernetics` exist; what the first does beyond reacting to the unequip event was not read `[unverified]`. A separate "WaterRitualCurse" (a story curse for killing a bonded kith) is unrelated.
+- `IActivePart.IsReady` fails (so the curse does nothing) when the item is **EMPed** (`IsEMPed`), **broken** (`IsBroken`) or **rusted** (`IsRusted`), when a reality distortion makes it unusable, or when a locally defined failure applies (a powered item with no charge or liquid; the mask has no `ChargeUse`, so this does not apply to it).
+- `Body.Rebuild` unequips equipment (`TryUnequip`); the property `CursedBodyRebuildAllowUnequip` is read there, so a rebuild of the body (what a mutation or anatomy change does) can take a cursed item off `[inferred from the property name, not read in detail]`.
+- Candidate ways in game, from the data `[unverified until tried]`: an **EMP grenade** (`EMPGrenade1`, `EMPGrenade2`, `EMPGrenade3`: part `EMPGrenade` radius 2, 4, 6 and duration 1d2+4, 2d2+5, 3d2+6 turns; whether it reaches worn equipment was not read), **rust** (creatures with the part `RustOnHit`; only metal items rust, a paper-and-acrylic mask does not), or **breaking** the item. Losing the limb it is worn on would also drop it `[inferred]`.
+
 ---
 *End of Engine Internals Manual.*
 
