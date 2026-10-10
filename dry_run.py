@@ -6041,6 +6041,8 @@ finally:
     brain.EXIT_SUPPRESS_UNTIL.clear(); brain.EXIT_SUPPRESS_UNTIL.update(_sp122)
 print("  [OK] Test 122 Passed: a swarm that would kill him within four turns (the Gen 28 dragonflies: nine in view, 1.4 turns) sends him back through the border he arrived by without touching the permanent failed-exit list, the zone's entry is closed only while another way on exists and lapses on two levels, two armor value, two average weapon damage or 800 turns (each alone), he retreats at most three times from one zone, and a 3,000-turn simulation shows the exit closed and then open again.")
 
+
+# ---------------------------------------------------------------------------
 # Test 123: remembered dangerous turrets keep loot and exploration out of their reach and are never approached for a shot (human run Gen 29, 2026-10-09; HANDOFF issue 98)
 # ---------------------------------------------------------------------------
 _Z123 = "JoppaWorld.10.18.0.2.11"
