@@ -240,6 +240,21 @@ namespace QudAIBrain
             catch { return "\"thrown_weapon\": null,"; }
         }
 
+        // The total hit points of the hostile creatures in the zone: a thrown weapon that handles its own throw is judged by whether this drops.
+        private static int HostileHitpointTotal(GameObject player, Zone zone)
+        {
+            int total = 0;
+            try
+            {
+                foreach (GameObject o in GetSafeZoneObjects(zone))
+                {
+                    try { if (o != null && !o.IsPlayer() && CheckIsEnemy(o, player)) total += Math.Max(0, o.hitpoints); } catch { }
+                }
+            }
+            catch { }
+            return total;
+        }
+
         private static void RecordThrow(bool ok, string reason, GameObject weapon, Cell cell)
         {
             throwSeq++;
@@ -274,8 +289,16 @@ namespace QudAIBrain
 
                 int phase = 0; try { phase = player.GetPhase(); } catch { }
                 var path = MissileWeapon.CalculateMissilePath(current.ParentZone, current.X, current.Y, targetCell.X, targetCell.Y, true, true, false, player);
-                bool thrown = player.PerformThrow(weapon, targetCell, targetObj, path, phase, null, null, null);
-                RecordThrow(thrown, thrown ? "PerformThrow returned true" : "PerformThrow returned false", weapon, targetCell);
+                int hpBefore = HostileHitpointTotal(player, current.ParentZone);
+                bool ret = player.PerformThrow(weapon, targetCell, targetObj, path, phase, null, null, null);
+                int hpAfter = HostileHitpointTotal(player, current.ParentZone);
+                // Some thrown weapons handle the throw themselves and make PerformThrow return false: the geomagnetic disc cancels the normal throw in its own BeforeThrown handler, flies and
+                // bounces by itself and stays in the thrown slot [verified in game 2026-10-10: it hit 10, 5, 8 and 8 and killed two salthoppers while the call returned false]. So success is
+                // "it returned true, or the weapon left the thrown slot, or the hostiles in the zone lost hit points". The reason carries the numbers.
+                bool stillWorn = true; try { stillWorn = weapon.Equipped != null; } catch { }
+                bool thrown = ret || !stillWorn || hpAfter < hpBefore;
+                RecordThrow(thrown, (ret ? "PerformThrow returned true" : "PerformThrow returned false") + (stillWorn ? ", weapon still in the thrown slot" : ", weapon left the thrown slot") +
+                                    ", hostile hit points " + hpBefore + " -> " + hpAfter + " (distance " + dist + ", base range " + range + ")", weapon, targetCell);
             }
             catch (Exception ex)
             {

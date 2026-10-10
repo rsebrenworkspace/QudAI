@@ -6656,7 +6656,7 @@ _b137 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.
 assert "_throw_line = throw_option(game_state, enemies, adj_threats)" in _b137 and 'action.startswith("THROW_ITEM")' in _b137 and "note_throw_result(game_state)" in _b137
 _c137 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
 for _s in ('act.StartsWith("THROW_ITEM")', "private static void ExecuteThrow(", "player.PerformThrow(weapon, targetCell, targetObj, path, phase, null, null, null)",
-           "MissileWeapon.CalculateMissilePath(", "GetFirstThrownWeapon(o => true, p => true)", "sb.Append(ThrownWeaponJson(player));", "sb.Append(LastThrowJson());",
+           "MissileWeapon.CalculateMissilePath(", "GetFirstThrownWeapon(o => true, p => true)", "bool thrown = ret || !stillWorn || hpAfter < hpBefore;", "private static int HostileHitpointTotal(", "base range \" + range", "sb.Append(ThrownWeaponJson(player));", "sb.Append(LastThrowJson());",
            '"a companion is in the target cell"', '"a companion is in the line of fire"', '"no line of sight"', '"peaceful settlement"', '"no hostile creature in the cell"', 'player.UseEnergy(1000, "Throw")'):
     assert _s in _c137, _s
 assert _c137.count("{") == _c137.count("}")
