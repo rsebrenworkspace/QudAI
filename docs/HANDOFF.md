@@ -69,16 +69,22 @@ Docs that are research only (no behaviour): R-3 quests (`docs/tasks/R-3-quests-r
 
 Open decisions that need the human: Dig Down and Wings (BACKLOG B7); whether to promote B9 (faction reputation export); stage 2 of quests; which ancestral lessons to approve (`python tools/wisdom.py`).
 
-## Current state (as of commit c50b3c2)
+## Current state (as of 2026-10-10, `main` at the merge of the hunter branches; the old text of this section is below)
+
+- The agent explores, fights (a model for combat, deterministic rules for everything else), levels, eats, harvests, delves, recruits pets, digs through rock, throws a thrown weapon, swims across lakes, retreats from swarms and impossible creatures, and writes death chronicles and post-mortems (now with psychic glimmer and a hunter column). 141 tests in `python dry_run.py`; `python tools/check_docs.py` reports 0 warnings. The level 5 blocker below is long gone: characters now reach level 8 and die in dungeon ambushes and to psychic hunters.
+- The tools for working together: the console (Capture logs, snapshots, Lab wishes, Logs tab, a test switch that hides combat abilities), described in ARCHITECTURE and in Claude's memory.
+- What is known to be missing: any rule for arriving at the bottom of stairs into an ambush, any plan for a psychic hunter, weapons that need cells and ammunition, a faction-reputation export. See *Next steps*.
+- Repo visibility: **public, by the human's decision (2026-10-06).** It was first opened temporarily for review; the human chose to leave it public so anyone may take the code. A history scan found no credentials (`[verified in code]`, pattern-based, not exhaustive). No `LICENSE` file exists, so reuse rights are unstated. Do not flip it private unless asked.
+
+(The text of this section as of commit c50b3c2 follows, kept for history.)
 
 - Agent explores, fights (LLM + fallbacks), levels, eats/camps, delves, recruits pets, and writes death chronicles.
 - **Open blocker:** at character level 5 the mutation/advancement step does not complete correctly and the character loops.
   Cause not yet identified. See *Level 5 investigation*.
 - The latest `Player.log` supplied for review (launch 2026-09-19) contained **no `[QudAI ...]` lines** and listed the
   enabled mod as `QUDAITEST`. That log is not from the level 5 hang. It shows a death by bleeding.
-- Repo visibility: **public, by the human's decision (2026-10-06).** It was first opened temporarily for review; the human chose to leave it public so anyone may take the code. A history scan found no credentials (`[verified in code]`, pattern-based, not exhaustive). No `LICENSE` file exists, so reuse rights are unstated. Do not flip it private unless asked.
 
-## Level 5 investigation (open)
+## Level 5 investigation (historical; resolved long ago)
 
 Working hypotheses, most likely first. None verified.
 1. A Harmony patch in the level-up flow never applied (parameter-name or overload mismatch), so a modal blocks the game.
@@ -314,9 +320,23 @@ To discriminate (do this on the next hang, **before restarting the game**):
 
 122. **Gen 32 (human: "he ran and got caught by a mob. Our hunter caught up."), the hunter wish test, on `fix/hunter-mark`.** The wish worked (popup "You sense the animus of a vast mind", an Osprey placed and marked). He then spent about 70 turns on `NAVIGATE_ZONE_EXIT:W` along the top edge of the zone (exploring, not fleeing: nothing treated the Average-rated hunter as danger), and at t175 a "psychic battle" took 42 to 2 HP in 5 turns (-4, -11, -10, -11, -4) while the model moved and used Lase on a thrall; he died "psychically extinguished by Kushworem-No-Longer, servant of Ptoh". Findings (ENGINE_INTERNALS 14.29): hunters bring psychic thralls (renamed converts, some Very Tough), a second hunter was a CULT hunter, and the mod's mark missed it. **Fix:** `IsPsychicHunter` reads `HasStringProperty` / `GetStringProperty` (the engine sets `PsychicHunter` as a string property on solo, deviant and cult hunters). **Not verified in game:** that the cult hunter is now marked. **Open (for the human):** what to do against a hunter: (1) the psychic battle seems to be a Sifrah mini-game (`SifrahPsychicCombat`, with an automatic option): the human could check the game options for "psychic combat" and whether auto is on; (2) the hunter was rated Average and the brain never treated it as danger, so rules keyed on the engine rating would not help; with the mark, `psychic_hunter` in view could trigger a plan (kill it first with Lase, Teleport Other it, break line of sight, avoid new zones) once the human picks one; (3) `Kushworem` was at distance 12 with line of sight: ranged.
 
-## Next steps (suggested order)
+## Next steps (written 2026-10-10 for a fresh start; the human sets the order)
 
-1. ~~Startup self-check~~ done (T-1.8). Read it in `Player.log` (search `[QudAI]`): expect `PlayerTurn patch ACTIVE`, 10 `Patched:` lines, `Patch check: 10/10 applied`. Absence of the ACTIVE line means the `PlayerTurn` patch itself failed or the mod did not compile (check `build_log.txt`).
+**Decisions and checks that are the human's**
+1. Look in the game options for "Sifrah: psychic combat" and its automatic setting (`SifrahPsychicCombat`, `SifrahPsychicCombatAuto`): "locked in psychic battle" killed Gen 32 in 5 turns and may be a mini-game the brain cannot play (issue 122, ENGINE_INTERNALS 14.29).
+2. Choose the answer to a psychic hunter (BACKLOG B25): kill it first with Lase, banish it with Teleport Other, break line of sight, avoid new zones, or get "favored" with the Seekers of the Sightless Way (the wiki says that stops seeker hunters; BACKLOG B18). Hunters bring thralls (some Very Tough) and the engine rates the hunter itself Average, so a rating rule will not catch it; the mod now marks it (`psychic_hunter`).
+3. How many times was `seekerhunter` wished for Gen 32? (The thralls and the cult hunter at glimmer 24 do not fit the wiki otherwise.)
+
+**Work waiting for a go-ahead**
+4. **Arrival ambush rule.** Baseline captured on the stairs arrival at stratum 11 (snapshot `2026-10-10_003552`, level 8): `USE_STAIRS_DOWN` at 42/42, the first turn at the bottom cost 21 HP, two Very Tough dawngliders in view at distance 8 to 9, and the model chose `MOVE_N` ("flank for line of sight") with all abilities ready and the stairs up underfoot. The border swarm retreat does not cover stairs, the stairs retreat needs HP under 35 percent or an "Impossible" rating, and he took 16 damage in one turn. Plan: run `pack_danger` on a stairs arrival and go straight back up (and flag that stratum like the swarm flag), test on that snapshot.
+5. **Hunter response** once item 2 is decided: wire `psychic_hunter` in view to a plan; test with the Lab card `psychic-hunter` (wishes `seekerhunter`, `extrasolohunter`, `extraculthunter`; take a snapshot first).
+6. **Small:** the Loop Breaker interrupts `REST` ("Action repeated 2x") and walks him a step every third turn while he heals; exempt `REST` while hurt and nothing hostile is in view. If the model never picks `THROW_ITEM` in the combat menu, add a deterministic opener.
+
+**Not yet seen working in a real run:** the equip flip guard (issue 110), marl digging (issue 109), the cult-hunter mark (issue 122; wish `extraculthunter`), the throw success report (issue 118: look for `[QudAI THROW] threw ... hostile hit points N -> M`).
+
+**Ideas filed, none started (BACKLOG):** B9 faction reputation export, B14 abilities in the threat score, B17 cursed-item removal, B18 faction runs, B21 the rest of "keep a digging tool", B22 light for other builds, B23 weapons that need cells or ammo, B24 stage 2 (grenades, an opener), B25 hunters beyond step 1.
+
+**Older suggestions from the 2026-10-04 code review, still open:**
 2. Add a logging-only prefix on every `Popup` method while `active.flag` exists (name + stack trace) to catch unpatched modals.
 3. C# `Prefix`: on exception with the flag present, spend a turn and `return false`. (The central energy guarantee is done, T-1.1.)
 4. Atomic `action.json` (write temp, `os.replace`), tolerant parse in `ReadAction`, add a turn id, make C# timeout > LLM timeout.
@@ -329,14 +349,19 @@ To discriminate (do this on the next hang, **before restarting the game**):
 
 ## Needs a human
 
-- Retrieve `Player.log` right after a level 5 hang. Check for `HarmonyException`, `Parameter`, `Ambiguous`, `[QudAI`.
-- Confirm which mod folder is loaded (the log said `QUDAITEST`; the repo calls it `QudAIBrain`). Check for duplicate copies in `...\CavesOfQud\Mods`.
-- Check whether a stale `death.json` is in the QudAI folder.
-- Decide what to do with the untracked-but-present `test_*.dll` files: move them into `scratch/` (silences the checker) or delete them. Not done because the task said to keep them on disk.
-- Check `ancestral_wisdom.json`: confirm it contains the Gen 6 and Gen 7 lessons. The Gen 6/7 chronicles were lost and restored from the Recycle Bin, and the wisdom file may have been written without them. Confirm the restored chronicles are complete and, if lessons are missing, regenerate them from the chronicles.
-- Confirm in Antigravity's Rules panel that `.agents/rules/read_project_docs.md` is active and set to always apply, and that the `@../../AGENTS.md` reference resolves. [unverified: based on third-party docs]
+- The two old branches: `task/1.9-popup-diagnostics` (one unmerged "wip" commit, log-only popup diagnostic, untested) and `origin/docs/workflow` (fully merged): keep or delete (deleting the first needs `git branch -D`, which Claude will not run without a yes).
+- The repo is inside a Google Drive backup that once locked `.git/worktrees`: consider excluding `.git` and `scratch/` from it.
+- Confirm in Antigravity's Rules panel that `.agents/rules/read_project_docs.md` is active and set to always apply, and that the `@../../AGENTS.md` reference resolves. [unverified: based on third-party documentation]
+- Check `ancestral_wisdom.json` (modified in the working tree, never committed on purpose): confirm it holds the lessons the human approved.
+- Decide whether to ignore `memory/` run logs and `chronicles/` outputs in git (they are untracked and show in every status; today they are kept out of commits by staging explicit paths).
 
 ## Session log (newest first)
+
+### 2026-10-09 to 2026-10-10 (long session): Claude Code, Sonnet 5.5 `claude-sonnet-5-5`
+- Merged to `main` this stretch (issues 104 to 122; the ledger at the top has each row): zone-exit diagnostics and a swim route (105), the console Logs tab, one-button Capture logs and saved-game snapshots (106 to 108), `[BREAKABLE]` obstacles and digging out of pockets (109), the equip flip guard with the shield winning (110), housekeeping and one path config (111), worn-slot export (112), the digging hammer first with `DIG_ABILITY_COMMANDS` (113), Ambient Light replaces the torch (114), the disc throw `THROW_ITEM` with a crowd rule and a combat-ability test switch (115 to 118), glimmer export and the hunter mark (120 to 122), the foamcrete pocket fix (116).
+- Verified in game by the human: the swim route, the snapshot restore, the hammer staying equipped, the torch not coming back, the disc killing two salthoppers, the foamcrete pocket, the hunter wish and mark (Seeker hunter), glimmer 24 = sum of mental mutation levels.
+- Lost: Gen 30 (arrival ambush at stratum 11, immolated), Gen 31 (a psychic hunter, "Ptoh's Osprey"), Gen 32 (the wished hunter's psychic battle plus a cult hunter).
+- Working rhythm (also in Claude's memory): the human presses Capture logs and says "captured"; Claude reads `scratch/captures/latest/info.txt` first and the live `memory/decision_trace.jsonl` and `last_state.json`; compile errors come from the game's red mark, not a "Success :)" check.
 
 ### 2026-10-06 (T-1.27 fire, T-1.28 Lase): Claude Code, Sonnet 5.5 `claude-sonnet-5-5`
 - Branch `task/1.27-fire-reaction` holds both (the Lase work is stacked on the fire commit `7cd1e06`). Issue 32: `fire_reaction` (Test 72). Issue 34 part C: C# exports `corpse_chance` per visible creature (reflection on `Corpse.CorpseChance`, `GameObject.GetPart(string)`); `filter_corpse_burners` (Test 73). All 73 pass offline.
