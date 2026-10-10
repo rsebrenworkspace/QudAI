@@ -1016,6 +1016,49 @@ def log_item_drop(record):
         pass
 
 
+# Throwing (BACKLOG B24, HANDOFF issue 115). The mod exports `thrown_weapon` (what the engine's own AI would throw) and the result of the last `THROW_ITEM@x,y` as `last_throw`.
+# It is offered in the combat menu when a hostile is in view at a throwing distance, nothing friendly is on the line, and nothing is adjacent; the mod refuses (with a reason) for anything
+# else. Two refusals in a row switch the option off for a while (R4/R5: a command the game keeps refusing must not loop).
+THROW_MIN_DIST = 2
+THROW_MAX_DIST = 7
+THROW_FAIL_LIMIT = 2
+THROW_PAUSE_TURNS = 200
+THROW_STATE = {"seq": 0, "fails": 0, "off_until": -1}
+
+
+def throw_option(game_state, enemies, adj_threats=None):
+    """The combat-menu line for throwing, or None."""
+    tw = game_state.get("thrown_weapon")
+    if not isinstance(tw, dict) or not enemies or adj_threats or TURN_CLOCK < THROW_STATE["off_until"]:
+        return None
+    px, py = game_state.get("x"), game_state.get("y")
+    if px is None or py is None:
+        return None
+    for e in enemies[:3]:
+        d = e.get("dist")
+        if e.get("tx") is None or e.get("ty") is None or not isinstance(d, (int, float)) or not (THROW_MIN_DIST <= d <= THROW_MAX_DIST) or e.get("has_los") is False:
+            continue
+        clear, _why = is_line_of_fire_clear((px, py), (e["tx"], e["ty"]), companions=game_state.get("companions", []), target_entity=e, surroundings=game_state.get("surroundings"))
+        if clear:
+            return f"THROW_ITEM@{e['tx']},{e['ty']} (Throw {tw.get('name', 'the thrown weapon')} at {e.get('name', 'the enemy')} at dist {d}: a free ranged attack)"
+    return None
+
+
+def note_throw_result(game_state):
+    lt = game_state.get("last_throw")
+    if not isinstance(lt, dict) or lt.get("seq") is None or lt["seq"] == THROW_STATE["seq"]:
+        return
+    THROW_STATE["seq"] = lt["seq"]
+    if lt.get("ok"):
+        THROW_STATE["fails"] = 0
+        return
+    THROW_STATE["fails"] += 1
+    print(f"[THROW] refused: {lt.get('reason')} (attempt {THROW_STATE['fails']} of {THROW_FAIL_LIMIT})")
+    if THROW_STATE["fails"] >= THROW_FAIL_LIMIT:
+        THROW_STATE["off_until"] = TURN_CLOCK + THROW_PAUSE_TURNS
+        THROW_STATE["fails"] = 0
+
+
 def note_inventory_action(game_state):
     """Reads the mod's report of the last equip or drop once: logs drops, and stops retrying an id the game refused twice. Never raises."""
     try:
@@ -2795,6 +2838,11 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
         if has_mw and ammo < max_ammo and inv_ammo > 0 and not adj_threats:
             action_choices.append("RELOAD")
 
+        # 4b. THROWING (B24): a free ranged attack with the thrown weapon when a hostile is in view and nothing friendly is in the way
+        _throw_line = throw_option(game_state, enemies, adj_threats)
+        if _throw_line:
+            action_choices.append(_throw_line)
+
         # 5. SPRINT ESCAPES: Only when adjacent to melee threats
         if can_sprint and adj_threats and open_moves:
             for vm in open_moves:
@@ -3001,7 +3049,7 @@ VALID ACTIONS:
             # LOF Safety Guardrail: Prevent friendly fire on companions and wall impacts if LLM generated a beam/missile attack
             companions = game_state.get("companions", [])
             if enemies:
-                is_beam_or_missile = action.startswith("FIRE_MISSILE") or any(b in action.lower() for b in ["lase", "flaming", "freezing", "spit"])
+                is_beam_or_missile = action.startswith("FIRE_MISSILE") or action.startswith("THROW_ITEM") or any(b in action.lower() for b in ["lase", "flaming", "freezing", "spit"])
                 if is_beam_or_missile:
                     closest = enemies[0]
                     ctx = closest.get("tx", px)
@@ -4711,6 +4759,7 @@ def main():
                 note_ability_use(game_state)
                 note_loot(game_state)
                 note_inventory_action(game_state)
+                note_throw_result(game_state)
                 note_avoid(game_state)
                 note_quests(game_state)
                 note_zone_danger(game_state)

@@ -6619,3 +6619,45 @@ _j136 = _cs136.index("var body = player.GetPart<Body>();", _i136)
 assert 'a.Command == "CommandAmbientLight" && a.ToggleState' in _cs136[_i136:_j136] and "return;" in _cs136[_i136:_j136].split("CommandAmbientLight")[1], "the ambient-light check comes first and returns"
 assert _cs136.count("{") == _cs136.count("}")
 print("  [OK] Test 136 Passed: EnsureLightSource returns before lighting or fetching a torch while the Ambient Light toggle is on")
+
+
+# Test 137: throwing the thrown weapon (BACKLOG B24, HANDOFF issue 115)
+# ---------------------------------------------------------------------------
+_en137 = lambda **k: dict({"name": "snapjaw", "tx": 14, "ty": 10, "dist": 4, "has_los": True, "dir": "E"}, **k)
+_gs137 = lambda **k: dict({"x": 10, "y": 10, "thrown_weapon": {"id": "d1", "name": "geomagnetic disc", "blueprint": "Geomagnetic Disc", "in_thrown_slot": True}, "companions": []}, **k)
+brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1}); brain.TURN_CLOCK = 1000
+_o137 = brain.throw_option(_gs137(), [_en137()])
+assert _o137 and _o137.startswith("THROW_ITEM@14,10 ") and "geomagnetic disc" in _o137, _o137
+assert brain.throw_option(_gs137(thrown_weapon=None), [_en137()]) is None, "nothing to throw"
+assert brain.throw_option({k: v for k, v in _gs137().items() if k != "thrown_weapon"}, [_en137()]) is None, "an old mod that does not export it"
+assert brain.throw_option(_gs137(), []) is None
+assert brain.throw_option(_gs137(), [_en137(dist=1, tx=11)]) is None, "too close"
+assert brain.throw_option(_gs137(), [_en137(dist=9, tx=19)]) is None, "too far"
+assert brain.throw_option(_gs137(), [_en137(has_los=False)]) is None, "no line of sight"
+assert brain.throw_option(_gs137(), [_en137()], adj_threats={"N": "boar"}) is None, "something adjacent: fight or flee, do not throw"
+assert brain.throw_option(_gs137(companions=[{"name": "crab", "tx": 12, "ty": 10}]), [_en137()]) is None, "a companion on the line (R8)"
+assert brain.throw_option(_gs137(companions=[{"name": "crab", "tx": 12, "ty": 14}]), [_en137()]), "a companion off the line does not matter"
+# the second enemy is used when the nearest is out of range
+assert "snapjaw2" in brain.throw_option(_gs137(), [_en137(dist=1, tx=11, name="close"), _en137(name="snapjaw2")])
+# results: two refusals in a row switch it off for a while; a success clears the count; the same report is not counted twice
+_lt137 = lambda seq, ok, reason="x": {"last_throw": {"seq": seq, "ok": ok, "reason": reason, "weapon": "disc", "x": 14, "y": 10}}
+brain.note_throw_result(_lt137(1, False, "no line of sight")); brain.note_throw_result(_lt137(1, False, "no line of sight"))
+assert brain.THROW_STATE["fails"] == 1 and brain.throw_option(_gs137(), [_en137()])
+brain.note_throw_result(_lt137(2, False, "out of range (8 > 6)"))
+assert brain.THROW_STATE["off_until"] == 1000 + brain.THROW_PAUSE_TURNS and brain.throw_option(_gs137(), [_en137()]) is None, "off for a while"
+brain.TURN_CLOCK = 1000 + brain.THROW_PAUSE_TURNS + 1
+assert brain.throw_option(_gs137(), [_en137()]), "and back on afterwards"
+brain.note_throw_result(_lt137(3, False)); brain.note_throw_result(_lt137(4, True))
+assert brain.THROW_STATE["fails"] == 0, "a success clears the count"
+brain.note_throw_result({}); brain.note_throw_result({"last_throw": None})
+brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1}); brain.TURN_CLOCK = 0
+# wiring in the brain and in the mod
+_b137 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "_throw_line = throw_option(game_state, enemies, adj_threats)" in _b137 and 'action.startswith("THROW_ITEM")' in _b137 and "note_throw_result(game_state)" in _b137
+_c137 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _s in ('act.StartsWith("THROW_ITEM")', "private static void ExecuteThrow(", "player.PerformThrow(weapon, targetCell, targetObj, path, phase, null, null, null)",
+           "MissileWeapon.CalculateMissilePath(", "GetFirstThrownWeapon(o => true, p => true)", "sb.Append(ThrownWeaponJson(player));", "sb.Append(LastThrowJson());",
+           '"a companion is in the target cell"', '"a companion is in the line of fire"', '"no line of sight"', '"peaceful settlement"', '"no hostile creature in the cell"', 'player.UseEnergy(1000, "Throw")'):
+    assert _s in _c137, _s
+assert _c137.count("{") == _c137.count("}")
+print("  [OK] Test 137 Passed: the combat menu offers THROW_ITEM only with a thrown weapon, a hostile in view at throwing distance, a clear line and nothing adjacent, two refusals pause it, a success clears the count, and the mod command refuses companions in the line, missing line of sight, settlements and non-hostile cells")
