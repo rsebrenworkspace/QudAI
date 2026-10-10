@@ -1149,7 +1149,7 @@ namespace QudAIBrain
 
         // Diagnostic for a zone exit that cannot be reached or stepped (the three-zone hop loop, 2026-10-09). One `[QudAI ExitDiag]` line per zone, edge, reason and player cell:
         // the edge, why (`no step` = the engine found no route; `move failed` = the step was refused), the player's cell and neighbours (PathDiagCell legend above), and the whole
-        // border row as one character per cell: . passable, W swimming-depth liquid the player may enter, X swimming-depth liquid it may not, w wading-depth liquid, S solid or wall, x other impassable. Never acts, never throws, at most 60 lines per session.
+        // border row as one character per cell: . passable, W swimming-depth liquid the player may enter, X swimming-depth liquid it may not, w wading-depth liquid, S solid or wall, x other impassable. Never acts, never throws, at most 150 lines per session.
         private static readonly HashSet<string> exitDiagSeen = new HashSet<string>();
 
         private static void LogExitDiag(GameObject player, char edgeChar, string why, string step)
@@ -1160,10 +1160,17 @@ namespace QudAIBrain
                 Zone z = pc != null ? pc.ParentZone : null;
                 if (z == null) return;
                 string key = z.ZoneID + "|" + edgeChar + "|" + why + "|" + pc.X + "," + pc.Y;
-                if (exitDiagSeen.Count >= 60 || !exitDiagSeen.Add(key)) return;
+                if (exitDiagSeen.Count >= 150 || !exitDiagSeen.Add(key)) return;
                 StringBuilder sb = new StringBuilder();
                 sb.Append("[QudAI ExitDiag] ").Append(edgeChar).Append(" exit of ").Append(z.ZoneID).Append(": ").Append(why);
-                if (!string.IsNullOrEmpty(step)) sb.Append(" (step ").Append(step).Append(')');
+                if (!string.IsNullOrEmpty(step))
+                {
+                    sb.Append(" (step ").Append(step).Append(')');
+                    Cell dest = null;
+                    try { dest = pc.GetCellFromDirection(step, false); } catch { }
+                    sb.Append(" dest ").Append(PathDiagCell(dest, player));
+                    try { if (dest != null && dest.Objects != null) foreach (GameObject o in dest.Objects) { if (o != null) sb.Append(" holds ").Append(o.Blueprint); } } catch { }
+                }
                 sb.Append(" | player ").Append(PathDiagCell(pc, player)).Append(" | around player");
                 foreach (string d in pathDiagDirs)
                 {
@@ -3940,6 +3947,7 @@ namespace QudAIBrain
                     int pyBefore = player.CurrentCell?.Y ?? -1;
                     string zoneBefore = player.CurrentCell?.ParentZone?.ZoneID;
 
+                    LogExitDiag(player, edgeChar, "step", step);      // every distinct (zone, edge, cell) once: shows what the engine's step is when he oscillates
                     bool moved = player.Move(step);
                     bool zoneOrCellChanged = (player.CurrentCell != null && (
                         player.CurrentCell.ParentZone?.ZoneID != zoneBefore ||
