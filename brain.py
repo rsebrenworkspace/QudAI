@@ -749,6 +749,51 @@ def choose_inventory_action(game_state, template, is_town):
     return None
 
 
+# Examine unidentified items (BACKLOG B15, HANDOFF issue 102). The human examined nine artifacts by hand: no failures, one needed a second look (a partial success first). The mod now
+# exports `partial` and `cursed` per item and `sifrah_examine` (the minigame option: a modal screen the mod cannot answer), and `EXAMINE_ITEM:<id>` runs the engine's own Examine.
+# Phase A only, one per safe moment, at 80 percent hit points or better, a few tries per item. Partly understood items first: one more look finishes them. Once an item is
+# understood the inventory step scores it like any other (equip if it is an upgrade); the existing scorer cannot see utility effects, which is stage 2.
+EXAMINE_MAX_TRIES = 6           # was 4: night-vision goggles (complexity 3, Intelligence 17) failed twice before they were understood in the human's first run (2026-10-09)
+EXAMINE_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "examine_log.jsonl")
+
+
+def log_examine(record):
+    """One JSON line per examine result (and per refusal): what, the outcome, the attempt and the character's Intelligence, so the odds can be measured instead of guessed. Never raises."""
+    try:
+        with open(EXAMINE_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + chr(10))
+    except Exception:
+        pass
+EXAMINE_MIN_HP_RATIO = 0.8
+EXAMINE_STATE = {"tries": {}, "warned": False}
+
+
+def choose_examine_action(game_state, is_town):
+    """EXAMINE_ITEM for one unidentified or half-understood item in the pack, or None. Phase A only: the caller guarantees no combat."""
+    inv = game_state.get("inventory")
+    if is_town or game_state.get("is_swimming") or game_state.get("is_on_fire") or not isinstance(inv, list) or not inv:
+        return None
+    mx = game_state.get("max_hp") or 0
+    if mx and (game_state.get("hp") or 0) / float(mx) < EXAMINE_MIN_HP_RATIO:
+        return None
+    cands = [i for i in inv if i.get("id") and i.get("identified") is False and not i.get("equipped") and EXAMINE_STATE["tries"].get(i["id"], 0) < EXAMINE_MAX_TRIES]
+    if not cands:
+        return None
+    if game_state.get("sifrah_examine") is not False:
+        # True: the minigame is on and the mod would refuse; missing: the mod predates the command. Either way, do nothing (and say so once).
+        if not EXAMINE_STATE["warned"]:
+            EXAMINE_STATE["warned"] = True
+            print("[EXAMINE] Unidentified items in the pack, but the examine minigame (Sifrah) is on or the mod is too old to say; turn off 'Sifrah: examine' in the game options to let him examine.")
+        return None
+    cands.sort(key=lambda i: 0 if i.get("partial") else 1)
+    it = cands[0]
+    EXAMINE_STATE["tries"][it["id"]] = EXAMINE_STATE["tries"].get(it["id"], 0) + 1
+    why = "partly understood, one more look" if it.get("partial") else "unidentified"
+    INV_STATE["pending"] = {"kind": "examine", "ids": [it["id"]], "reasons": {it["id"]: why}, "names": {it["id"]: it.get("name")}, "blueprints": {it["id"]: it.get("blueprint")},
+                            "attempt": EXAMINE_STATE["tries"][it["id"]], "intelligence": ((game_state.get("attributes") or {}).get("Intelligence"))}
+    return {"action": f"EXAMINE_ITEM:{it['id']}", "reason": f"Examine: trying to identify {it.get('name')} ({why}; attempt {EXAMINE_STATE['tries'][it['id']]} of {EXAMINE_MAX_TRIES})"}
+
+
 # Ground equipment (BACKLOG B16, HANDOFF issue 96). The loot step only takes what the engine's autoget accepts, so the weapons and armor killed creatures drop stayed on the ground
 # while a level 5 character still wore AV 1 and swung a 1d2 staff (Gen 27). The mod exports `ground_items` (unowned, takeable, never one we dropped) and `TAKE_ITEM:<id>` takes one
 # from the player's cell or an adjacent one. The decision uses the SAME scorer as the inventory (`item_scoring.choose_equips`): an item is fetched only when that scorer would equip it,
@@ -759,8 +804,15 @@ GROUND_MIN_SCORE = 1.0             # a candidate must also score at least this b
 GROUND_STATE = {"id": None, "turns": 0, "blacklist": set()}
 
 
+# Unidentified items on the ground (BACKLOG B15, HANDOFF issue 102): fetched so the examine step can reveal them, and NEVER judged by their real blueprint (the human's rule: he learns
+# only by examining; the one hidden fact he may use is `cursed`, a safety check). A cap on how many unidentified items he carries and on the pack weight keeps this from hoarding.
+UNIDENTIFIED_PICKUP_MAX_CARRIED = 6
+UNIDENTIFIED_PICKUP_WEIGHT_SHARE = 0.6
+
+
 def choose_ground_pickup(game_state, template, is_town):
-    """TAKE_ITEM (next to it) or NAVIGATE_TO_CELL (walking to it) for the nearest ground item that would be an equip upgrade, or None. Phase A only: the caller guarantees no combat."""
+    """TAKE_ITEM (next to it) or NAVIGATE_TO_CELL (walking to it) for the nearest ground item that would be an equip upgrade, or an unidentified one worth examining, or None.
+    Phase A only: the caller guarantees no combat."""
     ground = game_state.get("ground_items")
     inv = game_state.get("inventory")
     if is_town or game_state.get("is_swimming") or not isinstance(ground, list) or not ground or not isinstance(inv, list) or not inv:
@@ -768,20 +820,29 @@ def choose_ground_pickup(game_state, template, is_town):
     items = [dict(i, blueprint=i.get("blueprint"), weight=(i.get("weight") or 0) / max(1, i.get("count") or 1)) for i in inv if i.get("id")]
     profile = _inv_profile(template)
     carried, cap = game_state.get("carry_weight") or 0, game_state.get("max_carry_weight") or 0
+    unidentified_carried = sum(1 for i in inv if i.get("identified") is False)
     for g in sorted(ground, key=lambda e: e.get("dist", 99)):
         gid = g.get("id")
-        if (not gid or gid in GROUND_STATE["blacklist"] or INV_STATE["fails"].get(gid, 0) >= INV_FAIL_LIMIT or g.get("identified") is False
+        if (not gid or gid in GROUND_STATE["blacklist"] or INV_STATE["fails"].get(gid, 0) >= INV_FAIL_LIMIT
                 or (g.get("dist") if g.get("dist") is not None else 99) > GROUND_PICKUP_MAX_DIST):
             continue
         if cap and carried + (g.get("weight") or 0) > cap - 10:
             continue
         if (game_state.get("zone_id"), (g.get("tx"), g.get("ty"))) in UNREACHABLE_SECTORS:
             continue                  # the engine reported no route to that cell
-        cand = {"id": gid, "blueprint": g.get("blueprint"), "name": g.get("name"), "count": 1, "weight": g.get("weight") or 0, "equipped": False, "identified": True}
-        wins = [(it, slot, why) for it, slot, why in item_scoring.choose_equips(items + [cand], profile) if it.get("id") == gid]
-        if not wins or item_scoring.score_item(item_scoring._entry(cand), item_scoring.with_inventory(profile, items + [cand]))[0] < GROUND_MIN_SCORE:
-            continue                  # not an upgrade, or an empty slot that a worthless item would "fill"
-        why = wins[0][2]
+        if g.get("identified") is False:
+            # to be examined, not scored: its real blueprint is not used. Refuse a cursed one (safety), and keep the pack from filling with unknowns.
+            if item_scoring.is_cursed({"blueprint": g.get("blueprint"), "cursed": g.get("cursed")}):      # safety is the one use of what it really is
+                continue
+            if unidentified_carried >= UNIDENTIFIED_PICKUP_MAX_CARRIED or (cap and carried + (g.get("weight") or 0) > UNIDENTIFIED_PICKUP_WEIGHT_SHARE * cap):
+                continue
+            why = "unidentified: to examine it"
+        else:
+            cand = {"id": gid, "blueprint": g.get("blueprint"), "name": g.get("name"), "count": 1, "weight": g.get("weight") or 0, "equipped": False, "identified": True, "cursed": bool(g.get("cursed"))}
+            wins = [(it, slot, why) for it, slot, why in item_scoring.choose_equips(items + [cand], profile) if it.get("id") == gid]
+            if not wins or item_scoring.score_item(item_scoring._entry(cand), item_scoring.with_inventory(profile, items + [cand]))[0] < GROUND_MIN_SCORE:
+                continue              # not an upgrade, or an empty slot that a worthless item would "fill"
+            why = wins[0][2]
         if GROUND_STATE["id"] != gid:
             GROUND_STATE.update({"id": gid, "turns": 0})
         GROUND_STATE["turns"] += 1
@@ -932,7 +993,14 @@ def note_inventory_action(game_state):
         for item in la.get("ok", []):
             iid, _, name = str(item).partition("|")
             INV_STATE["fails"].pop(iid, None)
-            if la.get("kind") == "take":
+            if la.get("kind") == "examine":
+                shown, _, outcome = name.rpartition("|")
+                print(f"[INVENTORY] examined {shown}: {outcome}")
+                log_examine({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "id": iid, "before": (pend.get("names") or {}).get(iid), "after": shown, "outcome": outcome,
+                             "blueprint": (pend.get("blueprints") or {}).get(iid), "attempt": pend.get("attempt"), "intelligence": pend.get("intelligence")})
+                if outcome in ("understood", "gone"):
+                    EXAMINE_STATE["tries"].pop(iid, None)
+            elif la.get("kind") == "take":
                 print(f"[INVENTORY] took {name} from the ground: {(pend.get('reasons') or {}).get(iid, '')}")
                 GROUND_STATE.update({"id": None, "turns": 0})
             elif la.get("kind") == "drop":
@@ -943,6 +1011,9 @@ def note_inventory_action(game_state):
                 print(f"[INVENTORY] equipped {name}: {(pend.get('reasons') or {}).get(iid, '')}")
         for item in la.get("failed", []):
             iid = str(item).split(":", 1)[0]
+            if la.get("kind") == "examine":
+                log_examine({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "id": iid, "before": (pend.get("names") or {}).get(iid), "outcome": "failed: " + str(item).split(":", 1)[-1],
+                             "blueprint": (pend.get("blueprints") or {}).get(iid), "attempt": pend.get("attempt"), "intelligence": pend.get("intelligence")})
             INV_STATE["fails"][iid] = INV_STATE["fails"].get(iid, 0) + 1
             print(f"[INVENTORY] {la.get('kind')} refused for {item} (attempt {INV_STATE['fails'][iid]} of {INV_FAIL_LIMIT})")
     except Exception:
@@ -4143,6 +4214,11 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         ground_decision = choose_ground_pickup(game_state, template, is_town)
         if ground_decision:
             return ground_decision
+
+        # 3E. Examine unidentified items (BACKLOG B15, issue 102). Phase A only.
+        examine_decision = choose_examine_action(game_state, is_town)
+        if examine_decision:
+            return examine_decision
 
         # 4. Top-off ammo while area is secure (only if we have spare ammo in inventory!)
         if has_missile and max_ammo > 0 and ammo < max_ammo and inv_ammo > 0:

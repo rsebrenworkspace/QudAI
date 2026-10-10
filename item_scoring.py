@@ -279,6 +279,15 @@ def _entry(inv_item):
     return base
 
 
+# The blueprints with a Cursed part `[verified in the XML 2026-10-09]`; a worn Gentling Mask held a human's Face slot (Ego -1). The mod also exports `cursed` per item (the engine's own answer),
+# which wins; this list covers an item whose flag is not exported.
+CURSED_BLUEPRINTS = {"Psychal Fleshgun", "Gentling Collar", "Gentling Mask", "Inhibitor Cuff", "BarathrumiteSafetyBand", "Cyclopean Prism"}
+
+
+def is_cursed(it):
+    return bool((it or {}).get("cursed")) or (it or {}).get("blueprint") in CURSED_BLUEPRINTS
+
+
 def with_inventory(profile, inventory):
     """The profile plus what the pack says about it: `owns_shield` (a shield is carried or worn), which decides whether a two-handed weapon costs him the shield hand.
     Every caller that scores items against a pack goes through this, so the equip rule, the drop rule and the ground pickup agree."""
@@ -290,6 +299,7 @@ def choose_equips(inventory, profile):
     """Equip actions: [(inventory item, slot, why)]. One best item per armor slot; one main weapon; a shield only for a build that wants one.
 
     An item is chosen only if it beats the equipped one in that slot by DOMINATED_MARGIN."""
+    inventory = [it for it in (inventory or []) if it.get("equipped") or not is_cursed(it)]        # never put on a cursed item: it cannot be taken off again
     profile = with_inventory(profile, inventory)
     actions = []
     by_slot = {}
