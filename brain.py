@@ -1652,7 +1652,8 @@ def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False,
             continue
         info = surroundings.get(d, "").lower()
         if "[blocked:" in info or "impassable" in info or "wall" in info:
-            if any(k in info for k in DESTRUCTIBLE_OBSTACLE_KEYWORDS):
+            # `[breakable]` is the mod's answer (a solid, ownerless object with hit points, outside a settlement); the name list is only the older fallback (R3)
+            if "[breakable]" in info or any(k in info for k in DESTRUCTIBLE_OBSTACLE_KEYWORDS):
                 dx, dy = CARDINAL_OFFSETS[d]
                 nx, ny = px + dx, py + dy
                 dist_to_target = (nx - tx) ** 2 + (ny - ty) ** 2
@@ -1665,6 +1666,9 @@ def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False,
         candidates.sort(key=lambda x: x[0])
         best_score, best_d, best_info = candidates[0]
         clean_tag = next((k for k in DESTRUCTIBLE_OBSTACLE_KEYWORDS if k in best_info), "wall")
+        if "[breakable]" in best_info:
+            m = re.search(r"\[blocked: ([^\]]+)\]", best_info.replace("[blocked: impassable terrain]", ""))
+            clean_tag = m.group(1) if m else "breakable obstacle"
         return best_d, clean_tag
     return None, None
 
@@ -4541,6 +4545,16 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             ))
             return {"action": ranked[0], "reason": f"{zone_label}: scouting zone frontier {ranked[0]}"}
 
+        # Boxed in with no open move (human capture 2026-10-09_223859: entombed in marl, hundreds of WAIT and PASS turns): dig out through what the mod marks
+        # `[BREAKABLE]`, or, when the only way out is a companion, swap with it (the guard decides). Never in a settlement (R7).
+        if not is_town_zone(game_state):
+            _bd, _binfo = find_burrow_direction(surroundings, cur_pos, (game_state.get("unexplored_centroid_x", cur_pos[0]), game_state.get("unexplored_centroid_y", cur_pos[1])), is_town=False)
+            if _bd:
+                _act, _why = guard_companion_blocked_burrow(f"ATTACK_WALL:{_bd}", f"{zone_label}: boxed in, no open moves: burrowing through {_binfo} ({_bd}).", surroundings, cur_pos)
+                return {"action": _act, "reason": _why}
+            _comp = [d for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"] if "[companion" in surroundings.get(d, "").lower()]
+            if _comp:
+                return {"action": f"MOVE_{_comp[0]}", "reason": f"{zone_label}: boxed in, the only way out is a companion: swapping places with it."}
         return {"action": "WAIT", "reason": f"{zone_label}: no open moves"}
 
     # ==========================================================

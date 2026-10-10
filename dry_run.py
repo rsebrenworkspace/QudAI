@@ -6371,3 +6371,57 @@ _w129 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools"
 for _s in ('text="Save snapshot"', 'text="Restore selected"', "def snapshot_clicked(self)", "def restore_clicked(self)", "messagebox.askyesno(\"Restore snapshot\"", "cl.restore_snapshot(snap[\"folder\"])"):
     assert _s in _w129, _s
 print("  [OK] Test 129 Passed: a snapshot copies the newest save folder with its summary, restore is refused while the game runs and keeps what it replaces (also when the folder is gone), the list ignores the replaced copies, and the capture's latest folder is refreshed in place")
+
+
+# Test 130: boxed in by diggable rock he used to pass forever; the mod now says what is breakable (human capture 2026-10-09_223859; HANDOFF issue 109)
+# ---------------------------------------------------------------------------
+import copy as _copy130
+_MARL130 = "[BREAKABLE], [BLOCKED: impassable terrain], [BLOCKED: marl]"
+_PLAIN130 = "[BLOCKED: impassable terrain], [BLOCKED: marl]"
+# the helper: the mod's tag decides; the name list is only the older fallback and was NOT extended with rock names (R3)
+_s130 = {d: _MARL130 for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]}
+_d130, _i130 = brain.find_burrow_direction(_s130, (53, 22), (60, 5))
+assert _d130 in ("N", "NE", "E", "NW") and _i130 == "marl", (_d130, _i130)
+assert brain.find_burrow_direction({d: _PLAIN130 for d in _s130}, (53, 22), (60, 5)) == (None, None), "no tag, no name in the old list: nothing to dig"
+assert brain.find_burrow_direction(_s130, (53, 22), (60, 5), is_town=True) == (None, None), "never in a town"
+# the whole decision: entombed in marl, no open move
+def _pocket130(**over):
+    st = _copy130.deepcopy(sealed_pocket_state)
+    st["surroundings"] = {d: _MARL130 for d in ["N", "S", "E", "W", "NE", "NW", "SE", "SW"]}
+    st["companions"] = []
+    st["x"], st["y"] = 53, 22
+    st["hp"], st["max_hp"] = 37, 37
+    st.update(over)
+    return st
+def _reset130():
+    brain.CURRENT_TRACKED_ZONE = "JoppaWorld.11.17.0.1.10"; brain.current_zone_id = "JoppaWorld.11.17.0.1.10"
+    brain.visit_counts.clear(); brain.recent_positions.clear(); brain.stuck_autoexplore_zones.add("JoppaWorld.11.17.0.1.10")
+    brain.COMPANION_BLOCK.update({"pos": None, "tries": 0})
+_reset130()
+_dec130 = brain.query_decision(_pocket130(zone_id="JoppaWorld.11.17.0.1.10"), took_damage=False, enemies=[])
+assert _dec130["action"].startswith("ATTACK_WALL:"), f"entombed in diggable rock he must dig, got {_dec130}"
+assert "marl" in _dec130["reason"], _dec130["reason"]
+# with a companion standing in the one open cell he swaps with it first (the older guard), and still never just waits forever
+_st130 = _pocket130(zone_id="JoppaWorld.11.17.0.1.10")
+_st130["surroundings"]["SE"] = "[COMPANION: salty tarred eyeless crab]"
+_reset130()
+_dec130 = brain.query_decision(_st130, took_damage=False, enemies=[])
+assert _dec130["action"] == "MOVE_SE", f"the companion in the only way out is swapped with, got {_dec130}"
+# a companion and nothing breakable: swap, do not wait
+_st130b = _pocket130(zone_id="JoppaWorld.11.17.0.1.10")
+_st130b["surroundings"] = {d: _PLAIN130 for d in _st130b["surroundings"]}
+_st130b["surroundings"]["SE"] = "[COMPANION: salty tarred eyeless crab]"
+_reset130()
+assert brain.query_decision(_st130b, took_damage=False, enemies=[])["action"] == "MOVE_SE"
+# a settlement: never digs (R7)
+_reset130()
+_town130 = brain.query_decision(_pocket130(zone_id="JoppaWorld.11.17.0.1.10", is_settlement=True), took_damage=False, enemies=[])
+assert not _town130["action"].startswith("ATTACK_WALL"), _town130
+# the mod side: one helper decides what is breakable, the breaker and the export both use it, and the zone-exit step now hacks at a wall in its way
+_cs130 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "private static GameObject FindBreakableObstacle(" in _cs130 and "GameObject target = FindBreakableObstacle(player, cell);" in _cs130
+assert '"[BREAKABLE]"' in _cs130 and "FindBreakableObstacle(player, cell) != null" in _cs130
+_zi130 = _cs130.index('LogExitDiag(player, edgeChar, "move failed", step);')
+assert "TryBreakPathObstacle(player, player.CurrentCell?.GetCellFromDirection(step, false), step)" in _cs130[_zi130 - 700:_zi130], "the zone-exit step breaks an obstacle before it gives up"
+assert _cs130.count("{") == _cs130.count("}")
+print("  [OK] Test 130 Passed: the mod tags breakable obstacles and Python digs through what is tagged (not by a name list), boxed in with nothing open he digs or swaps with a companion in the only way out instead of waiting, never in a settlement, and the zone-exit step breaks a wall in its way")
