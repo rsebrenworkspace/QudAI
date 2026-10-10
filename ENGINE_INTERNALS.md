@@ -781,6 +781,9 @@ Vanilla Caves of Qud's native pathfinder (`FasterDMapAutoexplore.FindAutoexplore
 - The part `ThrownWeapon` marks a throwable item. Throwing knives and spears carry `Penetration`, `Damage` and `Attributes` on it (`1d2` to `1d6`, skill ShortBlades) `[Items.xml]`.
 - **Geomagnetic Disc** (`Items.xml`): parts `ThrownWeapon`, `GeomagneticDisc Damage="2d6" ChargeUse="100" Bounces="5"`, `EnergyCellSocket`, `AIOffensiveEnergyCellReload`; tags `PathAsIfFlying`. It uses an energy cell charge per throw (`ChargeUse`), bounces up to 5 times through `FindPath` targets (`GeomagneticDisc.DoThrow(Actor, Paths, ..., Targets, LastTarget, Phase, Bonus, ...)`), and its examine complexity is 6. Whether the disc in the human's pack holds a charge is `[unknown]` (the inventory screenshot showed no `[no cell]` mark on it).
 
+### 14.28 Foamcrete (2026-10-10, `[verified in data]` `Walls.xml`; the failed swings `[verified in game 2026-10-10]`)
+- `Foamcrete` is a wall with AV 40 and 100 hit points (heat and cold resistance 75), an ordinary solid object with hit points, so the mod's `[BREAKABLE]` tag applies to it, yet the nanopneumatic jackhammer (2d4, penetration 4) did no damage in 34 swings (`HP 100 -> 100/100`): the wall's armor value is far above what the weapon can penetrate (14.23). Having hit points is therefore NOT the same as being breakable by a given weapon; only the engine's damage report says which. The Qud ruins built of it include one-cell-wide winding mazes with an arconaut and a shrine to Antithrishid, the Mahogany Terror of Nalep, in `JoppaWorld.10.15`.
+
 ---
 *End of Engine Internals Manual.*
 
