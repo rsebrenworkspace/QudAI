@@ -1170,6 +1170,62 @@ def heal_item_decision(game_state):
         return None
 
 
+# Damage over time is not a fight (BACKLOG B38, human 2026-10-11: "fix the damage-over-time and rest issue"). A poisoned character with nothing hostile near was put in combat mode by his own
+# falling hit points, so the combat fallback made him "maneuver into position" between the gas steps (grenade lab, avoidance test). A drop that a status explains (poison, bleeding, burning
+# on the effect list), with no hostile within 2 tiles or adjacent and no larger than DOT_MAX_DROP_FRACTION of his maximum, is not "he was hit".
+DOT_WORDS = ("poison", "bleed", "burning", "on fire")
+DOT_MAX_DROP_FRACTION = 0.25
+DOT_HOSTILE_RADIUS = 2
+
+
+def took_real_damage(game_state, hp, last_hp):
+    """True when his hit points fell and something other than a damage-over-time tick explains it."""
+    if last_hp is None or hp >= last_hp:
+        return False
+    try:
+        effects = [str(e).lower() for e in game_state.get("effects") or []]
+        if not any(w in ef for ef in effects for w in DOT_WORDS):
+            return True
+        mx = game_state.get("max_hp") or 0
+        if mx and (last_hp - hp) > DOT_MAX_DROP_FRACTION * mx:
+            return True                    # too big for a tick: something hit him as well
+        if game_state.get("hostiles_adjacent"):
+            return True
+        for e in game_state.get("visible_entities") or []:
+            d = e.get("dist")
+            if e.get("is_enemy") and not e.get("is_companion") and isinstance(d, (int, float)) and d <= DOT_HOSTILE_RADIUS:
+                return True
+        return False
+    except Exception:
+        return True
+
+
+# Resting is allowed to repeat (the Loop Breaker walked a poisoned, resting character a step every third turn). A REST at the same cell is left alone while nothing hostile is near, he is hurt,
+# and his hit points have risen within the last REST_NO_PROGRESS_MAX rests; if they stop rising the Loop Breaker may act again (R4: a rest that does nothing must not loop forever).
+REST_NO_PROGRESS_MAX = 12
+REST_STATE = {"best_hp": -1, "since_progress": 0}
+
+
+def rest_in_progress(action, last_executed, game_state):
+    """True when this REST should not be treated as a stalled repeat."""
+    if action != "REST":
+        REST_STATE.update({"best_hp": -1, "since_progress": 0})
+        return False
+    try:
+        hp, mx = game_state.get("hp"), game_state.get("max_hp")
+        if last_executed != "REST":
+            REST_STATE.update({"best_hp": hp if hp is not None else -1, "since_progress": 0})
+        elif hp is not None and hp > REST_STATE["best_hp"]:
+            REST_STATE.update({"best_hp": hp, "since_progress": 0})
+        else:
+            REST_STATE["since_progress"] += 1
+        if game_state.get("hostiles_nearby") or hp is None or not mx or hp >= mx:
+            return False
+        return REST_STATE["since_progress"] < REST_NO_PROGRESS_MAX
+    except Exception:
+        return False
+
+
 # Gas cloud avoidance (BACKLOG B38 stage 2, human 2026-10-11: "gas cloud avoidance"). The mod exports `gas_cells` (type and density of every gas cell within 12 tiles). The lab showed that a poison
 # cloud's low-density wisps are enough to poison a level 1 character, that the poison keeps ticking after he leaves the gas, and that a cloud drifts at random (a 25 percent chance a turn to
 # spread above density 10, wiki). So: leave a harmful cloud as soon as it is on his cell or a dense cell is next to him, step to the neighbour with the least gas around it, and do not
@@ -5395,7 +5451,7 @@ def main():
 
                 hp = game_state.get("hp", 0)
                 max_hp = game_state.get("max_hp", 1)
-                took_damage = (last_hp is not None and hp < last_hp)
+                took_damage = took_real_damage(game_state, hp, last_hp)
                 danger_ledger.record_turn_damage(game_state, last_hp)
                 last_hp = hp
 
@@ -5515,13 +5571,14 @@ def main():
                 # (Ignore if player is using abilities, firing missiles, or actively attacking enemies in melee!)
                 is_attacking = action.startswith("MOVE_") and (action[5:] in adj_threats)
                 is_combat_action = action.startswith("USE_ABILITY") or action.startswith("FIRE_MISSILE") or is_attacking
-                is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_combat_action and not str(reason).startswith("[LAB]"))   # the lab hold repeats PASS on purpose (the Loop Breaker walked him away from the gas cloud he was measuring, 2026-10-11)
+                rest_exempt = rest_in_progress(action, last_executed_action, game_state)
+                is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_combat_action and not str(reason).startswith("[LAB]") and not rest_exempt)   # the lab hold repeats PASS on purpose (the Loop Breaker walked him away from the gas cloud he was measuring, 2026-10-11)
                 # A committed engine-reachable frontier walk is exempt from the oscillation breaker: its own failure and
                 # pursuit limits (FRONTIER_FAIL_LIMIT / FRONTIER_PURSUIT_MAX) write a bad target off. Without this exemption
                 # the breaker overrode the walk with "move away from the cycle centroid" and he ping-ponged forever
                 # (HANDOFF issue 47).
                 is_frontier_nav = is_frontier_walk(action, reason)
-                is_oscillating = not is_in_combat and not is_combat_action and not is_frontier_nav and (
+                is_oscillating = not is_in_combat and not is_combat_action and not is_frontier_nav and not rest_exempt and (
                     (pos_frequency >= 3) or
                     (len(recent_positions) >= 10 and unique_positions <= 5)
                 )

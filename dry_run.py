@@ -7375,3 +7375,38 @@ _reset162()
 _b162 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 assert "gas_move = gas_avoidance_decision(game_state)" in _b162 and "veto_gas_approach(veto_rooted_approach(decision, game_state), game_state)" in _b162
 print("  [OK] Test 162 Passed: he leaves a harmful gas cloud when it is on his cell or a dense cell is next to him, never steps into one on purpose, ignores harmless gases (defoliant only with photosynthetic skin), does nothing when cornered, and in a static cloud gets out within a few steps and stays out (multi-turn)")
+
+
+# Test 163: damage over time is not a fight, and a REST that is healing him is left alone (human, 2026-10-11: "fix the damage-over-time and rest issue"; BACKLOG B38, HANDOFF issue 149)
+# ---------------------------------------------------------------------------
+_poison163 = {"max_hp": 18, "effects": ["poisoned by gas"], "visible_entities": [], "hostiles_adjacent": False}
+assert brain.took_real_damage(_poison163, 14, 16) is False, "a poison tick with nothing near is not a hit"
+assert brain.took_real_damage(dict(_poison163, effects=[]), 14, 16) is True, "no status: it was a hit"
+assert brain.took_real_damage(_poison163, 16, 16) is False and brain.took_real_damage(_poison163, 18, 16) is False and brain.took_real_damage(_poison163, 14, None) is False
+assert brain.took_real_damage(_poison163, 8, 16) is True, "an 8 point drop is too big for a tick: something hit him too"
+assert brain.took_real_damage(dict(_poison163, hostiles_adjacent=True), 14, 16) is True
+assert brain.took_real_damage(dict(_poison163, visible_entities=[{"is_enemy": True, "dist": 2}]), 14, 16) is True, "a hostile within 2 tiles: combat"
+assert brain.took_real_damage(dict(_poison163, visible_entities=[{"is_enemy": True, "dist": 6}]), 14, 16) is False
+assert brain.took_real_damage(dict(_poison163, effects=["bleeding"]), 15, 16) is False and brain.took_real_damage(dict(_poison163, effects=["burning"]), 15, 16) is False
+assert brain.took_real_damage({"max_hp": 18}, 10, 16) is True
+# resting: left alone while hit points rise and nothing hostile is near
+_r163 = lambda hp, hostile=False: {"hp": hp, "max_hp": 18, "hostiles_nearby": hostile}
+brain.REST_STATE.update({"best_hp": -1, "since_progress": 0})
+assert brain.rest_in_progress("MOVE_N", "REST", _r163(10)) is False, "not a REST"
+assert brain.rest_in_progress("REST", "MOVE_N", _r163(10)) is True, "the first rest"
+_hp163 = 10
+for _t163 in range(14):                         # he heals a point every other turn (10 to 17): never interrupted
+    assert brain.rest_in_progress("REST", "REST", _r163(_hp163)) is True, ("interrupted while healing", _t163, _hp163)
+    if _t163 % 2:
+        _hp163 = min(17, _hp163 + 1)
+assert brain.rest_in_progress("REST", "REST", _r163(10, hostile=True)) is False, "a hostile near: normal logic"
+assert brain.rest_in_progress("REST", "REST", _r163(18)) is False, "at full hit points a rest is pointless"
+# a rest that heals nothing is interrupted after REST_NO_PROGRESS_MAX turns (R4)
+brain.REST_STATE.update({"best_hp": -1, "since_progress": 0}); brain.rest_in_progress("REST", "MOVE_N", _r163(10))
+_ok163 = [brain.rest_in_progress("REST", "REST", _r163(10)) for _ in range(brain.REST_NO_PROGRESS_MAX + 3)]
+assert _ok163[0] is True and _ok163[-1] is False and sum(_ok163) == brain.REST_NO_PROGRESS_MAX - 1, _ok163
+assert brain.rest_in_progress("REST", "REST", _r163(11)) is True, "progress again: allowed again"
+_b163 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "took_damage = took_real_damage(game_state, hp, last_hp)" in _b163 and "and not rest_exempt)" in _b163 and "not is_frontier_nav and not rest_exempt and (" in _b163
+brain.REST_STATE.update({"best_hp": -1, "since_progress": 0})
+print("  [OK] Test 163 Passed: a damage-over-time tick with nothing hostile near is not counted as being hit (bleeding, burning and poison; a big drop or a hostile within 2 tiles still is), and a REST that is raising his hit points is never interrupted by the Loop Breaker, while one that heals nothing is after 12 turns (multi-turn)")
