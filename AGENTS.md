@@ -17,6 +17,7 @@ Tool-specific files (`GEMINI.md`, etc.) only point here. Do not copy rules into 
 ## 2. Hard rules
 
 **R1. Three Strikes: engine truth over heuristic patches.**
+(Decompiler: `ilspycmd` 9.1.0.7988, a dotnet tool. `ilspycmd "<Managed>\Assembly-CSharp.dll" -t XRL.World.Parts.LocationFinder -o scratch/decomp/X` gives readable C#; the type name needs its namespace. Output stays in `scratch/` and is never committed.)
 If an issue is not fixed after two attempts, stop writing Python heuristics. Inspect `Assembly-CSharp.dll`
 (`dnfile` or reflection, in `scratch/`) or the XML blueprints, and use the native engine API
 (`AutoAct.TryFindEdgeStep`, `AutoAct.TryFindPathStep`, `SkillFactory`, ...).
