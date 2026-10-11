@@ -6,8 +6,8 @@
    "StreamingAssets/Base/Mutations.xml",
    "StreamingAssets/Base/Skills.xml"
   ],
-  "command_source": "literal = spelled out in the registering method; literal-in-type = the only Command* literal in the type; derived = 'Command' + name without spaces (a guess; confirm with live data in memory/ability_stats.json)",
-  "count": 145
+  "command_source": "literal = spelled out in the registering method; literal-in-type = the only Command* literal in the type; derived = 'Command' + name without spaces (a guess; confirm with live data in memory/ability_stats.json); live = read from the game's own state export (not derivable from the DLL: GasGeneration builds the name at run time)",
+  "count": 146
  },
  "abilities": {
   "CommandAcrobaticsJump": {
@@ -2038,6 +2038,21 @@
     "Parts.Mutation.WillForce"
    ],
    "source_name": "Ego Projection",
+   "engine_roles": [
+    "offensive"
+   ],
+   "name_source": "code"
+  },
+  "GasGenerationCommandSleepGas": {
+   "command": "GasGenerationCommandSleepGas",
+   "command_source": "live",
+   "name": "Release Sleep Gas",
+   "category": "Physical Mutations",
+   "kind": "mutation",
+   "owners": [
+    "Parts.Mutation.SleepGasGeneration"
+   ],
+   "source_name": "Sleep Gas Generation",
    "engine_roles": [
     "offensive"
    ],

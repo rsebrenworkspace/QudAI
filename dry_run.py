@@ -7750,3 +7750,24 @@ _third172 = brain.choose_loot_action(_fail172, "Z172", _act172["action"], False)
 assert _third172 is None, "after two failed walks the chest is written off"
 brain.LOOT_BLACKLIST.clear(); brain.LOOT_PURSUIT.update({"key": None, "turns": 0}); brain.LOOT_NAV_FAILS.clear()
 print("  [OK] Test 172 Passed: a wall losing 1 HP a swing is written off after a few swings (a fast one is not), and a loot walk that fails twice for any reason drops the chest instead of looping into the Loop Breaker's burrow")
+
+# Test 173: oscillating along the wrong edge writes the exit off and crosses the exit next to him (human, 2026-10-12: a Dream Tortoise paced the north shore for 149 turns heading for a south exit across deep water; HANDOFF issue 161)
+# ---------------------------------------------------------------------------
+assert brain.near_exit_border("S", 69, 0) is False, "standing on the north edge is not near the SOUTH exit's edge"
+assert brain.near_exit_border("N", 69, 0) is True and brain.near_exit_border("S", 30, 23) is True and brain.near_exit_border("E", 78, 10) is True
+assert brain.near_exit_border(None, 69, 0) is False
+_surr173 = {"NW": "[ZONE_EXIT: NW]", "N": "[ZONE_EXIT: N]", "NE": "[ZONE_EXIT: NE]",
+            "W": "[SWIM: deep pool of rules|4000 drams of salty water]", "E": "[SWIM: deep pool of rules|4000 drams of salty water]",
+            "SW": "[SWIM: deep pool of rules|4000 drams of salty water]", "S": "[SWIM: deep pool of rules|4000 drams of salty water]", "SE": "[SWIM: deep pool of rules|4000 drams of salty water]"}
+_valid173 = brain.get_valid_moves(_surr173, (69, 0), None, is_in_combat=False)
+assert "MOVE_N" in _valid173, f"the zone exit cell must be a valid step: {_valid173}"
+assert brain.adjacent_zone_exit(_surr173, _valid173) == "N"
+assert brain.adjacent_zone_exit(dict(_surr173, N="Clear"), _valid173) is None
+print("  [OK] Test 173 Passed: the chosen exit's own edge decides 'near the border' (the north shore is not the south exit's edge), and a zone exit next to him is found as a valid step for the Loop Breaker to cross")
+
+# Test 174: Tighten and Release Sleep Gas are wired (the Dream Tortoise capture of 2026-10-12 named the commands; before, both were hidden from the model and never used)
+# ---------------------------------------------------------------------------
+import ability_registry as _ar174
+assert _ar174.is_wired({"command": "CommandTightenCarapace"}) and _ar174.is_wired({"command": "GasGenerationCommandSleepGas"})
+assert not _ar174.is_wired({"command": "CommandDoesNotExist"})
+print("  [OK] Test 174 Passed: the Dream Tortoise's Tighten and Release Sleep Gas are wired into ability families, so the model sees them in its menu")
