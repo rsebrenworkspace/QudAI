@@ -102,3 +102,14 @@ python sync_mod.py deploy     # only if the C# changed
 
 If you cannot verify something (needs the running game, `Player.log`, or a human decision), say so in
 `docs/HANDOFF.md` under *Needs a human* instead of guessing.
+
+**Missing tools (human decision, 2026-10-12).** If a tool, install, permission or data feed is missing and slows or weakens the
+current task, stop that task and get it addressed first: name the exact fix (command, working version, source, size) and let the
+human run it; never install anything silently and never work around it quietly. The one exception: a console or tooling
+convenience waits while a lab is running, unless the lab needs it for the test.
+
+**The human is the weak link on purpose, and that is fine.** They sometimes forget a step or a piece of information. Design for it:
+say exactly what to do and when, list what you need before a test starts, and read the files yourself (`scratch/captures/latest/`,
+`last_state.json`, `memory/decision_trace.jsonl`) instead of asking for pastes. If a capture lacks something, say which file or step
+and why it matters. No blame. If a change to the agent's environment would make the work easier or more reliable, propose it and
+record it in `docs/HANDOFF.md`.
