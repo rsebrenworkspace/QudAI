@@ -143,6 +143,20 @@ def brain_code_health(runtime_path=None, repo=None):
     return OK, f"the running brain (started {started}) has the current code"
 
 
+def godmode_health(state_path=None):
+    """(status, text): is the game's godmode flag on in the last exported state? It makes every damage event 999 and the player unhurtable."""
+    path = state_path or os.path.join(EXCHANGE_DIR, "last_state.json")
+    try:
+        st = json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError):
+        return UNKNOWN, "no readable last_state.json"
+    if "godmode" not in st:
+        return UNKNOWN, "the mod does not export the flag yet (restart the game after the update)"
+    if st.get("godmode"):
+        return WARN, "GODMODE IS ON: every damage event is 999 and he cannot be hurt; nothing in this run is real (the `godmode` wish toggles it, a restart clears it)"
+    return OK, "off"
+
+
 def mod_health(exchange_dir=None):
     gd = game_dir(exchange_dir)
     ex = exchange_dir or EXCHANGE_DIR
@@ -159,6 +173,7 @@ def mod_health(exchange_dir=None):
         rows.append(("Game state", UNKNOWN, "no last_state.json yet"))
     rows.append(("LLM context", *llm_headroom()))
     rows.append(("Brain code", *brain_code_health()))
+    rows.append(("Godmode", *godmode_health(os.path.join(ex, "last_state.json"))))
     rows.append(("AI switch", OK if flag_on(ex) else WARN, "ENGAGED (active.flag present)" if flag_on(ex) else "paused (no active.flag): the game plays itself no more"))
     return rows
 

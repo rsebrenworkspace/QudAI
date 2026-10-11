@@ -15,7 +15,7 @@
      "cmd": "godmode",
      "kind": "command",
      "confidence": "documented",
-     "note": "turn it ON first so the turret's first shots cannot hurt you while you walk away ('Toggle godmode' in the game's menu; not yet seen working by us)"
+     "note": "turn it ON first so the turret's first shots cannot hurt you while you walk away ('Toggle godmode' in the game's menu; not yet seen working by us) WARNING (ENGINE_INTERNALS 14.36): godmode also makes EVERY damage event on anything but you 999, and it stays on in the running client even when you load another character: turn it OFF before you judge any damage, and restart the game when the lab ends."
     },
     {
      "cmd": "SecurityTurret",
@@ -27,7 +27,7 @@
      "cmd": "godmode",
      "kind": "command",
      "confidence": "documented",
-     "note": "after you have walked 5 or 6 tiles away: the same wish again turns it OFF. Do not forget, or the test proves nothing"
+     "note": "after you have walked 5 or 6 tiles away: the same wish again turns it OFF. Do not forget, or the test proves nothing WARNING (ENGINE_INTERNALS 14.36): godmode also makes EVERY damage event on anything but you 999, and it stays on in the running client even when you load another character: turn it OFF before you judge any damage, and restart the game when the lab ends."
     }
    ],
    "watch": [
@@ -138,7 +138,7 @@
     {
      "cmd": "godmode",
      "confidence": "documented",
-     "note": "'Toggle godmode'; wish again to turn it off. Do not leave it on for a run you want to count",
+     "note": "'Toggle godmode'; wish again to turn it off. Do not leave it on for a run you want to count WARNING (ENGINE_INTERNALS 14.36): godmode also makes EVERY damage event on anything but you 999, and it stays on in the running client even when you load another character: turn it OFF before you judge any damage, and restart the game when the lab ends.",
      "kind": "command"
     }
    ],
@@ -315,7 +315,7 @@
      "cmd": "godmode",
      "kind": "command",
      "confidence": "documented",
-     "note": "ON for the first runs; OFF for one run at distance 6 to see the damage"
+     "note": "ON for the first runs; OFF for one run at distance 6 to see the damage WARNING (ENGINE_INTERNALS 14.36): godmode also makes EVERY damage event on anything but you 999, and it stays on in the running client even when you load another character: turn it OFF before you judge any damage, and restart the game when the lab ends."
     },
     {
      "cmd": "PoisonGasGrenade1",
