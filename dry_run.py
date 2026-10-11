@@ -6961,7 +6961,7 @@ _reset145(); brain.ROOTED_STATE["zone"] = "Z1"; brain.ROOTED_STATE["steps"][(5, 
 assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()], zone="Z1")) is None
 assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()], zone="Z2")) is not None
 _src145 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
-assert "rooted_move = rooted_hazard_decision(game_state)" in _src145 and "return veto_rooted_approach(decision, game_state)" in _src145
+assert "rooted_move = rooted_hazard_decision(game_state)" in _src145 and "veto_rooted_approach(decision, game_state)" in _src145
 _reset145()
 print("  [OK] Test 145 Passed: a rooted hostile rated Tough or worse is a hazard (not trivial ones, companions, mobile or dead ones), standing next to it he steps out of its reach, a move that would end next to it is replaced, and a model that keeps walking through it is bounded by a per-hazard budget (multi-turn: still reaches the goal, no endless oscillation)")
 
@@ -7319,3 +7319,59 @@ _bsrc161 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "bra
 assert "    write_brain_runtime()\n" in _bsrc161.replace("\r\n", "\n"), "main() records the code it loaded"
 assert any(r[0] == "Brain code" for r in _cl.mod_health(_tf161.mkdtemp()))
 print("  [OK] Test 161 Passed: the brain records the modification time of the code it loaded, the capture's health list says STALE and RESTART THE BRAIN when a file is newer, UNKNOWN when it has no record, and it never raises")
+
+
+# Test 162: gas cloud avoidance: leave a harmful cloud, do not walk into one, ignore the harmless gases (human, 2026-10-11: "gas cloud avoidance"; BACKLOG B38 stage 2, HANDOFF issue 148)
+# ---------------------------------------------------------------------------
+_DIRS162 = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0), "NE": (1, -1), "NW": (-1, -1), "SE": (1, 1), "SW": (-1, 1)}
+def _gs162(px, py, cells, effects=None, muts=None, ents=None, zone="Z162"):
+    return {"x": px, "y": py, "zone_id": zone, "effects": effects or [], "mutations": muts or [], "visible_entities": ents or [],
+            "gas_cells": [{"x": x, "y": y, "gas": g, "density": d} for x, y, g, d in cells],
+            "surroundings": {d: "Empty ground" for d in _DIRS162}}
+def _reset162():
+    brain.visit_counts.clear(); brain.GAS_STATE.update({"zone": None, "steps": 0})
+_reset162()
+_cloud162 = [(x, y, "PoisonGas", 40) for x in range(40, 44) for y in range(8, 12)]          # a 4 by 4 cloud
+assert brain.gas_avoidance_decision(_gs162(30, 10, _cloud162)) is None, "far away: nothing"
+assert brain.gas_avoidance_decision(_gs162(30, 10, [])) is None and brain.gas_avoidance_decision({}) is None
+_d162 = brain.gas_avoidance_decision(_gs162(39, 10, _cloud162))
+assert _d162 and _d162["action"].startswith("MOVE_") and "GAS" in _d162["reason"] and _d162["action"][5:] in ("W", "NW", "SW"), ("a dense cell is next to him: step away from it", _d162)
+_reset162(); _d162 = brain.gas_avoidance_decision(_gs162(41, 10, _cloud162))
+assert _d162 and _d162["action"].startswith("MOVE_"), "he stands in it: leave"
+# harmless gases and defoliant
+_reset162(); assert brain.gas_avoidance_decision(_gs162(41, 10, [(x, y, "GlitterGas", 40) for x in range(40, 44) for y in range(8, 12)])) is None, "glitter does nothing to him"
+assert brain.gas_avoidance_decision(_gs162(41, 10, [(x, y, "DefoliantGas", 40) for x in range(40, 44) for y in range(8, 12)])) is None, "defoliant only hurts plants"
+assert brain.gas_avoidance_decision(_gs162(41, 10, [(x, y, "DefoliantGas", 40) for x in range(40, 44) for y in range(8, 12)], muts=[{"class": "PhotosyntheticSkin"}])), "...unless he has photosynthetic skin"
+# thin wisps next to him are ignored; a poisoned character leaves them anyway
+_reset162(); _wisp162 = [(40, 10, "PoisonGas", 4)]
+assert brain.gas_avoidance_decision(_gs162(39, 10, _wisp162)) is None, "density 4 beside him: not worth a step"
+# never into another cell with gas: the neighbour on the far side is chosen, and an occupied cell is not
+_reset162(); _d162 = brain.gas_avoidance_decision(_gs162(41, 10, _cloud162, ents=[{"tx": 40, "ty": 10}, {"tx": 40, "ty": 9}, {"tx": 40, "ty": 11}]))
+assert _d162 and _d162["action"][5:] not in ("W", "NW", "SW"), _d162
+# cornered: every neighbour is as bad: no pointless move
+_reset162(); assert brain.gas_avoidance_decision(_gs162(41, 10, [(x, y, "PoisonGas", 40) for x in range(30, 52) for y in range(1, 20)])) is None
+# the veto: a MOVE into harmful gas is replaced, others pass; engine pathing is not touched
+_reset162(); _v162 = brain.veto_gas_approach({"action": "MOVE_E", "reason": "x"}, _gs162(39, 10, _cloud162))
+assert _v162["action"] != "MOVE_E" and "GAS" in _v162["reason"], _v162
+assert brain.veto_gas_approach({"action": "MOVE_W", "reason": "x"}, _gs162(39, 10, _cloud162))["action"] == "MOVE_W"
+assert brain.veto_gas_approach({"action": "AUTOEXPLORE", "reason": "x"}, _gs162(39, 10, _cloud162))["action"] == "AUTOEXPLORE"
+assert brain.veto_gas_approach({"action": "MOVE_E", "reason": "x"}, _gs162(41, 10, _cloud162))["action"] == "MOVE_E", "already inside: the avoidance step decides, not the veto"
+# MULTI-TURN: standing in a static cloud, he gets out in a few steps and then stays out (no ping-pong), within the budget
+_reset162(); _x162, _y162 = 41, 10; _path162 = []
+for _t162 in range(25):
+    _dd162 = brain.gas_avoidance_decision(_gs162(_x162, _y162, _cloud162))
+    if not _dd162:
+        _path162.append((_x162, _y162)); continue
+    _mx162, _my162 = _DIRS162[_dd162["action"][5:]]
+    _x162, _y162 = _x162 + _mx162, _y162 + _my162
+    brain.visit_counts[(_x162, _y162)] += 1
+    _path162.append((_x162, _y162))
+assert (_x162, _y162) not in {(x, y) for x, y, _g, _d in _cloud162} and brain.GAS_STATE["steps"] <= 8, (_path162, brain.GAS_STATE)
+assert len(set(_path162[-10:])) == 1, ("he must stop once clear, not wander", _path162[-10:])
+# the budget ends a hopeless loop
+brain.GAS_STATE["steps"] = brain.GAS_STEP_BUDGET
+assert brain.gas_avoidance_decision(_gs162(41, 10, _cloud162)) is None
+_reset162()
+_b162 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "gas_move = gas_avoidance_decision(game_state)" in _b162 and "veto_gas_approach(veto_rooted_approach(decision, game_state), game_state)" in _b162
+print("  [OK] Test 162 Passed: he leaves a harmful gas cloud when it is on his cell or a dense cell is next to him, never steps into one on purpose, ignores harmless gases (defoliant only with photosynthetic skin), does nothing when cornered, and in a static cloud gets out within a few steps and stays out (multi-turn)")

@@ -1170,6 +1170,108 @@ def heal_item_decision(game_state):
         return None
 
 
+# Gas cloud avoidance (BACKLOG B38 stage 2, human 2026-10-11: "gas cloud avoidance"). The mod exports `gas_cells` (type and density of every gas cell within 12 tiles). The lab showed that a poison
+# cloud's low-density wisps are enough to poison a level 1 character, that the poison keeps ticking after he leaves the gas, and that a cloud drifts at random (a 25 percent chance a turn to
+# spread above density 10, wiki). So: leave a harmful cloud as soon as it is on his cell or a dense cell is next to him, step to the neighbour with the least gas around it, and do not
+# step into a harmful cell on purpose. Harmful here: poison, acid, sleep, stun, confusion and plasma gas; defoliant only for a build with photosynthetic skin; the rest (fungicide, normality,
+# glitter) do nothing to him.
+GAS_HARMFUL = {"poisongas", "acidgas", "sleepgas", "stungas", "confusiongas", "plasma"}
+GAS_HARMFUL_PLANT = {"defoliantgas"}
+GAS_NEAR_DENSITY = 12             # a harmful cell next to him at this density or more is stepped away from
+GAS_MIN_GAIN = 1.0                # a step must lower the gas cost by at least this much
+GAS_STEP_BUDGET = 40              # steps per zone, so a cloud he cannot get away from never becomes a loop
+GAS_STATE = {"zone": None, "steps": 0}
+
+
+def harmful_gas(game_state):
+    """{(x, y): density} of the harmful gas cells for this character."""
+    muts = {str(m.get("class", "")).lower() for m in game_state.get("mutations") or [] if isinstance(m, dict)}
+    harm = set(GAS_HARMFUL) | (GAS_HARMFUL_PLANT if "photosyntheticskin" in muts else set())
+    cells = {}
+    for c in game_state.get("gas_cells") or []:
+        if str(c.get("gas", "")).lower() in harm and c.get("x") is not None and c.get("y") is not None:
+            cells[(c["x"], c["y"])] = cells.get((c["x"], c["y"]), 0) + int(c.get("density") or 0)
+    return cells
+
+
+def _gas_cost(cell, gas):
+    """Gas on the cell plus a quarter of what its neighbours hold (it drifts)."""
+    x, y = cell
+    near = sum(gas.get((x + dx, y + dy), 0) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0))
+    return gas.get(cell, 0) + 0.25 * near
+
+
+def _gas_steps(game_state, gas):
+    """[(cost, move)] for each valid empty neighbour, cheapest first."""
+    px, py = game_state.get("x"), game_state.get("y")
+    surroundings = game_state.get("surroundings") or {}
+    if px is None or py is None or not surroundings:
+        return []
+    occupied = {(e.get("tx"), e.get("ty")) for e in game_state.get("visible_entities") or []}
+    out = []
+    for m in get_valid_moves(surroundings, (px, py), None, is_in_combat=True):
+        dx, dy = CARDINAL_OFFSETS[m[5:]]
+        cell = (px + dx, py + dy)
+        if cell in occupied:
+            continue
+        out.append((_gas_cost(cell, gas) + 0.5 * visit_counts[cell], m))
+    return sorted(out)
+
+
+def gas_avoidance_decision(game_state):
+    """A MOVE out of or away from a harmful gas cloud, or None."""
+    try:
+        gas = harmful_gas(game_state)
+        px, py = game_state.get("x"), game_state.get("y")
+        if not gas or px is None or py is None:
+            return None
+        zone = game_state.get("zone_id")
+        if GAS_STATE["zone"] != zone:
+            GAS_STATE["zone"], GAS_STATE["steps"] = zone, 0
+        if GAS_STATE["steps"] >= GAS_STEP_BUDGET:
+            return None
+        here = gas.get((px, py), 0)
+        adj = max([gas.get((px + dx, py + dy), 0) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0)] or [0])
+        poisoned = any("poison" in str(ef).lower() for ef in game_state.get("effects") or [])
+        near = min([max(abs(x - px), abs(y - py)) for (x, y) in gas] or [99])
+        if not (here > 0 or adj >= GAS_NEAR_DENSITY or (poisoned and near <= 2)):
+            return None
+        steps = _gas_steps(game_state, gas)
+        if not steps or steps[0][0] >= _gas_cost((px, py), gas) - GAS_MIN_GAIN:
+            return None
+        GAS_STATE["steps"] += 1
+        move = steps[0][1]
+        why = "he stands in it" if here > 0 else ("a dense cell is next to him" if adj >= GAS_NEAR_DENSITY else "he is poisoned and it is within 2 tiles")
+        return {"action": move, "reason": f"[GAS] harmful gas: {why}; stepping {move[5:]} to the side with the least gas."}
+    except Exception:
+        return None
+
+
+def veto_gas_approach(decision, game_state):
+    """Replaces a MOVE into a harmful gas cell (when he is not in gas himself) by the cheapest step; other actions pass through (engine pathing is not vetoed)."""
+    try:
+        action = (decision or {}).get("action", "")
+        if not action.startswith("MOVE_") or action[5:] not in CARDINAL_OFFSETS:
+            return decision
+        gas = harmful_gas(game_state)
+        px, py = game_state.get("x"), game_state.get("y")
+        if not gas or px is None or py is None or gas.get((px, py), 0) > 0:
+            return decision
+        dx, dy = CARDINAL_OFFSETS[action[5:]]
+        if gas.get((px + dx, py + dy), 0) <= 0:
+            return decision
+        if GAS_STATE["steps"] >= GAS_STEP_BUDGET:
+            return decision
+        steps = [s for s in _gas_steps(game_state, gas) if gas.get(tuple(p + d for p, d in zip((px, py), CARDINAL_OFFSETS[s[1][5:]])), 0) <= 0]
+        if not steps:
+            return decision
+        GAS_STATE["steps"] += 1
+        print(f"[GAS] {action} would step into harmful gas -> {steps[0][1]}")
+        return {"action": steps[0][1], "reason": f"[GAS] {action} would step into harmful gas: taking {steps[0][1][5:]} instead."}
+    except Exception:
+        return decision
+
+
 def note_inventory_action(game_state):
     """Reads the mod's report of the last equip or drop once: logs drops, and stops retrying an id the game refused twice. Never raises."""
     try:
@@ -4239,6 +4341,11 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         print(heal_move["reason"])
         STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
         return heal_move
+    gas_move = gas_avoidance_decision(game_state)
+    if gas_move:
+        print(gas_move["reason"])
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return gas_move
     rooted_move = rooted_hazard_decision(game_state)
     if rooted_move:
         if ROOTED_STATE["last"] != rooted_move["action"]:
@@ -4250,7 +4357,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     decision = _query_decision(game_state, took_damage, enemies, suppress_autolevel)
     decision = lethal_adjacent_guard(decision, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
     decision = enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
-    return veto_rooted_approach(decision, game_state)
+    return veto_gas_approach(veto_rooted_approach(decision, game_state), game_state)
 
 
 # Turrets (HANDOFF issue 77). A level 3 character died to a musket turret that the mod exported with is_enemy false, rated Impossible (level 15), with only 5 hit points:
