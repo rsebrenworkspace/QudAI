@@ -7462,3 +7462,21 @@ _b164 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.
 assert "grenade_move = gas_grenade_throw_decision(game_state) or gas_wait_decision(game_state)" in _b164 and 'startswith(("[LAB]", "[GRENADE]"))' in _b164
 assert json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "grenades.json"), encoding="utf-8"))["kinds"]["gas"]["min_safe_dist"] == brain.GAS_THROW_MIN_DIST
 print("  [OK] Test 164 Passed: a held gas grenade is thrown at a Tough (or a group of) mobile breathing hostile 4 to 5 tiles away with a clear line and no companion near, never at 3 tiles or less, a rooted or robot target, with a cloud already near or another kind of grenade; then he waits (PASS) while the cloud works, the wait ends when it is gone, a hostile arrives or he must leave the gas, and no second grenade is thrown on top of it (multi-turn)")
+
+
+# Test 165: no throws in a peaceful settlement, and the mod's refusal teaches the zone, not a failure (human, 2026-10-11: the grenade rule threw twice in Joppa and the mod refused; BACKLOG B33, HANDOFF issue 151)
+# ---------------------------------------------------------------------------
+_reset164(); brain.THROW_STATE["blocked_zone"] = None
+_town165 = _gs164([_en164(5)], is_settlement=True, zone_id="JoppaWorld.11.22.2.0.10")
+assert brain.gas_grenade_throw_decision(_town165) is None, "the rule never throws in a settlement"
+assert brain.throw_option(_gs164([_en164(5)], is_settlement=True, thrown_weapon={"id": "t", "name": "geomagnetic disc", "blueprint": "GeomagneticDisc", "in_thrown_slot": True}), [_en164(5)]) is None, "nor does the menu offer a throw there"
+_open165 = _gs164([_en164(5)], is_settlement=False, zone_id="JoppaWorld.10.20.0.0.10")
+assert brain.gas_grenade_throw_decision(_open165) is not None, "outside a settlement it throws"
+# a refusal naming a peaceful settlement blocks that zone only and is not a failing command
+_reset164(); brain.THROW_STATE["blocked_zone"] = None
+brain.note_throw_result(dict(_gs164([_en164(5)], zone_id="JoppaWorld.10.20.0.0.10"), last_throw={"seq": 1, "ok": False, "reason": "peaceful settlement"}))
+assert brain.THROW_STATE["fails"] == 0 and brain.THROW_STATE["off_until"] < 0 and brain.THROW_STATE["blocked_zone"] == "JoppaWorld.10.20.0.0.10"
+assert brain.gas_grenade_throw_decision(_gs164([_en164(5)], zone_id="JoppaWorld.10.20.0.0.10")) is None, "that zone is closed to throws"
+assert brain.gas_grenade_throw_decision(_gs164([_en164(5)], zone_id="JoppaWorld.10.21.0.0.10")) is not None, "another zone is not"
+_reset164(); brain.THROW_STATE["blocked_zone"] = None
+print("  [OK] Test 165 Passed: neither the grenade rule nor the menu throws in a settlement, and a refusal for a peaceful settlement closes that zone to throws without counting as a failing command")

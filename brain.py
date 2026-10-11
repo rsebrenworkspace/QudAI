@@ -1057,7 +1057,7 @@ def is_grenade(tw):
 THROW_FAIL_LIMIT = 2
 THROW_PAUSE_TURNS = 200
 THROW_CROWD_MIN = 2             # with this many hostiles in view the throw is offered even when one is adjacent (the disc bounces between targets; human, 2026-10-10: "Relax it")
-THROW_STATE = {"seq": 0, "fails": 0, "off_until": -1, "max_dist": None}
+THROW_STATE = {"seq": 0, "fails": 0, "off_until": -1, "max_dist": None, "blocked_zone": None}
 THROW_RANGE_RE = re.compile(r"out of range \((\d+) > (\d+)\)")
 
 # TEST SWITCH (human, 2026-10-10): with QUDAI_TEST_NO_COMBAT_ABILITIES=1 the brain does not see his combat abilities (Lase, Stunning Force, Teleport Other, Intimidate and the rest), so a fight has
@@ -1074,10 +1074,15 @@ def apply_test_switches(game_state):
     return dict(game_state, abilities=[a for a in (game_state.get("abilities") or []) if isinstance(a, dict) and str(a.get("command", "")).lower() in NON_COMBAT_ABILITY_COMMANDS])
 
 
+def throw_blocked_here(game_state):
+    """True in a peaceful settlement (R7: the mod refuses every throw there, "peaceful settlement"), or in a zone where it said so (bzzzt grenade-rule test 2026-10-11: two refused throws in Joppa)."""
+    return bool(game_state.get("is_settlement")) or (THROW_STATE.get("blocked_zone") is not None and THROW_STATE.get("blocked_zone") == game_state.get("zone_id"))
+
+
 def throw_option(game_state, enemies, adj_threats=None):
     """The combat-menu line for throwing, or None."""
     tw = game_state.get("thrown_weapon")
-    if not isinstance(tw, dict) or not enemies or TURN_CLOCK < THROW_STATE["off_until"]:
+    if not isinstance(tw, dict) or not enemies or TURN_CLOCK < THROW_STATE["off_until"] or throw_blocked_here(game_state):
         return None
     if adj_threats and len(enemies) < THROW_CROWD_MIN:
         return None                      # something adjacent and no crowd: fight or flee, do not throw
@@ -1131,7 +1136,7 @@ def gas_grenade_throw_decision(game_state):
         rec = grenade_record(tw)
         if not isinstance(tw, dict) or not tw.get("in_thrown_slot") or not rec or rec.get("kind") != "gas" or str(rec.get("gas", "")).lower() not in GAS_THROW_OK:
             return None
-        if TURN_CLOCK < THROW_STATE["off_until"]:
+        if TURN_CLOCK < THROW_STATE["off_until"] or throw_blocked_here(game_state):
             return None
         px, py = game_state.get("x"), game_state.get("y")
         if px is None or py is None:
@@ -1195,6 +1200,10 @@ def note_throw_result(game_state):
     THROW_STATE["seq"] = lt["seq"]
     if lt.get("ok"):
         THROW_STATE["fails"] = 0
+        return
+    if "peaceful settlement" in str(lt.get("reason", "")):
+        THROW_STATE["blocked_zone"] = game_state.get("zone_id")        # a place, not a failing command: no throws in this zone, the option stays on elsewhere
+        print(f"[THROW] refused: peaceful settlement; no throws in {game_state.get('zone_id')}.")
         return
     rng = THROW_RANGE_RE.search(str(lt.get("reason", "")))
     if rng:
