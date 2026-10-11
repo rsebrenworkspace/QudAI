@@ -7480,3 +7480,47 @@ assert brain.gas_grenade_throw_decision(_gs164([_en164(5)], zone_id="JoppaWorld.
 assert brain.gas_grenade_throw_decision(_gs164([_en164(5)], zone_id="JoppaWorld.10.21.0.0.10")) is not None, "another zone is not"
 _reset164(); brain.THROW_STATE["blocked_zone"] = None
 print("  [OK] Test 165 Passed: neither the grenade rule nor the menu throws in a settlement, and a refusal for a peaceful settlement closes that zone to throws without counting as a failing command")
+
+
+# Test 166: while the cloud works he keeps away from a hostile that comes close, and says why the wait ended (human, 2026-10-11: the first successful throw, then the model walked toward the creature; BACKLOG B33, HANDOFF issue 152)
+# ---------------------------------------------------------------------------
+def _ws166(ents, gas_cells=None, **k):
+    return _gs164(ents, gas_cells=gas_cells if gas_cells is not None else [{"x": 55, "y": 10, "gas": "PoisonGas", "density": 40}], **k)
+def _arm166(waited=0):
+    brain.GAS_THROW_STATE.update({"target": (55, 10), "waited": waited, "active": True}); brain.visit_counts.clear()
+_arm166(); assert brain.gas_wait_decision(_ws166([_en164(5)]))["action"] == "PASS", "a far enemy: just wait"
+_arm166(); _d166 = brain.gas_wait_decision(_ws166([_en164(2)]))
+assert _d166 and _d166["action"].startswith("MOVE_") and "stepping away" in _d166["reason"], _d166
+_dx166, _dy166 = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0), "NE": (1, -1), "NW": (-1, -1), "SE": (1, 1), "SW": (-1, 1)}[_d166["action"][5:]]
+assert max(abs(50 + _dx166 - 52), abs(10 + _dy166 - 10)) > 2, "the step must increase the distance to the enemy at 52,10"
+_arm166(); assert brain.gas_wait_decision(_ws166([_en164(1)])) is None and brain.GAS_THROW_STATE["active"] is False, "adjacent: fight rules"
+# never kite into the gas: a cloud on the cells away from the enemy leaves only PASS
+_arm166(); _walls166 = [{"x": 49, "y": y, "gas": "PoisonGas", "density": 40} for y in (9, 10, 11)] + [{"x": 55, "y": 10, "gas": "PoisonGas", "density": 40}]
+_dp166 = brain.gas_wait_decision(_ws166([_en164(2)], gas_cells=_walls166))
+assert _dp166 and (_dp166["action"] == "PASS" or _dp166["action"][5:] not in ("W", "NW", "SW")), _dp166
+# the end reasons are printed and end the wait
+import io as _io166, contextlib as _cx166
+_arm166(); _buf166 = _io166.StringIO()
+with _cx166.redirect_stdout(_buf166):
+    assert brain.gas_wait_decision(_ws166([_en164(5)], gas_cells=[])) is None
+assert "wait over: the gas cloud is gone" in _buf166.getvalue() and brain.GAS_THROW_STATE["active"] is False
+_arm166(brain.GAS_WAIT_MAX); _buf166 = _io166.StringIO()
+with _cx166.redirect_stdout(_buf166):
+    assert brain.gas_wait_decision(_ws166([_en164(5)])) is None
+assert "wait over: 25 turns" in _buf166.getvalue()
+# MULTI-TURN: a slow enemy walks toward him through the cloud; he keeps stepping back, never into gas, and the wait ends within its budget
+_arm166(); _px166, _py166 = 50, 10; _ex166 = 54; _moves166 = []
+for _t166 in range(20):
+    _ent166 = [dict(_en164(max(1, abs(_ex166 - _px166))), tx=_ex166, ty=10)]
+    _gs166 = dict(_ws166(_ent166, gas_cells=[{"x": 53, "y": 10, "gas": "PoisonGas", "density": 40}]), x=_px166, y=10)
+    _dd166 = brain.gas_wait_decision(_gs166)
+    if not _dd166:
+        break
+    if _dd166["action"].startswith("MOVE_"):
+        _px166 += {"W": -1, "E": 1}.get(_dd166["action"][5:], 0); _moves166.append(_dd166["action"])
+    if _t166 % 2:
+        _ex166 -= 1                               # the slow creature advances one tile every other turn
+assert _moves166 and all(m.endswith(("W", "NW", "SW", "N", "S")) for m in _moves166), _moves166
+assert brain.GAS_THROW_STATE["waited"] <= brain.GAS_WAIT_MAX
+brain.GAS_THROW_STATE.update({"target": None, "waited": 0, "active": False}); brain.visit_counts.clear()
+print("  [OK] Test 166 Passed: while his cloud works a hostile within 3 tiles makes him step away from it (never onto gas), a far one only makes him wait, the wait ends with its reason printed (cloud gone, hostile adjacent, 25 turns), and against a slow enemy walking toward him he keeps stepping back within the budget (multi-turn)")
