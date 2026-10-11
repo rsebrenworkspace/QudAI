@@ -1182,13 +1182,13 @@ def _kite_steps(game_state, gas, enemy):
     if px is None or py is None or not surroundings:
         return []
     ex, ey = enemy["tx"], enemy["ty"]
-    now = max(abs(px - ex), abs(py - ey))
+    now = (px - ex) ** 2 + (py - ey) ** 2          # squared straight-line distance: running DIRECTLY away, not sideways (a Chebyshev tie sent the debug run drifting north while the enemy closed in)
     occupied = {(e.get("tx"), e.get("ty")) for e in game_state.get("visible_entities") or []}
     out = []
     for m in get_valid_moves(surroundings, (px, py), None, is_in_combat=True):
         dx, dy = CARDINAL_OFFSETS[m[5:]]
         cell = (px + dx, py + dy)
-        d = max(abs(cell[0] - ex), abs(cell[1] - ey))
+        d = (cell[0] - ex) ** 2 + (cell[1] - ey) ** 2
         if cell in occupied or gas.get(cell, 0) > 0 or d <= now:
             continue
         out.append((-d, _gas_cost(cell, gas) + 0.5 * visit_counts[cell], m))
@@ -1363,6 +1363,67 @@ def rest_in_progress(action, last_executed, game_state):
         return REST_STATE["since_progress"] < REST_NO_PROGRESS_MAX
     except Exception:
         return False
+
+
+# Retreat from a fight he cannot win (BACKLOG B39, human 2026-10-11: "build the retreat rule"). The brain pursues: the deterministic fallbacks advance into melee on anything, and a level 1 bzzzt walked into
+# an Impossible Cragmensch twice (luck saved him). The existing retreats need an exit near (the arrival border within 6 tiles, known stairs underground). This one is the open-field case, and it is only
+# useful against an enemy that is SLOWER than he is (the engine's Speed stat, exported as `speed`; the creature catalogue's Speed when the mod does not send it): then every step away widens the gap, and
+# the zone-danger flags (zone_danger.py) steer exploring away from where it was seen. Against an equal or unknown speed running only delays the fight, so this rule does nothing and the exit retreats and
+# the fight rules decide. Bounded per zone (RETREAT_STEP_BUDGET) so a chase that never ends is not a loop.
+RETREAT_DIFFICULTIES = ("Impossible",)
+RETREAT_TRIGGER_DIST = 8
+RETREAT_SLOW_RATIO = 0.7          # the enemy's Speed at most this fraction of his: slower enough to outwalk
+RETREAT_STEP_BUDGET = 60
+RETREAT_STATE = {"zone": None, "steps": 0}
+_CREATURE_SPEEDS = None
+
+
+def creature_speed(entity):
+    """The exported Speed of an entity, else the creature catalogue's Speed for its blueprint, else None."""
+    global _CREATURE_SPEEDS
+    sp = entity.get("speed")
+    if isinstance(sp, (int, float)) and sp > 0:
+        return sp
+    try:
+        if _CREATURE_SPEEDS is None:
+            cat = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "creatures.json"), encoding="utf-8")).get("creatures", {})
+            _CREATURE_SPEEDS = {n: int(str((c.get("stats", {}).get("Speed") or {}).get("Value", 0)).split(",")[0]) for n, c in cat.items() if (c.get("stats", {}).get("Speed") or {}).get("Value")}
+        v = _CREATURE_SPEEDS.get(str(entity.get("blueprint", "")))
+        return v if v and v > 0 else None
+    except Exception:
+        return None
+
+
+def retreat_decision(game_state):
+    """A MOVE away from a slow, unwinnable mobile hostile, or None."""
+    try:
+        px, py = game_state.get("x"), game_state.get("y")
+        if px is None or py is None:
+            return None
+        hp, mx = game_state.get("hp"), game_state.get("max_hp")
+        hurt = bool(hp is not None and mx and hp / mx < 0.5)
+        diffs = RETREAT_DIFFICULTIES + (("Very Tough",) if hurt else ())
+        threats = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_companion") and not e.get("is_stationary") and e.get("has_los") is not False
+                   and e.get("difficulty") in diffs and isinstance(e.get("dist"), (int, float)) and 1 <= e["dist"] <= RETREAT_TRIGGER_DIST and e.get("tx") is not None and e.get("ty") is not None]
+        if not threats:
+            return None
+        nearest = min(threats, key=lambda e: e["dist"])
+        es, ps = creature_speed(nearest), game_state.get("speed") or 100
+        if es is None or es > RETREAT_SLOW_RATIO * ps:
+            return None                        # equal, faster or unknown speed: running does not help
+        zone = game_state.get("zone_id")
+        if RETREAT_STATE["zone"] != zone:
+            RETREAT_STATE["zone"], RETREAT_STATE["steps"] = zone, 0
+        if RETREAT_STATE["steps"] >= RETREAT_STEP_BUDGET:
+            return None
+        gas = harmful_gas(game_state)
+        steps = _kite_steps(game_state, gas, nearest)          # empty, gas-free neighbours strictly farther from it, farthest first
+        if not steps:
+            return None                        # cornered: the fight rules decide
+        RETREAT_STATE["steps"] += 1
+        return {"action": steps[0][1], "reason": f"[RETREAT] {nearest.get('name', 'the enemy')} ({nearest.get('difficulty')}, {nearest['dist']} tiles) is much slower than he is (speed {es} against {ps}): stepping away, not fighting it."}
+    except Exception:
+        return None
 
 
 # Gas cloud avoidance (BACKLOG B38 stage 2, human 2026-10-11: "gas cloud avoidance"). The mod exports `gas_cells` (type and density of every gas cell within 12 tiles). The lab showed that a poison
@@ -4546,6 +4607,12 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         print(grenade_move["reason"])
         STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
         return grenade_move
+    retreat_move = retreat_decision(game_state)
+    if retreat_move:
+        if RETREAT_STATE["steps"] == 1 or RETREAT_STATE["steps"] % 10 == 0:
+            print(retreat_move["reason"])
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return retreat_move
     rooted_move = rooted_hazard_decision(game_state)
     if rooted_move:
         if ROOTED_STATE["last"] != rooted_move["action"]:

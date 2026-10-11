@@ -7528,3 +7528,55 @@ assert _moves166 and all(m.endswith(("W", "NW", "SW", "N", "S")) for m in _moves
 assert brain.GAS_THROW_STATE["waited"] <= brain.GAS_WAIT_MAX
 brain.GAS_THROW_STATE.update({"target": None, "waited": 0, "active": False}); brain.visit_counts.clear()
 print("  [OK] Test 166 Passed: while his cloud works a hostile within 3 tiles makes him step away from it (never onto gas), a far one only makes him wait, the wait ends with its reason printed (cloud gone, hostile adjacent, 25 turns), and against a slow enemy walking toward him he keeps stepping back within the budget (multi-turn)")
+
+
+# Test 167: retreat from a slow enemy he cannot beat, nothing else (human, 2026-10-11: "build the retreat rule"; BACKLOG B39, HANDOFF issue 154)
+# ---------------------------------------------------------------------------
+_D167 = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0), "NE": (1, -1), "NW": (-1, -1), "SE": (1, 1), "SW": (-1, 1)}
+def _e167(d, **k):
+    return dict({"name": "cragmensch brainer", "blueprint": "Cragmensch Brainer", "dist": d, "tx": 50 + d, "ty": 10, "is_enemy": True, "has_los": True, "difficulty": "Impossible", "speed": 40}, **k)
+def _s167(ents, **k):
+    return dict({"x": 50, "y": 10, "hp": 18, "max_hp": 18, "speed": 100, "zone_id": "Z167", "visible_entities": ents, "gas_cells": [], "effects": [],
+                 "surroundings": {d: "Empty ground" for d in _D167}}, **k)
+def _reset167():
+    brain.RETREAT_STATE.update({"zone": None, "steps": 0}); brain.visit_counts.clear()
+_reset167(); _d167 = brain.retreat_decision(_s167([_e167(5)]))
+assert _d167 and _d167["action"][5:] in ("W", "NW", "SW") and "RETREAT" in _d167["reason"], _d167
+_reset167(); assert brain.retreat_decision(_s167([_e167(1)])) is not None, "adjacent but much slower: walk away"
+for _bad167, _why167 in ((_s167([_e167(5, speed=100)]), "equal speed: running is pointless"), (_s167([_e167(5, speed=150)]), "faster"), (_s167([_e167(5, difficulty="Tough")]), "Tough is not unwinnable"),
+                         (_s167([_e167(5, difficulty="Average")]), "average"), (_s167([_e167(5, is_stationary=True)]), "rooted"), (_s167([_e167(5, has_los=False)]), "out of sight"),
+                         (_s167([_e167(9)]), "too far to matter"), (_s167([_e167(5, is_enemy=False)]), "not hostile"), (_s167([_e167(5, is_companion=True)]), "a companion"), ({}, "empty state")):
+    _reset167(); assert brain.retreat_decision(_bad167) is None, _why167
+# speed unknown from the mod: the creature catalogue's Speed (Cragmensch Brainer is 40); unknown to both: no retreat
+_reset167(); assert brain.retreat_decision(_s167([_e167(5, speed=None)])) is not None, "the catalogue knows the Cragmensch"
+_reset167(); assert brain.retreat_decision(_s167([_e167(5, speed=None, blueprint="NoSuchCreature")])) is None, "unknown speed: no retreat"
+# Very Tough only when he is hurt
+_reset167(); assert brain.retreat_decision(_s167([_e167(5, difficulty="Very Tough")])) is None
+_reset167(); assert brain.retreat_decision(_s167([_e167(5, difficulty="Very Tough")], hp=7)) is not None
+# never into gas, never onto an occupied cell, and cornered means no move
+_reset167(); _gas167 = [{"x": 49, "y": y, "gas": "PoisonGas", "density": 40} for y in (9, 10, 11)]
+_dg167 = brain.retreat_decision(_s167([_e167(5)], gas_cells=_gas167)); assert _dg167 is None or _dg167["action"][5:] not in ("W", "NW", "SW"), _dg167
+_reset167(); _walls167 = {d: "[BLOCKED: impassable terrain]" for d in ("W", "NW", "SW", "N", "S")}
+assert brain.retreat_decision(_s167([_e167(5)], surroundings=dict({d: "Empty ground" for d in _D167}, **_walls167))) is None, "cornered against a wall: fight"
+# the budget ends a chase
+_reset167(); brain.RETREAT_STATE.update({"zone": "Z167", "steps": brain.RETREAT_STEP_BUDGET}); assert brain.retreat_decision(_s167([_e167(5)])) is None
+# MULTI-TURN: a slow enemy (speed 40) follows him across open ground; he keeps the gap and never ends up adjacent, then stops when it is out of range
+_reset167(); _px167, _py167 = 50, 10; _ex167 = 53.0; _min167 = 99; _log167 = []
+for _t167 in range(40):
+    _d = max(1, int(abs(_ex167 - _px167)))
+    _ent = [dict(_e167(_d), tx=int(_ex167), ty=10)]
+    _st = dict(_s167(_ent), x=_px167, y=_py167)
+    _dec = brain.retreat_decision(_st)
+    if _dec:
+        _mx, _my = _D167[_dec["action"][5:]]
+        _px167, _py167 = _px167 + _mx, _py167 + _my
+        _log167.append(_dec["action"])
+    _ex167 -= 0.4 if _ex167 > _px167 else -0.4              # the slow enemy closes 0.4 tiles a turn
+    _min167 = min(_min167, abs(_ex167 - _px167))
+assert _log167 and _min167 > 1.5, ("the gap was lost", _min167, len(_log167))
+assert len(_log167) <= brain.RETREAT_STEP_BUDGET and all(a[5:] in ("W", "NW", "SW") or a[5:] in ("N", "S") for a in _log167), _log167[:6]
+_b167 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+_c167 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "retreat_move = retreat_decision(game_state)" in _b167 and "SafeSpeed(obj)" in _c167 and "SafeSpeed(currentTarget)" in _c167 and 'SafeSpeed(player)' in _c167
+_reset167()
+print("  [OK] Test 167 Passed: he steps away from an Impossible mobile enemy that is clearly slower (speed from the mod, else the catalogue), not from an equal, faster, lesser, rooted or unseen one or when its speed is unknown, never into gas, not when cornered, not past the zone budget, and in a multi-turn chase against a slow enemy he keeps the gap")
