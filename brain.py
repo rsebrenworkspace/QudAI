@@ -1266,6 +1266,8 @@ def gas_wait_decision(game_state):
         if not any(max(abs(x - tx), abs(y - ty)) <= 8 for (x, y) in gas):
             return _wait_over("the gas cloud is gone")
         hostiles = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_companion") and isinstance(e.get("dist"), (int, float))]
+        if not hostiles:
+            return _wait_over("no hostile in view (it died or left): nothing left for the cloud to work on")
         if any(e.get("dist") == 1 for e in hostiles):
             return _wait_over("a hostile is adjacent")
         if GAS_THROW_STATE["waited"] >= GAS_WAIT_MAX:
@@ -3172,6 +3174,11 @@ def is_ignorable_stationary_enemy(e):
     if dist <= 1:
         return False
 
+    # A creature stuck in a web cannot follow him (human, 2026-10-11, the stuck-puma test): beyond one tile it is not a threat to chase or to stand and fight. The gas, retreat and approach rules
+    # use it as a still target; everything else leaves it alone (it still bites whoever stands next to it, which the rooted-hazard rule keeps him away from).
+    if e.get("stuck"):
+        return True
+
     # Never ignore turrets or mechanical defense emplacements!
     if any(t in name for t in ["turret", "gun", "cannon", "rocket", "mortar", "idol", "statue"]):
         return False
@@ -4549,7 +4556,7 @@ def rooted_hazards(game_state):
     """(x, y, name) of every visible rooted hostile rated Tough or worse."""
     out = []
     for e in game_state.get("visible_entities") or []:
-        if e.get("is_enemy") and e.get("is_stationary") and not e.get("is_companion") and e.get("difficulty") in ROOTED_HAZARD_DIFFICULTIES                 and e.get("tx") is not None and e.get("ty") is not None and (e.get("hp") is None or e.get("hp") > 0):
+        if e.get("is_enemy") and (e.get("is_stationary") or e.get("stuck")) and not e.get("is_companion") and e.get("difficulty") in ROOTED_HAZARD_DIFFICULTIES                 and e.get("tx") is not None and e.get("ty") is not None and (e.get("hp") is None or e.get("hp") > 0):
             out.append((e["tx"], e["ty"], e.get("name", "rooted hostile")))
     return out
 

@@ -7508,6 +7508,11 @@ _arm166(); _buf166 = _io166.StringIO()
 with _cx166.redirect_stdout(_buf166):
     assert brain.gas_wait_decision(_ws166([_en164(5)], gas_cells=[])) is None
 assert "wait over: the gas cloud is gone" in _buf166.getvalue() and brain.GAS_THROW_STATE["active"] is False
+# the target died (no hostile in view) while the cloud is still there: the wait ends at once (the stuck-puma retest 2026-10-11 waited 22 turns on an empty cloud)
+_arm166(); _buf166 = _io166.StringIO()
+with _cx166.redirect_stdout(_buf166):
+    assert brain.gas_wait_decision(_ws166([])) is None
+assert "wait over: no hostile in view" in _buf166.getvalue() and brain.GAS_THROW_STATE["active"] is False
 _arm166(brain.GAS_WAIT_MAX); _buf166 = _io166.StringIO()
 with _cx166.redirect_stdout(_buf166):
     assert brain.gas_wait_decision(_ws166([_en164(5)])) is None
@@ -7662,3 +7667,30 @@ _b169 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.
 _c169 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
 assert "or gas_approach_decision(game_state)" in _b169 and "IsStuck(obj)" in _c169 and "IsStuck(currentTarget)" in _c169 and 'HasEffect("Stuck")' in _c169
 print("  [OK] Test 169 Passed: a stuck enemy cannot follow, so the retreat rule steps away from it even at equal speed, the gas rule throws at it from 4-5 tiles, he walks toward a stuck dangerous target to throwing range (never to melee, into gas, with another free hostile near or without a grenade), the wait does not kite from it, and in a multi-turn run he closes from 9 to 5 tiles, throws, and stops")
+
+
+# Test 170: a creature stuck in a web is a still target, not a rooted plant and not a thing to chase (human, 2026-10-11: the stuck-puma test; BACKLOG B37, B33, HANDOFF issue 158)
+# ---------------------------------------------------------------------------
+_cs170 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "(IsImmobile(obj) && !IsStuck(obj)) || obj.HasPart(" in _cs170 and "(IsImmobile(currentTarget) && !IsStuck(currentTarget)) || currentTarget.HasPart(" in _cs170, "stuck is not folded into is_stationary"
+_puma170 = lambda d, **k: _e167(d, **dict({"name": "chitinous puma [stuck in a web]", "blueprint": "Chitinous Puma", "speed": 100, "stuck": True, "hp": 45}, **k))
+# ignorable beyond one tile, never when adjacent
+assert brain.is_ignorable_stationary_enemy(_puma170(3)) is True and brain.is_ignorable_stationary_enemy(_puma170(1)) is False
+assert brain.is_ignorable_stationary_enemy(_puma170(3, stuck=False)) is False, "a free puma is never ignored"
+# a stuck dangerous creature is a rooted hazard: he stays out of its reach
+_reset145(); _h170 = brain.rooted_hazards(_st145(2, 5, [dict(_haz145(5, 5), stuck=True, is_stationary=False)]))
+assert _h170 == [(5, 5, "red death dacca")], _h170
+# the full pipeline with no grenade, no abilities, an Impossible stuck puma 3 tiles away: he steps away, he does not advance into melee
+_reset167(); _reset164(); brain.visit_counts.clear()
+_st170 = _s167([_puma170(3)], abilities=[], thrown_weapon=None, inventory=[])
+_d170 = brain.query_decision(_st170, False, _st170["visible_entities"])
+assert _d170["action"].startswith("MOVE_") and _d170["action"][5:] in ("W", "NW", "SW"), _d170
+# a Tough stuck puma 3 tiles away (not Impossible): ignored, so the fallback does not advance on it
+_reset167(); _st170b = _s167([_puma170(3, difficulty="Tough")], abilities=[], thrown_weapon=None, inventory=[])
+_d170b = brain.query_decision(_st170b, False, _st170b["visible_entities"])
+assert not (_d170b["action"].startswith("MOVE_") and _d170b["action"][5:] in ("E", "NE", "SE") and "Advancing" in str(_d170b.get("reason", ""))), _d170b
+# the grenade rule and the approach now see it (it is not is_stationary any more)
+_reset169(); assert brain.gas_grenade_throw_decision(_g169([_puma170(5)]))["action"].startswith("THROW_ITEM@")
+_reset169(); assert brain.gas_approach_decision(_g169([_puma170(8)])) is not None
+_reset169()
+print("  [OK] Test 170 Passed: a stuck creature is no longer exported as stationary (the engine's IsMobile is false for it), it is ignored as a chase target beyond one tile, still a rooted hazard next to it, the gas rule throws at it and the approach walks toward it, and with no grenade the brain steps away from an Impossible one and does not advance on a Tough one")
