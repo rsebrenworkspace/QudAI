@@ -6876,3 +6876,78 @@ assert "Every step or bump-attack inflicts bleed damage" not in _src144 and "Nev
 assert "engulf_move = engulf_escape_decision(game_state)" in _src144
 brain.visit_counts.clear(); brain.ENGULF_STATE["turns"] = 0
 print("  [OK] Test 144 Passed: while engulfed every turn is a move attempt toward the cell farthest from rooted hostiles (never WAIT, never an ability), it is the first step of the decision pipeline, not-engulfed states are untouched, and the bleeding prompt no longer says that every step costs bleed damage")
+
+
+# Test 145: rooted hazards: never end a turn next to a rooted hostile rated Tough or worse, bounded so it cannot oscillate (human, 2026-10-10: the dacca engulf; BACKLOG B25/B26, HANDOFF issue 126)
+# ---------------------------------------------------------------------------
+_D145 = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0), "NE": (1, -1), "NW": (-1, -1), "SE": (1, 1), "SW": (-1, 1)}
+def _haz145(x=5, y=5, **k):
+    return dict({"name": "red death dacca", "is_enemy": True, "is_stationary": True, "difficulty": "Impossible", "tx": x, "ty": y, "hp": 120, "dist": 2}, **k)
+def _st145(px, py, ents, zone="Z1"):
+    return {"x": px, "y": py, "zone": zone, "hp": 18, "max_hp": 18, "visible_entities": ents, "abilities": [], "companions": [],
+            "surroundings": {d: ("[BLOCKED: impassable terrain]" if not (0 <= px + dx < 11 and 0 <= py + dy < 11) else "Empty ground") for d, (dx, dy) in _D145.items()}}
+def _reset145():
+    brain.visit_counts.clear(); brain.ROOTED_STATE["zone"] = None; brain.ROOTED_STATE["steps"].clear(); brain.ROOTED_STATE["last"] = None
+_reset145()
+# which creatures count
+assert brain.rooted_hazards(_st145(2, 5, [_haz145()])) == [(5, 5, "red death dacca")]
+for _bad145 in (dict(difficulty="Average"), dict(difficulty="Trivial"), dict(is_stationary=False), dict(is_enemy=False), dict(is_companion=True), dict(hp=0)):
+    assert brain.rooted_hazards(_st145(2, 5, [_haz145(**_bad145)])) == [], _bad145
+# standing next to one: step to a cell out of reach (the hazard at 5,5; he is at 4,5)
+_d145 = brain.rooted_hazard_decision(_st145(4, 5, [_haz145()]))
+assert _d145 and _d145["action"].startswith("MOVE_") and "ROOTED HAZARD" in _d145["reason"], _d145
+_dx145, _dy145 = _D145[_d145["action"][5:]]
+assert max(abs(4 + _dx145 - 5), abs(5 + _dy145 - 5)) >= 2, _d145
+# not adjacent, or no hazard: nothing to do
+_reset145()
+assert brain.rooted_hazard_decision(_st145(2, 5, [_haz145()])) is None and brain.rooted_hazard_decision(_st145(4, 5, [])) is None
+# the veto: a MOVE that would end next to it is replaced, other moves and other actions pass through
+_reset145()
+_v145 = brain.veto_rooted_approach({"action": "MOVE_E", "reason": "x"}, _st145(3, 5, [_haz145()]))
+assert _v145["action"] != "MOVE_E" and "ROOTED HAZARD" in _v145["reason"], _v145
+_dx145, _dy145 = _D145[_v145["action"][5:]]
+assert max(abs(3 + _dx145 - 5), abs(5 + _dy145 - 5)) >= 2
+assert brain.veto_rooted_approach({"action": "MOVE_W", "reason": "x"}, _st145(3, 5, [_haz145()]))["action"] == "MOVE_W"
+assert brain.veto_rooted_approach({"action": "AUTOEXPLORE", "reason": "x"}, _st145(3, 5, [_haz145()]))["action"] == "AUTOEXPLORE"
+assert brain.veto_rooted_approach({"action": "MOVE_E", "reason": "x"}, _st145(3, 5, []))["action"] == "MOVE_E"
+# attacking it (MOVE into its cell from 4,5) is replaced by the step-out, not by a melee
+_reset145()
+assert brain.query_decision(_st145(4, 5, [_haz145()]), False, [])["reason"].startswith("[ROOTED HAZARD]")
+# MULTI-TURN: a model that always wants to walk east through a row with the hazard in the middle. He must (a) never spend more than the budget of
+# turns stepping aside, (b) still get to the goal (the budget runs out, he goes past), (c) not end more than a few turns in its reach.
+_orig145 = brain._query_decision
+def _sim145(goal, hazard_xy, start, turns=60, hazard_for=None):
+    px, py = start; in_reach = 0; rooted_moves = 0; seen = []
+    _reset145()
+    brain._query_decision = lambda gs, td, en, sa=False: {"action": "MOVE_" + ("E" if goal[0] > gs["x"] else "W" if goal[0] < gs["x"] else "N" if goal[1] < gs["y"] else "S"), "reason": "model: walk to the goal"}
+    try:
+        for _t in range(turns):
+            if (px, py) == goal:
+                break
+            d = brain.query_decision(_st145(px, py, [_haz145(*hazard_xy)]), False, [])
+            if "ROOTED HAZARD" in d["reason"]:
+                rooted_moves += 1
+            dx, dy = _D145[d["action"][5:]]
+            px, py = px + dx, py + dy
+            brain.visit_counts[(px, py)] += 1
+            seen.append((px, py))
+            if max(abs(px - hazard_xy[0]), abs(py - hazard_xy[1])) <= 1:
+                in_reach += 1
+    finally:
+        brain._query_decision = _orig145
+    return (px, py), rooted_moves, in_reach, seen
+_end145, _rm145, _ir145, _seen145 = _sim145((9, 5), (5, 5), (1, 5))
+assert _end145 == (9, 5), ("never reached the goal", _end145, _seen145)
+assert _rm145 <= brain.ROOTED_STEP_BUDGET * 2 + 2, ("too many sidesteps", _rm145, _seen145)
+assert _ir145 <= 6, ("stayed in reach too long", _ir145, _seen145)
+# the same with the hazard right on his line from the other side, and from a start already next to it
+_end145, _rm145, _ir145, _seen145 = _sim145((1, 5), (5, 5), (8, 5)); assert _end145 == (1, 5) and _rm145 <= 10, (_end145, _rm145, _seen145)
+_end145, _rm145, _ir145, _seen145 = _sim145((9, 5), (5, 5), (4, 5)); assert _end145 == (9, 5) and _rm145 <= 10, (_end145, _rm145, _seen145)
+# a new zone resets the budget
+_reset145(); brain.ROOTED_STATE["zone"] = "Z1"; brain.ROOTED_STATE["steps"][(5, 5)] = 99
+assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()], zone="Z1")) is None
+assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()], zone="Z2")) is not None
+_src145 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "rooted_move = rooted_hazard_decision(game_state)" in _src145 and "return veto_rooted_approach(decision, game_state)" in _src145
+_reset145()
+print("  [OK] Test 145 Passed: a rooted hostile rated Tough or worse is a hazard (not trivial ones, companions, mobile or dead ones), standing next to it he steps out of its reach, a move that would end next to it is replaced, and a model that keeps walking through it is bounded by a per-hazard budget (multi-turn: still reaches the goal, no endless oscillation)")

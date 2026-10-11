@@ -3906,8 +3906,106 @@ def engulf_escape_decision(game_state):
     return {"action": best, "reason": f"[ENGULFED] Abilities are refused and a move only makes a melee attack on the engulfer: attacking it via {best[5:]} (attempt {ENGULF_STATE['turns']}), never waiting."}
 
 
+# Rooted hazards (BACKLOG B25/B26, HANDOFF issue 126). A rooted hostile rated Tough or worse (a red death dacca is a level 24 tree) cannot chase, but it reaches every adjacent cell, and the
+# dacca engulfs ANYONE who steps next to it (Engulfing.FireEvent "ObjectEnteredAdjacentCell", a Strength save, ENGINE_INTERNALS 14.30). Once engulfed, abilities are refused and a move
+# is only a melee attack on it (tested 2026-10-10: a level 1 character died in nine turns), so the only defense is never to end a turn next to one. Two parts:
+#   rooted_hazard_decision: already adjacent to one, step to the cell with no hazard in reach (nearest to where he was going, then least visited);
+#   veto_rooted_approach: a MOVE that would end next to one (or hit it) is replaced by the same kind of step.
+# Both are BOUNDED per hazard (ROOTED_STEP_BUDGET), so if the only way on is past it he goes after a few tries instead of oscillating forever (AGENTS.md: loops are multi-turn properties).
+ROOTED_HAZARD_DIFFICULTIES = ("Tough", "Very Tough", "Impossible")
+ROOTED_STEP_BUDGET = 4
+ROOTED_STATE = {"zone": None, "steps": defaultdict(int), "last": None}
+
+
+def rooted_hazards(game_state):
+    """(x, y, name) of every visible rooted hostile rated Tough or worse."""
+    out = []
+    for e in game_state.get("visible_entities") or []:
+        if e.get("is_enemy") and e.get("is_stationary") and not e.get("is_companion") and e.get("difficulty") in ROOTED_HAZARD_DIFFICULTIES                 and e.get("tx") is not None and e.get("ty") is not None and (e.get("hp") is None or e.get("hp") > 0):
+            out.append((e["tx"], e["ty"], e.get("name", "rooted hostile")))
+    return out
+
+
+def _hazard_reach(cell, hazards):
+    return [h for h in hazards if max(abs(cell[0] - h[0]), abs(cell[1] - h[1])) <= 1]
+
+
+def _rooted_budget(game_state, hazards):
+    """Resets the per-hazard counts on a new zone and returns the hazards whose budget is not spent."""
+    zone = str(game_state.get("zone"))
+    if ROOTED_STATE["zone"] != zone:
+        ROOTED_STATE["zone"] = zone
+        ROOTED_STATE["steps"].clear()
+    return [h for h in hazards if ROOTED_STATE["steps"][(h[0], h[1])] < ROOTED_STEP_BUDGET]
+
+
+def _safe_steps(game_state, hazards, goal=None):
+    """Valid MOVE_<dir> names whose cell is empty and out of every hazard's reach, best first: nearest to `goal`, then least visited."""
+    px, py = game_state.get("x"), game_state.get("y")
+    surroundings = game_state.get("surroundings") or {}
+    if px is None or py is None or not surroundings:
+        return []
+    occupied = {(e.get("tx"), e.get("ty")) for e in game_state.get("visible_entities") or []}
+    moves = get_valid_moves(surroundings, (px, py), None, is_in_combat=True)
+    scored = []
+    for m in moves:
+        dx, dy = CARDINAL_OFFSETS[m[5:]]
+        cell = (px + dx, py + dy)
+        if cell in occupied or _hazard_reach(cell, hazards):
+            continue
+        gd = max(abs(cell[0] - goal[0]), abs(cell[1] - goal[1])) if goal else 0
+        scored.append((gd, visit_counts[cell], m))
+    return [m for _gd, _v, m in sorted(scored)]
+
+
+def rooted_hazard_decision(game_state):
+    """A MOVE out of a rooted hazard's reach when he stands next to one, else None."""
+    hazards = rooted_hazards(game_state)
+    px, py = game_state.get("x"), game_state.get("y")
+    if not hazards or px is None or py is None:
+        return None
+    near = _hazard_reach((px, py), hazards)
+    if not near:
+        return None
+    live = _rooted_budget(game_state, near)
+    if not live:
+        return None
+    steps = _safe_steps(game_state, hazards)
+    if not steps:
+        return None
+    for h in live:
+        ROOTED_STATE["steps"][(h[0], h[1])] += 1
+    return {"action": steps[0], "reason": f"[ROOTED HAZARD] {live[0][2]} is rooted and rated Tough or worse and he stands next to it: stepping out of its reach ({steps[0][5:]}) before it engulfs or strikes him."}
+
+
+def veto_rooted_approach(decision, game_state):
+    """Replaces a MOVE that would end next to a rooted hazard (or attack it) by a step that stays out of reach nearest to the same goal. Others pass through."""
+    action = (decision or {}).get("action", "")
+    if not action.startswith("MOVE_") or action[5:] not in CARDINAL_OFFSETS:
+        return decision
+    hazards = rooted_hazards(game_state)
+    px, py = game_state.get("x"), game_state.get("y")
+    if not hazards or px is None or py is None:
+        return decision
+    dx, dy = CARDINAL_OFFSETS[action[5:]]
+    dest = (px + dx, py + dy)
+    hit = _hazard_reach(dest, hazards)
+    if not hit or _hazard_reach((px, py), hazards):
+        return decision      # nothing wrong, or already in reach (rooted_hazard_decision handles that)
+    live = _rooted_budget(game_state, hit)
+    if not live:
+        return decision
+    steps = _safe_steps(game_state, hazards, goal=dest)
+    if not steps:
+        return decision
+    for h in live:
+        ROOTED_STATE["steps"][(h[0], h[1])] += 1
+    print(f"[ROOTED HAZARD] {action} -> {steps[0]} (would end next to {live[0][2]})")
+    return {"action": steps[0], "reason": f"[ROOTED HAZARD] {live[0][2]} is rooted and rated Tough or worse: {action} would end next to it, sidestepping {steps[0][5:]} instead."}
+
+
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
-    """The decision for this turn: the engulf escape, the hunter protocol, else `_query_decision`, the lethal-adjacent guard, then the stand-and-fight rule."""
+    """The decision for this turn: the engulf escape, the hunter protocol, the rooted-hazard step-out, else `_query_decision`, the lethal-adjacent guard, the stand-and-fight rule, then the rooted-approach veto."""
     engulf_move = engulf_escape_decision(game_state)
     if engulf_move:
         STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
@@ -3919,10 +4017,18 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         HUNTER_PROTOCOL_STATE["last"] = hunter_move["action"]
         STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
         return hunter_move
+    rooted_move = rooted_hazard_decision(game_state)
+    if rooted_move:
+        if ROOTED_STATE["last"] != rooted_move["action"]:
+            print(rooted_move["reason"])
+        ROOTED_STATE["last"] = rooted_move["action"]
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return rooted_move
     STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
     decision = _query_decision(game_state, took_damage, enemies, suppress_autolevel)
     decision = lethal_adjacent_guard(decision, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
-    return enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
+    decision = enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
+    return veto_rooted_approach(decision, game_state)
 
 
 # Turrets (HANDOFF issue 77). A level 3 character died to a musket turret that the mod exported with is_enemy false, rated Impossible (level 15), with only 5 hit points:
