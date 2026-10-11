@@ -144,6 +144,24 @@ BUTCHER_STREAK = 0             # consecutive BUTCHER actions; a silent failure m
 BUTCHER_TURN = 0               # Phase A sustenance calls (a clock for the cool-down below)
 BUTCHER_SUPPRESS_UNTIL = 0     # after 3 BUTCHERs in a row, stop trying for BUTCHER_COOLDOWN_TURNS
 BUTCHER_COOLDOWN_TURNS = 30
+HARVEST_TURNS = []             # BUTCHER_TURN values at which HARVEST was chosen (the Loop Breaker breaks every streak at 2, so a streak count never reaches 3)
+HARVEST_WINDOW = 20            # sustenance turns the recent harvests are counted over
+HARVEST_MAX_IN_WINDOW = 6      # more harvests than this in the window: stop for HARVEST_COOLDOWN_TURNS (Firefrond 2026-10-10: 65 HARVESTs in 120 turns with no effect)
+HARVEST_COOLDOWN_TURNS = 40
+HARVEST_STATE = {"suppress_until": 0}
+
+
+def harvest_allowed(turn):
+    """False while harvesting is paused because it was chosen too often lately; records the harvest otherwise (the caller returns HARVEST when this is True)."""
+    if turn < HARVEST_STATE["suppress_until"]:
+        return False
+    HARVEST_TURNS[:] = [t for t in HARVEST_TURNS if turn - t <= HARVEST_WINDOW]
+    if len(HARVEST_TURNS) >= HARVEST_MAX_IN_WINDOW:
+        HARVEST_STATE["suppress_until"] = turn + HARVEST_COOLDOWN_TURNS
+        HARVEST_TURNS.clear()
+        return False
+    HARVEST_TURNS.append(turn)
+    return True
 
 KNOWN_STAIRS_DOWN = {}   # zone_id -> {"tx": tx, "ty": ty, "z": z, "name": name, "req_level": int}
 KNOWN_STAIRS_UP = {}     # zone_id -> {"tx": tx, "ty": ty, "z": z, "name": name}
@@ -4568,7 +4586,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             BUTCHER_SUPPRESS_UNTIL = BUTCHER_TURN + BUTCHER_COOLDOWN_TURNS
         if can_butcher and BUTCHER_TURN >= BUTCHER_SUPPRESS_UNTIL:
             return {"action": "BUTCHER", "reason": "Survival: Butchering animal corpse for meat & cooking ingredients"}
-        if can_harvest:
+        if can_harvest and harvest_allowed(BUTCHER_TURN):
             return {"action": "HARVEST", "reason": "Survival: Harvesting wild plant for fresh cooking ingredients"}
 
         # 2B. Relief of hunger (Famished or Hungry)

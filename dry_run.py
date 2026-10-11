@@ -7030,3 +7030,20 @@ brain.LAST_ZONE_ENTRY = None
 _b148 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 assert _b148.count("closest = action_target(action, enemies, px, py)") == 2, "both the auto-direction and the line-of-fire guard aim at the action's target"
 print("  [OK] Test 148 Passed: a beam or missile is aimed at the enemy the action names or the nearest (never the hardest one far away), and the border retreat is not offered more than two steps from the border while a mobile hostile is adjacent")
+
+
+# Test 149: harvesting is bounded: a plant that never yields cannot be harvested forever (human, 2026-10-10: Firefrond harvested 65 times; BACKLOG B31, HANDOFF issue 133)
+# ---------------------------------------------------------------------------
+brain.HARVEST_TURNS.clear(); brain.HARVEST_STATE["suppress_until"] = 0
+_ok149 = [brain.harvest_allowed(t) for t in range(1, 11)]
+assert _ok149[:brain.HARVEST_MAX_IN_WINDOW] == [True] * brain.HARVEST_MAX_IN_WINDOW and not any(_ok149[brain.HARVEST_MAX_IN_WINDOW:]), _ok149
+_sup149 = brain.HARVEST_STATE["suppress_until"]
+assert not brain.harvest_allowed(_sup149 - 1), "still paused inside the cool-down"
+assert brain.harvest_allowed(_sup149 + 1), "harvesting resumes after the cool-down"
+# a slow, real harvest (one every few turns) is never paused
+brain.HARVEST_TURNS.clear(); brain.HARVEST_STATE["suppress_until"] = 0
+assert all(brain.harvest_allowed(t) for t in range(1000, 1100, 5))
+brain.HARVEST_TURNS.clear(); brain.HARVEST_STATE["suppress_until"] = 0
+_cs149 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "IsRipePlant(" in _cs149 and _cs149.count('HasPart("Harvestable")') == 1, "the mod counts and harvests only ripe plants"
+print("  [OK] Test 149 Passed: harvesting pauses after more than six HARVESTs in twenty turns and resumes after the cool-down, a slow real harvest is never paused, and the mod counts and chooses only ripe plants")
