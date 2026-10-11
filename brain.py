@@ -5171,12 +5171,35 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         )
 
 
+# Which code this brain process loaded (human, 2026-10-11: two lab runs were played by a brain started before the heal rule existed; the game client had been restarted, the Python brain had not).
+# main() records the modification time of every Python file the decisions depend on; the console's capture compares them with the files on disk and says STALE when one is newer.
+BRAIN_RUNTIME_PATH = os.path.join(chronicler.MEMORY_DIR, "brain_runtime.json")
+BRAIN_RUNTIME_FILES = ("brain.py", "item_scoring.py", "build_templates.py", "ability_registry.py", "creature_threat.py", "danger_ledger.py", os.path.join("data", "ability_families.json"),
+                       os.path.join("data", "grenades.json"))
+
+
+def write_brain_runtime(path=None, repo=None):
+    """Writes {started, pid, files: {name: mtime}} for the code this process has loaded. Never raises."""
+    try:
+        repo = repo or os.path.dirname(os.path.abspath(__file__))
+        files = {}
+        for rel in BRAIN_RUNTIME_FILES:
+            p = os.path.join(repo, rel)
+            if os.path.exists(p):
+                files[rel] = os.path.getmtime(p)
+        with open(path or BRAIN_RUNTIME_PATH, "w", encoding="utf-8") as f:
+            json.dump({"started": time.time(), "pid": os.getpid(), "files": files}, f)
+    except Exception:
+        pass
+
+
 def main():
     global current_zone_id, zone_step_count, last_action, last_hp, consecutive_kites
     global action_repeat_count, last_executed_action, last_executed_pos, twitch_manager
     global CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS
 
     remove_stale_flag()
+    write_brain_runtime()
     twitch_manager = twitch_bot.start_twitch_in_background()
 
     autolevel_breaker = AutolevelBreaker()

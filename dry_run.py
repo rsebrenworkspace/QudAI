@@ -7291,3 +7291,31 @@ assert 'act.StartsWith("USE_ITEM:")' in _cs160 and "ExecuteUseItem(player" in _c
 assert "heal_move = heal_item_decision(game_state)" in open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 _reset160()
 print("  [OK] Test 160 Passed: a healing item is used at 35 percent hit points, or 60 percent with poison, bleeding or burning on; confusing bark waits unless he is critical or nothing is adjacent; an unidentified or worn item is never used; one use per cool-down and none after he recovers (multi-turn)")
+
+
+# Test 161: the capture says STALE when the running brain is older than the code on disk (human, 2026-10-11: two lab runs used a brain started before the heal rule; HANDOFF issue 147)
+# ---------------------------------------------------------------------------
+import tempfile as _tf161, time as _time161
+_repo161 = _tf161.mkdtemp(); _rt161 = _os.path.join(_repo161, "brain_runtime.json")
+for _n161 in ("brain.py", "item_scoring.py"):
+    open(_os.path.join(_repo161, _n161), "w").write("x")
+brain.BRAIN_RUNTIME_FILES, _saved161 = ("brain.py", "item_scoring.py", "missing.py"), brain.BRAIN_RUNTIME_FILES
+try:
+    assert _cl.brain_code_health(_rt161, _repo161)[0] == _cl.UNKNOWN, "no runtime file yet"
+    brain.write_brain_runtime(_rt161, _repo161)
+    _rec161 = json.load(open(_rt161))
+    assert set(_rec161["files"]) == {"brain.py", "item_scoring.py"} and _rec161["pid"] == _os.getpid() and _rec161["started"] > 0
+    assert _cl.brain_code_health(_rt161, _repo161)[0] == _cl.OK, "nothing changed since start"
+    _later161 = _time161.time() + 30
+    _os.utime(_os.path.join(_repo161, "item_scoring.py"), (_later161, _later161))
+    _st161, _tx161 = _cl.brain_code_health(_rt161, _repo161)
+    assert _st161 == _cl.WARN and "STALE" in _tx161 and "item_scoring.py" in _tx161 and "RESTART THE BRAIN" in _tx161, (_st161, _tx161)
+    open(_rt161, "w").write("not json")
+    assert _cl.brain_code_health(_rt161, _repo161)[0] == _cl.UNKNOWN
+    brain.write_brain_runtime(_os.path.join(_repo161, "no_such_dir", "x.json"), _repo161)     # never raises
+finally:
+    brain.BRAIN_RUNTIME_FILES = _saved161
+_bsrc161 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "    write_brain_runtime()\n" in _bsrc161.replace("\r\n", "\n"), "main() records the code it loaded"
+assert any(r[0] == "Brain code" for r in _cl.mod_health(_tf161.mkdtemp()))
+print("  [OK] Test 161 Passed: the brain records the modification time of the code it loaded, the capture's health list says STALE and RESTART THE BRAIN when a file is newer, UNKNOWN when it has no record, and it never raises")
