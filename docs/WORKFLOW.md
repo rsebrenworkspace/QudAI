@@ -50,6 +50,11 @@ If a task fails twice, apply AGENTS.md R1 (Three Strikes): stop patching heurist
 - Did docs and `check_docs.py` move with the code? Any `[unverified]` claims presented as fact?
 - Hard-coded paths, tokens, or decompiled code added? (Block the merge.)
 
+## 5b. Tools and the operator (human decision, 2026-10-12)
+- A missing tool, install or access that slows or weakens the current task is fixed before the task continues (AGENTS.md section 6); a console convenience is deferred during a lab unless the lab needs it.
+- Installed so far: PowerShell 7 (runs `tools/compile_check.ps1`), .NET SDK 8 and `ilspycmd` 9.1.0.7988 (readable C# from `Assembly-CSharp.dll`). Both are noted in AGENTS.md.
+- Plan for a forgetful operator: say exactly what to do and when, and read the capture folder yourself.
+
 ## 6. Usage-budget protocol (Claude plan is shared between chat and Claude Code, and not published as a number)
 
 - Before and after each task, note the usage meter (`/status` in Claude Code, if available in your version). Record it in the card's Result section under *Usage*. After ~5 tasks you will know what a typical task costs.
