@@ -7718,3 +7718,35 @@ assert _o171.count("[GODMODE] The game's godmode flag is ON") == 1 and _o171.cou
 brain.GODMODE_STATE["on"] = None
 assert "note_godmode(game_state)" in open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 print("  [OK] Test 171 Passed: the mod exports the engine's godmode flag, the brain prints one loud warning when it turns on and one when it goes off (not every turn), and the capture's health list shows GODMODE IS ON with the 999 consequence, UNKNOWN for an old mod or a missing state")
+
+# Test 172: a slow burrow is written off and a loot walk that keeps failing is dropped (human, 2026-10-11: the Esper swung a staff at a 100 HP brinestalk wall for 68 turns, 1 HP a swing, after a bookshelf walk failed; HANDOFF issue 160)
+# ---------------------------------------------------------------------------
+brain.BURROW_BLOCKED.clear(); brain.BURROW_PROGRESS.clear(); brain.BURROW_LAST_SEQ["seq"] = 0
+_hp172 = 100
+_written172 = None
+for _n172 in range(1, 40):
+    _hp172 -= 1
+    brain.note_burrow_progress({"zone_id": "Z172", "last_burrow": {"seq": _n172, "x": 77, "y": 12, "name": "brinestalk wall", "has_hp": True, "hp_before": _hp172 + 1, "hp_after": _hp172, "max_hp": 100, "destroyed": False}})
+    if ("Z172", 77, 12) in brain.BURROW_BLOCKED:
+        _written172 = _n172
+        break
+assert _written172 is not None and _written172 <= 6, f"1 HP a swing on 100 HP must be written off within a few swings, not {_written172}"
+brain.BURROW_BLOCKED.clear(); brain.BURROW_PROGRESS.clear(); brain.BURROW_LAST_SEQ["seq"] = 0
+_hp172 = 30
+for _n172 in range(1, 5):
+    _hp172 -= 10
+    brain.note_burrow_progress({"zone_id": "Z172", "last_burrow": {"seq": _n172, "x": 5, "y": 5, "name": "brinestalk wall", "has_hp": True, "hp_before": _hp172 + 10, "hp_after": max(_hp172, 1), "max_hp": 100, "destroyed": False}})
+assert ("Z172", 5, 5) not in brain.BURROW_BLOCKED, "a wall that is falling fast keeps being swung at"
+brain.BURROW_BLOCKED.clear(); brain.BURROW_PROGRESS.clear()
+# loot walk: the same chest, the walk fails twice (not PATH_BLOCKED), the chest is dropped
+brain.LOOT_BLACKLIST.clear(); brain.LOOT_PURSUIT.update({"key": None, "turns": 0}); brain.LOOT_NAV_FAILS.clear()
+_src172 = {"tx": 67, "ty": 18, "dist": 11, "kind": "chest", "name": "wooden bookshelf"}
+_gs172 = {"loot_sources": [_src172]}
+_act172 = brain.choose_loot_action(_gs172, "Z172", "", False)
+assert _act172 and _act172["action"] == "NAVIGATE_TO_CELL:67,18"
+_fail172 = dict(_gs172, last_move_failed=True, last_failed_dir="N")
+brain.choose_loot_action(_fail172, "Z172", _act172["action"], False)
+_third172 = brain.choose_loot_action(_fail172, "Z172", _act172["action"], False)
+assert _third172 is None, "after two failed walks the chest is written off"
+brain.LOOT_BLACKLIST.clear(); brain.LOOT_PURSUIT.update({"key": None, "turns": 0}); brain.LOOT_NAV_FAILS.clear()
+print("  [OK] Test 172 Passed: a wall losing 1 HP a swing is written off after a few swings (a fast one is not), and a loot walk that fails twice for any reason drops the chest instead of looping into the Loop Breaker's burrow")

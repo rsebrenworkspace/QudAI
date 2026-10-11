@@ -2751,6 +2751,7 @@ def note_ability_use(game_state):
 
 
 # Burrow progress (HANDOFF issue 45): C# reports each ATTACK_WALL swing in `last_burrow` (target HP before/after, destroyed).
+BURROW_MAX_SWINGS = 30          # an obstacle that would take more swings than this to break is written off (a 1d2 staff on a 100 HP wall chewed 68 swings, Esper 2026-10-11)
 BURROW_STALL_LIMIT = 3          # swings that did no damage before the target is written off
 BURROW_BLOCK_TURNS = 400
 BURROW_BLOCKED = {}             # (zone_id, x, y) -> TURN_CLOCK value until which this obstacle is not burrowed
@@ -2791,7 +2792,14 @@ def note_burrow_progress(game_state):
             _written_off_obstacle_blocks_frontier(game_state)
     else:
         prog["stalled"] = 0
+        prog["swings"] = prog.get("swings", 0) + 1
+        prog["dealt"] = prog.get("dealt", 0) + (lb.get("hp_before", 0) - lb.get("hp_after", 0))
         print(f"[BURROW] {name}: HP {lb.get('hp_after')}/{lb.get('max_hp')}.")
+        rate = prog["dealt"] / prog["swings"]
+        if prog["swings"] >= 4 and lb.get("hp_after", 0) / max(rate, 0.01) > BURROW_MAX_SWINGS:
+            BURROW_BLOCKED[key] = TURN_CLOCK + BURROW_BLOCK_TURNS
+            print(f"[BURROW] {name} loses {rate:.1f} HP a swing with {lb.get('hp_after')} left: more than {BURROW_MAX_SWINGS} swings. Writing it off.")
+            _written_off_obstacle_blocks_frontier(game_state)
 
 
 def _written_off_obstacle_blocks_frontier(game_state):
@@ -2981,6 +2989,8 @@ LOOT_PURSUIT = {"key": None, "turns": 0}
 LOOT_TURN = 0
 LOOT_PURSUIT_MAX_TURNS = 40
 LOOT_BLACKLIST_TURNS = 300
+LOOT_NAV_FAILS = {}            # loot key -> failed NAVIGATE_TO_CELL walks toward it (any reason)
+LOOT_NAV_FAIL_MAX = 2
 LOOT_STREAK_MAX = 4            # consecutive LOOT actions at one spot before the spot is written off
 LOOT_STREAK = {"key": None, "count": 0}
 LOOT_LAST_SEQ = {"seq": 0}
@@ -3002,6 +3012,12 @@ def choose_loot_action(game_state, zone_id, last_act, is_town):
             and last_act and last_act.startswith("NAVIGATE_TO_CELL:")):
         LOOT_BLACKLIST[cur_key] = LOOT_TURN + LOOT_BLACKLIST_TURNS
         LOOT_PURSUIT.update({"key": None, "turns": 0})
+    if cur_key and game_state.get("last_move_failed") and last_act and last_act.startswith("NAVIGATE_TO_CELL:"):
+        LOOT_NAV_FAILS[cur_key] = LOOT_NAV_FAILS.get(cur_key, 0) + 1
+        if LOOT_NAV_FAILS[cur_key] >= LOOT_NAV_FAIL_MAX:
+            LOOT_BLACKLIST[cur_key] = LOOT_TURN + LOOT_BLACKLIST_TURNS
+            LOOT_NAV_FAILS.pop(cur_key, None)
+            LOOT_PURSUIT.update({"key": None, "turns": 0})
     best = None
     for s in sources:
         key = (zone_id, s.get("tx"), s.get("ty"))
