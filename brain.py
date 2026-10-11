@@ -1592,6 +1592,23 @@ def veto_gas_approach(decision, game_state):
         return decision
 
 
+GODMODE_STATE = {"on": None}
+
+
+def note_godmode(game_state):
+    """Prints a warning when the mod reports the godmode flag on (every damage event is 999 and the player cannot be hurt: nothing seen then is real), and again when it goes off. Never raises."""
+    try:
+        on = bool(game_state.get("godmode"))
+        if on != GODMODE_STATE["on"]:
+            if on:
+                print("[GODMODE] The game's godmode flag is ON: every damage event is 999 and he cannot be hurt. Nothing in this run is real; turn it off with the `godmode` wish or restart the game.")
+            elif GODMODE_STATE["on"] is not None:
+                print("[GODMODE] Godmode is off again.")
+            GODMODE_STATE["on"] = on
+    except Exception:
+        pass
+
+
 def note_inventory_action(game_state):
     """Reads the mod's report of the last equip or drop once: logs drops, and stops retrying an id the game refused twice. Never raises."""
     try:
@@ -5721,6 +5738,7 @@ def main():
                 note_throw_result(game_state)
                 note_hunters(game_state)
                 note_gas(game_state)
+                note_godmode(game_state)
                 note_avoid(game_state)
                 note_quests(game_state)
                 note_zone_danger(game_state)

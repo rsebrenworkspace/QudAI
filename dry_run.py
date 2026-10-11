@@ -7694,3 +7694,27 @@ _reset169(); assert brain.gas_grenade_throw_decision(_g169([_puma170(5)]))["acti
 _reset169(); assert brain.gas_approach_decision(_g169([_puma170(8)])) is not None
 _reset169()
 print("  [OK] Test 170 Passed: a stuck creature is no longer exported as stationary (the engine's IsMobile is false for it), it is ignored as a chase target beyond one tile, still a rooted hazard next to it, the gas rule throws at it and the approach walks toward it, and with no grenade the brain steps away from an Impossible one and does not advance on a Tough one")
+
+
+# Test 171: the godmode flag is exported, announced and shown in the capture's health list (human, 2026-10-11: every ability hit for 999 in an Esper test run in a client where godmode had been left on; HANDOFF issue 159)
+# ---------------------------------------------------------------------------
+import tempfile as _tf171
+_cs171 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert 'GetField("IDKFA"' in _cs171 and '"\\"godmode\\": " + (GodmodeOn()' in _cs171
+_dir171 = _tf171.mkdtemp(); _p171 = _os.path.join(_dir171, "last_state.json")
+open(_p171, "w").write(json.dumps({"hp": 5}))
+assert _cl.godmode_health(_p171)[0] == _cl.UNKNOWN, "an old mod does not export it"
+open(_p171, "w").write(json.dumps({"godmode": False})); assert _cl.godmode_health(_p171)[0] == _cl.OK
+open(_p171, "w").write(json.dumps({"godmode": True})); _g171 = _cl.godmode_health(_p171)
+assert _g171[0] == _cl.WARN and "GODMODE IS ON" in _g171[1] and "999" in _g171[1], _g171
+assert _cl.godmode_health(_os.path.join(_dir171, "missing.json"))[0] == _cl.UNKNOWN
+import io as _io171, contextlib as _cx171
+brain.GODMODE_STATE["on"] = None
+_b171 = _io171.StringIO()
+with _cx171.redirect_stdout(_b171):
+    brain.note_godmode({"godmode": False}); brain.note_godmode({"godmode": True}); brain.note_godmode({"godmode": True}); brain.note_godmode({"godmode": False}); brain.note_godmode({})
+_o171 = _b171.getvalue()
+assert _o171.count("[GODMODE] The game's godmode flag is ON") == 1 and _o171.count("Godmode is off again") == 1, _o171
+brain.GODMODE_STATE["on"] = None
+assert "note_godmode(game_state)" in open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+print("  [OK] Test 171 Passed: the mod exports the engine's godmode flag, the brain prints one loud warning when it turns on and one when it goes off (not every turn), and the capture's health list shows GODMODE IS ON with the 999 consequence, UNKNOWN for an old mod or a missing state")
