@@ -1057,7 +1057,7 @@ def is_grenade(tw):
 THROW_FAIL_LIMIT = 2
 THROW_PAUSE_TURNS = 200
 THROW_CROWD_MIN = 2             # with this many hostiles in view the throw is offered even when one is adjacent (the disc bounces between targets; human, 2026-10-10: "Relax it")
-THROW_STATE = {"seq": 0, "fails": 0, "off_until": -1, "max_dist": None}
+THROW_STATE = {"seq": 0, "fails": 0, "off_until": -1, "max_dist": None, "blocked_zone": None}
 THROW_RANGE_RE = re.compile(r"out of range \((\d+) > (\d+)\)")
 
 # TEST SWITCH (human, 2026-10-10): with QUDAI_TEST_NO_COMBAT_ABILITIES=1 the brain does not see his combat abilities (Lase, Stunning Force, Teleport Other, Intimidate and the rest), so a fight has
@@ -1074,10 +1074,15 @@ def apply_test_switches(game_state):
     return dict(game_state, abilities=[a for a in (game_state.get("abilities") or []) if isinstance(a, dict) and str(a.get("command", "")).lower() in NON_COMBAT_ABILITY_COMMANDS])
 
 
+def throw_blocked_here(game_state):
+    """True in a peaceful settlement (R7: the mod refuses every throw there, "peaceful settlement"), or in a zone where it said so (bzzzt grenade-rule test 2026-10-11: two refused throws in Joppa)."""
+    return bool(game_state.get("is_settlement")) or (THROW_STATE.get("blocked_zone") is not None and THROW_STATE.get("blocked_zone") == game_state.get("zone_id"))
+
+
 def throw_option(game_state, enemies, adj_threats=None):
     """The combat-menu line for throwing, or None."""
     tw = game_state.get("thrown_weapon")
-    if not isinstance(tw, dict) or not enemies or TURN_CLOCK < THROW_STATE["off_until"]:
+    if not isinstance(tw, dict) or not enemies or TURN_CLOCK < THROW_STATE["off_until"] or throw_blocked_here(game_state):
         return None
     if adj_threats and len(enemies) < THROW_CROWD_MIN:
         return None                      # something adjacent and no crowd: fight or flee, do not throw
@@ -1096,6 +1101,98 @@ def throw_option(game_state, enemies, adj_threats=None):
     return None
 
 
+# The grenade rule (BACKLOG B33, human 2026-10-11: "build the grenade rule"). First version: GAS grenades only (poison, acid, sleep, stun, confusion), the kind the lab measured. Gas is a throw-then-wait
+# weapon: a cloud thrown at 4-5 tiles in the open stays off a thrower who does not walk into it (lab results 2-4), lasts 14-45 turns, and hurts everything that breathes in it. So: throw at a
+# worthwhile mobile hostile that is at least GAS_THROW_MIN_DIST and at most the engine's range away with nothing nearer, a clear line and no companion near the target; then hold still (the gas
+# avoidance steps him away from the cloud) while the cloud works, until it is gone or something reaches him. Other grenade kinds (freeze, explosive, EMP, ...) are not thrown by this rule yet.
+GRENADE_CATALOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "grenades.json")
+GAS_THROW_OK = {"poisongas", "acidgas", "sleepgas", "stungas", "confusiongas"}
+GAS_THROW_MIN_DIST = 4
+GAS_THROW_RANGE = 5              # until the engine says otherwise (THROW_STATE["max_dist"], learned from a refusal)
+GAS_THROW_COMPANION_RADIUS = 3
+GAS_THROW_CLOUD_RADIUS = 6       # a harmful cloud this close to him or the target: no second grenade on top of it
+GAS_THROW_GROUP_MIN = 2
+GAS_WAIT_MAX = 25
+GAS_NOT_BREATHERS = ("robot", "drone", "turret", "construct", "golem", "sentry", "sentinel", "mechanical", "automaton", "plant", "fungus", "vine", "tree", "cherub")
+GAS_THROW_STATE = {"target": None, "waited": 0, "active": False}
+_GRENADES = None
+
+
+def grenade_record(tw):
+    """The catalogue record (data/grenades.json) of the exported thrown weapon, or None."""
+    global _GRENADES
+    try:
+        if _GRENADES is None:
+            _GRENADES = json.load(open(GRENADE_CATALOG_PATH, encoding="utf-8")).get("grenades", {})
+        return _GRENADES.get(str((tw or {}).get("blueprint", "")))
+    except Exception:
+        return None
+
+
+def gas_grenade_throw_decision(game_state):
+    """THROW_ITEM for a held gas grenade at a worthwhile target at a safe distance, or None."""
+    try:
+        tw = game_state.get("thrown_weapon")
+        rec = grenade_record(tw)
+        if not isinstance(tw, dict) or not tw.get("in_thrown_slot") or not rec or rec.get("kind") != "gas" or str(rec.get("gas", "")).lower() not in GAS_THROW_OK:
+            return None
+        if TURN_CLOCK < THROW_STATE["off_until"] or throw_blocked_here(game_state):
+            return None
+        px, py = game_state.get("x"), game_state.get("y")
+        if px is None or py is None:
+            return None
+        hostiles = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_companion") and isinstance(e.get("dist"), (int, float))
+                    and e.get("tx") is not None and e.get("ty") is not None]
+        if not hostiles or any(e["dist"] < GAS_THROW_MIN_DIST for e in hostiles if not e.get("is_stationary")):
+            return None                        # nothing to throw at, or something already too close for a cloud
+        if harmful_gas(game_state) and min(max(abs(x - px), abs(y - py)) for (x, y) in harmful_gas(game_state)) <= GAS_THROW_CLOUD_RADIUS:
+            return None                        # a cloud is already near
+        max_dist = min(GAS_THROW_RANGE, THROW_STATE.get("max_dist") or GAS_THROW_RANGE)
+        companions = game_state.get("companions", [])
+        in_view = [e for e in hostiles if not e.get("is_stationary") and e.get("has_los") is not False and e["dist"] <= 8]
+        for e in sorted(in_view, key=lambda e: -e["dist"]):
+            d = e["dist"]
+            if not (GAS_THROW_MIN_DIST <= d <= max_dist):
+                continue
+            name = str(e.get("name", "")).lower()
+            if any(w in name for w in GAS_NOT_BREATHERS):
+                continue
+            tough = e.get("difficulty") in ("Tough", "Very Tough", "Impossible")
+            if not (tough or len(in_view) >= GAS_THROW_GROUP_MIN):
+                continue
+            if any(max(abs(c.get("tx", -99) - e["tx"]), abs(c.get("ty", -99) - e["ty"])) <= GAS_THROW_COMPANION_RADIUS for c in companions if c.get("tx") is not None):
+                continue
+            clear, _why = is_line_of_fire_clear((px, py), (e["tx"], e["ty"]), companions=companions, target_entity=e, surroundings=game_state.get("surroundings"))
+            if not clear:
+                continue
+            GAS_THROW_STATE.update({"target": (e["tx"], e["ty"]), "waited": 0, "active": True})
+            return {"action": f"THROW_ITEM@{e['tx']},{e['ty']}", "reason": f"[GRENADE] {tw.get('name', 'gas grenade')} at {e.get('name', 'the enemy')} ({e.get('difficulty', '?')}, {d} tiles): throw the cloud, then keep off it."}
+        return None
+    except Exception:
+        return None
+
+
+def gas_wait_decision(game_state):
+    """PASS while the cloud he threw is working and nothing has reached him, else None (the gas avoidance and the fight rules take over)."""
+    try:
+        if not GAS_THROW_STATE["active"]:
+            return None
+        px, py = game_state.get("x"), game_state.get("y")
+        gas = harmful_gas(game_state)
+        tx, ty = GAS_THROW_STATE["target"] or (px, py)
+        cloud = any(max(abs(x - tx), abs(y - ty)) <= 8 for (x, y) in gas)
+        adjacent = any(e.get("is_enemy") and e.get("dist") == 1 for e in game_state.get("visible_entities") or [])
+        if not cloud or adjacent or GAS_THROW_STATE["waited"] >= GAS_WAIT_MAX:
+            GAS_THROW_STATE["active"] = False
+            return None
+        if px is not None and gas.get((px, py), 0) > 0:
+            return None                        # standing in it: the avoidance step decides
+        GAS_THROW_STATE["waited"] += 1
+        return {"action": "PASS", "reason": "[GRENADE] waiting for the gas cloud to work; not walking toward it."}
+    except Exception:
+        return None
+
+
 def note_throw_result(game_state):
     lt = game_state.get("last_throw")
     if not isinstance(lt, dict) or lt.get("seq") is None or lt["seq"] == THROW_STATE["seq"]:
@@ -1103,6 +1200,10 @@ def note_throw_result(game_state):
     THROW_STATE["seq"] = lt["seq"]
     if lt.get("ok"):
         THROW_STATE["fails"] = 0
+        return
+    if "peaceful settlement" in str(lt.get("reason", "")):
+        THROW_STATE["blocked_zone"] = game_state.get("zone_id")        # a place, not a failing command: no throws in this zone, the option stays on elsewhere
+        print(f"[THROW] refused: peaceful settlement; no throws in {game_state.get('zone_id')}.")
         return
     rng = THROW_RANGE_RE.search(str(lt.get("reason", "")))
     if rng:
@@ -4402,6 +4503,11 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         print(gas_move["reason"])
         STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
         return gas_move
+    grenade_move = gas_grenade_throw_decision(game_state) or gas_wait_decision(game_state)
+    if grenade_move:
+        print(grenade_move["reason"])
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return grenade_move
     rooted_move = rooted_hazard_decision(game_state)
     if rooted_move:
         if ROOTED_STATE["last"] != rooted_move["action"]:
@@ -5572,7 +5678,7 @@ def main():
                 is_attacking = action.startswith("MOVE_") and (action[5:] in adj_threats)
                 is_combat_action = action.startswith("USE_ABILITY") or action.startswith("FIRE_MISSILE") or is_attacking
                 rest_exempt = rest_in_progress(action, last_executed_action, game_state)
-                is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_combat_action and not str(reason).startswith("[LAB]") and not rest_exempt)   # the lab hold repeats PASS on purpose (the Loop Breaker walked him away from the gas cloud he was measuring, 2026-10-11)
+                is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_combat_action and not str(reason).startswith(("[LAB]", "[GRENADE]")) and not rest_exempt)   # the lab hold repeats PASS on purpose (the Loop Breaker walked him away from the gas cloud he was measuring, 2026-10-11)
                 # A committed engine-reachable frontier walk is exempt from the oscillation breaker: its own failure and
                 # pursuit limits (FRONTIER_FAIL_LIMIT / FRONTIER_PURSUIT_MAX) write a bad target off. Without this exemption
                 # the breaker overrode the walk with "move away from the cycle centroid" and he ping-ponged forever

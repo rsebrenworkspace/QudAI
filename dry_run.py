@@ -7244,7 +7244,7 @@ try:
 finally:
     brain.GAS_LOG_PATH, brain.LAB_HOLD_FLAG = _saved159
 _b159 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
-assert 'not str(reason).startswith("[LAB]")' in _b159, "the Loop Breaker must not undo the lab hold"
+assert 'not str(reason).startswith(("[LAB]", "[GRENADE]"))' in _b159, "the Loop Breaker must not undo the lab hold"
 _cs159 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
 assert "GasCellsJson(player)" in _cs159 and "GetPart<Gas>()" in _cs159
 assert any(s["id"] == "grenade-gas-lab" for s in json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "wish_scenarios.json"), encoding="utf-8"))["scenarios"])
@@ -7410,3 +7410,73 @@ _b163 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.
 assert "took_damage = took_real_damage(game_state, hp, last_hp)" in _b163 and "and not rest_exempt)" in _b163 and "not is_frontier_nav and not rest_exempt and (" in _b163
 brain.REST_STATE.update({"best_hp": -1, "since_progress": 0})
 print("  [OK] Test 163 Passed: a damage-over-time tick with nothing hostile near is not counted as being hit (bleeding, burning and poison; a big drop or a hostile within 2 tiles still is), and a REST that is raising his hit points is never interrupted by the Loop Breaker, while one that heals nothing is after 12 turns (multi-turn)")
+
+
+# Test 164: the gas grenade rule: throw at 4-5 tiles at a worthwhile target, then wait for the cloud (human, 2026-10-11: "build the grenade rule"; BACKLOG B33, HANDOFF issue 150)
+# ---------------------------------------------------------------------------
+brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1, "max_dist": None}); brain.GAS_THROW_STATE.update({"target": None, "waited": 0, "active": False}); brain.TURN_CLOCK = 1000
+_tw164 = {"id": "g1", "name": "poison gas grenade mk I", "blueprint": "PoisonGasGrenade1", "in_thrown_slot": True}
+_en164 = lambda d, **k: dict({"name": "chitinous puma", "dist": d, "tx": 50 + d, "ty": 10, "is_enemy": True, "has_los": True, "difficulty": "Tough"}, **k)
+_gs164 = lambda ents, **k: dict({"x": 50, "y": 10, "hp": 18, "max_hp": 18, "thrown_weapon": _tw164, "visible_entities": ents, "companions": [], "gas_cells": [], "effects": [],
+                                  "surroundings": {d: "Empty ground" for d in ("N", "S", "E", "W", "NE", "NW", "SE", "SW")}}, **k)
+def _reset164():
+    brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1, "max_dist": None}); brain.GAS_THROW_STATE.update({"target": None, "waited": 0, "active": False})
+_reset164()
+_d164 = brain.gas_grenade_throw_decision(_gs164([_en164(5)]))
+assert _d164 and _d164["action"] == "THROW_ITEM@55,10" and "GRENADE" in _d164["reason"], _d164
+_reset164(); assert brain.gas_grenade_throw_decision(_gs164([_en164(4)]))["action"] == "THROW_ITEM@54,10", "4 tiles is allowed"
+for _bad164, _why164 in ((_gs164([_en164(3)]), "too close"), (_gs164([_en164(6)]), "beyond the engine's range of 5"), (_gs164([_en164(5, difficulty="Easy")]), "one easy enemy is not worth a grenade"),
+                         (_gs164([_en164(5, is_stationary=True)]), "a rooted target"), (_gs164([_en164(5, has_los=False)]), "no line of sight"), (_gs164([_en164(5, name="security robot")]), "a robot does not breathe"),
+                         (_gs164([_en164(5), _en164(2, name="snapjaw", difficulty="Easy")]), "something already close to him"),
+                         (_gs164([_en164(5)], thrown_weapon=dict(_tw164, in_thrown_slot=False)), "not in the slot"),
+                         (_gs164([_en164(5)], thrown_weapon=dict(_tw164, blueprint="ColdGrenade1", name="freeze grenade mk I")), "a freeze grenade is not this rule's"),
+                         (_gs164([_en164(5)], thrown_weapon=dict(_tw164, blueprint="DefoliantGrenade1", name="defoliant grenade mk I")), "defoliant does nothing to a creature"),
+                         (_gs164([_en164(5)], companions=[{"name": "pet", "tx": 56, "ty": 11}]), "a companion near the target"),
+                         (_gs164([_en164(5)], gas_cells=[{"x": 53, "y": 10, "gas": "PoisonGas", "density": 30}]), "a cloud is already near"),
+                         (_gs164([_en164(5)], thrown_weapon=None), "no thrown weapon"), ({}, "empty state")):
+    _reset164(); assert brain.gas_grenade_throw_decision(_bad164) is None, _why164
+_reset164(); assert brain.gas_grenade_throw_decision(_gs164([_en164(5, difficulty="Average"), _en164(5, difficulty="Average", tx=55, ty=12, name="second")])), "two enemies together are worth it"
+_reset164(); brain.THROW_STATE["off_until"] = 2000
+assert brain.gas_grenade_throw_decision(_gs164([_en164(5)])) is None, "the throw option is switched off"
+_reset164(); brain.THROW_STATE["max_dist"] = 4
+assert brain.gas_grenade_throw_decision(_gs164([_en164(5)])) is None and brain.gas_grenade_throw_decision(_gs164([_en164(4)])), "the engine's learned range caps it"
+# MULTI-TURN: throw, then wait while the cloud works, stop when it is gone, and never throw a second one on top of it
+_reset164(); _log164 = []
+_t0 = brain.gas_grenade_throw_decision(_gs164([_en164(5)])); _log164.append(_t0["action"])
+for _n164 in range(40):
+    _cells164 = [{"x": 55, "y": 10, "gas": "PoisonGas", "density": 40}] if _n164 < 12 else []
+    _g164 = _gs164([_en164(5)], gas_cells=_cells164)
+    _dec164 = brain.gas_grenade_throw_decision(_g164) or brain.gas_wait_decision(_g164)
+    _log164.append(_dec164["action"] if _dec164 else None)
+assert _log164[0].startswith("THROW_ITEM") and all(a == "PASS" for a in _log164[1:13]), _log164[:14]
+assert not any(a and a.startswith("THROW_ITEM") for a in _log164[1:13]), "no second grenade on top of a cloud"
+assert _log164[13] is None or _log164[13].startswith("THROW_ITEM"), "when the gas is gone the wait ends"
+assert _log164[1:].count("PASS") <= brain.GAS_WAIT_MAX
+# a hostile that reaches him ends the wait; standing in the gas hands over to the avoidance
+_reset164(); brain.GAS_THROW_STATE.update({"target": (55, 10), "waited": 0, "active": True})
+assert brain.gas_wait_decision(_gs164([_en164(1)], gas_cells=[{"x": 55, "y": 10, "gas": "PoisonGas", "density": 40}])) is None and brain.GAS_THROW_STATE["active"] is False
+brain.GAS_THROW_STATE.update({"target": (55, 10), "waited": 0, "active": True})
+assert brain.gas_wait_decision(_gs164([_en164(5)], gas_cells=[{"x": 50, "y": 10, "gas": "PoisonGas", "density": 40}, {"x": 55, "y": 10, "gas": "PoisonGas", "density": 40}])) is None, "in the gas: the avoidance decides"
+_reset164()
+_b164 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "grenade_move = gas_grenade_throw_decision(game_state) or gas_wait_decision(game_state)" in _b164 and 'startswith(("[LAB]", "[GRENADE]"))' in _b164
+assert json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "grenades.json"), encoding="utf-8"))["kinds"]["gas"]["min_safe_dist"] == brain.GAS_THROW_MIN_DIST
+print("  [OK] Test 164 Passed: a held gas grenade is thrown at a Tough (or a group of) mobile breathing hostile 4 to 5 tiles away with a clear line and no companion near, never at 3 tiles or less, a rooted or robot target, with a cloud already near or another kind of grenade; then he waits (PASS) while the cloud works, the wait ends when it is gone, a hostile arrives or he must leave the gas, and no second grenade is thrown on top of it (multi-turn)")
+
+
+# Test 165: no throws in a peaceful settlement, and the mod's refusal teaches the zone, not a failure (human, 2026-10-11: the grenade rule threw twice in Joppa and the mod refused; BACKLOG B33, HANDOFF issue 151)
+# ---------------------------------------------------------------------------
+_reset164(); brain.THROW_STATE["blocked_zone"] = None
+_town165 = _gs164([_en164(5)], is_settlement=True, zone_id="JoppaWorld.11.22.2.0.10")
+assert brain.gas_grenade_throw_decision(_town165) is None, "the rule never throws in a settlement"
+assert brain.throw_option(_gs164([_en164(5)], is_settlement=True, thrown_weapon={"id": "t", "name": "geomagnetic disc", "blueprint": "GeomagneticDisc", "in_thrown_slot": True}), [_en164(5)]) is None, "nor does the menu offer a throw there"
+_open165 = _gs164([_en164(5)], is_settlement=False, zone_id="JoppaWorld.10.20.0.0.10")
+assert brain.gas_grenade_throw_decision(_open165) is not None, "outside a settlement it throws"
+# a refusal naming a peaceful settlement blocks that zone only and is not a failing command
+_reset164(); brain.THROW_STATE["blocked_zone"] = None
+brain.note_throw_result(dict(_gs164([_en164(5)], zone_id="JoppaWorld.10.20.0.0.10"), last_throw={"seq": 1, "ok": False, "reason": "peaceful settlement"}))
+assert brain.THROW_STATE["fails"] == 0 and brain.THROW_STATE["off_until"] < 0 and brain.THROW_STATE["blocked_zone"] == "JoppaWorld.10.20.0.0.10"
+assert brain.gas_grenade_throw_decision(_gs164([_en164(5)], zone_id="JoppaWorld.10.20.0.0.10")) is None, "that zone is closed to throws"
+assert brain.gas_grenade_throw_decision(_gs164([_en164(5)], zone_id="JoppaWorld.10.21.0.0.10")) is not None, "another zone is not"
+_reset164(); brain.THROW_STATE["blocked_zone"] = None
+print("  [OK] Test 165 Passed: neither the grenade rule nor the menu throws in a settlement, and a refusal for a peaceful settlement closes that zone to throws without counting as a failing command")
