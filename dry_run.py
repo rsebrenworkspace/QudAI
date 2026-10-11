@@ -6,6 +6,7 @@ import brain
 # Never write test decisions into the real exit log (memory/exit_choices.jsonl).
 brain.EXIT_LOG_PATH = os.path.join(tempfile.mkdtemp(), "exit_choices_dry_run.jsonl")
 brain.DECISION_TRACE_PATH = os.path.join(tempfile.mkdtemp(), "decision_trace_dry_run.jsonl")
+brain.GAS_LOG_PATH = os.path.join(tempfile.mkdtemp(), "gas_log_dry_run.jsonl"); brain.LAB_HOLD_FLAG = os.path.join(tempfile.mkdtemp(), "lab_hold.flag")   # the human's real lab flag in memory/ must not turn every test into a PASS
 import danger_ledger
 danger_ledger.LEDGER_PATH = os.path.join(tempfile.mkdtemp(), "danger_ledger_dry_run.json"); danger_ledger.reset_cache()
 import build_templates
