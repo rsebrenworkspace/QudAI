@@ -338,6 +338,12 @@ To discriminate (do this on the next hang, **before restarting the game**):
 
 ## Next steps (written 2026-10-10 for a fresh start; the human sets the order)
 
+**Status after the evening merge (issues 124-128 are on `main`; items 2 and 5 below were answered by issue 124, the hunter protocol):**
+- **Check in game first (tonight):** the missile skill fix (B28: a Gunslinger with revolvers should now fire; read the `[QudAI MissileDiag]` lines, then take the diagnostics out), the class detection (issue 127: a Gunslinger with Force Bubble shows the gunkin template), the rooted-hazard rule on an autonomous approach (issue 126: `[ROOTED HAZARD]` in the trace, he never ends a turn next to the dacca; the manual re-engagement test already passed).
+- **Learned tonight:** a move while engulfed is only a melee attack on the engulfer, so prevention is the defense (ENGINE_INTERNALS 14.30); the old `Fire` skill argument filtered weapons (B28). Backlog B27 (Proselytize as a hazard answer for Esper builds) and B28 are filed, not promoted.
+- **Still open:** hunter protocol stage 2 and the arrival ambush rule (items below), the Loop Breaker on REST, `docs/b27` merged, old branches `task/1.9-popup-diagnostics` and `origin/docs/workflow` (the human's call), `memory/ancestral_wisdom.json` is modified and never committed.
+
+
 **Decisions and checks that are the human's**
 1. ~~Check the game options for Sifrah psychic combat~~ answered 2026-10-10: there is no such option; "locked in psychic battle" is the Sunder Mind mutation (a hunter's) and the locked player loses his turns, so a defense must come BEFORE the lock (ENGINE_INTERNALS 14.29, BACKLOG B25).
 2. Choose the answer to a psychic hunter (BACKLOG B25): kill it first with Lase, banish it with Teleport Other, break line of sight, avoid new zones, or get "favored" with the Seekers of the Sightless Way (the wiki says that stops seeker hunters; BACKLOG B18). Hunters bring thralls (some Very Tough) and the engine rates the hunter itself Average, so a rating rule will not catch it; the mod now marks it (`psychic_hunter`).
