@@ -311,5 +311,17 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Unknown `[unknown]`:** whether Flaming Ray does its damage or ignites a creature that is wading or "wet" (water cools burning, ENGINE_INTERNALS 12.1g), what it does to the watervine and grass he was standing in, and whether the fire reaches him. The Firefrond doctrine already says "never when he stands in or next to dry plants"; the brain has no check for it.
 - **Ideas:** export "target is wet or in liquid" and "plants within one cell of him"; keep the ray for dry targets and the axe or a retreat for wet ones. **Size (my guess):** research first.
 
+### B33. Grenades and thrown weapons from the pack (found 2026-10-10 in Gardener_Test_1; filed at the human's request, "Yes, file it as B33"; not promoted)
+- **What exists today `[verified in the live state and code]`:** `thrown_weapon` is null while a grenade sits in the pack: the throw logic (B24 stage 1) sees only a weapon in the thrown-weapon slot, and nothing equips a thrown weapon into an empty slot (the disc earlier was put there by hand). The Horticulturist starts with 2-4 defoliant grenades (`DefoliantGrenade1`) and, in the human's save, acid gas and thermal grenades.
+- **Two pieces:** (1) equip a thrown weapon into the empty thrown slot (the engine's slot prompt now picks a spare hand for a torch, issue 134; the same prompt could carry this); (2) use area grenades safely: acid gas and thermal hurt the thrower and companions at close range, a defoliant kills plants (odd for a plant build), so each needs a range floor, a clear line and no companion near.
+- **Unknown `[unknown]`:** the blast radius and fuse of each grenade, whether `PerformThrow` handles them like the disc, and which grenades are worth keeping against the weight they add.
+- **Size (my guess):** medium; research first.
+
+### B34. Injectors and tonics (human, 2026-10-10: "we have another mechanic to implement. Injectors."; the human's inventory screenshot showed blaze, love and salve injectors; research done, nothing built; promotion implied by the request, confirm the first stage)
+- **Research `[verified in the game XML]`:** ENGINE_INTERNALS 14.32 lists every tonic and what it does. The brain has no action to apply one and no rule for when.
+- **Candidate first stage:** one action (`USE_ITEM:<id>`, the engine's own apply) and one rule: a **salve** or **ubernostrum** injector when HP is low and a fight is on (the heal is 0.6 HP per level per round for 5 or 10 rounds, so it is a bridge, not an instant heal). Later: blaze or hulk honey for a hard fight against a single strong melee target (blaze needs him to keep moving, hulk honey slows him), shade oil as an escape, nectar at once (a permanent gain), love on a strong creature for a follower.
+- **Unknowns `[unknown]`:** the engine call that applies an injector from code and what it costs in energy (a medassist module cuts it by 80 percent); whether an unidentified injector hides its effect (the `Examiner` part and the unknown-colour strings suggest it does); which injector is safe to try blind; what overdose does (`Tonic` has `CausesOverdose`).
+- **Size (my guess):** small for the heal rule, medium for the rest.
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.

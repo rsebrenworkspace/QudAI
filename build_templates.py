@@ -566,7 +566,7 @@ BUILD_TEMPLATES = {
         "callings": ["Horticulturist"],
         "genotype": "True Kin",
         "strengths": [
-            "Axe in melee and a rifle at range: he can answer any distance",
+            "Axe (a steel vinereaper) in melee and a short bow at range (bows use the Rifles skill line): he can answer any distance",
             "Starts with Cooking and Gathering and Harvestry: forages food and keeps himself fed",
             "Jungle Survival and a Nocturnal Apex implant for exploring dark places"
         ],
@@ -602,12 +602,12 @@ BUILD_TEMPLATES = {
         "mutation_priorities": [],
         "combat_doctrine": {
             "doctrine_name": "Shoot, Then Cleave",
-            "open_combat_action": "Fire the rifle at approaching threats while they are 3 or more tiles away, then fight with the axe",
+            "open_combat_action": "Fire the bow or rifle at approaching threats while they are 3 or more tiles away, then fight with the axe",
             "close_contact_policy": "Axe the adjacent target; reload only when nothing is within reach",
             "melee_engagement": "Cleave and Dismember; retreat to range only when the axe is losing",
-            "preferred_weapons": ["Rifle", "Axe", "Vibro-axe"],
+            "preferred_weapons": ["Short bow", "Rifle", "Axe", "Vibro-axe"],
             "ability_rotation": [
-                "1. Ranged opener: rifle shots at 3 or more tiles on a clear line (never through a companion).",
+                "1. Ranged opener: bow or rifle shots at 3 or more tiles on a clear line (never through a companion).",
                 "2. Gap-Closer: Charge on a target at 2-4 tiles that cannot shoot back.",
                 "3. Melee: Cleave to shred armor, Dismember to remove weapon limbs.",
                 "4. Safety: Survival Camp to heal when nothing is in view."
