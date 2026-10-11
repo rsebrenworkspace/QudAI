@@ -7106,3 +7106,35 @@ assert brain.repair_bare_ability("Spin Webs", _ab153, _e153, 50, 4) == "Spin Web
 assert brain.repair_bare_ability("Proselytize", [{"name": "Proselytize", "command": "CommandProselytize", "usable": False}], _e153, 50, 4) == "", "an unusable ability is not offered either"
 assert brain.repair_bare_ability("Proselytize", [{"name": "Proselytize", "command": "CommandProselytize", "usable": True}], _e153, 50, 4).startswith("USE_ABILITY:CommandProselytize")
 print("  [OK] Test 153 Passed: a grenade is thrown only from 4 tiles or more (the disc still from 2), and a bare ability name from the model becomes the matching USE_ABILITY when he owns and can use it, else it is dropped so the deterministic logic decides")
+
+
+# Test 154: Discharge is a wired ability: the model's menu offers it and the melee fallback uses it point-blank (human, 2026-10-10: bzzzt_test_2 never used Discharge; BACKLOG B37, HANDOFF issue 140)
+# ---------------------------------------------------------------------------
+_dis154 = {"name": "Discharge [6000 charge]", "command": "CommandDischarge", "usable": True, "cooldown": 0}
+assert brain.ability_registry.is_wired(_dis154), "Discharge must be in an auto-use family, otherwise it is hidden from the menu"
+assert brain.find_ready_ability([_dis154], "discharge") is _dis154
+assert "discharge" in brain.DIRECTIONAL_ABILITIES and "commanddischarge" in brain.DIRECTIONAL_ABILITIES
+_ent154 = [{"name": "croc", "dist": 1, "dir": "SW", "tx": 39, "ty": 11, "is_enemy": True, "has_los": True, "difficulty": "Tough", "hp": 40}]
+_gs154 = {"x": 40, "y": 10, "hp": 21, "max_hp": 21, "level": 1, "visible_entities": _ent154, "abilities": [_dis154], "companions": [], "effects": [], "surroundings": {d: "Empty ground" for d in ("N", "S", "E", "W", "NE", "NW", "SE", "SW")}}
+_tpl154 = build_templates.BUILD_TEMPLATES["bzzzt"]
+_d154 = brain.fallback_melee(_gs154, _ent154, {"SW": "croc"}, ["MOVE_N"], ["MOVE_N"], [_dis154], _tpl154, (40, 10), 40, 10, 21, 21, False, False, 0, 0, 0)
+assert _d154["action"] == "USE_ABILITY:CommandDischarge:SW", _d154
+# standing in water it conducts: no Discharge, the fallback bump-attacks instead
+_gsw154 = dict(_gs154, effects=["wading"])
+_dw154 = brain.fallback_melee(_gsw154, _ent154, {"SW": "croc"}, ["MOVE_N"], ["MOVE_N"], [_dis154], _tpl154, (40, 10), 40, 10, 21, 21, False, False, 0, 0, 0)
+assert not _dw154["action"].startswith("USE_ABILITY:CommandDischarge"), _dw154
+# the prompt's ready-ability lines include it, with the action the mod understands
+_menu154 = [ab for ab in [_dis154, {"name": "Spin Webs", "command": "CommandSpinWeb", "usable": True, "cooldown": 0}] if brain.ability_registry.is_wired(ab)]
+assert [m["command"] for m in _menu154] == ["CommandDischarge"], "Spin Webs stays unwired (its targeting is not known)"
+print("  [OK] Test 154 Passed: Discharge is in an auto-use family (so the model's menu offers it and gets the direction appended), the melee fallback uses it point-blank on an adjacent enemy and not while wading, and Spin Webs stays unwired")
+
+
+# Test 155: only a count of exactly zero is "0 charges" (human, 2026-10-10: bzzzt_test_2; 'Discharge [6000 charge]' counted as empty; BACKLOG B37, HANDOFF issue 140)
+# ---------------------------------------------------------------------------
+for _n155, _zero155 in (("Lase (0 charges)", True), ("Discharge [0 charge]", True), ("Lase (0 charge)", True), ("Discharge [6000 charge]", False), ("Discharge [1650 charge]", False),
+                        ("Discharge [4000 charge]", False), ("Lase (10 charges)", False), ("Lase (4 charges)", False), ("Flaming Ray", False), ("", False)):
+    assert brain.has_zero_charges(_n155) is _zero155, (_n155, _zero155)
+assert brain.is_ability_ready({"name": "Discharge [6000 charge]", "command": "CommandDischarge", "usable": True}) is True
+assert brain.is_ability_ready({"name": "Discharge [0 charge]", "command": "CommandDischarge", "usable": True}) is False
+assert brain.is_ability_ready({"name": "Lase (0 charges)", "command": "CommandLase", "usable": True}) is False
+print("  [OK] Test 155 Passed: 'Discharge [6000 charge]' and any other count ending in zero is ready, only a count of exactly zero is empty")

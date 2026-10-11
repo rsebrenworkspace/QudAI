@@ -113,7 +113,7 @@ DIRECTIONAL_ABILITIES = {
     "lase", "stunningforce", "stunning force", "cryokinesis", "pyrokinesis",
     "syphonvim", "syphon vim", "forcewall", "force wall", "proselytize", "beguile",
     "flaming ray", "freezing ray", "flameray", "flame ray", "commandflamingray",
-    "commandfreezingray", "commandlase", "commandstunningforce"
+    "commandfreezingray", "commandlase", "commandstunningforce", "discharge", "commanddischarge"
 }
 
 MELEE_TARGETED_ABILITIES = {
@@ -2507,13 +2507,20 @@ def note_loot(game_state):
         pass
 
 
+ZERO_CHARGES_RE = re.compile(r"(?<![0-9])0\s+charges?\b")
+
+
+def has_zero_charges(name):
+    """True for 'Lase (0 charges)' and 'Discharge [0 charge]', not for 'Discharge [6000 charge]' (a plain substring test for '0 charge' matched every count ending in zero: bzzzt_test_2, 2026-10-10)."""
+    return bool(ZERO_CHARGES_RE.search(str(name or "").lower()))
+
+
 def is_ability_ready(ab):
     """Checks if an ability is enabled, usable, off cooldown, and has available charges (not '0 charges')."""
     if not ab or not ab.get("usable", True) or ab.get("cooldown", 0) > 0 or ab.get("active", False):
         return False
-    name = ab.get("name", "").lower()
     # Check for depleted charges like 'Lase (0 charges)'
-    if "0 charge" in name or "(0 charges)" in name:
+    if has_zero_charges(ab.get("name", "")):
         return False
     return True
 
@@ -2779,7 +2786,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                     ready_abilities.append("- Sprint: Ready (Action: ACTIVATE_SPRINT)")
             elif name and cmd:
                 ready_abilities.append(f"- {name}: Ready (Action: USE_ABILITY:{cmd})")
-        elif "0 charge" in ab.get("name", "").lower():
+        elif has_zero_charges(ab.get("name", "")):
             ready_abilities.append(f"- {ab.get('name')}: Empty charges (Recharging...)")
     if is_sprinting:
         ready_abilities.append("- Sprinting: ACTIVE (+Double Move Speed!)")
@@ -3285,8 +3292,10 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             name = ab_strike.get("name", "Strike")
             return {"action": f"USE_ABILITY:{cmd}:{target_dir}", "reason": f"[{template['name']} Fallback] Executing {name} on adjacent {target_name} ({target_dir})"}
 
-        # Point-blank elemental burst (Flaming Ray / Freezing Ray)
-        ab_burst = find_ready_ability(abilities, "flaming_ray", "freezing_ray")
+        # Point-blank elemental burst (Discharge / Flaming Ray / Freezing Ray). Discharge needs charge (its name says "[0 charge]" when empty) and conducts through water.
+        ab_burst = find_ready_ability(abilities, "discharge", "flaming_ray", "freezing_ray")
+        if ab_burst and "discharge" in str(ab_burst.get("command", "")).lower() and (game_state.get("is_swimming") or any("wading" in str(ef).lower() or "swimming" in str(ef).lower() for ef in game_state.get("effects") or [])):
+            ab_burst = find_ready_ability(abilities, "flaming_ray", "freezing_ray")
         if ab_burst and ab_burst.get("command"):
             return {"action": f"USE_ABILITY:{ab_burst['command']}:{target_dir}", "reason": f"[{template['name']} Fallback] Point-blank {ab_burst.get('name', 'Ray')} burst on {target_name} ({target_dir})"}
 
