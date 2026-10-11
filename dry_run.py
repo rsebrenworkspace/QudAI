@@ -7047,3 +7047,11 @@ brain.HARVEST_TURNS.clear(); brain.HARVEST_STATE["suppress_until"] = 0
 _cs149 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
 assert "IsRipePlant(" in _cs149 and _cs149.count('HasPart("Harvestable")') == 1, "the mod counts and harvests only ripe plants"
 print("  [OK] Test 149 Passed: harvesting pauses after more than six HARVESTs in twenty turns and resumes after the cool-down, a slow real harvest is never paused, and the mod counts and chooses only ripe plants")
+
+
+# Test 150: the torch slot prompt never takes the thrown-weapon slot or the primary weapon (human, 2026-10-10: Gardener_Test_1 unequipped the acid gas grenade as its first move; HANDOFF issue 134)
+# ---------------------------------------------------------------------------
+_c150 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "AIPickOptionPatch.PreferSpareHandSlot = true;" in _c150 and "finally { AIPickOptionPatch.PreferSpareHandSlot = false; }" in _c150, "the flag is set around the torch equip and always cleared"
+assert "PickSpareSlot(Options)" in _c150 and 's.StartsWith("Thrown Weapon"' in _c150 and 's.IndexOf("*Primary"' in _c150
+print("  [OK] Test 150 Passed: the mod's torch equip sets a flag that makes the slot prompt skip the thrown-weapon slot and the primary weapon (a source check: the picker runs only in the game)")

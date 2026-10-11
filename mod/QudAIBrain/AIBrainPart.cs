@@ -1853,7 +1853,11 @@ namespace QudAIBrain
                             var invTorch = inv.Objects.FirstOrDefault(o => (o.DisplayName ?? "").ToLower().Contains("torch"));
                             if (invTorch != null)
                             {
-                                player.FireEvent(Event.New("CommandEquipObject", "Object", invTorch));
+                                // The engine asks which slot to use and the option picker took its default, the LAST option: for a Horticulturist that was "Thrown Weapon: acid gas
+                                // grenade mk I", so the first move of the run was to unequip the grenade (Gardener_Test_1, 2026-10-10). The flag makes the picker choose a spare hand.
+                                AIPickOptionPatch.PreferSpareHandSlot = true;
+                                try { player.FireEvent(Event.New("CommandEquipObject", "Object", invTorch)); }
+                                finally { AIPickOptionPatch.PreferSpareHandSlot = false; }
                                 try { invTorch.GetPart<TorchProperties>()?.Light(); } catch { }
                                 try { var ls = invTorch.GetPart<LightSource>(); if (ls != null) ls.Lit = true; } catch { }
                                 invTorch.FireEvent(Event.New("CommandActivate", "User", player));
@@ -5409,6 +5413,31 @@ namespace QudAIBrain
     [HarmonyPatch(typeof(XRL.UI.Popup), "PickOption")]
     public static class AIPickOptionPatch
     {
+        // Set while the mod itself equips a torch: the slot prompt ("Right Hand: pestle", "Left Hand: steel vinereaper *Primary", "Thrown Weapon: acid gas grenade mk I") then picks
+        // the first option that is neither the thrown-weapon slot nor the primary weapon.
+        public static bool PreferSpareHandSlot = false;
+
+        public static int PickSpareSlot(IReadOnlyList<string> options)
+        {
+            if (options == null) return -1;
+            for (int i = 0; i < options.Count; i++)
+            {
+                string s = options[i] ?? "";
+                try { s = ConsoleLib.Console.ColorUtility.StripFormatting(s); } catch { }
+                int colon = s.IndexOf(": ", StringComparison.Ordinal);
+                if (colon <= 0) return -1;                        // not a slot prompt: leave it to the normal rules
+            }
+            for (int i = 0; i < options.Count; i++)
+            {
+                string s = options[i] ?? "";
+                try { s = ConsoleLib.Console.ColorUtility.StripFormatting(s); } catch { }
+                if (s.StartsWith("Thrown Weapon", StringComparison.OrdinalIgnoreCase)) continue;
+                if (s.IndexOf("*Primary", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                return i;
+            }
+            return -1;
+        }
+
         private static readonly string[] MutationPriorities = new string[]
         {
             "Light Manipulation", "Freezing Ray", "Flaming Ray", "Force Bubble", "Force Wall",
@@ -5534,6 +5563,13 @@ namespace QudAIBrain
                             if (chosenIndex >= 0) break;
                         }
                     }
+                }
+
+                // 2b. A slot prompt raised by the mod's own torch equip: a spare hand, never the thrown-weapon slot or the primary weapon
+                if (chosenIndex < 0 && PreferSpareHandSlot)
+                {
+                    int spare = PickSpareSlot(Options);
+                    if (spare >= 0) { chosenIndex = spare; chosenReason = "spare slot for the torch"; }
                 }
 
                 // 3. Fallback: default selected or 0
