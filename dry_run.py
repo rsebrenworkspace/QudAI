@@ -7508,6 +7508,11 @@ _arm166(); _buf166 = _io166.StringIO()
 with _cx166.redirect_stdout(_buf166):
     assert brain.gas_wait_decision(_ws166([_en164(5)], gas_cells=[])) is None
 assert "wait over: the gas cloud is gone" in _buf166.getvalue() and brain.GAS_THROW_STATE["active"] is False
+# the target died (no hostile in view) while the cloud is still there: the wait ends at once (the stuck-puma retest 2026-10-11 waited 22 turns on an empty cloud)
+_arm166(); _buf166 = _io166.StringIO()
+with _cx166.redirect_stdout(_buf166):
+    assert brain.gas_wait_decision(_ws166([])) is None
+assert "wait over: no hostile in view" in _buf166.getvalue() and brain.GAS_THROW_STATE["active"] is False
 _arm166(brain.GAS_WAIT_MAX); _buf166 = _io166.StringIO()
 with _cx166.redirect_stdout(_buf166):
     assert brain.gas_wait_decision(_ws166([_en164(5)])) is None

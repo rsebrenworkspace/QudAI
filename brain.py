@@ -1266,6 +1266,8 @@ def gas_wait_decision(game_state):
         if not any(max(abs(x - tx), abs(y - ty)) <= 8 for (x, y) in gas):
             return _wait_over("the gas cloud is gone")
         hostiles = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_companion") and isinstance(e.get("dist"), (int, float))]
+        if not hostiles:
+            return _wait_over("no hostile in view (it died or left): nothing left for the cloud to work on")
         if any(e.get("dist") == 1 for e in hostiles):
             return _wait_over("a hostile is adjacent")
         if GAS_THROW_STATE["waited"] >= GAS_WAIT_MAX:
