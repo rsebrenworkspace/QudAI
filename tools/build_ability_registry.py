@@ -233,6 +233,13 @@ def main():
                 abilities[c] = {"command": c, "command_source": "literal-in-type", "name": (skills.get(cls) or {}).get("name", muts.get(cls, "")),
                                 "category": "Skills" if cls in skills else "Mutations", "kind": "skill" if cls in skills else "mutation",
                                 "owners": [owner], "source_name": (skills.get(cls) or {}).get("name", muts.get(cls, "")), "engine_roles": []}
+    # commands the DLL cannot show because the game builds them at run time; each was read from a live state export
+    LIVE_CONFIRMED = {
+        "GasGenerationCommandSleepGas": {"name": "Release Sleep Gas", "owner": "Parts.Mutation.SleepGasGeneration", "source_name": "Sleep Gas Generation", "roles": ["offensive"]},  # Dream Tortoise capture 2026-10-12
+    }
+    for c, lv in LIVE_CONFIRMED.items():
+        abilities.setdefault(c, {"command": c, "command_source": "live", "name": lv["name"], "category": "Physical Mutations", "kind": "mutation",
+                                 "owners": [lv["owner"]], "source_name": lv["source_name"], "engine_roles": lv["roles"]})
     for c, rec in abilities.items():
         if rec["source_name"] and not rec["name"]:
             rec["name"], rec["name_source"] = rec["source_name"], "xml"

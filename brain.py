@@ -2340,6 +2340,22 @@ DESTRUCTIBLE_OBSTACLE_KEYWORDS = [
 ]
 
 
+def near_exit_border(exit_dir, px, py):
+    """True when (px, py) is within a cell of the zone edge the chosen exit crosses. Oscillating along a DIFFERENT edge (the Dream Tortoise paced
+    the north shore trying to reach a south exit across deep water, 149 turns, 2026-10-12) must still write the exit off."""
+    if not exit_dir:
+        return False
+    return ("W" in exit_dir and px <= 1) or ("E" in exit_dir and px >= 78) or ("N" in exit_dir and py <= 1) or ("S" in exit_dir and py >= 23)
+
+
+def adjacent_zone_exit(surroundings, valid_moves):
+    """A cardinal direction whose neighbouring cell is a zone exit he can step onto, or None."""
+    for d in ("N", "S", "E", "W"):
+        if "[zone_exit" in (surroundings.get(d) or "").lower() and f"MOVE_{d}" in valid_moves:
+            return d
+    return None
+
+
 def find_burrow_direction(surroundings, cur_pos, target_pos=None, is_town=False, exclude=None):
     """
     Finds the best adjacent destructible obstacle (e.g. plant matter, tangled mudroot)
@@ -5958,7 +5974,7 @@ def main():
                     frontier_target, frontier_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
 
                     # If oscillation occurs while trying to exit or after choosing an exit, only blacklist if away from border
-                    is_near_border = (px <= 1 or px >= 78 or py <= 1 or py >= 23)
+                    is_near_border = near_exit_border(CURRENT_ZONE_CHOSEN_EXIT, px, py)
                     if CURRENT_ZONE_CHOSEN_EXIT:
                         if not is_near_border and (pos_frequency >= 3 or is_oscillating or game_state.get("last_move_failed", False)):
                             print(f"[ZONE EXIT RECOVERY] Loop breaker detected oscillation while navigating to exit {CURRENT_ZONE_CHOSEN_EXIT} in zone {current_zone_id}. Blacklisting.")
@@ -6002,7 +6018,11 @@ def main():
                         if "[companion" in surroundings.get(cd, "").lower() or (px + CARDINAL_OFFSETS[cd][0], py + CARDINAL_OFFSETS[cd][1]) in CHARMED_COMPANION_COORDS:
                             companion_escapes.append(f"MOVE_{cd}")
 
-                    if not is_town and unexp_c > 35 and (not open_escapes or unique_positions <= 6) and burrow_d:
+                    adjacent_exit = None if is_town else adjacent_zone_exit(surroundings, valid_m)
+                    if adjacent_exit and not near_exit_border(CURRENT_ZONE_CHOSEN_EXIT, px, py):
+                        action = f"MOVE_{adjacent_exit}"
+                        reason = f"[Loop Breaker] Oscillation detected at {cur_pos} and the exit I was heading for is out of reach: crossing the zone exit right next to me ({adjacent_exit})."
+                    elif not is_town and unexp_c > 35 and (not open_escapes or unique_positions <= 6) and burrow_d:
                         action = f"ATTACK_WALL:{burrow_d}"
                         reason = f"[Loop Breaker] Trapped in enclosed pocket with {unexp_c} unrevealed cells. Burrowing through {burrow_info} ({burrow_d}) to breach open corridor."
                     elif is_on_border and chosen_border_m and (chosen_border_m in valid_m or "[zone_exit" in surroundings.get(exit_dir or "", "").lower()):
