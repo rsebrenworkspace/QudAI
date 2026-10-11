@@ -6962,3 +6962,13 @@ _src145 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brai
 assert "rooted_move = rooted_hazard_decision(game_state)" in _src145 and "return veto_rooted_approach(decision, game_state)" in _src145
 _reset145()
 print("  [OK] Test 145 Passed: a rooted hostile rated Tough or worse is a hazard (not trivial ones, companions, mobile or dead ones), standing next to it he steps out of its reach, a move that would end next to it is replaced, and a model that keeps walking through it is bounded by a per-hazard budget (multi-turn: still reaches the goal, no endless oscillation)")
+
+
+# Test 146: a Gunslinger with a mental mutation (Force Bubble) is a gunkin, not an Esper; a real Esper is still an Esper (human, 2026-10-10: wrong class after a new character)
+# ---------------------------------------------------------------------------
+_g146 = {"genotype": "Mutated Human", "subtype": "Gunslinger", "calling": "Gunslinger", "mutations": [{"class": "ForceBubble"}, {"class": "Wings"}, {"class": "Beak"}],
+         "abilities": [{"name": "Akimbo"}, {"name": "Force Bubble"}], "equipped_summary": "Missile Weapon: chrome revolver", "attributes": {"Ego": 22}}
+assert build_templates.detect_build(_g146) is build_templates.BUILD_TEMPLATES["gunkin"], build_templates.detect_build(_g146)["name"]
+_e146 = {"genotype": "Mutated Human", "subtype": "Apostle", "calling": "Apostle", "mutations": [{"class": "ForceBubble"}, {"class": "Clairvoyance"}], "abilities": [], "attributes": {"Ego": 22}}
+assert build_templates.detect_build(_e146)["name"].lower().startswith("esper"), build_templates.detect_build(_e146)["name"]
+print("  [OK] Test 146 Passed: a Gunslinger with Force Bubble and a high Ego is a gunkin (not an Esper); an Apostle with mental mutations is still an Esper")
