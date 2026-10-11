@@ -278,5 +278,38 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Ideas:** reload when the magazine is empty and no hostile is within reach (a rooted one at range counts as none); exempt a rooted hazard from "flank for line of fire"; a rooted Tough+ hostile may not be worth shooting at all (120 HP, 12 slugs).
 - **Size (my guess):** small; needs a multi-turn test (AGENTS.md).
 
+### B30. Bring every in-game starting build online (human, 2026-10-10: "start working on the other builds to completely get them online"; the human chose this over honing the Esper; static audit done, in-game runs not promoted yet)
+- **The nine real starting builds `[verified in the game files, EmbarkModules.xml and Subtypes.xml, 2026-10-10]`** (the human: "six mutant character classes ... three truekin classes"). Our nine `BUILD_TEMPLATES` come from a community guide and only partly match them. What `detect_build` returns for each pregen today `[verified by running it]`:
+
+| Pregen | Calling | Mutations / cybernetic | Template picked | Fit |
+|---|---|---|---|---|
+| Praetorian Prime | Praetorian | Night Vision implant | Praetorian Generalist | ok |
+| First Gardener | Horticulturist | Nocturnal Apex implant | First Gardener (new, issue 131) | ok since issue 131 (was the Praetorian default) |
+| First Child of the Hearth | Child of the Hearth | Carbide Hand Bones | Classic Punchkin | ok |
+| Marsh Taur | Marauder | Freezing Ray, Multiple Legs, Amphibious, Teleportation | Auspicious Beginnings | ok |
+| Dream Tortoise | Arconaut | Carapace, Heightened Hearing, Horns, Sleep Gas | Gas Giant | roughly (a short-blade melee, not a gas caster) |
+| Gunwing | Gunslinger | Beak, Heightened Quickness, Wings, Force Bubble | Gunkin | ok since issue 127 (was Esper) |
+| Star-Eye Esper | Apostle | Clairvoyance, Light Manipulation, Sense Psychic, Stunning Force, Teleport Other | Esper-ited Away | ok |
+| Firefrond | Watervine Farmer | Unstable Genome, Flaming Ray, Photosynthetic Skin, Burgeoning | Firefrond (new, issue 131) | ok since issue 131 (was Praetorian) |
+| bzzzt | Tinker | Burrowing Claws, Electrical Generation, Heightened Hearing, Night Vision, Spinnerets, Thick Fur, Socially Repugnant | bzzzt (new, issue 131) | ok since issue 131 (was the Praetorian default) |
+
+- **Templates with no pregen:** Limb-Off, Uncle Iroh (needs electrical AND flaming), Bullet Specter (needs Phasing) are guide builds a player could still make; Gas Giant matches only Sleep Gas.
+- **Missing templates:** First Gardener, Firefrond, bzzzt (and arguably Dream Tortoise); also the `Rifles` skill name is baked into the C# starting-skill list (line near 4534) and the reload reason says "rifle".
+- **Already verified in game:** Esper (many runs), Marsh Taur-like Auspicious Beginnings (earlier), Gunwing (issues 127/128). **Never run:** the other six.
+- **Templates written (issue 131, Test 147, on `feat/pregen-templates`): First Gardener, Firefrond, bzzzt, each with detection, stats, skill path (food skills included), mutation priorities and a doctrine; Firefrond and bzzzt use the melee fallback (it already opens with a flaming or freezing ray), First Gardener the nomad fallback. Not wired: bzzzt's Discharge (`CommandDischarge`), Spin Webs (`CommandSpinWeb`), Burgeoning (`CommandBurgeoning`) and Bask (`CommandBask`) have registry entries but no ability family, so only the model uses them `[verified in data/abilities.json]`. Unverified in game.**
+- **Plan:** one build per test cycle, a fresh character each; check the template in the console, the level-up path, and that the signature abilities and weapons are used; build the three missing templates first.
+- **Size (my guess):** large; each build is its own small project.
+
+### B31. Firefrond's first run: never used Flaming Ray, a HARVEST loop, and the croc (found 2026-10-10 in the capture `Firefrond_Test_1`; the first two fixes built, the rest not promoted)
+- **What happened `[verified in the capture]`:** a level 1 Firefrond (20 HP) died to a croc without a single attack (`CommandFlamingRay` appears 0 times in the trace although it was ready at the end). In the last 9 turns (`t242-250`) the decisions alternated between a "Danger retreat" walk to the south border (five steps away, the croc adjacent) and the model's moves "to establish line of sight" on a far, occluded voider (Impossible, 12 tiles), HP 19 to 2, positions flipping between two cells.
+- **Built (issue 132, Test 148, on `fix/firefrond-death`):** (1) the line-of-fire guard and the auto-direction aimed every ray at `enemies[0]`, which is the HARDEST enemy (the list is sorted by difficulty), so with a voider in the list every ray became a walk toward the voider; now `action_target` picks the enemy the action names, else the nearest. (2) `border_retreat_decision` is not offered more than two steps from the border while a mobile hostile is adjacent (the walk costs a bite per step).
+- **Not built:** (a) why the model never chose Flaming Ray at point blank (the prompt is dominated by the hardest enemy; the deterministic `fallback_melee` has a point-blank ray but the model path runs first); (b) the HARVEST loop (`HARVEST` twice, the Loop Breaker moves him a step, about sixty times in the run): **cause found and fixed in issue 133 (Test 149), [verified in game 2026-10-10, capture Firefrond_Test_3: 6 HARVESTs in 150 decisions, interleaved with exploring, no loop]: the mod chose unripe plants, `AttemptHarvest` does nothing for them (ENGINE_INTERNALS 14.31); a Python cool-down also stops more than six HARVESTs in twenty turns**; (c) the croc was rated Impossible at one point and Average in the last state: the rating may move with his HP.
+- **Size (my guess):** (a) small, (b) small, (c) research.
+
+### B32. Flaming Ray against wet or wading targets, and fire on terrain (found 2026-10-10 in the Firefrond capture `Firefrond_Test_3`; not promoted)
+- **What happened `[verified in the capture]`:** the level 1 Firefrond fired Flaming Ray at a "wet chitinous puma [wading]" (Impossible), took one hit (20 to 11 HP), then kited west for seven turns and crossed back over the border; HP stayed 11 while it did, and he rested. The ray was used twice in the run (the other at a giant dragonfly). The human's note: fire hands "can catch terrain on fire if the graphics read correctly".
+- **Unknown `[unknown]`:** whether Flaming Ray does its damage or ignites a creature that is wading or "wet" (water cools burning, ENGINE_INTERNALS 12.1g), what it does to the watervine and grass he was standing in, and whether the fire reaches him. The Firefrond doctrine already says "never when he stands in or next to dry plants"; the brain has no check for it.
+- **Ideas:** export "target is wet or in liquid" and "plants within one cell of him"; keep the ray for dry targets and the axe or a retreat for wet ones. **Size (my guess):** research first.
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.

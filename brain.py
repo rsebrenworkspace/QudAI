@@ -144,6 +144,24 @@ BUTCHER_STREAK = 0             # consecutive BUTCHER actions; a silent failure m
 BUTCHER_TURN = 0               # Phase A sustenance calls (a clock for the cool-down below)
 BUTCHER_SUPPRESS_UNTIL = 0     # after 3 BUTCHERs in a row, stop trying for BUTCHER_COOLDOWN_TURNS
 BUTCHER_COOLDOWN_TURNS = 30
+HARVEST_TURNS = []             # BUTCHER_TURN values at which HARVEST was chosen (the Loop Breaker breaks every streak at 2, so a streak count never reaches 3)
+HARVEST_WINDOW = 20            # sustenance turns the recent harvests are counted over
+HARVEST_MAX_IN_WINDOW = 6      # more harvests than this in the window: stop for HARVEST_COOLDOWN_TURNS (Firefrond 2026-10-10: 65 HARVESTs in 120 turns with no effect)
+HARVEST_COOLDOWN_TURNS = 40
+HARVEST_STATE = {"suppress_until": 0}
+
+
+def harvest_allowed(turn):
+    """False while harvesting is paused because it was chosen too often lately; records the harvest otherwise (the caller returns HARVEST when this is True)."""
+    if turn < HARVEST_STATE["suppress_until"]:
+        return False
+    HARVEST_TURNS[:] = [t for t in HARVEST_TURNS if turn - t <= HARVEST_WINDOW]
+    if len(HARVEST_TURNS) >= HARVEST_MAX_IN_WINDOW:
+        HARVEST_STATE["suppress_until"] = turn + HARVEST_COOLDOWN_TURNS
+        HARVEST_TURNS.clear()
+        return False
+    HARVEST_TURNS.append(turn)
+    return True
 
 KNOWN_STAIRS_DOWN = {}   # zone_id -> {"tx": tx, "ty": ty, "z": z, "name": name, "req_level": int}
 KNOWN_STAIRS_UP = {}     # zone_id -> {"tx": tx, "ty": ty, "z": z, "name": name}
@@ -535,6 +553,7 @@ def filter_corpse_burners(game_state, abilities, hostiles, hp_ratio):
 # and he is still within BORDER_RETREAT_RADIUS of the border he just came through, he goes back, and the exit that leads into that zone is
 # written off (FAILED_ZONE_EXITS) so the exit chooser does not walk him straight back in. Stairs, when known, are used first (is_overwhelmed).
 BORDER_RETREAT_RADIUS = 6
+BORDER_RETREAT_ADJACENT_MAX_STEPS = 2   # steps from the border at most, to retreat with a mobile hostile adjacent
 OPPOSITE_DIR = {"N": "S", "S": "N", "E": "W", "W": "E"}
 
 
@@ -606,6 +625,12 @@ def border_retreat_decision(game_state, zone_id, cur_pos, enemies):
     rev = entry["reverse_dir"]
     px, py = cur_pos
     on_border = (rev == "W" and px == 0) or (rev == "E" and px == 79) or (rev == "N" and py == 0) or (rev == "S" and py == 24)
+    # A mobile hostile already adjacent bites on every step of the walk back (the Firefrond run 2026-10-10: five steps from the border with a croc at his heels, HP 19 to 0 in eight
+    # turns without one attack). Beyond BORDER_RETREAT_ADJACENT_MAX_STEPS the retreat is not offered; the guards and the fight rules decide.
+    steps_to_border = {"W": px, "E": 79 - px, "N": py, "S": 24 - py}.get(rev, 0)
+    if not on_border and steps_to_border > BORDER_RETREAT_ADJACENT_MAX_STEPS and any(
+            e.get("dist") == 1 and not e.get("is_stationary") and not e.get("is_companion") and e.get("has_los") is not False and e.get("is_enemy", True) for e in enemies):
+        return None
     from_zone = entry.get("from_zone")
     if swarm:
         # NOT written into FAILED_ZONE_EXITS, which never lapses: the zone is flagged in the ledger instead, and the flag ends on a level gain, a gear upgrade or time.
@@ -2627,6 +2652,27 @@ def is_ignorable_stationary_enemy(e):
     return False
 
 
+def action_target(action, enemies, px, py):
+    """The enemy an attack action is aimed at: the one at `@x,y`, else the nearest one in the action's direction, else the nearest. `enemies` is sorted by difficulty, so enemies[0]
+    is the HARDEST, not the nearest (the Firefrond run 2026-10-10: a far occluded voider was `enemies[0]`, so every ray was redirected to walk toward it while a croc bit him)."""
+    if not enemies:
+        return None
+    near = sorted(enemies, key=lambda e: (e.get("dist") if e.get("dist") is not None else 99))
+    m = re.search(r"@(\d+),(\d+)", action or "")
+    if m:
+        x, y = int(m.group(1)), int(m.group(2))
+        for e in near:
+            if e.get("tx") == x and e.get("ty") == y:
+                return e
+    parts = (action or "").split(":")
+    if action.startswith("USE_ABILITY:") and len(parts) >= 3:
+        d = parts[2].split("@")[0].strip()
+        for e in near:
+            if e.get("dir") == d:
+                return e
+    return near[0]
+
+
 # Model lab hook (HANDOFF issue 65): when tools/model_lab.py sets this to a dict, query_llm_decision records what it offered and what came back.
 LLM_PROBE = None
 
@@ -3114,7 +3160,7 @@ VALID ACTIONS:
             if action.startswith("USE_ABILITY:") and enemies:
                 ab_cmd = action.split(":")[1].strip()
                 if ":" not in action[12:]:
-                    closest = enemies[0]
+                    closest = action_target(action, enemies, px, py)
                     closest_dir = closest.get("dir")
                     if not closest_dir:
                         closest_dir = get_step_direction((px, py), (closest.get("tx", px), closest.get("ty", py)))
@@ -3126,7 +3172,7 @@ VALID ACTIONS:
             if enemies:
                 is_beam_or_missile = action.startswith("FIRE_MISSILE") or action.startswith("THROW_ITEM") or any(b in action.lower() for b in ["lase", "flaming", "freezing", "spit"])
                 if is_beam_or_missile:
-                    closest = enemies[0]
+                    closest = action_target(action, enemies, px, py)
                     ctx = closest.get("tx", px)
                     cty = closest.get("ty", py)
                     clear, reason = is_line_of_fire_clear((px, py), (ctx, cty), companions=companions, blocked_set=blocked_coords, target_entity=closest, surroundings=surroundings)
@@ -4540,7 +4586,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             BUTCHER_SUPPRESS_UNTIL = BUTCHER_TURN + BUTCHER_COOLDOWN_TURNS
         if can_butcher and BUTCHER_TURN >= BUTCHER_SUPPRESS_UNTIL:
             return {"action": "BUTCHER", "reason": "Survival: Butchering animal corpse for meat & cooking ingredients"}
-        if can_harvest:
+        if can_harvest and harvest_allowed(BUTCHER_TURN):
             return {"action": "HARVEST", "reason": "Survival: Harvesting wild plant for fresh cooking ingredients"}
 
         # 2B. Relief of hunger (Famished or Hungry)
@@ -4933,7 +4979,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     can_sp = (not is_sprinting) and (sprint_ab is not None) and sprint_ab.get("usable", True) and sprint_ab.get("cooldown", 0) <= 0
 
     cid = template.get("id", "praetorian_generalist")
-    if cid in ("auspicious_beginnings", "limb_off", "axe_berserker", "classic_punchkin"):
+    if cid in ("auspicious_beginnings", "limb_off", "axe_berserker", "classic_punchkin", "firefrond", "bzzzt"):
         return fallback_melee(
             game_state, enemies, adj_threats, open_moves, valid_moves, abilities,
             template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo

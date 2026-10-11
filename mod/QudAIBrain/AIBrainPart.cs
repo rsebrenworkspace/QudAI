@@ -2035,7 +2035,7 @@ namespace QudAIBrain
                                 {
                                     corpsesNearby++;
                                 }
-                                if (o.HasPart("Harvestable"))
+                                if (IsRipePlant(o))
                                 {
                                     harvestableNearby++;
                                 }
@@ -2076,7 +2076,7 @@ namespace QudAIBrain
                         foreach (GameObject fsObj in GetSafeZoneObjects(fsZone))
                         {
                             if (fsObj == null || fsObj.IsPlayer() || fsObj.CurrentCell == null) continue;
-                            string fsKind = IsButcherableCorpse(fsObj) ? "corpse" : (fsObj.HasPart("Harvestable") ? "plant" : null);
+                            string fsKind = IsButcherableCorpse(fsObj) ? "corpse" : (IsRipePlant(fsObj) ? "plant" : null);
                             if (fsKind == null) continue;
                             int fsDist = Math.Max(Math.Abs(fsObj.CurrentCell.X - currentCell.X), Math.Abs(fsObj.CurrentCell.Y - currentCell.Y));
                             if (fsDist > FoodSourceRadius) continue;
@@ -3459,7 +3459,7 @@ namespace QudAIBrain
                         {
                             if (c?.Objects != null)
                             {
-                                plantObj = c.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && o.HasPart("Harvestable"));
+                                plantObj = c.Objects.FirstOrDefault(o => o != null && !o.IsPlayer() && IsRipePlant(o));
                                 if (plantObj != null) break;
                             }
                         }
@@ -4889,6 +4889,24 @@ namespace QudAIBrain
                 return any;
             }
             catch { return ""; }
+        }
+
+        // A plant is harvestable only while it is ripe: Harvestable.AttemptHarvest starts with IsHarvestable (the Ripe flag and visibility) and does nothing for an unripe one.
+        // The mod counted and chose every Harvestable plant, so a Firefrond in a watervine marsh "harvested" the same unripe plants about sixty times (BACKLOG B31, 2026-10-10).
+        private static MethodInfo harvestableIsHarvestable;
+        private static bool IsRipePlant(GameObject o)
+        {
+            try
+            {
+                if (o == null || !o.HasPart("Harvestable")) return false;
+                var h = o.GetPart<Harvestable>();
+                if (h == null) return false;
+                if (harvestableIsHarvestable == null)
+                    harvestableIsHarvestable = typeof(Harvestable).GetMethod("IsHarvestable", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+                if (harvestableIsHarvestable == null) return true;
+                return (bool)harvestableIsHarvestable.Invoke(h, null);
+            }
+            catch { return true; }
         }
 
         private static void ExecuteMissileFire(GameObject player, Cell targetCell)
