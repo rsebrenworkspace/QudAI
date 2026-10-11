@@ -7249,3 +7249,73 @@ _cs159 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod",
 assert "GasCellsJson(player)" in _cs159 and "GetPart<Gas>()" in _cs159
 assert any(s["id"] == "grenade-gas-lab" for s in json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "wish_scenarios.json"), encoding="utf-8"))["scenarios"])
 print("  [OK] Test 159 Passed: gas cells are logged per turn with count, density and distance (nothing without gas or the flag, every turn with it), the lab flag makes him PASS until his hit points fall under half, it is the first step of the decision pipeline, and the Lab card exists")
+
+
+# Test 160: healing items: use the best identified one when hurt or poisoned, not confusing bark next to an enemy, one per cool-down (human, 2026-10-11: "promote B38"; HANDOFF issue 146)
+# ---------------------------------------------------------------------------
+def _inv160(*items):
+    return [dict({"id": i, "blueprint": bp, "name": nm, "count": 1, "equipped": False, "identified": True}, **k) for i, bp, nm, k in items]
+_bark160 = ("b1", "Witchwood Bark", "witchwood bark", {})
+_salve160 = ("s1", "SalveTonic", "salve injector", {})
+def _gs160(hp, inv, effects=None, adjacent=False):
+    ents = [{"name": "croc", "dist": 1, "is_enemy": True}] if adjacent else []
+    return {"hp": hp, "max_hp": 18, "inventory": _inv160(*inv), "effects": effects or [], "visible_entities": ents}
+def _reset160():
+    brain.HEAL_STATE.update({"calls": 0, "last": -10_000, "tonic_last": -10_000})
+_reset160()
+assert brain.heal_item_decision(_gs160(17, [_bark160])) is None, "healthy: nothing"
+assert brain.heal_item_decision(_gs160(10, [_bark160])) is None, "under 60 percent but no status: not yet"
+_reset160(); _d160 = brain.heal_item_decision(_gs160(5, [_bark160]))
+assert _d160 and _d160["action"] == "USE_ITEM:b1" and "HEAL" in _d160["reason"], _d160
+_reset160(); assert brain.heal_item_decision(_gs160(10, [_bark160], ["poisoned by gas"]))["action"] == "USE_ITEM:b1", "poisoned and under 60 percent: use it"
+_reset160(); assert brain.heal_item_decision(_gs160(12, [_bark160], ["poisoned by gas"])) is None, "poisoned but above 60 percent"
+_reset160(); assert brain.heal_item_decision(_gs160(5, [])) is None and brain.heal_item_decision({}) is None
+# bark confuses: not next to an enemy unless he is critical; a tonic does not confuse
+_reset160(); assert brain.heal_item_decision(_gs160(6, [_bark160], adjacent=True)) is None, "6/18 is 33 percent: confusion next to a croc is worse"
+_reset160(); assert brain.heal_item_decision(_gs160(4, [_bark160], adjacent=True))["action"] == "USE_ITEM:b1", "critical: use it anyway"
+_reset160(); assert brain.heal_item_decision(_gs160(6, [_bark160, _salve160], adjacent=True))["action"] == "USE_ITEM:s1", "the salve, not the bark, next to an enemy"
+# an unidentified or worn item is not used
+_reset160(); assert brain.heal_item_decision(_gs160(4, [("b1", "Witchwood Bark", "witchwood bark", {"identified": False})])) is None
+_reset160(); assert brain.heal_item_decision(_gs160(4, [("b1", "Witchwood Bark", "witchwood bark", {"equipped": True})])) is None
+# MULTI-TURN: poisoned at 2 a turn, bark heals 4 a turn for 3 turns after use: one use per cool-down, and none once he has recovered
+_reset160(); _hp160 = 9; _uses160 = []; _heal_left160 = 0
+for _t160 in range(14):
+    _dec160 = brain.heal_item_decision(_gs160(_hp160, [_bark160, ("b2", "Witchwood Bark", "witchwood bark", {})], ["poisoned by gas"]))
+    if _dec160:
+        _uses160.append(_t160); _heal_left160 = 3
+    _hp160 = min(18, _hp160 - 2 + (4 if _heal_left160 > 0 else 0)); _heal_left160 = max(0, _heal_left160 - 1)
+assert _uses160 and all(b - a >= brain.HEAL_COOLDOWN for a, b in zip(_uses160, _uses160[1:])), _uses160
+assert len(_uses160) <= 3 and _hp160 > 9, ("he must recover and stop", _uses160, _hp160)
+_cs160 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert 'act.StartsWith("USE_ITEM:")' in _cs160 and "ExecuteUseItem(player" in _cs160 and 'item.HasPart("Tonic") ? "Apply" : "Eat"' in _cs160
+assert "heal_move = heal_item_decision(game_state)" in open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+_reset160()
+print("  [OK] Test 160 Passed: a healing item is used at 35 percent hit points, or 60 percent with poison, bleeding or burning on; confusing bark waits unless he is critical or nothing is adjacent; an unidentified or worn item is never used; one use per cool-down and none after he recovers (multi-turn)")
+
+
+# Test 161: the capture says STALE when the running brain is older than the code on disk (human, 2026-10-11: two lab runs used a brain started before the heal rule; HANDOFF issue 147)
+# ---------------------------------------------------------------------------
+import tempfile as _tf161, time as _time161
+_repo161 = _tf161.mkdtemp(); _rt161 = _os.path.join(_repo161, "brain_runtime.json")
+for _n161 in ("brain.py", "item_scoring.py"):
+    open(_os.path.join(_repo161, _n161), "w").write("x")
+brain.BRAIN_RUNTIME_FILES, _saved161 = ("brain.py", "item_scoring.py", "missing.py"), brain.BRAIN_RUNTIME_FILES
+try:
+    assert _cl.brain_code_health(_rt161, _repo161)[0] == _cl.UNKNOWN, "no runtime file yet"
+    brain.write_brain_runtime(_rt161, _repo161)
+    _rec161 = json.load(open(_rt161))
+    assert set(_rec161["files"]) == {"brain.py", "item_scoring.py"} and _rec161["pid"] == _os.getpid() and _rec161["started"] > 0
+    assert _cl.brain_code_health(_rt161, _repo161)[0] == _cl.OK, "nothing changed since start"
+    _later161 = _time161.time() + 30
+    _os.utime(_os.path.join(_repo161, "item_scoring.py"), (_later161, _later161))
+    _st161, _tx161 = _cl.brain_code_health(_rt161, _repo161)
+    assert _st161 == _cl.WARN and "STALE" in _tx161 and "item_scoring.py" in _tx161 and "RESTART THE BRAIN" in _tx161, (_st161, _tx161)
+    open(_rt161, "w").write("not json")
+    assert _cl.brain_code_health(_rt161, _repo161)[0] == _cl.UNKNOWN
+    brain.write_brain_runtime(_os.path.join(_repo161, "no_such_dir", "x.json"), _repo161)     # never raises
+finally:
+    brain.BRAIN_RUNTIME_FILES = _saved161
+_bsrc161 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "    write_brain_runtime()\n" in _bsrc161.replace("\r\n", "\n"), "main() records the code it loaded"
+assert any(r[0] == "Brain code" for r in _cl.mod_health(_tf161.mkdtemp()))
+print("  [OK] Test 161 Passed: the brain records the modification time of the code it loaded, the capture's health list says STALE and RESTART THE BRAIN when a file is newer, UNKNOWN when it has no record, and it never raises")

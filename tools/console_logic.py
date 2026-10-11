@@ -125,6 +125,24 @@ def deployed_matches_repo(repo_dir=None, mods_dir=None):
     return WARN, "the repo C# differs from the game's mod folder: run  python sync_mod.py deploy  and restart the game"
 
 
+def brain_code_health(runtime_path=None, repo=None):
+    """(status, text): has any Python file the brain depends on changed since the brain process started? brain.py main() writes memory/brain_runtime.json with each file's modification
+    time at start; a file that is newer on disk means the running brain is OLD and must be restarted (the game client restarting does not restart it)."""
+    runtime_path = runtime_path or os.path.join(REPO, "memory", "brain_runtime.json")
+    repo = repo or REPO
+    if not os.path.exists(runtime_path):
+        return UNKNOWN, "no memory/brain_runtime.json: the brain has not been started since this check was added (start it once)"
+    try:
+        rt = json.load(open(runtime_path, encoding="utf-8"))
+        stale = [rel for rel, m in (rt.get("files") or {}).items() if os.path.exists(os.path.join(repo, rel)) and os.path.getmtime(os.path.join(repo, rel)) > float(m) + 1.0]
+    except (OSError, ValueError):
+        return UNKNOWN, "cannot read memory/brain_runtime.json"
+    started = time.strftime("%H:%M:%S", time.localtime(rt.get("started", 0)))
+    if stale:
+        return WARN, f"STALE: {', '.join(stale)} changed after the brain started at {started}: RESTART THE BRAIN (the game client restarting does not)"
+    return OK, f"the running brain (started {started}) has the current code"
+
+
 def mod_health(exchange_dir=None):
     gd = game_dir(exchange_dir)
     ex = exchange_dir or EXCHANGE_DIR
@@ -140,6 +158,7 @@ def mod_health(exchange_dir=None):
     else:
         rows.append(("Game state", UNKNOWN, "no last_state.json yet"))
     rows.append(("LLM context", *llm_headroom()))
+    rows.append(("Brain code", *brain_code_health()))
     rows.append(("AI switch", OK if flag_on(ex) else WARN, "ENGAGED (active.flag present)" if flag_on(ex) else "paused (no active.flag): the game plays itself no more"))
     return rows
 

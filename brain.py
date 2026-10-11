@@ -1117,6 +1117,59 @@ def note_throw_result(game_state):
         THROW_STATE["fails"] = 0
 
 
+# Healing items (BACKLOG B38, promoted 2026-10-11). A level 1 bzzzt died of poison from 18 hit points with four witchwood bark in the pack: nothing used a healing item. The rule: when his
+# hit points are low, or a damage-over-time status (poison, bleeding, burning) is on and they are under HEAL_HP_RATIO_DOT, use the best identified healing item he carries. Witchwood bark heals
+# 12-14 over 3 turns but CONFUSES (1d8 strength, 5d3 turns), so it is not used with a hostile adjacent unless he is critical; salve and ubernostrum injectors heal over 5 and 10 rounds and do not.
+# One item per HEAL_COOLDOWN calls (the healing is over time), tonics HEAL_TONIC_COOLDOWN apart ("applying one tonic while under the effects of another may produce undesired results").
+HEAL_ITEMS = {"witchwood bark": {"heal": 13, "confuses": True, "tonic": False},
+              "salvetonic": {"heal": 15, "confuses": False, "tonic": True},
+              "ubernostrumtonic": {"heal": 30, "confuses": False, "tonic": True}}
+HEAL_HP_RATIO = 0.35
+HEAL_HP_RATIO_DOT = 0.6
+HEAL_CRITICAL_RATIO = 0.25
+HEAL_COOLDOWN = 3
+HEAL_TONIC_COOLDOWN = 8
+HEAL_DOT_WORDS = ("poison", "bleed", "burning", "on fire")
+HEAL_STATE = {"calls": 0, "last": -10_000, "tonic_last": -10_000}
+
+
+def heal_item_decision(game_state):
+    """USE_ITEM decision for a healing item when he is hurt (or hurting), else None."""
+    try:
+        HEAL_STATE["calls"] += 1
+        calls = HEAL_STATE["calls"]
+        hp, mx = game_state.get("hp"), game_state.get("max_hp")
+        inv = game_state.get("inventory")
+        if hp is None or not mx or not isinstance(inv, list) or not inv:
+            return None
+        ratio = hp / mx
+        dot = any(w in str(ef).lower() for ef in (game_state.get("effects") or []) for w in HEAL_DOT_WORDS)
+        if ratio > (HEAL_HP_RATIO_DOT if dot else HEAL_HP_RATIO) or calls - HEAL_STATE["last"] < HEAL_COOLDOWN:
+            return None
+        adjacent = any(e.get("dist") == 1 and e.get("is_enemy") for e in game_state.get("visible_entities") or [])
+        cands = []
+        for it in inv:
+            spec = HEAL_ITEMS.get(str(it.get("blueprint", "")).lower())
+            if not spec or it.get("equipped") or it.get("identified") is False or not it.get("id"):
+                continue
+            if spec["confuses"] and adjacent and ratio > HEAL_CRITICAL_RATIO:
+                continue                      # confusion next to an enemy is its own danger; wait unless he is critical
+            if spec["tonic"] and calls - HEAL_STATE["tonic_last"] < HEAL_TONIC_COOLDOWN:
+                continue
+            cands.append((spec["heal"], it, spec))
+        if not cands:
+            return None
+        cands.sort(key=lambda c: -c[0])
+        _h, it, spec = cands[0]
+        HEAL_STATE["last"] = calls
+        if spec["tonic"]:
+            HEAL_STATE["tonic_last"] = calls
+        why = f"hit points {hp}/{mx}" + (" and a damage-over-time status is on" if dot else "")
+        return {"action": f"USE_ITEM:{it['id']}", "reason": f"[HEAL] {why}: using {it.get('name')} (heals about {spec['heal']})."}
+    except Exception:
+        return None
+
+
 def note_inventory_action(game_state):
     """Reads the mod's report of the last equip or drop once: logs drops, and stops retrying an id the game refused twice. Never raises."""
     try:
@@ -1136,6 +1189,8 @@ def note_inventory_action(game_state):
                              "blueprint": (pend.get("blueprints") or {}).get(iid), "attempt": pend.get("attempt"), "intelligence": pend.get("intelligence")})
                 if outcome in ("understood", "gone"):
                     EXAMINE_STATE["tries"].pop(iid, None)
+            elif la.get("kind") == "use":
+                print(f"[INVENTORY] used {name}")
             elif la.get("kind") == "take":
                 print(f"[INVENTORY] took {name} from the ground: {(pend.get('reasons') or {}).get(iid, '')}")
                 GROUND_STATE.update({"id": None, "turns": 0})
@@ -4179,6 +4234,11 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         HUNTER_PROTOCOL_STATE["last"] = hunter_move["action"]
         STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
         return hunter_move
+    heal_move = heal_item_decision(game_state)
+    if heal_move:
+        print(heal_move["reason"])
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return heal_move
     rooted_move = rooted_hazard_decision(game_state)
     if rooted_move:
         if ROOTED_STATE["last"] != rooted_move["action"]:
@@ -5111,12 +5171,35 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         )
 
 
+# Which code this brain process loaded (human, 2026-10-11: two lab runs were played by a brain started before the heal rule existed; the game client had been restarted, the Python brain had not).
+# main() records the modification time of every Python file the decisions depend on; the console's capture compares them with the files on disk and says STALE when one is newer.
+BRAIN_RUNTIME_PATH = os.path.join(chronicler.MEMORY_DIR, "brain_runtime.json")
+BRAIN_RUNTIME_FILES = ("brain.py", "item_scoring.py", "build_templates.py", "ability_registry.py", "creature_threat.py", "danger_ledger.py", os.path.join("data", "ability_families.json"),
+                       os.path.join("data", "grenades.json"))
+
+
+def write_brain_runtime(path=None, repo=None):
+    """Writes {started, pid, files: {name: mtime}} for the code this process has loaded. Never raises."""
+    try:
+        repo = repo or os.path.dirname(os.path.abspath(__file__))
+        files = {}
+        for rel in BRAIN_RUNTIME_FILES:
+            p = os.path.join(repo, rel)
+            if os.path.exists(p):
+                files[rel] = os.path.getmtime(p)
+        with open(path or BRAIN_RUNTIME_PATH, "w", encoding="utf-8") as f:
+            json.dump({"started": time.time(), "pid": os.getpid(), "files": files}, f)
+    except Exception:
+        pass
+
+
 def main():
     global current_zone_id, zone_step_count, last_action, last_hp, consecutive_kites
     global action_repeat_count, last_executed_action, last_executed_pos, twitch_manager
     global CURRENT_ZONE_CHOSEN_EXIT, CURRENT_ZONE_CHOSEN_EXIT_ZONE, FAILED_ZONE_EXITS
 
     remove_stale_flag()
+    write_brain_runtime()
     twitch_manager = twitch_bot.start_twitch_in_background()
 
     autolevel_breaker = AutolevelBreaker()
