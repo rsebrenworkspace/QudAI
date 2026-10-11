@@ -730,6 +730,67 @@ BUILD_TEMPLATES = {
                 "4. Burrow away (toggle Burrowing Claws) when HP is below 40 percent and nothing is adjacent."
             ]
         }
+    },
+
+    # 13. Dream Tortoise: the Arconaut mutant pregen (Carapace, Horns, Sleep Gas Generation, Heightened Hearing). Kit read from Subtypes.xml and PopulationTables.xml 2026-10-10
+    # (two daggers, a short bow, a pocketed vest, a basic toolkit; skills Short Blades, Tinkering Scavenger, Acrobatics Dodge). It used to be detected as Gas Giant, a gas caster.
+    "dream_tortoise": {
+        "id": "dream_tortoise",
+        "name": "Dream Tortoise (Armored Dagger Fighter with Sleep Gas)",
+        "archetype": "Armored Melee Skirmisher and Sleep Controller",
+        "callings": ["Arconaut"],
+        "genotype": "Mutated Human",
+        "strengths": [
+            "Carapace gives a high armor value, and Tighten (a defensive ability) raises it further for a few turns",
+            "Sleep Gas Generation puts the enemies around him to sleep so they can be stabbed",
+            "Horns add a gore attack in melee",
+            "Acrobatics Dodge and Agility keep him hard to hit; Heightened Hearing warns him early"
+        ],
+        "weaknesses": [
+            "Sleep gas also puts his companions to sleep and he must not stand in it himself",
+            "Daggers do little damage: a heavily armored target is slow to kill",
+            "A short bow is the only ranged option"
+        ],
+        "preferred_range": 1,
+        "stat_priorities": [
+            {"stat": "Agility", "target": 20, "reason": "Calling bonus, dodge and short-blade accuracy"},
+            {"stat": "Toughness", "target": 20, "reason": "Survivability floor"},
+            {"stat": "Strength", "target": 18, "reason": "Dagger and horn damage"},
+            {"stat": "Intelligence", "target": 15, "reason": "Butchery and Harvestry need Intelligence 15 (HANDOFF issue 36)"},
+            {"stat": "Willpower", "target": 18, "reason": "Gas generation cooldown reduction"}
+        ],
+        "skill_progression": [
+            "ShortBlades",
+            "Acrobatics",
+            "Acrobatics_Dodge",
+            "CookingAndGathering",
+            "CookingAndGathering_Harvestry",
+            "CookingAndGathering_Butchery",
+            "ShortBlades_Jab",
+            "ShortBlades_Bloodletter",
+            "ShortBlades_Expertise",
+            "Tactics",
+            "Acrobatics_SwiftReflexes",
+            "ShortBlades_Rejoinder",
+            "Endurance",
+            "Endurance_ShakeItOff",
+            "Survival_Camp",
+            "Tinkering_Scavenger"
+        ],
+        "mutation_priorities": ["Carapace", "SleepGasGeneration", "Horns"],
+        "combat_doctrine": {
+            "doctrine_name": "Sleep, Stab, and Shell",
+            "open_combat_action": "Sleep Gas when two or more enemies are within 3 tiles and no companion is near; otherwise close and stab",
+            "close_contact_policy": "Stab sleeping or adjacent targets with the dagger; Tighten the carapace when HP is below 60 percent and more than one enemy is adjacent",
+            "melee_engagement": "Fight in the doorway or corridor so only one enemy reaches him; step out of the gas he released",
+            "preferred_weapons": ["Dagger", "Short blade", "Short bow"],
+            "ability_rotation": [
+                "1. Sleep Gas when a group closes in (verify no companion in the cloud, and do not stand in it).",
+                "2. Melee the sleeping or adjacent target; Jab and Bloodletter when learned.",
+                "3. Tighten (Carapace) when HP is below 60 percent with two or more enemies adjacent.",
+                "4. Short bow at 3 or more tiles when a single enemy approaches and the line is clear."
+            ]
+        }
     }
 }
 
@@ -760,6 +821,10 @@ def detect_build(game_state):
     str_val = attrs.get("Strength", 10)
     agi = attrs.get("Agility", 10)
     wil = attrs.get("Willpower", 10)
+
+    # 0. Dream Tortoise: the Arconaut calling with its armor, horns or sleep gas. A gas mutation alone (a Greybeard with Sleep Gas) is still a Gas Giant below.
+    if "arconaut" in calling and any(m in mutations for m in ["sleepgasgeneration", "carapace", "horns"]):
+        return BUILD_TEMPLATES["dream_tortoise"]
 
     # 1. Gas Giant detection
     if any(m in mutations for m in ["corrosivegasgeneration", "sleepgasgeneration"]) or any("corrosive gas" in a or "sleep gas" in a for a in abilities):
