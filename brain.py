@@ -4742,7 +4742,38 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     decision = _query_decision(game_state, took_damage, enemies, suppress_autolevel)
     decision = lethal_adjacent_guard(decision, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
     decision = enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
+    decision = veto_ability_repeat(decision, STAND_CONTEXT["enemies"])
     return veto_gas_approach(veto_rooted_approach(decision, game_state), game_state)
+
+
+# A self-targeted ability used again and again while an enemy stands next to him (HANDOFF issue 166): the Dream Tortoise's model used Tighten Carapace 61 turns in a row against a crocodile and
+# was never allowed to attack (2026-10-12; Tighten is a stance that the next action ends, ENGINE_INTERNALS 14.39). Whatever the ability, the third identical turn in a row is replaced by a melee
+# attack on an adjacent hostile and the ability is banned for a while. Directional abilities (an attack with a direction) are not touched, and nothing changes when no enemy is adjacent.
+ABILITY_REPEAT = {"action": None, "count": 0, "turn": -10}
+ABILITY_REPEAT_MAX = 2
+ABILITY_BAN = {}               # action -> TURN_CLOCK until which it is replaced
+ABILITY_BAN_TURNS = 15
+
+
+def veto_ability_repeat(decision, enemies):
+    action = (decision or {}).get("action", "")
+    if not action.startswith("USE_ABILITY:") or action.count(":") != 1:
+        ABILITY_REPEAT.update({"action": None, "count": 0})
+        return decision
+    if action == ABILITY_REPEAT["action"] and TURN_CLOCK - ABILITY_REPEAT["turn"] <= 1:
+        ABILITY_REPEAT["count"] += 1
+    else:
+        ABILITY_REPEAT.update({"action": action, "count": 1})
+    ABILITY_REPEAT["turn"] = TURN_CLOCK
+    if ABILITY_REPEAT["count"] <= ABILITY_REPEAT_MAX and ABILITY_BAN.get(action, 0) <= TURN_CLOCK:
+        return decision
+    adjacent = [e for e in (enemies or []) if e.get("dist") == 1 and e.get("dir") in CARDINAL_OFFSETS and not e.get("is_companion")]
+    if not adjacent:
+        return decision
+    ABILITY_BAN[action] = TURN_CLOCK + ABILITY_BAN_TURNS
+    target = adjacent[0]
+    print(f"[ABILITY REPEAT] {action} used {ABILITY_REPEAT['count']} turns in a row with {target.get('name', 'an enemy')} adjacent: attacking it instead and banning the ability for {ABILITY_BAN_TURNS} turns.")
+    return {"action": f"MOVE_{target['dir']}", "reason": f"[Ability repeat guard] {action.split(':', 1)[1]} again would be turn {ABILITY_REPEAT['count']} in a row; attacking the adjacent {target.get('name', 'enemy')} ({target['dir']}) instead."}
 
 
 # Turrets (HANDOFF issue 77). A level 3 character died to a musket turret that the mod exported with is_enemy false, rated Impossible (level 15), with only 5 hit points:

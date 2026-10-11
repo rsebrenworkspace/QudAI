@@ -7768,9 +7768,9 @@ print("  [OK] Test 173 Passed: the chosen exit's own edge decides 'near the bord
 # Test 174: Tighten and Release Sleep Gas are wired (the Dream Tortoise capture of 2026-10-12 named the commands; before, both were hidden from the model and never used)
 # ---------------------------------------------------------------------------
 import ability_registry as _ar174
-assert _ar174.is_wired({"command": "CommandTightenCarapace"}) and _ar174.is_wired({"command": "GasGenerationCommandSleepGas"})
+assert _ar174.is_wired({"command": "GasGenerationCommandSleepGas"}) and not _ar174.is_wired({"command": "CommandTightenCarapace"}), "Sleep Gas is wired; Tighten was hidden again after it looped (issue 166)"
 assert not _ar174.is_wired({"command": "CommandDoesNotExist"})
-print("  [OK] Test 174 Passed: the Dream Tortoise's Tighten and Release Sleep Gas are wired into ability families, so the model sees them in its menu")
+print("  [OK] Test 174 Passed: Release Sleep Gas is wired into the ability families (Tighten Carapace is deliberately hidden again, Test 177)")
 
 # Test 175: the navigator can swim (source check on the C#; HANDOFF issue 163, Dream Tortoise 2026-10-12: the engine's edge step led away along a shore and the engine's pathfinders do not swim)
 # ---------------------------------------------------------------------------
@@ -7788,3 +7788,33 @@ print("  [OK] Test 175 Passed: the C# has a general swim-capable router; NAVIGAT
 _cs176 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
 assert "if (z.ZoneID != exitDiagZone) { exitDiagSeen.Clear(); exitDiagZone = z.ZoneID; }" in _cs176 and "private static string exitDiagZone" in _cs176
 print("  [OK] Test 176 Passed: the ExitDiag log cap (150) resets on every zone change, so the entries for a zone that oscillates are written")
+
+# Test 177: a self-targeted ability repeated with an enemy adjacent is replaced by a melee attack (Dream Tortoise, 2026-10-12: Tighten Carapace 61 turns in a row against a croc; HANDOFF issue 166)
+# ---------------------------------------------------------------------------
+import ability_registry as _ar177
+brain.ABILITY_REPEAT.update({"action": None, "count": 0, "turn": -10}); brain.ABILITY_BAN.clear()
+_croc177 = [{"name": "croc", "dist": 1, "dir": "E"}]
+_t177 = brain.TURN_CLOCK
+_out177 = []
+for _i177 in range(1, 9):
+    brain.TURN_CLOCK = _t177 + _i177
+    _out177.append(brain.veto_ability_repeat({"action": "USE_ABILITY:CommandTightenCarapace", "reason": "model"}, _croc177)["action"])
+assert _out177[:2] == ["USE_ABILITY:CommandTightenCarapace"] * 2, _out177
+assert all(a == "MOVE_E" for a in _out177[2:]), f"from the third turn on he attacks: {_out177}"
+# no enemy next to him: nothing is replaced (a buff before a fight is not a loop)
+brain.ABILITY_REPEAT.update({"action": None, "count": 0, "turn": -10}); brain.ABILITY_BAN.clear()
+for _i177 in range(1, 7):
+    brain.TURN_CLOCK = _t177 + 100 + _i177
+    assert brain.veto_ability_repeat({"action": "USE_ABILITY:CommandTightenCarapace", "reason": "m"}, [])["action"].startswith("USE_ABILITY")
+# a directional ability is never touched
+brain.ABILITY_REPEAT.update({"action": None, "count": 0, "turn": -10}); brain.ABILITY_BAN.clear()
+for _i177 in range(1, 7):
+    brain.TURN_CLOCK = _t177 + 200 + _i177
+    assert brain.veto_ability_repeat({"action": "USE_ABILITY:CommandStunningForce:E", "reason": "m"}, _croc177)["action"] == "USE_ABILITY:CommandStunningForce:E"
+brain.TURN_CLOCK = _t177
+brain.ABILITY_REPEAT.update({"action": None, "count": 0, "turn": -10}); brain.ABILITY_BAN.clear()
+assert not _ar177.is_wired({"command": "CommandTightenCarapace"}), "Tighten is hidden from the model's menu"
+assert _ar177.is_wired({"command": "GasGenerationCommandSleepGas"})
+_cs177 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert 'cmd == "CommandTightenCarapace" && CarapaceTight(player)' in _cs177
+print("  [OK] Test 177 Passed: the third identical self-ability turn with an enemy adjacent becomes a melee attack and the ability is banned; nothing changes without an adjacent enemy or for directional abilities; Tighten is hidden from the menu and the mod exports its stance as active")

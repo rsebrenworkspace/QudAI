@@ -254,6 +254,14 @@ namespace QudAIBrain
             catch { return false; }
         }
 
+        // Carapace's Tighten is a stance, not a toggle: `Carapace.Tight` is true until the next action that uses energy (other than Pass or a mental power) or the next move, and the ability keeps
+        // showing as ready, so the model re-used it 61 times in a row against a croc (Dream Tortoise, 2026-10-12; ENGINE_INTERNALS 14.39). Exported as the ability's `active`.
+        private static bool CarapaceTight(GameObject player)
+        {
+            try { var c = player?.GetPart<XRL.World.Parts.Mutation.Carapace>(); return c != null && c.Tight; }
+            catch { return false; }
+        }
+
         // The Stuck effect (a web, a trap): a stuck creature cannot move (human, 2026-10-11, Spin Webs by hand: "The chitinous puma is stuck in a web!", "brought up short"). The brain treats it as a
         // still target: no retreat from it, and a gas grenade lands on something that stays in the cloud.
         private static bool IsStuck(GameObject o)
@@ -2279,7 +2287,7 @@ namespace QudAIBrain
                                 bool usable = ab.IsUsable;
                                 string name = StripQudFormatting(ab.DisplayName);
                                 string cmd = ab.Command ?? "";
-                                bool active = ab.ToggleState || (name.ToLower().Contains("sprint") && isSprinting);
+                                bool active = ab.ToggleState || (name.ToLower().Contains("sprint") && isSprinting) || (cmd == "CommandTightenCarapace" && CarapaceTight(player));
                                 abilityStrs.Add($"{{\"name\": \"{EscapeJson(name)}\", \"command\": \"{EscapeJson(cmd)}\", \"cooldown\": {cd}, \"usable\": {(usable ? "true" : "false")}, \"active\": {(active ? "true" : "false")}}}");
                             }
                         }

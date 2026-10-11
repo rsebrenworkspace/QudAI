@@ -741,7 +741,7 @@ BUILD_TEMPLATES = {
         "callings": ["Arconaut"],
         "genotype": "Mutated Human",
         "strengths": [
-            "Carapace gives a high armor value, and Tighten (a defensive ability) raises it further for a few turns",
+            "Carapace gives a high armor value always; Tighten doubles that bonus but only while he stands still (any action or move ends it), so it is not used in a fight",
             "Sleep Gas Generation puts the enemies around him to sleep so they can be stabbed",
             "Horns add a gore attack in melee",
             "Acrobatics Dodge and Agility keep him hard to hit; Heightened Hearing warns him early"
@@ -781,13 +781,12 @@ BUILD_TEMPLATES = {
         "combat_doctrine": {
             "doctrine_name": "Sleep, Stab, and Shell",
             "open_combat_action": "Sleep Gas when two or more enemies are within 3 tiles and no companion is near; otherwise close and stab",
-            "close_contact_policy": "Stab sleeping or adjacent targets with the dagger; Tighten the carapace when HP is below 60 percent and more than one enemy is adjacent",
+            "close_contact_policy": "Stab sleeping or adjacent targets with the dagger; do not Tighten the carapace in a fight (it ends with his next action and costs a turn)",
             "melee_engagement": "Fight in the doorway or corridor so only one enemy reaches him; step out of the gas he released",
             "preferred_weapons": ["Dagger", "Short blade", "Short bow"],
             "ability_rotation": [
                 "1. Sleep Gas when a group closes in (verify no companion in the cloud, and do not stand in it).",
                 "2. Melee the sleeping or adjacent target; Jab and Bloodletter when learned.",
-                "3. Tighten (Carapace) when HP is below 60 percent with two or more enemies adjacent.",
                 "4. Short bow at 3 or more tiles when a single enemy approaches and the line is clear."
             ]
         }
