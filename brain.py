@@ -3914,7 +3914,8 @@ def engulf_escape_decision(game_state):
 # Both are BOUNDED per hazard (ROOTED_STEP_BUDGET), so if the only way on is past it he goes after a few tries instead of oscillating forever (AGENTS.md: loops are multi-turn properties).
 ROOTED_HAZARD_DIFFICULTIES = ("Tough", "Very Tough", "Impossible")
 ROOTED_STEP_BUDGET = 4
-ROOTED_STATE = {"zone": None, "steps": defaultdict(int), "last": None}
+ROOTED_CLEAR_RESET = 8    # decisions in a row out of every hazard's reach that refill the budget (capture 2026-10-10: the 4 steps were spent after re-engagements and the 5th adjacency went unguarded)
+ROOTED_STATE = {"zone": None, "steps": defaultdict(int), "last": None, "clear": 0}
 
 
 def rooted_hazards(game_state):
@@ -3936,6 +3937,7 @@ def _rooted_budget(game_state, hazards):
     if ROOTED_STATE["zone"] != zone:
         ROOTED_STATE["zone"] = zone
         ROOTED_STATE["steps"].clear()
+        ROOTED_STATE["clear"] = 0
     return [h for h in hazards if ROOTED_STATE["steps"][(h[0], h[1])] < ROOTED_STEP_BUDGET]
 
 
@@ -3966,7 +3968,11 @@ def rooted_hazard_decision(game_state):
         return None
     near = _hazard_reach((px, py), hazards)
     if not near:
+        ROOTED_STATE["clear"] += 1
+        if ROOTED_STATE["clear"] >= ROOTED_CLEAR_RESET:
+            ROOTED_STATE["steps"].clear()
         return None
+    ROOTED_STATE["clear"] = 0
     live = _rooted_budget(game_state, near)
     if not live:
         return None

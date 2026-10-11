@@ -6943,6 +6943,17 @@ assert _ir145 <= 6, ("stayed in reach too long", _ir145, _seen145)
 # the same with the hazard right on his line from the other side, and from a start already next to it
 _end145, _rm145, _ir145, _seen145 = _sim145((1, 5), (5, 5), (8, 5)); assert _end145 == (1, 5) and _rm145 <= 10, (_end145, _rm145, _seen145)
 _end145, _rm145, _ir145, _seen145 = _sim145((9, 5), (5, 5), (4, 5)); assert _end145 == (9, 5) and _rm145 <= 10, (_end145, _rm145, _seen145)
+# out of reach for ROOTED_CLEAR_RESET decisions in a row refills the budget (capture 2026-10-10), one adjacency in between starts the count again
+_reset145(); brain.ROOTED_STATE["zone"] = "Z1"
+for _i145 in range(brain.ROOTED_STEP_BUDGET):
+    assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()])) is not None
+assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()])) is None, "budget spent"
+for _i145 in range(brain.ROOTED_CLEAR_RESET - 1):
+    brain.rooted_hazard_decision(_st145(2, 5, [_haz145()]))
+assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()])) is None, "one decision short of the refill, and the adjacency restarts the count"
+for _i145 in range(brain.ROOTED_CLEAR_RESET):
+    brain.rooted_hazard_decision(_st145(2, 5, [_haz145()]))
+assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()])) is not None, "refilled after enough clear decisions"
 # a new zone resets the budget
 _reset145(); brain.ROOTED_STATE["zone"] = "Z1"; brain.ROOTED_STATE["steps"][(5, 5)] = 99
 assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()], zone="Z1")) is None
