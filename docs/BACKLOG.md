@@ -337,6 +337,13 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
   7. **Make them:** Tinkering builds grenades from data disks and bits (the human's "item creation" direction, see the long-term scope note); out of scope until the research pass.
   8. **Test:** a Lab scenario per kind (wish the grenade and an enemy at set distances) to measure the unknowns in 14.33, then a multi-turn test that a thrown gas grenade is not followed by a walk into the cloud.
   **Size (my guess):** steps 3-5 are one medium feature; 6 is separate; 8 comes first (measure before the rules).
+- **Lab result 1, poison gas mark I at distance 4, open ground (capture 2026-10-11 00:05, godmode on) `[verified in game 2026-10-11]`, PROVISIONAL because the Loop Breaker walked him NW toward the cloud every third turn (fixed, issue 145):**
+  - **Start:** one turn after the throw the cloud was 11 cells in a block about 4 wide and 4 high around the target (total density 320, each cell 7-43; the grenade's density 40 went into the thrown cell and its neighbours).
+  - **Growth and drift:** the cell count stayed 9-14 for the first 8 turns while the total fell steadily (320, 291, 271, 255, 226, 210, 172, 148, 109, 84, 77, 68, 62, 52, 33, 32, 19, 9, then 0). The patch spread to about 6 by 6 tiles and drifted: low-density cells (9-35) were next to the thrower's cell by the 4th turn, although he threw from 4 tiles away.
+  - **Life:** about 18 turns from throw to the last cell, in the open (a corridor would keep it much longer, `[wiki]`).
+  - **Effects:** his effect list stayed empty while cells with density 35 stood next to him; godmode was on, so this says nothing about poison itself `[unverified]`.
+  - **What it means for the rules `[inferred]`:** a gas grenade is a throw-then-leave tool, not a point-blank one. At the engine's throw range of 5 the cloud still reaches the thrower within a few turns, so after the throw he must walk away from the cloud's side for about 8-10 turns, or fight from the far side of it. A distance floor alone is not enough.
+  - **Needed to settle it:** the same run with the hold working (he must stand still), at distance 5, and once with godmode off at distance 6 to see the poison damage; then mark II (density 80).
 - **Lab built for the measurements (issue 145, Test 159, on `feat/gas-cells-lab`):** `gas_cells` in the state, `memory/gas_log.jsonl`, the hold flag and the Lab card `grenade-gas-lab` (poison gas mark I and II at 4 and 5 tiles). Not run yet.
 - **Unknown `[unknown]`:** the blast radius and fuse of each grenade, whether `PerformThrow` handles them like the disc, and which grenades are worth keeping against the weight they add.
 - **Size (my guess):** medium; research first.
