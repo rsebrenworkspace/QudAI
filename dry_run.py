@@ -7231,7 +7231,7 @@ try:
     assert not _os.path.exists(brain.GAS_LOG_PATH), "no gas and no flag: nothing is logged"
     brain.note_gas(_gs159)
     _l159 = [json.loads(x) for x in open(brain.GAS_LOG_PATH, encoding="utf-8")]
-    assert len(_l159) == 1 and _l159[0]["n"] == 3 and _l159[0]["total_density"] == 60 and _l159[0]["max_density"] == 40 and _l159[0]["min_dist"] == 4 and _l159[0]["max_dist"] == 5 and _l159[0]["gases"] == ["PoisonGas"], _l159
+    assert len(_l159) == 1 and _l159[0]["seq"] >= 1 and _l159[0]["n"] == 3 and _l159[0]["total_density"] == 60 and _l159[0]["max_density"] == 40 and _l159[0]["min_dist"] == 4 and _l159[0]["max_dist"] == 5 and _l159[0]["gases"] == ["PoisonGas"], _l159
     assert brain.lab_hold_decision(_gs159) is None, "no flag: the normal logic"
     open(brain.LAB_HOLD_FLAG, "w").close()
     assert brain.lab_hold_decision(_gs159)["action"] == "PASS" and "LAB" in brain.lab_hold_decision(_gs159)["reason"]

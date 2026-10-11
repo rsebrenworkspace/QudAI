@@ -1481,6 +1481,7 @@ GAS_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "gas_log.jsonl")
 LAB_HOLD_FLAG = os.path.join(chronicler.MEMORY_DIR, "lab_hold.flag")
 LAB_HOLD_MIN_HP_RATIO = 0.5
 GAS_LOG_CELLS_MAX = 80
+GAS_SEQ = {"n": 0}                 # the brain's turn clock does not advance where this runs (every line said turn 0); a counter of logged states orders the lines
 
 
 def lab_hold_decision(game_state):
@@ -1504,7 +1505,8 @@ def note_gas(game_state):
             return
         px, py = game_state.get("x"), game_state.get("y")
         dists = [max(abs(c["x"] - px), abs(c["y"] - py)) for c in cells] if px is not None and py is not None else []
-        rec = {"turn": TURN_CLOCK, "ts": time.strftime("%H:%M:%S"), "zone": game_state.get("zone_id"), "x": px, "y": py, "hp": game_state.get("hp"),
+        GAS_SEQ["n"] += 1
+        rec = {"seq": GAS_SEQ["n"], "turn": TURN_CLOCK, "ts": time.strftime("%H:%M:%S"), "zone": game_state.get("zone_id"), "x": px, "y": py, "hp": game_state.get("hp"),
                "effects": game_state.get("effects"), "n": len(cells), "total_density": sum(int(c.get("density") or 0) for c in cells),
                "max_density": max([int(c.get("density") or 0) for c in cells] or [0]), "min_dist": min(dists) if dists else None, "max_dist": max(dists) if dists else None,
                "gases": sorted({str(c.get("gas")) for c in cells}), "cells": [[c["x"], c["y"], c.get("density")] for c in cells[:GAS_LOG_CELLS_MAX]]}
