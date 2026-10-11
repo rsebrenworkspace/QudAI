@@ -2626,7 +2626,7 @@ namespace QudAIBrain
                                     try { objHp = obj.hitpoints; objMaxHp = obj.baseHitpoints; } catch { }
                                     int levelDiff = objLevel - playerLevel;
                                     string diffStr = levelDiff <= -5 ? "Trivial" : levelDiff <= -2 ? "Easy" : levelDiff <= 2 ? "Average" : levelDiff <= 5 ? "Tough" : levelDiff <= 9 ? "Very Tough" : "Impossible";
-                                    bool isStationary = IsImmobile(obj) || obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasTag("Immobile") || obj.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
+                                    bool isStationary = (IsImmobile(obj) && !IsStuck(obj)) || obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasTag("Immobile") || obj.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
 
                                     entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}, \"can_proselytize\": {(canProselytize ? "true" : "false")}, \"has_los\": {(hasLOS ? "true" : "false")}, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}, \"hp\": {objHp}, \"max_hp\": {objMaxHp}, \"corpse_chance\": {CorpseChanceOf(obj)}, \"psychic_hunter\": {(IsPsychicHunter(obj) ? "true" : "false")}, \"speed\": {SafeSpeed(obj)}, \"stuck\": {(IsStuck(obj) ? "true" : "false")}}}");
                                 }
@@ -2661,7 +2661,7 @@ namespace QudAIBrain
                                     try { objLevel = currentTarget.Stat("Level", 1); } catch { }
                                     int levelDiff = objLevel - playerLevel;
                                     string diffStr = levelDiff <= -5 ? "Trivial" : levelDiff <= -2 ? "Easy" : levelDiff <= 2 ? "Average" : levelDiff <= 5 ? "Tough" : levelDiff <= 9 ? "Very Tough" : "Impossible";
-                                    bool isStationary = IsImmobile(currentTarget) || currentTarget.HasPart("Plant") || currentTarget.HasPart("Fungus") || currentTarget.HasTag("Immobile") || currentTarget.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
+                                    bool isStationary = (IsImmobile(currentTarget) && !IsStuck(currentTarget)) || currentTarget.HasPart("Plant") || currentTarget.HasPart("Fungus") || currentTarget.HasTag("Immobile") || currentTarget.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
                                     entityEntries.Insert(0, $"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {tx}, \"ty\": {ty}, \"is_enemy\": true, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}, \"corpse_chance\": {CorpseChanceOf(currentTarget)}, \"psychic_hunter\": {(IsPsychicHunter(currentTarget) ? "true" : "false")}, \"speed\": {SafeSpeed(currentTarget)}, \"stuck\": {(IsStuck(currentTarget) ? "true" : "false")}}}");
                                 }
                             }
