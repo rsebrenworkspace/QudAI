@@ -455,7 +455,7 @@ CAPTURE_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{6}")
 GAME_FILES = ("Player.log", "Player-prev.log", "build_log.txt", "game_log.txt")
 EXCHANGE_FILES = ("last_state.json", "last_action_executed.txt", "active.flag", "mutation_ranking.txt")
 MEMORY_FILES = ("decision_trace.jsonl", "decision_trace.jsonl.1", "exit_choices.jsonl", "examine_log.jsonl", "danger_ledger.json", "item_drops.jsonl",
-                "proselytize_log.jsonl", "ability_stats.json", "lab_runs.jsonl", "generation_counter.json", "hunter_log.jsonl")
+                "proselytize_log.jsonl", "ability_stats.json", "lab_runs.jsonl", "generation_counter.json", "hunter_log.jsonl", "gas_log.jsonl")
 
 
 def capture_files(exchange_dir=None, repo=None):
@@ -775,7 +775,7 @@ def log_lab_use(scenario_id, note="", path=None):
 MEMORY_KINDS = ("lesson", "chronicle", "postmortem", "run", "lab", "data")
 MEMORY_KIND_NAMES = {"lesson": "Ancestral lessons", "chronicle": "Chronicles", "postmortem": "Post-mortems", "run": "Run records",
                      "lab": "Model lab results", "data": "Live data (used by the brain: view only)"}
-DATA_FILES = ("ability_stats.json", "danger_ledger.json", "exit_choices.jsonl", "item_drops.jsonl", "examine_log.jsonl", "decision_trace.jsonl", "decision_trace.jsonl.1", "generation_counter.json", "hunter_log.jsonl")
+DATA_FILES = ("ability_stats.json", "danger_ledger.json", "exit_choices.jsonl", "item_drops.jsonl", "examine_log.jsonl", "decision_trace.jsonl", "decision_trace.jsonl.1", "generation_counter.json", "hunter_log.jsonl", "gas_log.jsonl")
 VIEW_ONLY_KINDS = ("data",)
 
 

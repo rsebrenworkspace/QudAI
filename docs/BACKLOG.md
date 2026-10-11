@@ -337,6 +337,7 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
   7. **Make them:** Tinkering builds grenades from data disks and bits (the human's "item creation" direction, see the long-term scope note); out of scope until the research pass.
   8. **Test:** a Lab scenario per kind (wish the grenade and an enemy at set distances) to measure the unknowns in 14.33, then a multi-turn test that a thrown gas grenade is not followed by a walk into the cloud.
   **Size (my guess):** steps 3-5 are one medium feature; 6 is separate; 8 comes first (measure before the rules).
+- **Lab built for the measurements (issue 145, Test 159, on `feat/gas-cells-lab`):** `gas_cells` in the state, `memory/gas_log.jsonl`, the hold flag and the Lab card `grenade-gas-lab` (poison gas mark I and II at 4 and 5 tiles). Not run yet.
 - **Unknown `[unknown]`:** the blast radius and fuse of each grenade, whether `PerformThrow` handles them like the disc, and which grenades are worth keeping against the weight they add.
 - **Size (my guess):** medium; research first.
 

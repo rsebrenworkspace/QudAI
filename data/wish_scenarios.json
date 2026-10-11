@@ -297,6 +297,46 @@
     "what the brain does: fights, uses abilities, retreats, or rests"
    ],
    "tests": "Test 141"
+  },
+  {
+   "id": "grenade-gas-lab",
+   "title": "Grenade lab: poison gas cloud (BACKLOG B33)",
+   "why": "Measure what a poison gas grenade does: how big the cloud gets, how long it lasts, how far it reaches and what it does to a creature standing at 4 and 5 tiles. The mod now exports every gas cell near him (`gas_cells`) and the brain writes `memory/gas_log.jsonl`, one line per turn.",
+   "setup": [
+    "Take a SNAPSHOT first (Control tab). Go to a flat OPEN area (no walls within 8 tiles) and pause the AI. Turn godmode ON for the first runs (it keeps the poison from killing him; the cloud is still measured).",
+    "Wish for the grenade (below). It lands on a cell next to you: pick it up, and put it in the thrown-weapon slot if you like.",
+    "Walk so that the target cell is exactly the distance you want from you (4 tiles first, then 5), in a straight line in the open. Note the distance in the capture note.",
+    "In PowerShell: New-Item D:\\QudAI\\memory\\lab_hold.flag -ItemType File   (this makes the brain stand still and log; delete the file when the run is over: Remove-Item D:\\QudAI\\memory\\lab_hold.flag)",
+    "Throw the grenade yourself at the target cell with the game's throw command (still paused). Then Engage the AI with one Shift+Space wait: from now on every turn is logged and he stands still.",
+    "Let about 30 turns pass, then Capture logs with a note like 'poison gas mk I, thrown at distance 4, open ground'. Then delete the flag file, pause, and repeat at distance 5. Repeat once with the grenade wished as PoisonGasGrenade2."
+   ],
+   "wishes": [
+    {
+     "cmd": "godmode",
+     "kind": "command",
+     "confidence": "documented",
+     "note": "ON for the first runs; OFF for one run at distance 6 to see the damage"
+    },
+    {
+     "cmd": "PoisonGasGrenade1",
+     "kind": "blueprint",
+     "confidence": "named",
+     "note": "the mark I grenade (density 40); the brain's item logic calls it 'poison gas grenade mk I'; untried as a wish: if it does not spawn, try 'poison gas grenade mk I'"
+    },
+    {
+     "cmd": "PoisonGasGrenade2",
+     "kind": "blueprint",
+     "confidence": "named",
+     "note": "the mark II grenade (density 80), for the second series"
+    }
+   ],
+   "watch": [
+    "memory/gas_log.jsonl in the capture: cells (n), total density, farthest cell from him (max_dist), and the turn the cloud ends (n back to 0)",
+    "does the cloud reach him at distance 4 and 5, and how long after the throw",
+    "his effects and HP in the log (poisoned? how much per turn)",
+    "the screen: take a screenshot at turns 1, 3, 6 and 12 after the throw if you can"
+   ],
+   "tests": "Test 159"
   }
  ]
 }

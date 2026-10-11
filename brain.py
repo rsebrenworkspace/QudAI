@@ -1473,6 +1473,47 @@ def note_hunters(game_state):
         pass
 
 
+# Grenade lab (BACKLOG B33, human 2026-10-10: "start with poison gas"). `memory/gas_log.jsonl` gets one line per turn while a gas cloud is within 12 tiles of him (or the lab flag is on): the turn,
+# his position, how many gas cells, the total and highest density, the nearest and farthest cell from him and the cells themselves, so a thrown grenade's cloud can be measured turn by turn.
+# The lab flag (an empty file `memory/lab_hold.flag`, made and removed by hand) makes the brain PASS every turn so he stands still while the cloud is measured; it lets go when his hit points
+# fall under LAB_HOLD_MIN_HP_RATIO, so a lab run cannot kill him.
+GAS_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "gas_log.jsonl")
+LAB_HOLD_FLAG = os.path.join(chronicler.MEMORY_DIR, "lab_hold.flag")
+LAB_HOLD_MIN_HP_RATIO = 0.5
+GAS_LOG_CELLS_MAX = 80
+
+
+def lab_hold_decision(game_state):
+    """A PASS while the lab flag exists and he is healthy, else None."""
+    try:
+        if not os.path.exists(LAB_HOLD_FLAG):
+            return None
+        hp, mx = game_state.get("hp"), game_state.get("max_hp")
+        if hp is not None and mx and hp / mx < LAB_HOLD_MIN_HP_RATIO:
+            return None
+        return {"action": "PASS", "reason": "[LAB] holding still while the gas cloud is measured (memory/lab_hold.flag)"}
+    except Exception:
+        return None
+
+
+def note_gas(game_state):
+    """Appends the gas measurement for this turn to memory/gas_log.jsonl. Never raises."""
+    try:
+        cells = game_state.get("gas_cells") or []
+        if not cells and not os.path.exists(LAB_HOLD_FLAG):
+            return
+        px, py = game_state.get("x"), game_state.get("y")
+        dists = [max(abs(c["x"] - px), abs(c["y"] - py)) for c in cells] if px is not None and py is not None else []
+        rec = {"turn": TURN_CLOCK, "ts": time.strftime("%H:%M:%S"), "zone": game_state.get("zone_id"), "x": px, "y": py, "hp": game_state.get("hp"),
+               "effects": game_state.get("effects"), "n": len(cells), "total_density": sum(int(c.get("density") or 0) for c in cells),
+               "max_density": max([int(c.get("density") or 0) for c in cells] or [0]), "min_dist": min(dists) if dists else None, "max_dist": max(dists) if dists else None,
+               "gases": sorted({str(c.get("gas")) for c in cells}), "cells": [[c["x"], c["y"], c.get("density")] for c in cells[:GAS_LOG_CELLS_MAX]]}
+        with open(GAS_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + chr(10))
+    except Exception:
+        pass
+
+
 def note_zone_danger(game_state):
     """Flags the current zone when a mobile hostile in view is out of our class, or when the hostiles in view together are. Prints `[ZONE DANGER]` once per new flag. Never acts, never raises."""
     try:
@@ -4121,6 +4162,10 @@ def veto_rooted_approach(decision, game_state):
 
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     """The decision for this turn: the engulf escape, the hunter protocol, the rooted-hazard step-out, else `_query_decision`, the lethal-adjacent guard, the stand-and-fight rule, then the rooted-approach veto."""
+    lab_move = lab_hold_decision(game_state)
+    if lab_move:
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return lab_move
     engulf_move = engulf_escape_decision(game_state)
     if engulf_move:
         STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
@@ -5147,6 +5192,7 @@ def main():
                 note_inventory_action(game_state)
                 note_throw_result(game_state)
                 note_hunters(game_state)
+                note_gas(game_state)
                 note_avoid(game_state)
                 note_quests(game_state)
                 note_zone_danger(game_state)
