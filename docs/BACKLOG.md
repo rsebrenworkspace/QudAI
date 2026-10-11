@@ -278,5 +278,26 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Ideas:** reload when the magazine is empty and no hostile is within reach (a rooted one at range counts as none); exempt a rooted hazard from "flank for line of fire"; a rooted Tough+ hostile may not be worth shooting at all (120 HP, 12 slugs).
 - **Size (my guess):** small; needs a multi-turn test (AGENTS.md).
 
+### B30. Bring every in-game starting build online (human, 2026-10-10: "start working on the other builds to completely get them online"; the human chose this over honing the Esper; static audit done, in-game runs not promoted yet)
+- **The nine real starting builds `[verified in the game files, EmbarkModules.xml and Subtypes.xml, 2026-10-10]`** (the human: "six mutant character classes ... three truekin classes"). Our nine `BUILD_TEMPLATES` come from a community guide and only partly match them. What `detect_build` returns for each pregen today `[verified by running it]`:
+
+| Pregen | Calling | Mutations / cybernetic | Template picked | Fit |
+|---|---|---|---|---|
+| Praetorian Prime | Praetorian | Night Vision implant | Praetorian Generalist | ok |
+| First Gardener | Horticulturist | Nocturnal Apex implant | Praetorian Generalist | **no: default fallthrough** (axe and rifle, cooking and gathering) |
+| First Child of the Hearth | Child of the Hearth | Carbide Hand Bones | Classic Punchkin | ok |
+| Marsh Taur | Marauder | Freezing Ray, Multiple Legs, Amphibious, Teleportation | Auspicious Beginnings | ok |
+| Dream Tortoise | Arconaut | Carapace, Heightened Hearing, Horns, Sleep Gas | Gas Giant | roughly (a short-blade melee, not a gas caster) |
+| Gunwing | Gunslinger | Beak, Heightened Quickness, Wings, Force Bubble | Gunkin | ok since issue 127 (was Esper) |
+| Star-Eye Esper | Apostle | Clairvoyance, Light Manipulation, Sense Psychic, Stunning Force, Teleport Other | Esper-ited Away | ok |
+| Firefrond | Watervine Farmer | Unstable Genome, Flaming Ray, Photosynthetic Skin, Burgeoning | Praetorian Generalist | **no: the Watervine Farmer calling is in the Praetorian rule** |
+| bzzzt | Tinker | Burrowing Claws, Electrical Generation, Heightened Hearing, Night Vision, Spinnerets, Thick Fur, Socially Repugnant | Praetorian Generalist | **no: default fallthrough** (electrical, burrower, trap setter) |
+
+- **Templates with no pregen:** Limb-Off, Uncle Iroh (needs electrical AND flaming), Bullet Specter (needs Phasing) are guide builds a player could still make; Gas Giant matches only Sleep Gas.
+- **Missing templates:** First Gardener, Firefrond, bzzzt (and arguably Dream Tortoise); also the `Rifles` skill name is baked into the C# starting-skill list (line near 4534) and the reload reason says "rifle".
+- **Already verified in game:** Esper (many runs), Marsh Taur-like Auspicious Beginnings (earlier), Gunwing (issues 127/128). **Never run:** the other six.
+- **Plan (not started):** one build per test cycle, a fresh character each; check the template in the console, the level-up path, and that the signature abilities and weapons are used; build the three missing templates first.
+- **Size (my guess):** large; each build is its own small project.
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.
