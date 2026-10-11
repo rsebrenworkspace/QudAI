@@ -41,8 +41,8 @@
                        "note": "A toggle, not a strike. The old 'decapitate' keyword wrongly treated it as one."},
     "clairvoyance":   {"commands": ["CommandClairvoyance"], "targeting": "self", "role": "utility", "auto_use": false, "note": "Reveals a map region; deliberately not combat."},
     "ambient_light":  {"commands": ["CommandAmbientLight"], "targeting": "self", "role": "utility", "toggle": true, "auto_use": false, "note": "Kept on by the mod (EnsureLightSource)."},
-    "tighten":        {"commands": ["CommandTightenCarapace"], "targeting": "self", "role": "defensive", "auto_use": true,
-                       "note": "Carapace's Tighten (Dream Tortoise doctrine: under 60 percent HP with two or more enemies adjacent). Command name read from the live export [verified in game 2026-10-12]. Effect size not measured."},
+    "tighten":        {"commands": ["CommandTightenCarapace"], "targeting": "self", "role": "defensive", "auto_use": false,
+                       "note": "Carapace's Tighten: double the AV bonus and -2 DV, but ONLY until his next action that uses energy or his next move (ENGINE_INTERNALS 14.39 [verified in code]). It costs a full turn, so in melee it is a lost attack. The model used it 61 times in a row against a croc (Dream Tortoise, 2026-10-12 [verified in game]), so it is not wired: hidden from the menu. The mod exports its Tight state as the ability's active flag."},
     "sleep_gas":      {"commands": ["GasGenerationCommandSleepGas"], "targeting": "self", "role": "control", "auto_use": true,
                        "risk": ["the cloud sleeps companions and him too: not with a companion near, and he steps out of it (gas avoidance)"],
                        "note": "Sleep Gas Generation, 'Release Sleep Gas'. The game spells the command GasGenerationCommandSleepGas [verified in game 2026-10-12, Dream Tortoise capture]; the other gas mutations probably follow the same pattern [unverified]."}

@@ -857,6 +857,12 @@ The machine-readable table is `data/grenades.json` (59 grenade blueprints, built
 - So: the engine's route functions (`TryFindPathStep`, `TryFindEdgeStep`, autoexplore) treat deep water as closed, and when the only way on is a lake they can hand back a step that goes nowhere (the same symptom as HANDOFF issue 105). Our own Dijkstra that may swim (`RouteStep`) is the way across; it ignores doors, traps and creatures that the engine route knows about, so it is used as a fallback and as an oscillation override, not as the first choice.
 - Python's own swim handling is only a tie-break (dry move before a swimming move); the real limit was the engine routes.
 
+### 14.39 Carapace's Tighten is a stance that the next action ends (2026-10-12, `[verified in code via ilspycmd]`, behaviour `[verified in game 2026-10-12]`)
+- `Carapace.Tighten` sets `Tight`, adds the carapace's `ACModifier` AV a second time and a 2 point DV penalty. `Loosen` undoes both. The description says it lasts "as long as you remain still", and the code does exactly that: a `BeginMove` (not forced) calls `Loosen`, and so does every `UseEnergyEvent` whose type does not contain Pass, Mental or Carapace, which includes attacks and other abilities.
+- The command itself calls `Loosen()` first, then spends 1000 energy and tightens again: using it while tight changes nothing and costs a whole turn. There is no cooldown, and the ability list keeps it `usable` with `active` false, so a model that does not know the rule can repeat it forever.
+- **Found because** the Dream Tortoise's model used Tighten Carapace 61 turns in a row against a bloody crocodile, HP 18 down to 10, never attacking (the human stopped it). The engine's own AI adds it as a defensive choice only when `!Tight` and a HP-based dice roll succeeds.
+- **Consequence:** in melee Tighten is one turn of double armor that is lost when he attacks, so it is a lost attack; it fits a character that is going to wait. The brain now hides it (`tighten` family `auto_use: false`), exports the stance as the ability's `active` flag, and a general guard replaces a third identical self-ability turn by an attack (HANDOFF issue 166).
+
 ---
 *End of Engine Internals Manual.*
 
