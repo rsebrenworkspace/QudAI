@@ -7614,3 +7614,51 @@ assert _acts168[0] == "USE_ABILITY:CommandSpinWeb" and all(a and a.startswith("M
 assert _acts168.count("USE_ABILITY:CommandSpinWeb") == 1
 _reset167()
 print("  [OK] Test 168 Passed: Spin Webs is an auto-use family; against an Impossible enemy that is not slower (or whose speed is unknown) at 2 to 6 tiles he spins webs once, then runs while they are on; no webs, webs on cooldown, an enemy too far or adjacent, or one he can beat leave it alone; a slow enemy needs no webs")
+
+
+# Test 169: a stuck enemy is a still target: no retreat from it, a gas grenade at it, and a walk to throwing range (human, 2026-10-11: "the mob should be stuck and the character engage with a grenade"; BACKLOG B37, B33, HANDOFF issue 156)
+# ---------------------------------------------------------------------------
+_stk169 = lambda d, **k: _e167(d, **dict({"name": "chitinous puma", "blueprint": "Chitinous Puma", "speed": 100, "stuck": True}, **k))
+_gren169 = {"id": "g1", "name": "poison gas grenade mk I", "blueprint": "PoisonGasGrenade1", "in_thrown_slot": True}
+def _g169(ents, **k):
+    return dict(_s167(ents, thrown_weapon=_gren169, abilities=[]), **k)
+def _reset169():
+    _reset167(); _reset164(); brain.GAS_APPROACH_STATE.update({"zone": None, "steps": 0})
+# retreat: an equal-speed Impossible enemy is not retreated from when free, and is when stuck
+_reset169(); assert brain.retreat_decision(_s167([_stk169(5, stuck=False)])) is None, "free, equal speed, no webs: nothing"
+_reset169(); _r169 = brain.retreat_decision(_s167([_stk169(5)]))
+assert _r169 and _r169["action"].startswith("MOVE_") and "stuck" in _r169["reason"], _r169
+# the throw rule accepts a stuck target at 4-5 tiles
+_reset169(); assert brain.gas_grenade_throw_decision(_g169([_stk169(5)]))["action"].startswith("THROW_ITEM@"), "throw at the stuck puma"
+_reset169(); assert brain.gas_grenade_throw_decision(_g169([_stk169(3)])) is None, "3 tiles is still too close for a cloud"
+# the approach: a stuck target beyond range is walked toward, never to melee and never into gas
+_reset169(); _a169 = brain.gas_approach_decision(_g169([_stk169(8)]))
+assert _a169 and _a169["action"][5:] in ("E", "NE", "SE") and "stuck in a web" in _a169["reason"], _a169
+_reset169(); assert brain.gas_approach_decision(_g169([_stk169(5)])) is None and brain.gas_approach_decision(_g169([_stk169(10)])) is None, "at range already, or too far"
+_reset169(); assert brain.gas_approach_decision(_g169([_stk169(8, stuck=False)])) is None, "a free creature is not walked toward"
+_reset169(); assert brain.gas_approach_decision(_g169([_stk169(8)], thrown_weapon=None)) is None, "no grenade: no approach"
+_reset169(); assert brain.gas_approach_decision(_g169([_stk169(8, difficulty="Easy")])) is None, "not worth it"
+_reset169(); assert brain.gas_approach_decision(_g169([_stk169(8), _stk169(7, stuck=False, name="second", tx=57, ty=14)])) is None, "another free hostile near"
+_reset169(); _gc169 = [{"x": 51, "y": y, "gas": "PoisonGas", "density": 40} for y in (9, 10, 11)]
+_ag169 = brain.gas_approach_decision(_g169([_stk169(8)], gas_cells=_gc169)); assert _ag169 is None or _ag169["action"][5:] not in ("E", "NE", "SE"), _ag169
+_reset169(); brain.GAS_APPROACH_STATE.update({"zone": "Z167", "steps": brain.GAS_APPROACH_BUDGET}); assert brain.gas_approach_decision(_g169([_stk169(8)])) is None
+# the wait does not kite from a stuck creature
+_reset169(); brain.GAS_THROW_STATE.update({"target": (52, 10), "waited": 0, "active": True})
+assert brain.gas_wait_decision(dict(_g169([_stk169(2)]), gas_cells=[{"x": 52, "y": 10, "gas": "PoisonGas", "density": 40}]))["action"] == "PASS", "a stuck creature at 2 tiles cannot reach him"
+# MULTI-TURN: stuck puma 9 tiles away: he closes to 5, throws once, then waits; he never gets closer than 5 and does not retreat from it
+_reset169(); _px169 = 50; _log169 = []; _target169 = 59
+for _t169 in range(14):
+    _d169 = _target169 - _px169
+    _st169 = dict(_g169([_stk169(_d169, tx=_target169, ty=10)]), x=_px169)
+    _dec169 = brain.gas_grenade_throw_decision(_st169) or brain.gas_wait_decision(_st169) or brain.gas_approach_decision(_st169)
+    if _dec169 and _dec169["action"] == "MOVE_E":
+        _px169 += 1
+    _log169.append(_dec169["action"] if _dec169 else None)
+    if _dec169 and _dec169["action"].startswith("THROW_ITEM"):
+        break
+assert _log169[:4] == ["MOVE_E"] * 4 and _log169[4].startswith("THROW_ITEM") and _target169 - _px169 == 5, _log169
+_reset169()
+_b169 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+_c169 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "or gas_approach_decision(game_state)" in _b169 and "IsStuck(obj)" in _c169 and "IsStuck(currentTarget)" in _c169 and 'HasEffect("Stuck")' in _c169
+print("  [OK] Test 169 Passed: a stuck enemy cannot follow, so the retreat rule steps away from it even at equal speed, the gas rule throws at it from 4-5 tiles, he walks toward a stuck dangerous target to throwing range (never to melee, into gas, with another free hostile near or without a grenade), the wait does not kite from it, and in a multi-turn run he closes from 9 to 5 tiles, throws, and stops")
