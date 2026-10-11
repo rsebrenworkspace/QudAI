@@ -113,7 +113,7 @@ DIRECTIONAL_ABILITIES = {
     "lase", "stunningforce", "stunning force", "cryokinesis", "pyrokinesis",
     "syphonvim", "syphon vim", "forcewall", "force wall", "proselytize", "beguile",
     "flaming ray", "freezing ray", "flameray", "flame ray", "commandflamingray",
-    "commandfreezingray", "commandlase", "commandstunningforce"
+    "commandfreezingray", "commandlase", "commandstunningforce", "discharge", "commanddischarge"
 }
 
 MELEE_TARGETED_ABILITIES = {
@@ -1046,10 +1046,19 @@ def log_item_drop(record):
 # else. Two refusals in a row switch the option off for a while (R4/R5: a command the game keeps refusing must not loop).
 THROW_MIN_DIST = 2
 THROW_MAX_DIST = 7
+GRENADE_MIN_DIST = 4            # a grenade's blast reaches 2-4 tiles (flashbang and EMP radius 2-4, a freeze grenade froze a thrower 2 tiles away: bzzzt_test_1, 2026-10-10)
+
+
+def is_grenade(tw):
+    """True when the exported thrown weapon is a grenade (an area weapon), by blueprint or name."""
+    if not isinstance(tw, dict):
+        return False
+    return "grenade" in str(tw.get("blueprint", "")).lower() or "grenade" in str(tw.get("name", "")).lower()
 THROW_FAIL_LIMIT = 2
 THROW_PAUSE_TURNS = 200
 THROW_CROWD_MIN = 2             # with this many hostiles in view the throw is offered even when one is adjacent (the disc bounces between targets; human, 2026-10-10: "Relax it")
-THROW_STATE = {"seq": 0, "fails": 0, "off_until": -1}
+THROW_STATE = {"seq": 0, "fails": 0, "off_until": -1, "max_dist": None}
+THROW_RANGE_RE = re.compile(r"out of range \((\d+) > (\d+)\)")
 
 # TEST SWITCH (human, 2026-10-10): with QUDAI_TEST_NO_COMBAT_ABILITIES=1 the brain does not see his combat abilities (Lase, Stunning Force, Teleport Other, Intimidate and the rest), so a fight has
 # to be won with weapons, movement and the thrown weapon. Non-combat abilities stay (sprint, camp, harvest, butcher, light, burrowing, dig). Off by default; the console's Control tab has the checkbox.
@@ -1075,9 +1084,11 @@ def throw_option(game_state, enemies, adj_threats=None):
     px, py = game_state.get("x"), game_state.get("y")
     if px is None or py is None:
         return None
+    min_dist = GRENADE_MIN_DIST if is_grenade(tw) else THROW_MIN_DIST
+    max_dist = THROW_STATE.get("max_dist") or THROW_MAX_DIST      # the engine said "out of range (6 > 5)" once: that range is used from then on (bzzzt_test_3)
     for e in enemies[:3]:
         d = e.get("dist")
-        if e.get("tx") is None or e.get("ty") is None or not isinstance(d, (int, float)) or not (THROW_MIN_DIST <= d <= THROW_MAX_DIST) or e.get("has_los") is False:
+        if e.get("tx") is None or e.get("ty") is None or not isinstance(d, (int, float)) or not (min_dist <= d <= max_dist) or e.get("has_los") is False:
             continue
         clear, _why = is_line_of_fire_clear((px, py), (e["tx"], e["ty"]), companions=game_state.get("companions", []), target_entity=e, surroundings=game_state.get("surroundings"))
         if clear:
@@ -1092,6 +1103,12 @@ def note_throw_result(game_state):
     THROW_STATE["seq"] = lt["seq"]
     if lt.get("ok"):
         THROW_STATE["fails"] = 0
+        return
+    rng = THROW_RANGE_RE.search(str(lt.get("reason", "")))
+    if rng:
+        # a distance problem, not a failing command: remember the engine's range and keep the option on
+        THROW_STATE["max_dist"] = int(rng.group(2))
+        print(f"[THROW] out of range at {rng.group(1)}: the engine's range is {rng.group(2)}, offering throws up to that from now on.")
         return
     THROW_STATE["fails"] += 1
     print(f"[THROW] refused: {lt.get('reason')} (attempt {THROW_STATE['fails']} of {THROW_FAIL_LIMIT})")
@@ -2498,13 +2515,20 @@ def note_loot(game_state):
         pass
 
 
+ZERO_CHARGES_RE = re.compile(r"(?<![0-9])0\s+charges?\b")
+
+
+def has_zero_charges(name):
+    """True for 'Lase (0 charges)' and 'Discharge [0 charge]', not for 'Discharge [6000 charge]' (a plain substring test for '0 charge' matched every count ending in zero: bzzzt_test_2, 2026-10-10)."""
+    return bool(ZERO_CHARGES_RE.search(str(name or "").lower()))
+
+
 def is_ability_ready(ab):
     """Checks if an ability is enabled, usable, off cooldown, and has available charges (not '0 charges')."""
     if not ab or not ab.get("usable", True) or ab.get("cooldown", 0) > 0 or ab.get("active", False):
         return False
-    name = ab.get("name", "").lower()
     # Check for depleted charges like 'Lase (0 charges)'
-    if "0 charge" in name or "(0 charges)" in name:
+    if has_zero_charges(ab.get("name", "")):
         return False
     return True
 
@@ -2652,6 +2676,35 @@ def is_ignorable_stationary_enemy(e):
     return False
 
 
+def adjacent_ability_misuse(action, enemies):
+    """True when `action` is an adjacent-only ability (Discharge, Proselytize, Teleport Other, a melee strike) and no hostile stands next to him in its direction (or at all, without a
+    direction). The mod only says "nothing there to ground into" and the turn is spent (bzzzt_test_3: Discharge twice at a puma 4 tiles away)."""
+    m = re.match(r"USE_ABILITY:([A-Za-z0-9_]+)(?::([A-Z]{1,2}))?", action or "")
+    if not m or not ability_registry.adjacent_only(m.group(1)):
+        return False
+    adj = [e for e in enemies or [] if e.get("dist") == 1 and not e.get("is_companion")]
+    if m.group(2):
+        adj = [e for e in adj if e.get("dir") == m.group(2)]
+    return not adj
+
+
+def repair_bare_ability(action, abilities, enemies, px, py):
+    """The model sometimes answers with an ability NAME ("Proselytize") instead of an action. Actions are upper case or carry a colon; a mixed-case word is a name.
+    Returns the matching `USE_ABILITY:<command>[:<dir>]` when he owns that ability and it is usable, else "" (the caller then falls back to the deterministic logic),
+    and the action unchanged when it is not a bare word (bzzzt_test_1: 'Proselytize' 21 times for a character without it, each answered by a Loop Breaker pass)."""
+    if not re.fullmatch(r"[A-Z][a-z][A-Za-z]*", action or ""):
+        return action
+    want = action.lower()
+    for a in abilities or []:
+        cmd = str(a.get("command", ""))
+        names = {str(a.get("name", "")).lower(), cmd.lower(), cmd.lower().replace("command", "", 1)}
+        if want in names and cmd and a.get("usable", True):
+            near = action_target("", enemies, px, py) if enemies else None
+            d = (near or {}).get("dir")
+            return f"USE_ABILITY:{cmd}:{d}" if d and any(k in cmd.lower() for k in DIRECTIONAL_ABILITIES) else f"USE_ABILITY:{cmd}"
+    return ""
+
+
 def action_target(action, enemies, px, py):
     """The enemy an attack action is aimed at: the one at `@x,y`, else the nearest one in the action's direction, else the nearest. `enemies` is sorted by difficulty, so enemies[0]
     is the HARDEST, not the nearest (the Firefrond run 2026-10-10: a far occluded voider was `enemies[0]`, so every ray was redirected to walk toward it while a croc bit him)."""
@@ -2752,8 +2805,9 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 if can_sprint:
                     ready_abilities.append("- Sprint: Ready (Action: ACTIVATE_SPRINT)")
             elif name and cmd:
-                ready_abilities.append(f"- {name}: Ready (Action: USE_ABILITY:{cmd})")
-        elif "0 charge" in ab.get("name", "").lower():
+                note = " [adjacent enemy only]" if ability_registry.adjacent_only(cmd) else ""
+                ready_abilities.append(f"- {name}: Ready (Action: USE_ABILITY:{cmd}){note}")
+        elif has_zero_charges(ab.get("name", "")):
             ready_abilities.append(f"- {ab.get('name')}: Empty charges (Recharging...)")
     if is_sprinting:
         ready_abilities.append("- Sprinting: ACTIVE (+Double Move Speed!)")
@@ -3154,6 +3208,13 @@ VALID ACTIONS:
 
             # Sanitize action (e.g. "MOVE_N (Melee Attack snapjaw)" -> "MOVE_N")
             action = raw_action.split()[0] if raw_action else ""
+            if adjacent_ability_misuse(action, enemies):
+                print(f"[ACTION] {action} needs an adjacent enemy and there is none there: not taking it, falling back")
+                action = ""
+            repaired = repair_bare_ability(action, abilities, enemies, px, py)
+            if repaired != action:
+                print(f"[ACTION] The model answered with the bare word '{action}': {'using ' + repaired if repaired else 'not an action he can take, falling back'}")
+                action = repaired
 
             # If the LLM returned a directional ability without a direction (e.g. "USE_ABILITY:CommandLase"),
             # auto-append the closest enemy's direction so the game engine gets the exact vector!
@@ -3255,8 +3316,10 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
             name = ab_strike.get("name", "Strike")
             return {"action": f"USE_ABILITY:{cmd}:{target_dir}", "reason": f"[{template['name']} Fallback] Executing {name} on adjacent {target_name} ({target_dir})"}
 
-        # Point-blank elemental burst (Flaming Ray / Freezing Ray)
-        ab_burst = find_ready_ability(abilities, "flaming_ray", "freezing_ray")
+        # Point-blank elemental burst (Discharge / Flaming Ray / Freezing Ray). Discharge needs charge (its name says "[0 charge]" when empty) and conducts through water.
+        ab_burst = find_ready_ability(abilities, "discharge", "flaming_ray", "freezing_ray")
+        if ab_burst and "discharge" in str(ab_burst.get("command", "")).lower() and (game_state.get("is_swimming") or any("wading" in str(ef).lower() or "swimming" in str(ef).lower() for ef in game_state.get("effects") or [])):
+            ab_burst = find_ready_ability(abilities, "flaming_ray", "freezing_ray")
         if ab_burst and ab_burst.get("command"):
             return {"action": f"USE_ABILITY:{ab_burst['command']}:{target_dir}", "reason": f"[{template['name']} Fallback] Point-blank {ab_burst.get('name', 'Ray')} burst on {target_name} ({target_dir})"}
 

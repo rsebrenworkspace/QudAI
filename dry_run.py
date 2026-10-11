@@ -6643,7 +6643,7 @@ assert "snapjaw2" in brain.throw_option(_gs137(), [_en137(dist=1, tx=11, name="c
 _lt137 = lambda seq, ok, reason="x": {"last_throw": {"seq": seq, "ok": ok, "reason": reason, "weapon": "disc", "x": 14, "y": 10}}
 brain.note_throw_result(_lt137(1, False, "no line of sight")); brain.note_throw_result(_lt137(1, False, "no line of sight"))
 assert brain.THROW_STATE["fails"] == 1 and brain.throw_option(_gs137(), [_en137()])
-brain.note_throw_result(_lt137(2, False, "out of range (8 > 6)"))
+brain.note_throw_result(_lt137(2, False, "a companion is on the line"))   # a real refusal (a range refusal no longer counts, Test 156)
 assert brain.THROW_STATE["off_until"] == 1000 + brain.THROW_PAUSE_TURNS and brain.throw_option(_gs137(), [_en137()]) is None, "off for a while"
 brain.TURN_CLOCK = 1000 + brain.THROW_PAUSE_TURNS + 1
 assert brain.throw_option(_gs137(), [_en137()]), "and back on afterwards"
@@ -7072,3 +7072,97 @@ assert build_templates.detect_build(_pre147("Mutated Human", "Greybeard", ["Slee
 assert "CookingAndGathering_Butchery" in _t151["skill_progression"] and "CookingAndGathering_Harvestry" in _t151["skill_progression"]
 assert '"dream_tortoise"):' in open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 print("  [OK] Test 151 Passed: an Arconaut with Carapace, Horns or sleep gas is the Dream Tortoise (not a Gas Giant), a Greybeard with gas is still a Gas Giant, its skills exist and it uses the melee fallback")
+
+
+# Test 152: a character with the Night Vision mutation does not light or fetch a torch (human, 2026-10-10: "Yes, Night Vision skips the torch"; BACKLOG B22, HANDOFF issue 138)
+# ---------------------------------------------------------------------------
+_c152 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+_i152 = _c152.index("private static void EnsureLightSource(GameObject player)")
+_body152 = _c152[_i152:_i152 + 4000]
+assert 'player.HasPart("NightVision")' in _body152, "EnsureLightSource must return early for Night Vision"
+assert _body152.index('player.HasPart("NightVision")') < _body152.index('CommandEquipObject'), "the Night Vision check comes before any torch is equipped"
+print("  [OK] Test 152 Passed: EnsureLightSource returns early when the player has the Night Vision mutation, before it lights or equips any torch (a source check: it runs only in the game)")
+
+
+# Test 153: grenades keep their distance and a bare ability name is not an action (human, 2026-10-10: bzzzt froze himself with a freeze grenade and answered 'Proselytize' 21 times; BACKLOG B33, HANDOFF issue 139)
+# ---------------------------------------------------------------------------
+brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1})
+_gren153 = {"id": "9", "name": "freeze grenade mk I", "blueprint": "ColdGrenade1", "in_thrown_slot": True}
+_disc153 = {"id": "8", "name": "geomagnetic disc", "blueprint": "GeomagneticDisc", "in_thrown_slot": True}
+_en153 = lambda d: [{"name": "giant amoeba", "dist": d, "tx": 50 + d, "ty": 4, "dir": "E", "is_enemy": True, "has_los": True}]
+_st153 = lambda tw: {"x": 50, "y": 4, "thrown_weapon": tw, "companions": [], "surroundings": {}}
+assert brain.is_grenade(_gren153) and not brain.is_grenade(_disc153) and not brain.is_grenade(None)
+assert brain.throw_option(_st153(_gren153), _en153(2)) is None and brain.throw_option(_st153(_gren153), _en153(3)) is None, "a grenade is not thrown inside its blast"
+assert brain.throw_option(_st153(_gren153), _en153(4)) is not None and brain.throw_option(_st153(_gren153), _en153(5)) is not None
+assert brain.throw_option(_st153(_disc153), _en153(2)) is not None, "the disc still goes at 2"
+_ab153 = [{"name": "Discharge [4000 charge]", "command": "CommandDischarge", "usable": True}, {"name": "Spin Webs", "command": "CommandSpinWeb", "usable": True}, {"name": "Sprint", "command": "CommandToggleRunning", "usable": True}]
+_e153 = [{"name": "giant amoeba", "dist": 1, "dir": "W", "tx": 49, "ty": 4}]
+assert brain.repair_bare_ability("Proselytize", _ab153, _e153, 50, 4) == "", "an ability he does not own is not an action"
+assert brain.repair_bare_ability("MOVE_N", _ab153, _e153, 50, 4) == "MOVE_N" and brain.repair_bare_ability("USE_ABILITY:CommandDischarge:W", _ab153, _e153, 50, 4) == "USE_ABILITY:CommandDischarge:W"
+assert brain.repair_bare_ability("FIRE_MISSILE@49,4", _ab153, _e153, 50, 4) == "FIRE_MISSILE@49,4" and brain.repair_bare_ability("WAIT", _ab153, _e153, 50, 4) == "WAIT"
+_rep153 = brain.repair_bare_ability("Sprint", _ab153, _e153, 50, 4)
+assert _rep153.startswith("USE_ABILITY:CommandToggleRunning"), _rep153
+assert brain.repair_bare_ability("Spin Webs", _ab153, _e153, 50, 4) == "Spin Webs", "only a single bare word is repaired"
+assert brain.repair_bare_ability("Proselytize", [{"name": "Proselytize", "command": "CommandProselytize", "usable": False}], _e153, 50, 4) == "", "an unusable ability is not offered either"
+assert brain.repair_bare_ability("Proselytize", [{"name": "Proselytize", "command": "CommandProselytize", "usable": True}], _e153, 50, 4).startswith("USE_ABILITY:CommandProselytize")
+print("  [OK] Test 153 Passed: a grenade is thrown only from 4 tiles or more (the disc still from 2), and a bare ability name from the model becomes the matching USE_ABILITY when he owns and can use it, else it is dropped so the deterministic logic decides")
+
+
+# Test 154: Discharge is a wired ability: the model's menu offers it and the melee fallback uses it point-blank (human, 2026-10-10: bzzzt_test_2 never used Discharge; BACKLOG B37, HANDOFF issue 140)
+# ---------------------------------------------------------------------------
+_dis154 = {"name": "Discharge [6000 charge]", "command": "CommandDischarge", "usable": True, "cooldown": 0}
+assert brain.ability_registry.is_wired(_dis154), "Discharge must be in an auto-use family, otherwise it is hidden from the menu"
+assert brain.find_ready_ability([_dis154], "discharge") is _dis154
+assert "discharge" in brain.DIRECTIONAL_ABILITIES and "commanddischarge" in brain.DIRECTIONAL_ABILITIES
+_ent154 = [{"name": "croc", "dist": 1, "dir": "SW", "tx": 39, "ty": 11, "is_enemy": True, "has_los": True, "difficulty": "Tough", "hp": 40}]
+_gs154 = {"x": 40, "y": 10, "hp": 21, "max_hp": 21, "level": 1, "visible_entities": _ent154, "abilities": [_dis154], "companions": [], "effects": [], "surroundings": {d: "Empty ground" for d in ("N", "S", "E", "W", "NE", "NW", "SE", "SW")}}
+_tpl154 = build_templates.BUILD_TEMPLATES["bzzzt"]
+_d154 = brain.fallback_melee(_gs154, _ent154, {"SW": "croc"}, ["MOVE_N"], ["MOVE_N"], [_dis154], _tpl154, (40, 10), 40, 10, 21, 21, False, False, 0, 0, 0)
+assert _d154["action"] == "USE_ABILITY:CommandDischarge:SW", _d154
+# standing in water it conducts: no Discharge, the fallback bump-attacks instead
+_gsw154 = dict(_gs154, effects=["wading"])
+_dw154 = brain.fallback_melee(_gsw154, _ent154, {"SW": "croc"}, ["MOVE_N"], ["MOVE_N"], [_dis154], _tpl154, (40, 10), 40, 10, 21, 21, False, False, 0, 0, 0)
+assert not _dw154["action"].startswith("USE_ABILITY:CommandDischarge"), _dw154
+# the prompt's ready-ability lines include it, with the action the mod understands
+_menu154 = [ab for ab in [_dis154, {"name": "Spin Webs", "command": "CommandSpinWeb", "usable": True, "cooldown": 0}] if brain.ability_registry.is_wired(ab)]
+assert [m["command"] for m in _menu154] == ["CommandDischarge"], "Spin Webs stays unwired (its targeting is not known)"
+print("  [OK] Test 154 Passed: Discharge is in an auto-use family (so the model's menu offers it and gets the direction appended), the melee fallback uses it point-blank on an adjacent enemy and not while wading, and Spin Webs stays unwired")
+
+
+# Test 155: only a count of exactly zero is "0 charges" (human, 2026-10-10: bzzzt_test_2; 'Discharge [6000 charge]' counted as empty; BACKLOG B37, HANDOFF issue 140)
+# ---------------------------------------------------------------------------
+for _n155, _zero155 in (("Lase (0 charges)", True), ("Discharge [0 charge]", True), ("Lase (0 charge)", True), ("Discharge [6000 charge]", False), ("Discharge [1650 charge]", False),
+                        ("Discharge [4000 charge]", False), ("Lase (10 charges)", False), ("Lase (4 charges)", False), ("Flaming Ray", False), ("", False)):
+    assert brain.has_zero_charges(_n155) is _zero155, (_n155, _zero155)
+assert brain.is_ability_ready({"name": "Discharge [6000 charge]", "command": "CommandDischarge", "usable": True}) is True
+assert brain.is_ability_ready({"name": "Discharge [0 charge]", "command": "CommandDischarge", "usable": True}) is False
+assert brain.is_ability_ready({"name": "Lase (0 charges)", "command": "CommandLase", "usable": True}) is False
+print("  [OK] Test 155 Passed: 'Discharge [6000 charge]' and any other count ending in zero is ready, only a count of exactly zero is empty")
+
+
+# Test 156: throws learn the engine's range, and an adjacent-only ability is not used on a far target (human, 2026-10-10: bzzzt_test_3; the grenade was offered at 6 tiles and refused, Discharge went at a puma 4 tiles away; BACKLOG B33, B37, HANDOFF issue 141)
+# ---------------------------------------------------------------------------
+brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1, "max_dist": None})
+_gren156 = {"id": "9", "name": "poison gas grenade mk I", "blueprint": "PoisonGasGrenade1", "in_thrown_slot": True}
+_en156 = lambda d: [{"name": "chitinous puma", "dist": d, "tx": 50 + d, "ty": 4, "dir": "E", "is_enemy": True, "has_los": True}]
+_st156 = {"x": 50, "y": 4, "thrown_weapon": _gren156, "companions": [], "surroundings": {}}
+assert brain.throw_option(_st156, _en156(6)) is not None, "before the engine has said anything the range is the default"
+brain.note_throw_result(dict(_st156, last_throw={"seq": 1, "ok": False, "reason": "out of range (6 > 5)"}))
+assert brain.THROW_STATE["max_dist"] == 5 and brain.THROW_STATE["fails"] == 0 and brain.THROW_STATE["off_until"] < 0, "a range refusal is not a failing command"
+assert brain.throw_option(_st156, _en156(6)) is None and brain.throw_option(_st156, _en156(5)) is not None and brain.throw_option(_st156, _en156(4)) is not None and brain.throw_option(_st156, _en156(3)) is None
+brain.note_throw_result(dict(_st156, last_throw={"seq": 2, "ok": False, "reason": "out of range (6 > 5)"}))
+brain.note_throw_result(dict(_st156, last_throw={"seq": 3, "ok": False, "reason": "no line of sight"}))
+brain.note_throw_result(dict(_st156, last_throw={"seq": 4, "ok": False, "reason": "no line of sight"}))
+assert brain.THROW_STATE["off_until"] > 0, "two real refusals still switch the option off"
+brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1, "max_dist": None})
+_adj156 = [{"name": "puma", "dist": 1, "dir": "W"}]
+_far156 = [{"name": "puma", "dist": 4, "dir": "SE"}]
+assert brain.ability_registry.adjacent_only("CommandDischarge") and brain.ability_registry.adjacent_only("CommandProselytize")
+assert not brain.ability_registry.adjacent_only("CommandFlamingRay") and not brain.ability_registry.adjacent_only("CommandSpinWeb")
+assert brain.adjacent_ability_misuse("USE_ABILITY:CommandDischarge:SE", _far156) is True
+assert brain.adjacent_ability_misuse("USE_ABILITY:CommandDischarge:W", _adj156) is False
+assert brain.adjacent_ability_misuse("USE_ABILITY:CommandDischarge:E", _adj156) is True, "adjacent, but not in that direction"
+assert brain.adjacent_ability_misuse("USE_ABILITY:CommandDischarge", _adj156) is False and brain.adjacent_ability_misuse("USE_ABILITY:CommandDischarge", _far156) is True
+assert brain.adjacent_ability_misuse("USE_ABILITY:CommandFlamingRay:SE", _far156) is False, "a ray is not adjacent-only"
+assert brain.adjacent_ability_misuse("MOVE_SE", _far156) is False and brain.adjacent_ability_misuse("", []) is False
+print("  [OK] Test 156 Passed: a throw refused as out of range teaches the engine's range and does not count as a failure, and an adjacent-only ability (Discharge, Proselytize, Teleport Other, melee strikes) aimed at nothing adjacent is dropped so the fallback decides")

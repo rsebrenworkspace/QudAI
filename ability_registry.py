@@ -65,6 +65,13 @@ def in_family(ability, *families):
     return False
 
 
+def adjacent_only(command):
+    """True when every wired family that lists the command targets an ADJACENT creature (Discharge, Proselytize, Teleport Other, the melee strikes)."""
+    c = str(command or "").lower()
+    fams = [f for f in families_of(c) if f in AUTO_USE_FAMILIES]
+    return bool(fams) and all((_FAMILIES.get(f) or {}).get("targeting") == "adjacent" for f in fams)
+
+
 def unclassified(command):
     """Known to the engine but in no wired family: never used automatically."""
     return known(command) and not any(f in AUTO_USE_FAMILIES for f in families_of(command))
