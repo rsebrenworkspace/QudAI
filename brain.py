@@ -3873,7 +3873,8 @@ def hunter_protocol_decision(game_state):
 
 # Engulfed (BACKLOG B26, HANDOFF issue 125). Gen 33 was engulfed by a red death dacca (a level 24 tree, the engulf also bleeds him every turn) and stood on one cell for 15 turns choosing
 # WAIT. The game's own text: "Cannot move until @they break free.", and "You cannot do that while engulfed by X." for commands, so abilities are refused and the way out is to TRY TO MOVE
-# (each try is a break-free attempt, ENGINE_INTERNALS 14.30). So while the effect list says `engulfed`, every turn is a move attempt, toward the cell farthest from rooted hostiles.
+# Corrected by the 2026-10-10 test and the IL (ENGINE_INTERNALS 14.30): a move attempt does NOT break free, it makes a melee attack on the engulfer (Engulfed.FireEvent BeginMove) and cancels the
+# move; the effect ends only when the engulfer dies or leaves. So while the effect list says `engulfed`, every turn is a move attempt = a melee attack on it, never a WAIT.
 ENGULF_STATE = {"turns": 0}
 
 
@@ -3902,7 +3903,7 @@ def engulf_escape_decision(game_state):
         nx, ny = px + dx, py + dy
         return (min([max(abs(nx - rx), abs(ny - ry)) for rx, ry in rooted] or [99]), -visit_counts[(nx, ny)])
     best = max(moves, key=room)
-    return {"action": best, "reason": f"[ENGULFED] Cannot move until he breaks free and the game refuses abilities: trying to break free toward {best[5:]} (attempt {ENGULF_STATE['turns']}), never waiting."}
+    return {"action": best, "reason": f"[ENGULFED] Abilities are refused and a move only makes a melee attack on the engulfer: attacking it via {best[5:]} (attempt {ENGULF_STATE['turns']}), never waiting."}
 
 
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
