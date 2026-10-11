@@ -4979,7 +4979,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     can_sp = (not is_sprinting) and (sprint_ab is not None) and sprint_ab.get("usable", True) and sprint_ab.get("cooldown", 0) <= 0
 
     cid = template.get("id", "praetorian_generalist")
-    if cid in ("auspicious_beginnings", "limb_off", "axe_berserker", "classic_punchkin", "firefrond", "bzzzt"):
+    if cid in ("auspicious_beginnings", "limb_off", "axe_berserker", "classic_punchkin", "firefrond", "bzzzt", "dream_tortoise"):
         return fallback_melee(
             game_state, enemies, adj_threats, open_moves, valid_moves, abilities,
             template, cur_pos, px, py, hp, max_hp, can_sp, has_missile, ammo, max_ammo, inv_ammo

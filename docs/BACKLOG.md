@@ -287,7 +287,7 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 | First Gardener | Horticulturist | Nocturnal Apex implant | First Gardener (new, issue 131) | ok since issue 131 (was the Praetorian default) |
 | First Child of the Hearth | Child of the Hearth | Carbide Hand Bones | Classic Punchkin | ok |
 | Marsh Taur | Marauder | Freezing Ray, Multiple Legs, Amphibious, Teleportation | Auspicious Beginnings | ok |
-| Dream Tortoise | Arconaut | Carapace, Heightened Hearing, Horns, Sleep Gas | Gas Giant | roughly (a short-blade melee, not a gas caster) |
+| Dream Tortoise | Arconaut | Carapace, Heightened Hearing, Horns, Sleep Gas | Dream Tortoise (new, issue 137) | ok since issue 137 (was Gas Giant, a gas caster) |
 | Gunwing | Gunslinger | Beak, Heightened Quickness, Wings, Force Bubble | Gunkin | ok since issue 127 (was Esper) |
 | Star-Eye Esper | Apostle | Clairvoyance, Light Manipulation, Sense Psychic, Stunning Force, Teleport Other | Esper-ited Away | ok |
 | Firefrond | Watervine Farmer | Unstable Genome, Flaming Ray, Photosynthetic Skin, Burgeoning | Firefrond (new, issue 131) | ok since issue 131 (was Praetorian) |
@@ -297,6 +297,7 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Missing templates:** First Gardener, Firefrond, bzzzt (and arguably Dream Tortoise); also the `Rifles` skill name is baked into the C# starting-skill list (line near 4534) and the reload reason says "rifle".
 - **Already verified in game:** Esper (many runs), Marsh Taur-like Auspicious Beginnings (earlier), Gunwing (issues 127/128). **Never run:** the other six.
 - **Templates written (issue 131, Test 147, on `feat/pregen-templates`): First Gardener, Firefrond, bzzzt, each with detection, stats, skill path (food skills included), mutation priorities and a doctrine; Firefrond and bzzzt use the melee fallback (it already opens with a flaming or freezing ray), First Gardener the nomad fallback. Not wired: bzzzt's Discharge (`CommandDischarge`), Spin Webs (`CommandSpinWeb`), Burgeoning (`CommandBurgeoning`) and Bask (`CommandBask`) have registry entries but no ability family, so only the model uses them `[verified in data/abilities.json]`. Unverified in game.**
+- **Order chosen by the human, 2026-10-10: the six MUTANT pregens first, the three True Kin parked (B35).** Mutant line status: Star-Eye Esper verified (many runs); Gunwing verified from issue 127 and 128 (fires now; B29 reload and flank loop open); Firefrond runs and survives (B31 fixed, B32 ray safety open); Marsh Taur ran earlier as Auspicious Beginnings (re-run wanted); bzzzt never run; Dream Tortoise has its own template since issue 137 (an armored dagger fighter with sleep gas; unverified in game; its Sleep Gas command name was not found in the registry, so only the model can pick it, `[unverified]`). Next: bzzzt first run, then Dream Tortoise.
 - **Plan:** one build per test cycle, a fresh character each; check the template in the console, the level-up path, and that the signature abilities and weapons are used; build the three missing templates first.
 - **Size (my guess):** large; each build is its own small project.
 
@@ -310,6 +311,30 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **What happened `[verified in the capture]`:** the level 1 Firefrond fired Flaming Ray at a "wet chitinous puma [wading]" (Impossible), took one hit (20 to 11 HP), then kited west for seven turns and crossed back over the border; HP stayed 11 while it did, and he rested. The ray was used twice in the run (the other at a giant dragonfly). The human's note: fire hands "can catch terrain on fire if the graphics read correctly".
 - **Unknown `[unknown]`:** whether Flaming Ray does its damage or ignites a creature that is wading or "wet" (water cools burning, ENGINE_INTERNALS 12.1g), what it does to the watervine and grass he was standing in, and whether the fire reaches him. The Firefrond doctrine already says "never when he stands in or next to dry plants"; the brain has no check for it.
 - **Ideas:** export "target is wet or in liquid" and "plants within one cell of him"; keep the ray for dry targets and the axe or a retreat for wet ones. **Size (my guess):** research first.
+
+### B33. Grenades and thrown weapons from the pack (found 2026-10-10 in Gardener_Test_1; filed at the human's request, "Yes, file it as B33"; PARKED with the True Kin line, see B35; not promoted)
+- **What exists today `[verified in the live state and code]`:** `thrown_weapon` is null while a grenade sits in the pack: the throw logic (B24 stage 1) sees only a weapon in the thrown-weapon slot, and nothing equips a thrown weapon into an empty slot (the disc earlier was put there by hand). The Horticulturist starts with 2-4 defoliant grenades (`DefoliantGrenade1`) and, in the human's save, acid gas and thermal grenades.
+- **Two pieces:** (1) equip a thrown weapon into the empty thrown slot (the engine's slot prompt now picks a spare hand for a torch, issue 134; the same prompt could carry this); (2) use area grenades safely: acid gas and thermal hurt the thrower and companions at close range, a defoliant kills plants (odd for a plant build), so each needs a range floor, a clear line and no companion near.
+- **Unknown `[unknown]`:** the blast radius and fuse of each grenade, whether `PerformThrow` handles them like the disc, and which grenades are worth keeping against the weight they add.
+- **Size (my guess):** medium; research first.
+
+### B34. Injectors and tonics (human, 2026-10-10: "we have another mechanic to implement. Injectors."; the human's inventory screenshot showed blaze, love and salve injectors; research done, nothing built; was promoted in passing, then PARKED with the True Kin line by the human the same day, see B35)
+- **Research `[verified in the game XML]`:** ENGINE_INTERNALS 14.32 lists every tonic and what it does. The brain has no action to apply one and no rule for when.
+- **Candidate first stage:** one action (`USE_ITEM:<id>`, the engine's own apply) and one rule: a **salve** or **ubernostrum** injector when HP is low and a fight is on (the heal is 0.6 HP per level per round for 5 or 10 rounds, so it is a bridge, not an instant heal). Later: blaze or hulk honey for a hard fight against a single strong melee target (blaze needs him to keep moving, hulk honey slows him), shade oil as an escape, nectar at once (a permanent gain), love on a strong creature for a follower.
+- **Unknowns `[unknown]`:** the engine call that applies an injector from code and what it costs in energy (a medassist module cuts it by 80 percent); whether an unidentified injector hides its effect (the `Examiner` part and the unknown-colour strings suggest it does); which injector is safe to try blind; what overdose does (`Tonic` has `CausesOverdose`).
+- **Size (my guess):** small for the heal rule, medium for the rest.
+
+### B35. The True Kin line: parked until the mutant line is online (human, 2026-10-10: "Truekin are gonna open up tons of mechanics to make the class work. Those are gonna to be very specific uses. Lets work out way through the mutant line first as we already have a system for mutations ... Throw everything else Truekin related into the backlog."; not started)
+- **Why parked:** True Kin have no mutations, so the existing mutation machinery (rankings, ability families, the abilities in the prompt) does not carry them. Each of the three needs its own item mechanics. The human's judgement: do the mutants first.
+- **The three True Kin pregens `[verified in the game files 2026-10-10]`:** Praetorian Prime (Praetorian: long blade, shield, rifle; Night Vision implant), First Gardener (Horticulturist: Steel Vinereaper axe, short bow and arrows, grenades, injectors; Nocturnal Apex implant), First Child of the Hearth (Child of the Hearth: cudgel, heavy weapons; Carbide Hand Bones). Their templates exist (detection and doctrine, issues 130-131) and have not been run past the first minutes, except the Gardener's first 300 turns.
+- **Parked items, all True Kin driven:**
+  - B33: grenades and thrown weapons from the pack (equip into the thrown slot, safe use of area grenades).
+  - B34: injectors and tonics (the apply action, the heal rule first; researched in ENGINE_INTERNALS 14.32).
+  - B17: removal of cursed items; the cybernetics plan (Becoming Nooks and implants, see the older implants entry).
+  - **To check when the first True Kin build is run (human: "We can verify torches when we engage those unstudied builds"):** a stack of "lit torch x9 (blazing)" was seen in the pack in Gardener_Test_1; `EnsureLightSource` may light a whole stack before equipping one, burning them all down `[unverified]`.
+  - Starting-kit specifics: the bow and arrows, the gas mask, the bio-scanning bracelet, the pestle and the starting tonics (what each is worth to the brain).
+  - Fighting without an ability list: Gardener's escape options are only the border retreat, stairs and the lethal-adjacent guard.
+- **Size (my guess):** large, one project per build.
 
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.

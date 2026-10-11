@@ -6983,7 +6983,7 @@ _expect147 = [
     ("True Kin", "Horticulturist", [], "first_gardener"),
     ("True Kin", "Child of the Hearth", [], "classic_punchkin"),
     ("Mutated Human", "Marauder", ["FreezingRay", "MultipleLegs", "Amphibious", "Teleportation"], "auspicious_beginnings"),
-    ("Mutated Human", "Arconaut", ["Carapace", "HeightenedHearing", "Horns", "SleepGasGeneration"], "gas_giant"),
+    ("Mutated Human", "Arconaut", ["Carapace", "HeightenedHearing", "Horns", "SleepGasGeneration"], "dream_tortoise"),
     ("Mutated Human", "Gunslinger", ["Beak", "HeightenedSpeed", "Wings", "ForceBubble"], "gunkin"),
     ("Mutated Human", "Apostle", ["Clairvoyance", "LightManipulation", "SensePsychic", "StunningForce", "TeleportOther"], "esper_ited_away"),
     ("Mutated Human", "Watervine Farmer", ["UnstableGenome", "FlamingRay", "PhotosyntheticSkin", "Burgeoning"], "firefrond"),
@@ -7005,7 +7005,7 @@ for _k147 in ("first_gardener", "firefrond", "bzzzt"):
 assert build_templates.BUILD_TEMPLATES["first_gardener"]["genotype"] == "True Kin"
 # the melee fallback serves the two hybrid fighters (it opens with a flaming or freezing ray)
 _bsrc147 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
-assert '"classic_punchkin", "firefrond", "bzzzt")' in _bsrc147
+assert '"classic_punchkin", "firefrond", "bzzzt", "dream_tortoise")' in _bsrc147
 print("  [OK] Test 147 Passed: the nine in-game pregens map to the right templates (First Gardener, Firefrond and bzzzt have their own; the Gunwing, Esper, Marauder, Tortoise, Punchkin and Praetorian are unchanged), every skill they list exists, and Uncle Iroh and a plain Watervine Farmer are not stolen")
 
 
@@ -7055,3 +7055,20 @@ _c150 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", 
 assert "AIPickOptionPatch.PreferSpareHandSlot = true;" in _c150 and "finally { AIPickOptionPatch.PreferSpareHandSlot = false; }" in _c150, "the flag is set around the torch equip and always cleared"
 assert "PickSpareSlot(Options)" in _c150 and 's.StartsWith("Thrown Weapon"' in _c150 and 's.IndexOf("*Primary"' in _c150
 print("  [OK] Test 150 Passed: the mod's torch equip sets a flag that makes the slot prompt skip the thrown-weapon slot and the primary weapon (a source check: the picker runs only in the game)")
+
+
+# Test 151: the Dream Tortoise has its own template, an Arconaut is not a Gas Giant, and a Greybeard with sleep gas still is (human, 2026-10-10: "Yes, write the Dream Tortoise template"; BACKLOG B30, HANDOFF issue 137)
+# ---------------------------------------------------------------------------
+_t151 = build_templates.BUILD_TEMPLATES["dream_tortoise"]
+for _s151 in _t151["skill_progression"]:
+    assert _s151 in build_templates.SKILL_DATABASE, _s151
+assert _t151["id"] == "dream_tortoise" and _t151["mutation_priorities"] == ["Carapace", "SleepGasGeneration", "Horns"] and _t151["combat_doctrine"]["ability_rotation"]
+_tort151 = _pre147("Mutated Human", "Arconaut", ["Carapace", "HeightenedHearing", "Horns", "SleepGasGeneration"])
+assert build_templates.detect_build(_tort151)["id"] == "dream_tortoise"
+assert build_templates.detect_build(_pre147("Mutated Human", "Arconaut", ["Horns"]))["id"] == "dream_tortoise"
+assert build_templates.detect_build(_pre147("Mutated Human", "Arconaut", []))["id"] != "dream_tortoise", "an Arconaut with no mutation of the kind is not the Tortoise"
+assert build_templates.detect_build(_pre147("Mutated Human", "Greybeard", ["SleepGasGeneration", "CorrosiveGasGeneration", "Carapace"]))["id"] == "gas_giant", "the gas caster is unchanged"
+# the build teaches Butchery and Harvestry (every template must), and the melee fallback serves it
+assert "CookingAndGathering_Butchery" in _t151["skill_progression"] and "CookingAndGathering_Harvestry" in _t151["skill_progression"]
+assert '"dream_tortoise"):' in open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+print("  [OK] Test 151 Passed: an Arconaut with Carapace, Horns or sleep gas is the Dream Tortoise (not a Gas Giant), a Greybeard with gas is still a Gas Giant, its skills exist and it uses the melee fallback")
