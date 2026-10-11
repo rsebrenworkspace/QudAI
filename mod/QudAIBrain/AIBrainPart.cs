@@ -240,6 +240,12 @@ namespace QudAIBrain
             catch { return "\"thrown_weapon\": null,"; }
         }
 
+        // The Speed stat (100 is normal, 40 is slow): the retreat rule (BACKLOG B39) retreats only from an enemy that is clearly slower than he is.
+        private static int SafeSpeed(GameObject o)
+        {
+            try { return o != null ? o.Stat("Speed") : 0; } catch { return 0; }
+        }
+
         // Gas clouds near the player (BACKLOG B33, the grenade lab, human 2026-10-10: "start with poison gas"): one entry per Gas object within GasCellRadius of him, with its type and
         // density. A grenade makes a cloud in the thrown cell and its neighbours and the gas then moves on its own, so its size and life can only be measured, not computed. Also the base for
         // never walking into a cloud he made (not built).
@@ -2344,6 +2350,7 @@ namespace QudAIBrain
                 sb.Append($"\"sp\": {spPoints},");
                 sb.Append($"\"mp\": {mpPoints},");
                 sb.Append($"\"av\": {statAV}, \"dv\": {statDV},");
+                sb.Append("\"speed\": " + SafeSpeed(player) + ",");
                 sb.Append($"\"melee\": {{\"weapon\": \"{EscapeJson(meleeName)}\", \"damage\": \"{EscapeJson(meleeDamage)}\", \"penetration\": {meleePen}, \"hit_bonus\": {meleeHit}}},");
                 sb.Append($"\"attributes\": {{\"Strength\": {statStr}, \"Agility\": {statAgi}, \"Toughness\": {statTou}, \"Intelligence\": {statInt}, \"Willpower\": {statWil}, \"Ego\": {statEgo}}},");
                 sb.Append($"\"skills\": [{string.Join(",", learnedSkills)}],");
@@ -2614,7 +2621,7 @@ namespace QudAIBrain
                                     string diffStr = levelDiff <= -5 ? "Trivial" : levelDiff <= -2 ? "Easy" : levelDiff <= 2 ? "Average" : levelDiff <= 5 ? "Tough" : levelDiff <= 9 ? "Very Tough" : "Impossible";
                                     bool isStationary = IsImmobile(obj) || obj.HasPart("Plant") || obj.HasPart("Fungus") || obj.HasTag("Immobile") || obj.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
 
-                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}, \"can_proselytize\": {(canProselytize ? "true" : "false")}, \"has_los\": {(hasLOS ? "true" : "false")}, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}, \"hp\": {objHp}, \"max_hp\": {objMaxHp}, \"corpse_chance\": {CorpseChanceOf(obj)}, \"psychic_hunter\": {(IsPsychicHunter(obj) ? "true" : "false")}}}");
+                                    entityEntries.Add($"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {x}, \"ty\": {y}, \"is_enemy\": {(isEnemy ? "true" : "false")}, \"is_companion\": {(isCompanion ? "true" : "false")}, \"can_proselytize\": {(canProselytize ? "true" : "false")}, \"has_los\": {(hasLOS ? "true" : "false")}, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}, \"hp\": {objHp}, \"max_hp\": {objMaxHp}, \"corpse_chance\": {CorpseChanceOf(obj)}, \"psychic_hunter\": {(IsPsychicHunter(obj) ? "true" : "false")}, \"speed\": {SafeSpeed(obj)}}}");
                                 }
                             }
                         }
@@ -2648,7 +2655,7 @@ namespace QudAIBrain
                                     int levelDiff = objLevel - playerLevel;
                                     string diffStr = levelDiff <= -5 ? "Trivial" : levelDiff <= -2 ? "Easy" : levelDiff <= 2 ? "Average" : levelDiff <= 5 ? "Tough" : levelDiff <= 9 ? "Very Tough" : "Impossible";
                                     bool isStationary = IsImmobile(currentTarget) || currentTarget.HasPart("Plant") || currentTarget.HasPart("Fungus") || currentTarget.HasTag("Immobile") || currentTarget.HasProperty("Immobile") || bp.IndexOf("Glowpad", StringComparison.OrdinalIgnoreCase) >= 0;
-                                    entityEntries.Insert(0, $"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {tx}, \"ty\": {ty}, \"is_enemy\": true, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}, \"corpse_chance\": {CorpseChanceOf(currentTarget)}, \"psychic_hunter\": {(IsPsychicHunter(currentTarget) ? "true" : "false")}}}");
+                                    entityEntries.Insert(0, $"{{\"name\": \"{EscapeJson(name)}\", \"blueprint\": \"{EscapeJson(bp)}\", \"dist\": {dist}, \"dir\": \"{dir}\", \"tx\": {tx}, \"ty\": {ty}, \"is_enemy\": true, \"level\": {objLevel}, \"difficulty\": \"{diffStr}\", \"is_stationary\": {(isStationary ? "true" : "false")}, \"corpse_chance\": {CorpseChanceOf(currentTarget)}, \"psychic_hunter\": {(IsPsychicHunter(currentTarget) ? "true" : "false")}, \"speed\": {SafeSpeed(currentTarget)}}}");
                                 }
                             }
                         }
