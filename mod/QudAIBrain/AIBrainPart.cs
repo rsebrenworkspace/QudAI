@@ -1812,6 +1812,10 @@ namespace QudAIBrain
             }
             catch { }
 
+            // The Night Vision mutation sees in the dark by itself (human, 2026-10-10: "Yes, Night Vision skips the torch"; bzzzt carries it and wields a torch in a hand
+            // that a weapon needs). Same rule as Ambient Light: no torch is lit or fetched from the pack while he has it.
+            try { if (player.HasPart("NightVision")) return; } catch { }
+
             var body = player.GetPart<Body>();
             if (body == null) return;
 

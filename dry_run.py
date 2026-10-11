@@ -7072,3 +7072,13 @@ assert build_templates.detect_build(_pre147("Mutated Human", "Greybeard", ["Slee
 assert "CookingAndGathering_Butchery" in _t151["skill_progression"] and "CookingAndGathering_Harvestry" in _t151["skill_progression"]
 assert '"dream_tortoise"):' in open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 print("  [OK] Test 151 Passed: an Arconaut with Carapace, Horns or sleep gas is the Dream Tortoise (not a Gas Giant), a Greybeard with gas is still a Gas Giant, its skills exist and it uses the melee fallback")
+
+
+# Test 152: a character with the Night Vision mutation does not light or fetch a torch (human, 2026-10-10: "Yes, Night Vision skips the torch"; BACKLOG B22, HANDOFF issue 138)
+# ---------------------------------------------------------------------------
+_c152 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+_i152 = _c152.index("private static void EnsureLightSource(GameObject player)")
+_body152 = _c152[_i152:_i152 + 4000]
+assert 'player.HasPart("NightVision")' in _body152, "EnsureLightSource must return early for Night Vision"
+assert _body152.index('player.HasPart("NightVision")') < _body152.index('CommandEquipObject'), "the Night Vision check comes before any torch is equipped"
+print("  [OK] Test 152 Passed: EnsureLightSource returns early when the player has the Night Vision mutation, before it lights or equips any torch (a source check: it runs only in the game)")
