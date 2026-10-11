@@ -258,5 +258,10 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Ideas:** while `bleeding` and HP is falling, WAIT and REST are never chosen: heal (tonics, medicine, a salve) if any, else fight the engulfer or leave; while `engulfed by X`, attack from inside or use whatever banishes it; export the engulfer. **Unknown `[unknown]`:** how the engine ends an engulf and a bleed (killing the engulfer? time? healing items?), and whether he carries any healing item.
 - **Size (my guess):** research small, rule small.
 
+### B27. Proselytize as a hazard and hunter answer for Esper builds (found 2026-10-10 in the engulf test capture; not promoted)
+- **What happened `[verified in the capture, 2026-10-10]`:** a level 3 Esper (Clairvoyant Thrallmaster) stood next to a wished red death dacca (level 24). The Proselytize fallback in `brain.py` (the "Fallback ... Proselytizing adjacent" branches) fired first, then Stunning Force; the dacca never engulfed him and he walked off at 25/25 HP. This also meant the engulf escape (B26) was not exercised.
+- **Idea:** for Esper builds, Proselytize may turn a dangerous adjacent creature (a rooted hazard, perhaps a psychic hunter or thrall) into a pet instead of a killer. **Unknown `[unknown]`:** whether the dacca actually became a pet or only stopped acting (check its faction), the success chance against a level 24 target, the cost, and whether it works on psychic hunters.
+- **Depends on:** a Proselytize-capable build; B25 (hunters), the rooted-plant rule. **Size (my guess):** research small, rule small.
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.
