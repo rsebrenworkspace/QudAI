@@ -284,19 +284,20 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 | Pregen | Calling | Mutations / cybernetic | Template picked | Fit |
 |---|---|---|---|---|
 | Praetorian Prime | Praetorian | Night Vision implant | Praetorian Generalist | ok |
-| First Gardener | Horticulturist | Nocturnal Apex implant | Praetorian Generalist | **no: default fallthrough** (axe and rifle, cooking and gathering) |
+| First Gardener | Horticulturist | Nocturnal Apex implant | First Gardener (new, issue 131) | ok since issue 131 (was the Praetorian default) |
 | First Child of the Hearth | Child of the Hearth | Carbide Hand Bones | Classic Punchkin | ok |
 | Marsh Taur | Marauder | Freezing Ray, Multiple Legs, Amphibious, Teleportation | Auspicious Beginnings | ok |
 | Dream Tortoise | Arconaut | Carapace, Heightened Hearing, Horns, Sleep Gas | Gas Giant | roughly (a short-blade melee, not a gas caster) |
 | Gunwing | Gunslinger | Beak, Heightened Quickness, Wings, Force Bubble | Gunkin | ok since issue 127 (was Esper) |
 | Star-Eye Esper | Apostle | Clairvoyance, Light Manipulation, Sense Psychic, Stunning Force, Teleport Other | Esper-ited Away | ok |
-| Firefrond | Watervine Farmer | Unstable Genome, Flaming Ray, Photosynthetic Skin, Burgeoning | Praetorian Generalist | **no: the Watervine Farmer calling is in the Praetorian rule** |
-| bzzzt | Tinker | Burrowing Claws, Electrical Generation, Heightened Hearing, Night Vision, Spinnerets, Thick Fur, Socially Repugnant | Praetorian Generalist | **no: default fallthrough** (electrical, burrower, trap setter) |
+| Firefrond | Watervine Farmer | Unstable Genome, Flaming Ray, Photosynthetic Skin, Burgeoning | Firefrond (new, issue 131) | ok since issue 131 (was Praetorian) |
+| bzzzt | Tinker | Burrowing Claws, Electrical Generation, Heightened Hearing, Night Vision, Spinnerets, Thick Fur, Socially Repugnant | bzzzt (new, issue 131) | ok since issue 131 (was the Praetorian default) |
 
 - **Templates with no pregen:** Limb-Off, Uncle Iroh (needs electrical AND flaming), Bullet Specter (needs Phasing) are guide builds a player could still make; Gas Giant matches only Sleep Gas.
 - **Missing templates:** First Gardener, Firefrond, bzzzt (and arguably Dream Tortoise); also the `Rifles` skill name is baked into the C# starting-skill list (line near 4534) and the reload reason says "rifle".
 - **Already verified in game:** Esper (many runs), Marsh Taur-like Auspicious Beginnings (earlier), Gunwing (issues 127/128). **Never run:** the other six.
-- **Plan (not started):** one build per test cycle, a fresh character each; check the template in the console, the level-up path, and that the signature abilities and weapons are used; build the three missing templates first.
+- **Templates written (issue 131, Test 147, on `feat/pregen-templates`): First Gardener, Firefrond, bzzzt, each with detection, stats, skill path (food skills included), mutation priorities and a doctrine; Firefrond and bzzzt use the melee fallback (it already opens with a flaming or freezing ray), First Gardener the nomad fallback. Not wired: bzzzt's Discharge (`CommandDischarge`), Spin Webs (`CommandSpinWeb`), Burgeoning (`CommandBurgeoning`) and Bask (`CommandBask`) have registry entries but no ability family, so only the model uses them `[verified in data/abilities.json]`. Unverified in game.**
+- **Plan:** one build per test cycle, a fresh character each; check the template in the console, the level-up path, and that the signature abilities and weapons are used; build the three missing templates first.
 - **Size (my guess):** large; each build is its own small project.
 
 ## 3. Adding an idea

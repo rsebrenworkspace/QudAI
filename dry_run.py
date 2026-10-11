@@ -6972,3 +6972,38 @@ assert build_templates.detect_build(_g146) is build_templates.BUILD_TEMPLATES["g
 _e146 = {"genotype": "Mutated Human", "subtype": "Apostle", "calling": "Apostle", "mutations": [{"class": "ForceBubble"}, {"class": "Clairvoyance"}], "abilities": [], "attributes": {"Ego": 22}}
 assert build_templates.detect_build(_e146)["name"].lower().startswith("esper"), build_templates.detect_build(_e146)["name"]
 print("  [OK] Test 146 Passed: a Gunslinger with Force Bubble and a high Ego is a gunkin (not an Esper); an Apostle with mental mutations is still an Esper")
+
+
+# Test 147: the nine in-game pregens each get a fitting template; the three that fell through to Praetorian now have their own (human's audit 2026-10-10; BACKLOG B30, HANDOFF issue 131)
+# ---------------------------------------------------------------------------
+def _pre147(genotype, calling, muts, **k):
+    return dict({"genotype": genotype, "subtype": calling, "calling": calling, "mutations": [{"class": m} for m in muts], "abilities": [], "attributes": {"Ego": 10}, "equipped_summary": ""}, **k)
+_expect147 = [
+    ("True Kin", "Praetorian", [], "praetorian_generalist"),
+    ("True Kin", "Horticulturist", [], "first_gardener"),
+    ("True Kin", "Child of the Hearth", [], "classic_punchkin"),
+    ("Mutated Human", "Marauder", ["FreezingRay", "MultipleLegs", "Amphibious", "Teleportation"], "auspicious_beginnings"),
+    ("Mutated Human", "Arconaut", ["Carapace", "HeightenedHearing", "Horns", "SleepGasGeneration"], "gas_giant"),
+    ("Mutated Human", "Gunslinger", ["Beak", "HeightenedSpeed", "Wings", "ForceBubble"], "gunkin"),
+    ("Mutated Human", "Apostle", ["Clairvoyance", "LightManipulation", "SensePsychic", "StunningForce", "TeleportOther"], "esper_ited_away"),
+    ("Mutated Human", "Watervine Farmer", ["UnstableGenome", "FlamingRay", "PhotosyntheticSkin", "Burgeoning"], "firefrond"),
+    ("Mutated Human", "Tinker", ["BurrowingClaws", "ElectricalGeneration", "HeightenedHearing", "NightVision", "Spinnerets", "ThickFur", "SociallyRepugnant"], "bzzzt"),
+]
+for _g147, _c147, _m147, _id147 in _expect147:
+    _st147 = _pre147(_g147, _c147, _m147, equipped_summary=("carbide hand bones" if _c147 == "Child of the Hearth" else ""))
+    assert build_templates.detect_build(_st147)["id"] == _id147, (_c147, build_templates.detect_build(_st147)["id"])
+# a Watervine Farmer without the fire mutation is still a Praetorian-style generalist, an Uncle Iroh (fire AND electricity) is not stolen
+assert build_templates.detect_build(_pre147("Mutated Human", "Watervine Farmer", []))["id"] == "praetorian_generalist"
+assert build_templates.detect_build(_pre147("Mutated Human", "Greybeard", ["ElectricalGeneration", "FlamingRay"]))["id"] == "uncle_iroh"
+# every template names only skills the skill database knows, and its mutation priorities are non-empty for a mutant
+for _k147 in ("first_gardener", "firefrond", "bzzzt"):
+    _t147 = build_templates.BUILD_TEMPLATES[_k147]
+    for _s147 in _t147["skill_progression"]:
+        assert _s147 in build_templates.SKILL_DATABASE, (_k147, _s147)
+    assert _t147["combat_doctrine"]["ability_rotation"] and _t147["stat_priorities"] and _t147["id"] == _k147
+    assert (_t147["genotype"] == "True Kin") or _t147["mutation_priorities"], _k147
+assert build_templates.BUILD_TEMPLATES["first_gardener"]["genotype"] == "True Kin"
+# the melee fallback serves the two hybrid fighters (it opens with a flaming or freezing ray)
+_bsrc147 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert '"classic_punchkin", "firefrond", "bzzzt")' in _bsrc147
+print("  [OK] Test 147 Passed: the nine in-game pregens map to the right templates (First Gardener, Firefrond and bzzzt have their own; the Gunwing, Esper, Marauder, Tortoise, Punchkin and Praetorian are unchanged), every skill they list exists, and Uncle Iroh and a plain Watervine Farmer are not stolen")

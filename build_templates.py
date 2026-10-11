@@ -556,6 +556,180 @@ BUILD_TEMPLATES = {
                 "4. Cloud Perimeter Kite: Backpedal and maneuver around gas borders while cloud ticks."
             ]
         }
+    },
+
+    # 10. First Gardener: the Horticulturist True Kin pregen (axe and rifle, cooking and gathering). Starting kit read from Subtypes.xml 2026-10-10 (BACKLOG B30).
+    "first_gardener": {
+        "id": "first_gardener",
+        "name": "First Gardener (Axe & Rifle Horticulturist)",
+        "archetype": "Hybrid Axe and Rifle Forager",
+        "callings": ["Horticulturist"],
+        "genotype": "True Kin",
+        "strengths": [
+            "Axe in melee and a rifle at range: he can answer any distance",
+            "Starts with Cooking and Gathering and Harvestry: forages food and keeps himself fed",
+            "Jungle Survival and a Nocturnal Apex implant for exploring dark places"
+        ],
+        "weaknesses": [
+            "No mutations: no escape button or crowd control, so he must pick his fights",
+            "Intelligence below 15 blocks Harvestry and Butchery"
+        ],
+        "preferred_range": 3,
+        "stat_priorities": [
+            {"stat": "Strength", "target": 18, "reason": "Axe penetration"},
+            {"stat": "Toughness", "target": 20, "reason": "Survivability floor for a build with no escape"},
+            {"stat": "Intelligence", "target": 15, "reason": "Butchery and Harvestry need Intelligence 15 (HANDOFF issue 36)"},
+            {"stat": "Agility", "target": 20, "reason": "Rifle accuracy and dodge"},
+            {"stat": "Strength", "target": 22, "reason": "Cleave and Dismember scaling"}
+        ],
+        "skill_progression": [
+            "Axe",
+            "Rifles",
+            "CookingAndGathering",
+            "CookingAndGathering_Harvestry",
+            "CookingAndGathering_Butchery",
+            "Rifle_SteadyHands",
+            "Axe_Expertise",
+            "Tactics",
+            "Tactics_Charge",
+            "Axe_Cleave",
+            "Rifle_DrawABead",
+            "Endurance",
+            "Endurance_ShakeItOff",
+            "Axe_Dismember",
+            "Survival_Camp"
+        ],
+        "mutation_priorities": [],
+        "combat_doctrine": {
+            "doctrine_name": "Shoot, Then Cleave",
+            "open_combat_action": "Fire the rifle at approaching threats while they are 3 or more tiles away, then fight with the axe",
+            "close_contact_policy": "Axe the adjacent target; reload only when nothing is within reach",
+            "melee_engagement": "Cleave and Dismember; retreat to range only when the axe is losing",
+            "preferred_weapons": ["Rifle", "Axe", "Vibro-axe"],
+            "ability_rotation": [
+                "1. Ranged opener: rifle shots at 3 or more tiles on a clear line (never through a companion).",
+                "2. Gap-Closer: Charge on a target at 2-4 tiles that cannot shoot back.",
+                "3. Melee: Cleave to shred armor, Dismember to remove weapon limbs.",
+                "4. Safety: Survival Camp to heal when nothing is in view."
+            ]
+        }
+    },
+
+    # 11. Firefrond: the Watervine Farmer mutant pregen (Flaming Ray, Burgeoning, Photosynthetic Skin, Unstable Genome).
+    "firefrond": {
+        "id": "firefrond",
+        "name": "Firefrond (Flaming Ray & Burgeoning Farmer)",
+        "archetype": "Hybrid Axe Fighter and Fire Caster",
+        "callings": ["Watervine Farmer"],
+        "genotype": "Mutated Human",
+        "strengths": [
+            "Flaming Ray sets enemies alight from range (about 10 tiles on a clear line)",
+            "Burgeoning grows harvestable plants nearby: a food source anywhere",
+            "Photosynthetic Skin feeds him in the sun (the Bask ability)",
+            "Axe and Saltmarsh Survival from the Watervine Farmer calling; a tough starting build"
+        ],
+        "weaknesses": [
+            "Fire spreads: it ignites plants and grass, including the ones he grew and the ones near him",
+            "Unstable Genome is a defect: random mutations can change what he has",
+            "Burning enemies still fight; Flaming Ray does not stop an adjacent attacker"
+        ],
+        "preferred_range": 3,
+        "stat_priorities": [
+            {"stat": "Toughness", "target": 20, "reason": "Calling bonus and the survivability floor"},
+            {"stat": "Strength", "target": 18, "reason": "Axe penetration"},
+            {"stat": "Intelligence", "target": 15, "reason": "Butchery and Harvestry need Intelligence 15 (HANDOFF issue 36)"},
+            {"stat": "Willpower", "target": 20, "reason": "Mutation cooldown reduction"},
+            {"stat": "Agility", "target": 18, "reason": "Dodge"}
+        ],
+        "skill_progression": [
+            "Axe",
+            "CookingAndGathering",
+            "CookingAndGathering_Harvestry",
+            "CookingAndGathering_Butchery",
+            "Axe_Expertise",
+            "Tactics",
+            "Tactics_Charge",
+            "Axe_Cleave",
+            "Endurance",
+            "Endurance_ShakeItOff",
+            "Survival_Camp",
+            "Axe_Dismember"
+        ],
+        "mutation_priorities": ["FlamingRay", "Burgeoning", "PhotosyntheticSkin"],
+        "combat_doctrine": {
+            "doctrine_name": "Burn, Then Axe",
+            "open_combat_action": "Flaming Ray a dangerous target at 2-8 tiles on a clear line, never through a companion and never when he stands in or next to dry plants",
+            "close_contact_policy": "Axe the adjacent target; a burning enemy next to him is still a fight, not an escape",
+            "melee_engagement": "Cleave burning or fleeing targets; avoid fighting inside grass he has set alight",
+            "preferred_weapons": ["Axe", "Vibro-axe"],
+            "ability_rotation": [
+                "1. Opener: Flaming Ray at 2-8 tiles (check for plants around himself first).",
+                "2. Gap-Closer: Charge when the target is burning or stunned.",
+                "3. Melee: Cleave and Dismember with the axe.",
+                "4. Upkeep: Bask in the sun when hurt and safe; Burgeoning near food-poor ground when hungry."
+            ]
+        }
+    },
+
+    # 12. bzzzt: the Tinker mutant pregen (Electrical Generation, Burrowing Claws, Spinnerets, Night Vision, Thick Fur, Heightened Hearing, Socially Repugnant).
+    "bzzzt": {
+        "id": "bzzzt",
+        "name": "bzzzt (Electric Burrower Tinker)",
+        "archetype": "Hybrid Melee and Electrical Trapper",
+        "callings": ["Tinker"],
+        "genotype": "Mutated Human",
+        "strengths": [
+            "Electrical Generation: Discharge hurts adjacent and nearby enemies and powers devices",
+            "Burrowing Claws dig through walls and dig out of trouble (the brain already knows the burrow commands)",
+            "Spinnerets spin webs to slow enemies; Tinkering mines and gadgets",
+            "Night Vision, Thick Fur and Heightened Hearing: sees and hears well, tough against cold"
+        ],
+        "weaknesses": [
+            "Socially Repugnant: merchants and settlements treat him worse, so keep trading to a minimum",
+            "Low starting melee skill: the Tinker calling has no weapon skill",
+            "Discharge also hits his own companions and conducts through metal and water"
+        ],
+        "preferred_range": 2,
+        "stat_priorities": [
+            {"stat": "Intelligence", "target": 18, "reason": "Calling bonus and Tinkering tiers"},
+            {"stat": "Toughness", "target": 18, "reason": "Survivability floor"},
+            {"stat": "Agility", "target": 20, "reason": "Dodge and accuracy"},
+            {"stat": "Strength", "target": 16, "reason": "Melee fallback"},
+            {"stat": "Willpower", "target": 18, "reason": "Mutation cooldown reduction"}
+        ],
+        "skill_progression": [
+            "Tinkering",
+            "Tinkering_Disassemble",
+            "Tinkering_Repair",
+            "Tinkering_Tinker1",
+            "CookingAndGathering",
+            "CookingAndGathering_Harvestry",
+            "CookingAndGathering_Butchery",
+            "Tinkering_LayMine",
+            "Tinkering_Scavenger",
+            "Tinkering_GadgetInspector",
+            "Tinkering_Tinker2",
+            "ShortBlades",
+            "Acrobatics",
+            "Acrobatics_Dodge",
+            "Tactics",
+            "Endurance",
+            "Survival_Camp"
+        ],
+        "mutation_priorities": ["ElectricalGeneration", "BurrowingClaws", "Spinnerets"],
+        "combat_doctrine": {
+            "doctrine_name": "Web, Shock, and Burrow",
+            "open_combat_action": "Spin Webs on an approaching melee threat, then Discharge when it is adjacent or one tile away",
+            "close_contact_policy": "Discharge adjacent enemies when no companion or water pool is in reach; otherwise melee; burrow away when HP is low",
+            "melee_engagement": "Fight in short bursts; do not stand in water while Discharging",
+            "preferred_weapons": ["Dagger", "Short blade", "Any melee weapon found"],
+            "ability_rotation": [
+                "1. Spin Webs at 2-5 tiles on a melee threat to hold it in place.",
+                "2. Discharge when the target is adjacent and no companion is next to it.",
+                "3. Melee with the best weapon while Discharge recharges.",
+                "4. Burrow away (toggle Burrowing Claws) when HP is below 40 percent and nothing is adjacent."
+            ]
+        }
     }
 }
 
@@ -615,6 +789,15 @@ def detect_build(game_state):
     # (2026-10-10), so he levelled Ego and used the Esper doctrine. A real Esper has no Gunslinger calling and no Akimbo.
     if "gunslinger" in calling or any("akimbo" in a for a in abilities):
         return BUILD_TEMPLATES["gunkin"]
+
+    # 6c. The three pregens that used to fall through to Praetorian Generalist (BACKLOG B30, the human's audit 2026-10-10): Firefrond (Flaming Ray with Burgeoning or the
+    # Watervine Farmer calling), bzzzt (Electrical Generation with Burrowing Claws, Spinnerets or the Tinker calling) and the First Gardener (the Horticulturist calling).
+    if "flamingray" in mutations and ("burgeoning" in mutations or "watervine" in calling):
+        return BUILD_TEMPLATES["firefrond"]
+    if "electricalgeneration" in mutations and ("burrowingclaws" in mutations or "spinnerets" in mutations or "tinker" in calling):
+        return BUILD_TEMPLATES["bzzzt"]
+    if "horticulturist" in calling:
+        return BUILD_TEMPLATES["first_gardener"]
 
     # 7. Esper-ited Away (Psychic powers / Apostle / Greybeard)
     mental_muts = ["sundermind", "lightmanipulation", "clairvoyance", "forcewall", "forcebubble", "teleportation", "cryokinesis", "pyrokinesis"]
