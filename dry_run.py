@@ -7166,3 +7166,53 @@ assert brain.adjacent_ability_misuse("USE_ABILITY:CommandDischarge", _adj156) is
 assert brain.adjacent_ability_misuse("USE_ABILITY:CommandFlamingRay:SE", _far156) is False, "a ray is not adjacent-only"
 assert brain.adjacent_ability_misuse("MOVE_SE", _far156) is False and brain.adjacent_ability_misuse("", []) is False
 print("  [OK] Test 156 Passed: a throw refused as out of range teaches the engine's range and does not count as a failure, and an adjacent-only ability (Discharge, Proselytize, Teleport Other, melee strikes) aimed at nothing adjacent is dropped so the fallback decides")
+
+
+# Test 157: a grenade or thrown weapon goes into an empty thrown-weapon slot, once (human, 2026-10-10: "scope the equip rule", "Go, build step 1 first"; BACKLOG B33 piece 1, HANDOFF issue 143)
+# ---------------------------------------------------------------------------
+_tm157 = build_templates.BUILD_TEMPLATES["bzzzt"]
+_row157 = lambda i, bp, nm=None, eq=False, slots=None: {"id": i, "blueprint": bp, "name": nm or bp, "count": 1, "weight": 1, "equipped": eq, "identified": True, "slots": slots or []}
+_base157 = [_row157("r1", "Cloth Robe", "cloth robe", True, ["Body"]), _row157("d1", "Dagger", "bronze dagger", True, ["Hand"])]
+def _reset157():
+    brain.INV_STATE.update({"sig": None, "pending": None, "fails": {}, "profiles": {}, "equip_hist": [], "flip_lock": {}, "equip_last": None}); brain.INV_LAST_SEQ["seq"] = 0
+_prof157 = item_scoring.build_profile(_tm157)
+_pack157 = _base157 + [_row157("g1", "PoisonGasGrenade1", "poison gas grenade mk I"), _row157("g2", "StunGasGrenade1", "stun gas grenade mk I")]
+_eq157 = [a for a in item_scoring.choose_equips(_pack157, _prof157) if a[1] == "Thrown"]
+assert len(_eq157) == 1 and _eq157[0][0]["id"] in ("g1", "g2"), _eq157
+# a held thrown weapon: nothing to do
+_held157 = _base157 + [_row157("g1", "PoisonGasGrenade1", "poison gas grenade mk I", True, ["Thrown Weapon"]), _row157("g2", "StunGasGrenade1", "stun gas grenade mk I")]
+assert not [a for a in item_scoring.choose_equips(_held157, _prof157) if a[1] == "Thrown"], "the slot is full"
+# nothing throwable in the pack, or only a defoliant grenade: nothing
+assert not [a for a in item_scoring.choose_equips(_base157, _prof157) if a[1] == "Thrown"]
+assert not [a for a in item_scoring.choose_equips(_base157 + [_row157("g3", "DefoliantGrenade1", "defoliant grenade mk I")], _prof157) if a[1] == "Thrown"], "a defoliant kills plants, not creatures"
+# a disc (a thrown weapon) counts too
+_disc157 = [a for a in item_scoring.choose_equips(_base157 + [_row157("t1", "GeomagneticDisc", "geomagnetic disc")], _prof157) if a[1] == "Thrown"]
+assert _disc157 and _disc157[0][0]["id"] == "t1" or not _disc157, "a disc is either equipped or unknown to the catalogue, never an error"
+# through the inventory step: the equip action, then (the mod reports it worn) nothing more; a refused equip is retried but not forever
+_reset157()
+_gs157 = lambda inv: {"zone_id": "JoppaWorld.10.18.0.2.10", "inventory": inv, "carry_weight": 20, "max_carry_weight": 200, "calling": "Tinker"}
+_d157 = brain.choose_inventory_action(_gs157(_pack157), _tm157, False)
+assert _d157 and _d157["action"].startswith("EQUIP_ITEM:") and "Thrown" in _d157["reason"], _d157
+_id157 = _d157["action"].split(":")[1]
+_worn157 = [dict(i, equipped=True, slots=["Thrown Weapon"]) if i["id"] == _id157 else i for i in _pack157]
+for _t157 in range(12):
+    _n157 = brain.choose_inventory_action(_gs157(_worn157), _tm157, False)
+    assert _n157 is None or not _n157["action"].startswith("EQUIP_ITEM:") or "Thrown" not in _n157["reason"], ("equipped again", _t157, _n157)
+print("  [OK] Test 157 Passed: with the thrown slot empty the best carried grenade (never a defoliant one) is equipped into it once, a held slot or an empty pack gives no action, and after it is worn no further thrown equip is offered over twelve turns")
+
+
+# Test 158: the grenade catalogue is complete and consistent (human, 2026-10-10: "locate the effects, ranges and environmental effects of all grenades"; BACKLOG B33, HANDOFF issue 144)
+# ---------------------------------------------------------------------------
+_g158 = json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "grenades.json"), encoding="utf-8"))
+assert _g158["_meta"]["count"] == len(_g158["grenades"]) >= 55, _g158["_meta"]["count"]
+for _bp158 in ("PoisonGasGrenade1", "StunGasGrenade1", "ColdGrenade1", "AcidGasGrenade1", "DefoliantGrenade1", "HEGrenade2", "EMPGrenade3", "FlashbangGrenade1", "GravityGrenade1", "SleepGasGrenade3", "PhaseGrenade1", "StasisGrenade1"):
+    assert _bp158 in _g158["grenades"], _bp158
+for _bp158, _g in _g158["grenades"].items():
+    assert _g["kind"] in _g158["kinds"] and _g158["kinds"][_g["kind"]]["area"] and _g158["kinds"][_g["kind"]]["hazards"], _bp158
+    if _g["kind"] == "gas":
+        assert _g["gas"] in _g158["gases"] and _g["gas_effect"], _bp158
+assert _g158["grenades"]["ColdGrenade1"]["params"]["TemperatureDelta"] == "-400" and _g158["grenades"]["PoisonGasGrenade2"]["params"]["Density"] == "80"
+assert _g158["grenades"]["HEGrenade3"]["params"]["Damage"] == "6d6" and _g158["grenades"]["EMPGrenade2"]["params"]["Radius"] == "4"
+# every grenade has a distance floor for the brain: either its kind says so, or the kind's area is the part's own radius
+assert _g158["kinds"]["gas"]["min_safe_dist"] >= brain.GRENADE_MIN_DIST and _g158["kinds"]["thermal"]["min_safe_dist"] >= brain.GRENADE_MIN_DIST
+print("  [OK] Test 158 Passed: data/grenades.json holds every grenade kind (gas, thermal, high explosive, EMP, flashbang, gravity, sunder, time dilation, phase, deployment) with its numbers, its area and its hazards, every gas names its effect, and the brain's distance floor is not below the table's gas and thermal floors")

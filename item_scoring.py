@@ -292,6 +292,16 @@ def with_inventory(profile, inventory):
     return dict(profile, owns_shield=owns)
 
 
+def is_throwable(inv_item):
+    """A grenade or thrown weapon: by catalogue group, or by name when the catalogue lacks it (the tinker-made grenades PoisonGasGrenade1, StunGasGrenade1, ColdGrenade1 are not in data/items.json)."""
+    if _entry(inv_item).get("group") in ("grenade", "thrown_weapon"):
+        return True
+    return "grenade" in str(inv_item.get("blueprint", "")).lower() or "grenade" in str(inv_item.get("name", "")).lower()
+
+
+NOT_FOR_THE_THROWN_SLOT = ("defoliant",)       # kills plants, not creatures: useless as a thrown weapon and harmful to a plant build's own crops
+
+
 def choose_equips(inventory, profile):
     """Equip actions: [(inventory item, slot, why)]. One best item per armor slot; one main weapon; a shield only for a build that wants one.
 
@@ -334,6 +344,16 @@ def choose_equips(inventory, profile):
             worn = [c for c in guns if c[1].get("equipped")]
             if not guns[0][1].get("equipped") and (not worn or guns[0][0] >= worn[0][0] + DOMINATED_MARGIN):
                 actions.append((guns[0][1], "Missile", f"firearm scores {guns[0][0]:g}" + (f" vs {worn[0][0]:g} held" if worn else "")))
+    # The thrown-weapon slot (BACKLOG B33 piece 1, human 2026-10-10: a bzzzt carried grenades in the pack and the slot stayed empty, so the throw logic never saw one). When no equipped
+    # item sits on "Thrown Weapon", the best carried grenade or thrown weapon goes there. `slots` is the mod's list of body parts an equipped item sits on.
+    thrown_held = any(it.get("equipped") and "Thrown Weapon" in (it.get("slots") or []) for it in inventory)
+    if not thrown_held:
+        throwables = [(score_item(_entry(it), profile)[0] if _entry(it).get("group") in ("grenade", "thrown_weapon") else 3.0, it) for it in inventory
+                      if not it.get("equipped") and is_throwable(it)
+                      and not any(w in str(it.get("name", "")).lower() for w in NOT_FOR_THE_THROWN_SLOT)]
+        if throwables:
+            throwables.sort(key=lambda c: -c[0])
+            actions.append((throwables[0][1], "Thrown", f"thrown-weapon slot empty, scores {throwables[0][0]:g}"))
     # A two-handed weapon (the digging hammer) leaves no hand for a shield: wielded, or about to be, it ends the shield question for now.
     two_handed = any(_entry(it).get("two_handed") for it in inventory if it.get("equipped") and _entry(it).get("group") == "melee_weapon") \
         or any(a[1] == "Hand" and _entry(a[0]).get("two_handed") and _entry(a[0]).get("group") == "melee_weapon" for a in actions)

@@ -1,0 +1,787 @@
+{
+ "_meta": {
+  "purpose": "Every grenade blueprint with its parameters and what each kind does, for the brain's grenade rules (BACKLOG B33). Regenerate with tools/build_grenade_catalog.py.",
+  "confidence": "numbers: [verified in the game XML]; per-kind notes carry their own tags",
+  "note": "min_safe_dist is the brain's own floor (a distance in tiles from the thrower, a guess where marked), not an engine value; None = no floor needed beyond the engine's radius",
+  "count": 59
+ },
+ "kinds": {
+  "gas": {
+   "area": "A cloud: the thrown cell and its adjacent cells receive the gas (GasGrenade.DoDetonate creates a Gas object in each of them, `[verified in code]`), then it spreads by itself every turn: above density 10 a 25 percent chance to move into 1-4 neighbours, at 10 or less a 50 percent chance to vanish; non-seeping gas stays in corridors for hundreds of turns `[wiki]`. No fixed radius.",
+   "min_safe_dist": 5,
+   "hazards": [
+    "the cloud drifts back toward the thrower and into corridors and rooms",
+    "companions and the thrower take the effect too",
+    "seeping gases pass through walls"
+   ]
+  },
+  "thermal": {
+   "area": "A blast around the thrown cell: the cell and its neighbours get a TemperatureChange of TemperatureDelta (ThermalGrenade.DoDetonate uses GetAdjacentCells, `[verified in code]`); the wiki gives the freeze grenade a blast radius of 2 and a freeze grenade froze its thrower at 2 tiles `[verified in game 2026-10-10]`, so the radius is treated as 2.",
+   "min_safe_dist": 4,
+   "hazards": [
+    "cold freezes creatures solid and turns water to ice",
+    "heat ignites grass, plants, oil and flammable creatures and starts fires that spread",
+    "the thrower is hit at 2 tiles or less"
+   ]
+  },
+  "he": {
+   "area": "An explosion: HEGrenade.DoDetonate calls Explode(Force); force falls off cell by cell, reduced by the weight of what it hits, until it is about 100, so the reach depends on the surroundings `[wiki]`. Damage is Force/250 plus dice. No fixed radius; open ground reaches farthest.",
+   "min_safe_dist": 5,
+   "hazards": [
+    "damages and pushes everything, including the thrower and companions",
+    "explosions can cross zone borders `[wiki]`",
+    "walls and objects absorb force; whether they are damaged is unknown `[unverified]`"
+   ]
+  },
+  "emp": {
+   "area": "Radius from the part (EMPGrenade.DoDetonate calls EMP(radius, duration), `[verified in code]`); disables electronics, powered items and robots for the duration, and can hit the thrower's own cybernetics and devices `[unverified]`.",
+   "min_safe_dist": null,
+   "hazards": [
+    "a thrower with cybernetics or powered gear inside the radius is affected `[unverified]`"
+   ]
+  },
+  "flashbang": {
+   "area": "Radius from the part (FlashbangGrenade.DoDetonate calls Flashbang(radius, duration)); blinds creatures that can see it for the duration `[verified in code]`.",
+   "min_safe_dist": null,
+   "hazards": [
+    "blinds the thrower and companions that see the flash `[unverified]`"
+   ]
+  },
+  "gravity": {
+   "area": "Radius from the part: the grenade implodes and pulls creatures toward the centre with Force and ForceDropoff (GravityGrenade.DoDetonate: Fall, Accelerate; needs usable reality distortion), `[verified in code]`.",
+   "min_safe_dist": null,
+   "hazards": [
+    "pulls the thrower and companions in too if they are inside the radius",
+    "fails where reality distortion is stabilized (a normality gas cloud, the Ontological Anchor)"
+   ]
+  },
+  "sunder": {
+   "area": "Radius 3 from the part: SunderGrenade.DoDetonate calls Disintegrate (it destroys things in the radius; the effect on creatures and walls is unknown), `[verified in code]` for the call, `[unverified]` for the effect.",
+   "min_safe_dist": 5,
+   "hazards": [
+    "could destroy the thrower's own items or walls nearby `[unverified]`"
+   ]
+  },
+  "time_dilation": {
+   "area": "A time-dilation field (TimeDilationGrenade.DoDetonate calls ApplyField with Range and Level), `[verified in code]`; the effect is the Time Dilation mutation's: affected creatures act on a different clock `[unverified]`.",
+   "min_safe_dist": null,
+   "hazards": [
+    "slows or speeds whoever is inside, which may include him `[unverified]`"
+   ]
+  },
+  "phase": {
+   "area": "Radius 2: creatures in the adjacent cells are phased out of the world for the duration (PhaseGrenade.DoDetonate: ForceApplyEffect), needs usable reality distortion, `[verified in code]`.",
+   "min_safe_dist": 4,
+   "hazards": [
+    "a phased creature cannot be hit, and cannot hit; the thrower may be phased too"
+   ]
+  },
+  "deployment": {
+   "area": "Places objects around the thrown cell within Radius: microturrets loyal to the thrower for the fire support grenade, a stasis field for the stasis grenade (DeploymentGrenade: Blueprint, Count, Radius, Duration), `[verified in code]`.",
+   "min_safe_dist": null,
+   "hazards": [
+    "a stasis field freezes everything inside it, the thrower included if close",
+    "microturrets are loyal to the thrower: an ally"
+   ]
+  }
+ },
+ "gases": {
+  "AcidGas": "damages creatures and their equipment with acid each turn (not items lying on the ground: ExcludeTag Item); the wiki lists corrosive gas as seeping through walls but the XML sets no Seeping `[conflict, unverified]`",
+  "PoisonGas": "poisons creatures that breathe (a respiration gas) and damages them",
+  "SleepGas": "puts creatures that breathe to sleep (involuntary sleep, a save against density)",
+  "StunGas": "stuns creatures that breathe",
+  "DefoliantGas": "damages live plants, photosynthetic skin, and plant-based equipment and cybernetics; seeps through walls; harmless to most creatures",
+  "FungicideGas": "damages live fungi and fungal infections; seeps through walls",
+  "NormalityGas": "stabilizes reality: damages entropic and extradimensional creatures and blocks reality-distortion abilities in the cloud (teleporting, phasing, gravity grenades); seeps through walls",
+  "GlitterGas": "glittering dust that refracts light (light-based attacks scatter); no damage",
+  "Plasma": "damages with plasma and coats in plasma (heat); seeps through walls; creatures take a hundredth of the item damage",
+  "ConfusionGas": "confuses creatures that breathe"
+ },
+ "grenades": {
+  "AcidGasGrenade1": {
+   "kind": "gas",
+   "mark": 1,
+   "tier": 1,
+   "display": "acid gas grenade mk I",
+   "params": {
+    "Density": "40",
+    "GasObject": "AcidGas"
+   },
+   "gas": "AcidGas",
+   "gas_effect": "damages creatures and their equipment with acid each turn (not items lying on the ground: ExcludeTag Item); the wiki lists corrosive gas as seeping through walls but the XML sets no Seeping `[conflict, unverified]`"
+  },
+  "AcidGasGrenade2": {
+   "kind": "gas",
+   "mark": 2,
+   "tier": 3,
+   "display": "acid gas grenade mk II",
+   "params": {
+    "Density": "80",
+    "GasObject": "AcidGas"
+   },
+   "gas": "AcidGas",
+   "gas_effect": "damages creatures and their equipment with acid each turn (not items lying on the ground: ExcludeTag Item); the wiki lists corrosive gas as seeping through walls but the XML sets no Seeping `[conflict, unverified]`"
+  },
+  "AcidGasGrenade3": {
+   "kind": "gas",
+   "mark": 3,
+   "tier": 5,
+   "display": "acid gas grenade mk III",
+   "params": {
+    "Density": "120",
+    "GasObject": "AcidGas"
+   },
+   "gas": "AcidGas",
+   "gas_effect": "damages creatures and their equipment with acid each turn (not items lying on the ground: ExcludeTag Item); the wiki lists corrosive gas as seeping through walls but the XML sets no Seeping `[conflict, unverified]`"
+  },
+  "ColdGrenade1": {
+   "kind": "thermal",
+   "mark": 1,
+   "tier": 1,
+   "display": "freeze grenade mk I",
+   "params": {
+    "TemperatureDelta": "-400"
+   }
+  },
+  "ColdGrenade2": {
+   "kind": "thermal",
+   "mark": 2,
+   "tier": 3,
+   "display": "freeze grenade mk II",
+   "params": {
+    "TemperatureDelta": "-2000"
+   }
+  },
+  "ColdGrenade3": {
+   "kind": "thermal",
+   "mark": 3,
+   "tier": 5,
+   "display": "freeze grenade mk III",
+   "params": {
+    "TemperatureDelta": "-6000"
+   }
+  },
+  "DefoliantGrenade1": {
+   "kind": "gas",
+   "mark": 1,
+   "tier": 1,
+   "display": "defoliant grenade mk I",
+   "params": {
+    "Density": "200",
+    "GasObject": "DefoliantGas"
+   },
+   "gas": "DefoliantGas",
+   "gas_effect": "damages live plants, photosynthetic skin, and plant-based equipment and cybernetics; seeps through walls; harmless to most creatures"
+  },
+  "DefoliantGrenade2": {
+   "kind": "gas",
+   "mark": 2,
+   "tier": 3,
+   "display": "defoliant grenade mk II",
+   "params": {
+    "Density": "400",
+    "GasObject": "DefoliantGas"
+   },
+   "gas": "DefoliantGas",
+   "gas_effect": "damages live plants, photosynthetic skin, and plant-based equipment and cybernetics; seeps through walls; harmless to most creatures"
+  },
+  "DefoliantGrenade3": {
+   "kind": "gas",
+   "mark": 3,
+   "tier": 5,
+   "display": "defoliant grenade mk III",
+   "params": {
+    "Density": "800",
+    "GasObject": "DefoliantGas"
+   },
+   "gas": "DefoliantGas",
+   "gas_effect": "damages live plants, photosynthetic skin, and plant-based equipment and cybernetics; seeps through walls; harmless to most creatures"
+  },
+  "EMPGrenade1": {
+   "kind": "emp",
+   "mark": 1,
+   "tier": 1,
+   "display": "EMP grenade mk I",
+   "params": {
+    "Radius": "2",
+    "Duration": "1d2+4"
+   }
+  },
+  "EMPGrenade2": {
+   "kind": "emp",
+   "mark": 2,
+   "tier": 3,
+   "display": "EMP grenade mk II",
+   "params": {
+    "Radius": "4",
+    "Duration": "2d2+5"
+   }
+  },
+  "EMPGrenade3": {
+   "kind": "emp",
+   "mark": 3,
+   "tier": 5,
+   "display": "EMP grenade mk III",
+   "params": {
+    "Radius": "6",
+    "Duration": "3d2+6"
+   }
+  },
+  "FireSupportGrenade1": {
+   "kind": "deployment",
+   "mark": 1,
+   "tier": 2,
+   "display": "spring-turret grenade mk I",
+   "params": {
+    "Blueprint": "Microturret",
+    "Count": "1",
+    "Radius": "2",
+    "RealRadius": "true",
+    "LoyalToThrower": "true",
+    "ActivationVerb": "deploy",
+    "BlockedBySolid": "true",
+    "BlockedByNonEmpty": "true",
+    "DustPuff": "true",
+    "DustPuffEach": "true"
+   }
+  },
+  "FireSupportGrenade2": {
+   "kind": "deployment",
+   "mark": 2,
+   "tier": 4,
+   "display": "spring-turret grenade mk II",
+   "params": {
+    "Blueprint": "Microturret",
+    "Count": "2",
+    "Radius": "2",
+    "RealRadius": "true",
+    "LoyalToThrower": "true",
+    "ActivationVerb": "deploy",
+    "BlockedBySolid": "true",
+    "BlockedByNonEmpty": "true",
+    "DustPuff": "true",
+    "DustPuffEach": "true"
+   }
+  },
+  "FireSupportGrenade3": {
+   "kind": "deployment",
+   "mark": 3,
+   "tier": 6,
+   "display": "spring-turret grenade mk III",
+   "params": {
+    "Blueprint": "Microturret",
+    "Count": "3",
+    "Radius": "2",
+    "RealRadius": "true",
+    "LoyalToThrower": "true",
+    "ActivationVerb": "deploy",
+    "BlockedBySolid": "true",
+    "BlockedByNonEmpty": "true",
+    "DustPuff": "true",
+    "DustPuffEach": "true"
+   }
+  },
+  "FlashbangGrenade1": {
+   "kind": "flashbang",
+   "mark": 1,
+   "tier": 1,
+   "display": "flashbang grenade mk I",
+   "params": {
+    "Radius": "2",
+    "Duration": "1d4+4"
+   }
+  },
+  "FlashbangGrenade2": {
+   "kind": "flashbang",
+   "mark": 2,
+   "tier": 3,
+   "display": "flashbang grenade mk II",
+   "params": {
+    "Radius": "3",
+    "Duration": "2d4+4"
+   }
+  },
+  "FlashbangGrenade3": {
+   "kind": "flashbang",
+   "mark": 3,
+   "tier": 5,
+   "display": "flashbang grenade mk III",
+   "params": {
+    "Radius": "4",
+    "Duration": "3d4+4"
+   }
+  },
+  "FungicideGrenade1": {
+   "kind": "gas",
+   "mark": 1,
+   "tier": 1,
+   "display": "fungicide grenade mk I",
+   "params": {
+    "Density": "200",
+    "GasObject": "FungicideGas"
+   },
+   "gas": "FungicideGas",
+   "gas_effect": "damages live fungi and fungal infections; seeps through walls"
+  },
+  "FungicideGrenade2": {
+   "kind": "gas",
+   "mark": 2,
+   "tier": 3,
+   "display": "fungicide grenade mk II",
+   "params": {
+    "Density": "400",
+    "GasObject": "FungicideGas"
+   },
+   "gas": "FungicideGas",
+   "gas_effect": "damages live fungi and fungal infections; seeps through walls"
+  },
+  "FungicideGrenade3": {
+   "kind": "gas",
+   "mark": 3,
+   "tier": 5,
+   "display": "fungicide grenade mk III",
+   "params": {
+    "Density": "800",
+    "GasObject": "FungicideGas"
+   },
+   "gas": "FungicideGas",
+   "gas_effect": "damages live fungi and fungal infections; seeps through walls"
+  },
+  "GlitterGrenade1": {
+   "kind": "gas",
+   "mark": 1,
+   "tier": 3,
+   "display": "glitter grenade mk I",
+   "params": {
+    "Density": "200",
+    "GasObject": "GlitterGas"
+   },
+   "gas": "GlitterGas",
+   "gas_effect": "glittering dust that refracts light (light-based attacks scatter); no damage"
+  },
+  "GlitterGrenade2": {
+   "kind": "gas",
+   "mark": 2,
+   "tier": 5,
+   "display": "glitter grenade mk II",
+   "params": {
+    "Density": "400",
+    "GasObject": "GlitterGas"
+   },
+   "gas": "GlitterGas",
+   "gas_effect": "glittering dust that refracts light (light-based attacks scatter); no damage"
+  },
+  "GlitterGrenade3": {
+   "kind": "gas",
+   "mark": 3,
+   "tier": 7,
+   "display": "glitter grenade mk III",
+   "params": {
+    "Density": "800",
+    "GasObject": "GlitterGas"
+   },
+   "gas": "GlitterGas",
+   "gas_effect": "glittering dust that refracts light (light-based attacks scatter); no damage"
+  },
+  "GravityGrenade1": {
+   "kind": "gravity",
+   "mark": 1,
+   "tier": 4,
+   "display": "gravity grenade mk I",
+   "params": {
+    "Force": "4000",
+    "Radius": "4",
+    "ForceDropoff": "750"
+   }
+  },
+  "GravityGrenade2": {
+   "kind": "gravity",
+   "mark": 2,
+   "tier": 6,
+   "display": "gravity grenade mk II",
+   "params": {
+    "Force": "8000",
+    "Radius": "5",
+    "ForceDropoff": "1250"
+   }
+  },
+  "GravityGrenade3": {
+   "kind": "gravity",
+   "mark": 3,
+   "tier": 8,
+   "display": "gravity grenade mk III",
+   "params": {
+    "Force": "17500",
+    "Radius": "6",
+    "ForceDropoff": "2000"
+   }
+  },
+  "HEGrenade1": {
+   "kind": "he",
+   "mark": 1,
+   "tier": 1,
+   "display": "high explosive grenade mk I",
+   "params": {
+    "Force": "2000",
+    "Damage": "4d6"
+   }
+  },
+  "HEGrenade2": {
+   "kind": "he",
+   "mark": 2,
+   "tier": 3,
+   "display": "high explosive grenade mk II",
+   "params": {
+    "Force": "7000",
+    "Damage": "5d6"
+   }
+  },
+  "HEGrenade3": {
+   "kind": "he",
+   "mark": 3,
+   "tier": 5,
+   "display": "high explosive grenade mk III",
+   "params": {
+    "Force": "15000",
+    "Damage": "6d6"
+   }
+  },
+  "HandENuke": {
+   "kind": "he",
+   "mark": 3,
+   "tier": 8,
+   "display": "Hand-E-Nuke",
+   "params": {
+    "Force": "10000000"
+   }
+  },
+  "HeatGrenade1": {
+   "kind": "thermal",
+   "mark": 1,
+   "tier": 1,
+   "display": "thermal grenade mk I",
+   "params": {
+    "TemperatureDelta": "500"
+   }
+  },
+  "HeatGrenade2": {
+   "kind": "thermal",
+   "mark": 2,
+   "tier": 3,
+   "display": "thermal grenade mk II",
+   "params": {
+    "TemperatureDelta": "1000"
+   }
+  },
+  "HeatGrenade3": {
+   "kind": "thermal",
+   "mark": 3,
+   "tier": 5,
+   "display": "thermal grenade mk III",
+   "params": {
+    "TemperatureDelta": "2000"
+   }
+  },
+  "NormalityGasGrenade1": {
+   "kind": "gas",
+   "mark": 1,
+   "tier": 2,
+   "display": "normality gas grenade mk I",
+   "params": {
+    "Density": "40",
+    "GasObject": "NormalityGas"
+   },
+   "gas": "NormalityGas",
+   "gas_effect": "stabilizes reality: damages entropic and extradimensional creatures and blocks reality-distortion abilities in the cloud (teleporting, phasing, gravity grenades); seeps through walls"
+  },
+  "NormalityGasGrenade2": {
+   "kind": "gas",
+   "mark": 2,
+   "tier": 4,
+   "display": "normality gas grenade mk II",
+   "params": {
+    "Density": "80",
+    "GasObject": "NormalityGas"
+   },
+   "gas": "NormalityGas",
+   "gas_effect": "stabilizes reality: damages entropic and extradimensional creatures and blocks reality-distortion abilities in the cloud (teleporting, phasing, gravity grenades); seeps through walls"
+  },
+  "NormalityGasGrenade3": {
+   "kind": "gas",
+   "mark": 3,
+   "tier": 6,
+   "display": "normality gas grenade mk III",
+   "params": {
+    "Density": "120",
+    "GasObject": "NormalityGas"
+   },
+   "gas": "NormalityGas",
+   "gas_effect": "stabilizes reality: damages entropic and extradimensional creatures and blocks reality-distortion abilities in the cloud (teleporting, phasing, gravity grenades); seeps through walls"
+  },
+  "PhaseGrenade1": {
+   "kind": "phase",
+   "mark": 1,
+   "tier": 6,
+   "display": "phase shift grenade mk I",
+   "params": {
+    "Radius": "2",
+    "Duration": "10-12"
+   }
+  },
+  "PlasmaGrenade1": {
+   "kind": "gas",
+   "mark": 1,
+   "tier": 3,
+   "display": "plasma grenade mk I",
+   "params": {
+    "Density": "40",
+    "GasObject": "Plasma",
+    "Level": "10"
+   },
+   "gas": "Plasma",
+   "gas_effect": "damages with plasma and coats in plasma (heat); seeps through walls; creatures take a hundredth of the item damage"
+  },
+  "PlasmaGrenade2": {
+   "kind": "gas",
+   "mark": 2,
+   "tier": 5,
+   "display": "plasma grenade mk II",
+   "params": {
+    "Density": "80",
+    "GasObject": "Plasma",
+    "Level": "10"
+   },
+   "gas": "Plasma",
+   "gas_effect": "damages with plasma and coats in plasma (heat); seeps through walls; creatures take a hundredth of the item damage"
+  },
+  "PlasmaGrenade3": {
+   "kind": "gas",
+   "mark": 3,
+   "tier": 7,
+   "display": "plasma grenade mk III",
+   "params": {
+    "Density": "120",
+    "GasObject": "Plasma",
+    "Level": "10"
+   },
+   "gas": "Plasma",
+   "gas_effect": "damages with plasma and coats in plasma (heat); seeps through walls; creatures take a hundredth of the item damage"
+  },
+  "PoisonGasGrenade1": {
+   "kind": "gas",
+   "mark": 1,
+   "tier": 1,
+   "display": "poison gas grenade mk I",
+   "params": {
+    "Density": "40",
+    "GasObject": "PoisonGas"
+   },
+   "gas": "PoisonGas",
+   "gas_effect": "poisons creatures that breathe (a respiration gas) and damages them"
+  },
+  "PoisonGasGrenade2": {
+   "kind": "gas",
+   "mark": 2,
+   "tier": 3,
+   "display": "poison gas grenade mk II",
+   "params": {
+    "Density": "80",
+    "GasObject": "PoisonGas"
+   },
+   "gas": "PoisonGas",
+   "gas_effect": "poisons creatures that breathe (a respiration gas) and damages them"
+  },
+  "PoisonGasGrenade3": {
+   "kind": "gas",
+   "mark": 3,
+   "tier": 5,
+   "display": "poison gas grenade mk III",
+   "params": {
+    "Density": "120",
+    "GasObject": "PoisonGas"
+   },
+   "gas": "PoisonGas",
+   "gas_effect": "poisons creatures that breathe (a respiration gas) and damages them"
+  },
+  "SleepGasGrenade1": {
+   "kind": "gas",
+   "mark": 1,
+   "tier": 1,
+   "display": "sleep gas grenade mk I",
+   "params": {
+    "Density": "40",
+    "GasObject": "SleepGas"
+   },
+   "gas": "SleepGas",
+   "gas_effect": "puts creatures that breathe to sleep (involuntary sleep, a save against density)"
+  },
+  "SleepGasGrenade2": {
+   "kind": "gas",
+   "mark": 2,
+   "tier": 3,
+   "display": "sleep gas grenade mk II",
+   "params": {
+    "Density": "80",
+    "GasObject": "SleepGas"
+   },
+   "gas": "SleepGas",
+   "gas_effect": "puts creatures that breathe to sleep (involuntary sleep, a save against density)"
+  },
+  "SleepGasGrenade3": {
+   "kind": "gas",
+   "mark": 3,
+   "tier": 5,
+   "display": "sleep gas grenade mk III",
+   "params": {
+    "Density": "120",
+    "GasObject": "SleepGas"
+   },
+   "gas": "SleepGas",
+   "gas_effect": "puts creatures that breathe to sleep (involuntary sleep, a save against density)"
+  },
+  "StasisGrenade1": {
+   "kind": "deployment",
+   "mark": 1,
+   "tier": 2,
+   "display": "stasis grenade mk I",
+   "params": {
+    "Blueprint": "Stasisfield",
+    "Radius": "1",
+    "Duration": "1d3+3",
+    "ActivationVerb": "detonate",
+    "BlockedBySolid": "false",
+    "BlockedByNonEmpty": "false",
+    "DustPuff": "false",
+    "DustPuffEach": "false",
+    "IsRealityDistortionBased": "true"
+   }
+  },
+  "StasisGrenade2": {
+   "kind": "deployment",
+   "mark": 2,
+   "tier": 4,
+   "display": "stasis grenade mk II",
+   "params": {
+    "Blueprint": "Stasisfield",
+    "Radius": "1",
+    "Duration": "2d3+3",
+    "ActivationVerb": "detonate",
+    "BlockedBySolid": "false",
+    "BlockedByNonEmpty": "false",
+    "DustPuff": "false",
+    "DustPuffEach": "false",
+    "IsRealityDistortionBased": "true"
+   }
+  },
+  "StasisGrenade3": {
+   "kind": "deployment",
+   "mark": 3,
+   "tier": 6,
+   "display": "stasis grenade mk III",
+   "params": {
+    "Blueprint": "Stasisfield",
+    "Radius": "1",
+    "Duration": "3d3+3",
+    "ActivationVerb": "detonate",
+    "BlockedBySolid": "false",
+    "BlockedByNonEmpty": "false",
+    "DustPuff": "false",
+    "DustPuffEach": "false",
+    "IsRealityDistortionBased": "true"
+   }
+  },
+  "StunGasGrenade1": {
+   "kind": "gas",
+   "mark": 1,
+   "tier": 1,
+   "display": "stun gas grenade mk I",
+   "params": {
+    "Density": "40",
+    "GasObject": "StunGas"
+   },
+   "gas": "StunGas",
+   "gas_effect": "stuns creatures that breathe"
+  },
+  "StunGasGrenade2": {
+   "kind": "gas",
+   "mark": 2,
+   "tier": 3,
+   "display": "stun gas grenade mk II",
+   "params": {
+    "Density": "80",
+    "GasObject": "StunGas"
+   },
+   "gas": "StunGas",
+   "gas_effect": "stuns creatures that breathe"
+  },
+  "StunGasGrenade3": {
+   "kind": "gas",
+   "mark": 3,
+   "tier": 5,
+   "display": "stun gas grenade mk III",
+   "params": {
+    "Density": "120",
+    "GasObject": "StunGas"
+   },
+   "gas": "StunGas",
+   "gas_effect": "stuns creatures that breathe"
+  },
+  "SunderGrenade1": {
+   "kind": "sunder",
+   "mark": 1,
+   "tier": 2,
+   "display": "resonance grenade mk I",
+   "params": {
+    "Radius": "3",
+    "Level": "2"
+   }
+  },
+  "SunderGrenade2": {
+   "kind": "sunder",
+   "mark": 2,
+   "tier": 4,
+   "display": "resonance grenade mk II",
+   "params": {
+    "Radius": "3",
+    "Level": "4"
+   }
+  },
+  "SunderGrenade3": {
+   "kind": "sunder",
+   "mark": 3,
+   "tier": 6,
+   "display": "resonance grenade mk III",
+   "params": {
+    "Radius": "3",
+    "Level": "6"
+   }
+  },
+  "TimeDilationGrenade1": {
+   "kind": "time_dilation",
+   "mark": 1,
+   "tier": 2,
+   "display": "time dilation grenade mk I",
+   "params": {
+    "Level": "3"
+   }
+  },
+  "TimeDilationGrenade2": {
+   "kind": "time_dilation",
+   "mark": 2,
+   "tier": 4,
+   "display": "time dilation grenade mk II",
+   "params": {
+    "Level": "5"
+   }
+  },
+  "TimeDilationGrenade3": {
+   "kind": "time_dilation",
+   "mark": 3,
+   "tier": 6,
+   "display": "time dilation grenade mk III",
+   "params": {
+    "Level": "8"
+   }
+  }
+ }
+}
