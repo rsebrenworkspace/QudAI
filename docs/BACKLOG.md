@@ -260,12 +260,18 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Ideas:** while `bleeding` and HP is falling, WAIT and REST are never chosen: heal (tonics, medicine, a salve) if any, else fight the engulfer or leave; while `engulfed by X`, attack from inside or use whatever banishes it; export the engulfer. **Unknown `[unknown]`:** how the engine ends an engulf and a bleed (killing the engulfer? time? healing items?), and whether he carries any healing item.
 - **Size (my guess):** research small, rule small.
 
-### B28. FIRE_MISSILE does nothing for a Gunslinger with the abilities hidden (found 2026-10-10 in the rooted-hazard test; not promoted)
+### B27. Proselytize as a hazard and hunter answer for Esper builds (found 2026-10-10 in the engulf test capture; not promoted)
+- **What happened `[verified in the capture, 2026-10-10]`:** a level 3 Esper (Clairvoyant Thrallmaster) stood next to a wished red death dacca (level 24). The Proselytize fallback in `brain.py` (the "Fallback ... Proselytizing adjacent" branches) fired first, then Stunning Force; the dacca never engulfed him and he walked off at 25/25 HP. This also meant the engulf escape (B26) was not exercised.
+- **Idea:** for Esper builds, Proselytize may turn a dangerous adjacent creature (a rooted hazard, perhaps a psychic hunter or thrall) into a pet instead of a killer. **Unknown `[unknown]`:** whether the dacca actually became a pet or only stopped acting (check its faction), the success chance against a level 24 target, the cost, and whether it works on psychic hunters.
+- **Depends on:** a Proselytize-capable build; B25 (hunters), the rooted-plant rule. **Size (my guess):** research small, rule small.
+
+### B28. FIRE_MISSILE did nothing for a revolver user: the hard-coded skill "Rifle" (found 2026-10-10 in the rooted-hazard test; fixed on `fix/missile-diag`, awaiting a game check; not promoted)
 - **What happened `[verified in the live trace and state]`:** a Mutated Human Gunslinger (two revolvers, 6 slugs each, Akimbo and Force Bubble) with the test switch hiding abilities repeated `FIRE_MISSILE@43,12` at a dacca 6 tiles away for ten turns; `missile_ammo` stayed 6/6, so no shot left the guns, and no mod log line explained it (`ExecuteMissileFire` returns silently on an empty-ammo or missing-weapon branch, and the handler then burns the turn).
 - **Hypothesis (the human):** the class fires through its Akimbo ability and the test switch hid it. `[unverified]` The switch only edits the exported ability list, so the C# should still fire; to check, run the same setup with the switch off.
 - **Reproduced with abilities ON (2026-10-10, same character after a restart): still no shot, ammo 6/6, nothing in `Player.log`. Diagnostics added on `fix/missile-diag` (`[QudAI MissileDiag]` lines: entry, target, the engine method called, its return value and the loaded ammo before and after). **Cause found `[verified in game 2026-10-10 and in code]`: the diagnostics showed the engine call returning False with ammo unchanged; `Combat.FireMissileWeapon` filters the equipped missile weapons by its `skill` argument and fails with "You do not have an appropriate missile weapon equipped!" when none match, and the mod passed a hard-coded "Rifle" to a character with revolvers. Fixed: the skill is now the first loaded weapon's own `MissileWeapon.Skill` (`EquippedMissileSkill`). Unverified in game.**
 - **Related, fixed (issue 127):** this character was detected as an Esper (Force Bubble counted as a mental mutation) and levelled Ego.
 - **Size (my guess):** small once reproduced; R4 says every command should cost a turn only if it did something.
+
 
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.
