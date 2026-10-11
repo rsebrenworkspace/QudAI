@@ -535,6 +535,7 @@ def filter_corpse_burners(game_state, abilities, hostiles, hp_ratio):
 # and he is still within BORDER_RETREAT_RADIUS of the border he just came through, he goes back, and the exit that leads into that zone is
 # written off (FAILED_ZONE_EXITS) so the exit chooser does not walk him straight back in. Stairs, when known, are used first (is_overwhelmed).
 BORDER_RETREAT_RADIUS = 6
+BORDER_RETREAT_ADJACENT_MAX_STEPS = 2   # steps from the border at most, to retreat with a mobile hostile adjacent
 OPPOSITE_DIR = {"N": "S", "S": "N", "E": "W", "W": "E"}
 
 
@@ -606,6 +607,12 @@ def border_retreat_decision(game_state, zone_id, cur_pos, enemies):
     rev = entry["reverse_dir"]
     px, py = cur_pos
     on_border = (rev == "W" and px == 0) or (rev == "E" and px == 79) or (rev == "N" and py == 0) or (rev == "S" and py == 24)
+    # A mobile hostile already adjacent bites on every step of the walk back (the Firefrond run 2026-10-10: five steps from the border with a croc at his heels, HP 19 to 0 in eight
+    # turns without one attack). Beyond BORDER_RETREAT_ADJACENT_MAX_STEPS the retreat is not offered; the guards and the fight rules decide.
+    steps_to_border = {"W": px, "E": 79 - px, "N": py, "S": 24 - py}.get(rev, 0)
+    if not on_border and steps_to_border > BORDER_RETREAT_ADJACENT_MAX_STEPS and any(
+            e.get("dist") == 1 and not e.get("is_stationary") and not e.get("is_companion") and e.get("has_los") is not False and e.get("is_enemy", True) for e in enemies):
+        return None
     from_zone = entry.get("from_zone")
     if swarm:
         # NOT written into FAILED_ZONE_EXITS, which never lapses: the zone is flagged in the ledger instead, and the flag ends on a level gain, a gear upgrade or time.
@@ -2627,6 +2634,27 @@ def is_ignorable_stationary_enemy(e):
     return False
 
 
+def action_target(action, enemies, px, py):
+    """The enemy an attack action is aimed at: the one at `@x,y`, else the nearest one in the action's direction, else the nearest. `enemies` is sorted by difficulty, so enemies[0]
+    is the HARDEST, not the nearest (the Firefrond run 2026-10-10: a far occluded voider was `enemies[0]`, so every ray was redirected to walk toward it while a croc bit him)."""
+    if not enemies:
+        return None
+    near = sorted(enemies, key=lambda e: (e.get("dist") if e.get("dist") is not None else 99))
+    m = re.search(r"@(\d+),(\d+)", action or "")
+    if m:
+        x, y = int(m.group(1)), int(m.group(2))
+        for e in near:
+            if e.get("tx") == x and e.get("ty") == y:
+                return e
+    parts = (action or "").split(":")
+    if action.startswith("USE_ABILITY:") and len(parts) >= 3:
+        d = parts[2].split("@")[0].strip()
+        for e in near:
+            if e.get("dir") == d:
+                return e
+    return near[0]
+
+
 # Model lab hook (HANDOFF issue 65): when tools/model_lab.py sets this to a dict, query_llm_decision records what it offered and what came back.
 LLM_PROBE = None
 
@@ -3114,7 +3142,7 @@ VALID ACTIONS:
             if action.startswith("USE_ABILITY:") and enemies:
                 ab_cmd = action.split(":")[1].strip()
                 if ":" not in action[12:]:
-                    closest = enemies[0]
+                    closest = action_target(action, enemies, px, py)
                     closest_dir = closest.get("dir")
                     if not closest_dir:
                         closest_dir = get_step_direction((px, py), (closest.get("tx", px), closest.get("ty", py)))
@@ -3126,7 +3154,7 @@ VALID ACTIONS:
             if enemies:
                 is_beam_or_missile = action.startswith("FIRE_MISSILE") or action.startswith("THROW_ITEM") or any(b in action.lower() for b in ["lase", "flaming", "freezing", "spit"])
                 if is_beam_or_missile:
-                    closest = enemies[0]
+                    closest = action_target(action, enemies, px, py)
                     ctx = closest.get("tx", px)
                     cty = closest.get("ty", py)
                     clear, reason = is_line_of_fire_clear((px, py), (ctx, cty), companions=companions, blocked_set=blocked_coords, target_entity=closest, surroundings=surroundings)

@@ -300,5 +300,11 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Plan:** one build per test cycle, a fresh character each; check the template in the console, the level-up path, and that the signature abilities and weapons are used; build the three missing templates first.
 - **Size (my guess):** large; each build is its own small project.
 
+### B31. Firefrond's first run: never used Flaming Ray, a HARVEST loop, and the croc (found 2026-10-10 in the capture `Firefrond_Test_1`; the first two fixes built, the rest not promoted)
+- **What happened `[verified in the capture]`:** a level 1 Firefrond (20 HP) died to a croc without a single attack (`CommandFlamingRay` appears 0 times in the trace although it was ready at the end). In the last 9 turns (`t242-250`) the decisions alternated between a "Danger retreat" walk to the south border (five steps away, the croc adjacent) and the model's moves "to establish line of sight" on a far, occluded voider (Impossible, 12 tiles), HP 19 to 2, positions flipping between two cells.
+- **Built (issue 132, Test 148, on `fix/firefrond-death`):** (1) the line-of-fire guard and the auto-direction aimed every ray at `enemies[0]`, which is the HARDEST enemy (the list is sorted by difficulty), so with a voider in the list every ray became a walk toward the voider; now `action_target` picks the enemy the action names, else the nearest. (2) `border_retreat_decision` is not offered more than two steps from the border while a mobile hostile is adjacent (the walk costs a bite per step).
+- **Not built:** (a) why the model never chose Flaming Ray at point blank (the prompt is dominated by the hardest enemy; the deterministic `fallback_melee` has a point-blank ray but the model path runs first); (b) the HARVEST loop: `HARVEST` repeats twice at a spot and the Loop Breaker moves him a step, about ten times in this run (`t208-226`), spending turns without effect `[unverified why it does nothing]`; (c) the croc was rated Impossible at one point and Average in the last state: the rating may move with his HP.
+- **Size (my guess):** (a) small, (b) small, (c) research.
+
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.

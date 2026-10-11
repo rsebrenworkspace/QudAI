@@ -7007,3 +7007,26 @@ assert build_templates.BUILD_TEMPLATES["first_gardener"]["genotype"] == "True Ki
 _bsrc147 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 assert '"classic_punchkin", "firefrond", "bzzzt")' in _bsrc147
 print("  [OK] Test 147 Passed: the nine in-game pregens map to the right templates (First Gardener, Firefrond and bzzzt have their own; the Gunwing, Esper, Marauder, Tortoise, Punchkin and Praetorian are unchanged), every skill they list exists, and Uncle Iroh and a plain Watervine Farmer are not stolen")
+
+
+# Test 148: a ray is aimed at the nearest enemy, not the hardest, and no long border retreat with a hostile adjacent (human, 2026-10-10: Firefrond died to a croc; BACKLOG B30, HANDOFF issue 132)
+# ---------------------------------------------------------------------------
+_voider148 = {"name": "voider", "dist": 12, "dir": "NE", "tx": 40, "ty": 8, "difficulty": "Impossible", "has_los": False, "is_enemy": True}
+_croc148 = {"name": "croc", "dist": 1, "dir": "W", "tx": 27, "ty": 19, "difficulty": "Average", "has_los": True, "is_enemy": True}
+_sorted148 = [_voider148, _croc148]          # the real order: hardest first
+assert brain.action_target("USE_ABILITY:CommandFlamingRay", _sorted148, 28, 19)["name"] == "croc", "no direction: the nearest, not the hardest"
+assert brain.action_target("USE_ABILITY:CommandFlamingRay:W", _sorted148, 28, 19)["name"] == "croc"
+assert brain.action_target("USE_ABILITY:CommandFlamingRay:NE", _sorted148, 28, 19)["name"] == "voider", "an explicit direction is honoured"
+assert brain.action_target("FIRE_MISSILE@40,8", _sorted148, 28, 19)["name"] == "voider", "an explicit cell is honoured"
+assert brain.action_target("FIRE_MISSILE", [], 28, 19) is None
+_BZ148 = "ZoneB148"
+brain.LAST_ZONE_ENTRY = {"from_zone": "ZoneA148", "to_zone": _BZ148, "entry_pos": (28, 24), "reverse_dir": "S"}
+_imp148 = {"name": "voider", "dist": 4, "dir": "NE", "tx": 31, "ty": 15, "is_enemy": True, "has_los": True, "difficulty": "Impossible"}
+assert brain.border_retreat_decision({}, _BZ148, (28, 19), [_imp148])["action"].startswith("NAVIGATE_ZONE_EXIT"), "nothing adjacent: the retreat stands"
+assert brain.border_retreat_decision({}, _BZ148, (28, 19), [_imp148, _croc148]) is None, "five steps from the border with a croc adjacent: no walk, the fight rules decide"
+assert brain.border_retreat_decision({}, _BZ148, (28, 22), [_imp148, _croc148]) is not None, "two steps from the border: still go"
+assert brain.border_retreat_decision({}, _BZ148, (28, 19), [_imp148, dict(_croc148, is_stationary=True)]) is not None, "a rooted neighbour does not follow him"
+brain.LAST_ZONE_ENTRY = None
+_b148 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert _b148.count("closest = action_target(action, enemies, px, py)") == 2, "both the auto-direction and the line-of-fire guard aim at the action's target"
+print("  [OK] Test 148 Passed: a beam or missile is aimed at the enemy the action names or the nearest (never the hardest one far away), and the border retreat is not offered more than two steps from the border while a mobile hostile is adjacent")
