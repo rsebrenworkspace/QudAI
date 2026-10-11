@@ -1172,22 +1172,60 @@ def gas_grenade_throw_decision(game_state):
         return None
 
 
+GAS_KITE_DIST = 3                 # a hostile this close (but not adjacent) while the cloud works: step away from it, off the gas
+
+
+def _kite_steps(game_state, gas, enemy):
+    """[(distance after, move)] for each valid empty gas-free neighbour that is farther from `enemy` than he is now, farthest first."""
+    px, py = game_state.get("x"), game_state.get("y")
+    surroundings = game_state.get("surroundings") or {}
+    if px is None or py is None or not surroundings:
+        return []
+    ex, ey = enemy["tx"], enemy["ty"]
+    now = max(abs(px - ex), abs(py - ey))
+    occupied = {(e.get("tx"), e.get("ty")) for e in game_state.get("visible_entities") or []}
+    out = []
+    for m in get_valid_moves(surroundings, (px, py), None, is_in_combat=True):
+        dx, dy = CARDINAL_OFFSETS[m[5:]]
+        cell = (px + dx, py + dy)
+        d = max(abs(cell[0] - ex), abs(cell[1] - ey))
+        if cell in occupied or gas.get(cell, 0) > 0 or d <= now:
+            continue
+        out.append((-d, _gas_cost(cell, gas) + 0.5 * visit_counts[cell], m))
+    return [(-d, m) for d, _c, m in sorted(out)]
+
+
+def _wait_over(why):
+    GAS_THROW_STATE["active"] = False
+    print(f"[GRENADE] wait over: {why}")
+    return None
+
+
 def gas_wait_decision(game_state):
-    """PASS while the cloud he threw is working and nothing has reached him, else None (the gas avoidance and the fight rules take over)."""
+    """While the cloud he threw is working: keep away from a hostile that gets within GAS_KITE_DIST (a step away, off the gas) and otherwise PASS. Ends, with the reason printed, when the cloud
+    is gone, a hostile is adjacent or the budget is spent; standing in gas hands over to the avoidance step."""
     try:
         if not GAS_THROW_STATE["active"]:
             return None
         px, py = game_state.get("x"), game_state.get("y")
         gas = harmful_gas(game_state)
         tx, ty = GAS_THROW_STATE["target"] or (px, py)
-        cloud = any(max(abs(x - tx), abs(y - ty)) <= 8 for (x, y) in gas)
-        adjacent = any(e.get("is_enemy") and e.get("dist") == 1 for e in game_state.get("visible_entities") or [])
-        if not cloud or adjacent or GAS_THROW_STATE["waited"] >= GAS_WAIT_MAX:
-            GAS_THROW_STATE["active"] = False
-            return None
+        if not any(max(abs(x - tx), abs(y - ty)) <= 8 for (x, y) in gas):
+            return _wait_over("the gas cloud is gone")
+        hostiles = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_companion") and isinstance(e.get("dist"), (int, float))]
+        if any(e.get("dist") == 1 for e in hostiles):
+            return _wait_over("a hostile is adjacent")
+        if GAS_THROW_STATE["waited"] >= GAS_WAIT_MAX:
+            return _wait_over(f"{GAS_WAIT_MAX} turns")
         if px is not None and gas.get((px, py), 0) > 0:
             return None                        # standing in it: the avoidance step decides
         GAS_THROW_STATE["waited"] += 1
+        close = [e for e in hostiles if e["dist"] <= GAS_KITE_DIST and not e.get("is_stationary") and e.get("tx") is not None and e.get("ty") is not None]
+        if close:
+            nearest = min(close, key=lambda e: e["dist"])
+            steps = _kite_steps(game_state, gas, nearest)
+            if steps:
+                return {"action": steps[0][1], "reason": f"[GRENADE] {nearest.get('name', 'the enemy')} is {nearest['dist']} tiles away while the gas works: stepping away from it, off the gas."}
         return {"action": "PASS", "reason": "[GRENADE] waiting for the gas cloud to work; not walking toward it."}
     except Exception:
         return None
