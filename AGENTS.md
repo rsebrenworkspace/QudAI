@@ -58,6 +58,7 @@ python -m py_compile brain.py build_templates.py chronicler.py skill_database.py
 python dry_run.py        # deterministic, offline: QUDAI_LM_URL=http://127.0.0.1:9/x python dry_run.py (uses a temp exchange dir, never the live game files)
 python tools/check_docs.py
 python -c "t=open(r'mod/QudAIBrain/AIBrainPart.cs',encoding='utf-8').read(); assert t.count('{')==t.count('}'), 'Braces unbalanced'"
+pwsh -NoProfile -File tools/compile_check.ps1   # only if the C# changed: needs PowerShell 7; must print COMPILE OK before deploy
 python sync_mod.py deploy     # only if the C# changed
 ```
 

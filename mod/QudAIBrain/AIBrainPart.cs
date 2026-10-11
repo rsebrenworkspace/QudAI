@@ -1360,6 +1360,7 @@ namespace QudAIBrain
         // the edge, why (`no step` = the engine found no route; `move failed` = the step was refused), the player's cell and neighbours (PathDiagCell legend above), and the whole
         // border row as one character per cell: . passable, W swimming-depth liquid the player may enter, X swimming-depth liquid it may not, w wading-depth liquid, S solid or wall, x other impassable. Never acts, never throws, at most 150 lines per session.
         private static readonly HashSet<string> exitDiagSeen = new HashSet<string>();
+        private static readonly Queue<string> exitStepHistory = new Queue<string>();
 
         private static void LogExitDiag(GameObject player, char edgeChar, string why, string step)
         {
@@ -1423,6 +1424,31 @@ namespace QudAIBrain
         // dangerous open liquid (acid, lava) are never entered. With allowSwim false the same search is dry-only, which tells whether the edge is reachable without swimming. Returns a direction or null.
         private static string SwimExitStep(GameObject player, char edgeChar, bool allowSwim)
         {
+            return RouteStep(player, (ex, ey, ew, eh) => (edgeChar == 'W' && ex == 0) || (edgeChar == 'E' && ex == ew - 1) || (edgeChar == 'N' && ey == 0) || (edgeChar == 'S' && ey == eh - 1), allowSwim);
+        }
+
+        // reachable_edges asks this for every edge the engine cannot reach, every turn; the search is a few million steps, so the answer is kept for 3 seconds per zone and edge.
+        private static readonly Dictionary<string, KeyValuePair<int, bool>> swimEdgeCache = new Dictionary<string, KeyValuePair<int, bool>>();
+        private static bool SwimEdgeReachableCached(GameObject player, char edgeChar)
+        {
+            try
+            {
+                string zid = player?.CurrentCell?.ParentZone?.ZoneID;
+                if (zid == null) return false;
+                string ck = zid + "|" + edgeChar;
+                int now = Environment.TickCount;
+                KeyValuePair<int, bool> hit;
+                if (swimEdgeCache.TryGetValue(ck, out hit) && now - hit.Key < 3000 && now >= hit.Key) return hit.Value;
+                bool ok = !string.IsNullOrEmpty(SwimExitStep(player, edgeChar, true));
+                swimEdgeCache[ck] = new KeyValuePair<int, bool>(now, ok);
+                return ok;
+            }
+            catch { return false; }
+        }
+
+        // The same search for any goal (HANDOFF issue 163: the engine's pathfinders do not swim, so a frontier, a chest or the stairs across a lake came back "no route"). The goal test gets the cell and the zone size.
+        private static string RouteStep(GameObject player, Func<int, int, int, int, bool> goal, bool allowSwim)
+        {
             try
             {
                 Cell pc = player != null ? player.CurrentCell : null;
@@ -1444,7 +1470,7 @@ namespace QudAIBrain
                     if (cur < 0) return null;
                     done[cur] = true;
                     int cx = cur % w, cy = cur / w;
-                    bool onEdge = (edgeChar == 'W' && cx == 0) || (edgeChar == 'E' && cx == w - 1) || (edgeChar == 'N' && cy == 0) || (edgeChar == 'S' && cy == h - 1);
+                    bool onEdge = goal(cx, cy, w, h);
                     if (onEdge && cur != start)
                     {
                         int at = cur;
@@ -2493,6 +2519,10 @@ namespace QudAIBrain
                             if (AutoAct.TryFindEdgeStep(edge, out edgeStep) && !string.IsNullOrEmpty(edgeStep) && edgeStep != ".")
                             {
                                 reachableEdges += edge.ToString();
+                            }
+                            else if (SwimEdgeReachableCached(player, edge))
+                            {
+                                reachableEdges += edge.ToString();      // the navigator can swim there (HANDOFF issue 163): an island is not a sealed room
                             }
                         }
                     }
@@ -3994,6 +4024,18 @@ namespace QudAIBrain
                         if (string.IsNullOrEmpty(step) || step == ".")
                         {
                             LogPathDiag(player, targetCell);      // once per target: why does the engine find no step? (HANDOFF issue 92)
+                            // The engine does not route through deep water: try our own route that may swim (HANDOFF issue 163). A target that cannot be entered (a chest) is reached when he is next to it.
+                            try
+                            {
+                                bool navTargetPassable = targetCell.IsPassable(player, false);
+                                string navCellSwim = RouteStep(player, (rtX, rtY, rtW, rtH) => (rtX == tx && rtY == ty) || (!navTargetPassable && Math.Abs(rtX - tx) <= 1 && Math.Abs(rtY - ty) <= 1), true);
+                                if (!string.IsNullOrEmpty(navCellSwim)) { step = navCellSwim; LogExitDiag(player, 'C', "swim route to cell " + tx + "," + ty, navCellSwim); }
+                            }
+                            catch { }
+                        }
+
+                        if (string.IsNullOrEmpty(step) || step == ".")
+                        {
                             // Check open adjacent cells that reduce distance to targetCell
                             try
                             {
@@ -4219,6 +4261,31 @@ namespace QudAIBrain
                         }
                     }
                 }
+
+                // The engine's edge step can flip between two cells (the Dream Tortoise paced (69,0) and (69,1) for 149 turns, 2026-10-12: its step led along a shore that ends in deep water).
+                // When the same cell has been stood on three times in the last twelve exit steps, our own route (dry first, then swimming) decides instead (HANDOFF issue 163).
+                try
+                {
+                    Cell oscCell = player.CurrentCell;
+                    if (oscCell != null && oscCell.ParentZone != null)
+                    {
+                        string oscKey = oscCell.ParentZone.ZoneID + "|" + edgeChar + "|" + oscCell.X + "," + oscCell.Y;
+                        int oscSeen = exitStepHistory.Count(oscK => oscK == oscKey);
+                        exitStepHistory.Enqueue(oscKey);
+                        while (exitStepHistory.Count > 12) exitStepHistory.Dequeue();
+                        if (oscSeen >= 2)
+                        {
+                            string oscOwn = SwimExitStep(player, edgeChar, false);
+                            if (string.IsNullOrEmpty(oscOwn)) oscOwn = SwimExitStep(player, edgeChar, true);
+                            if (!string.IsNullOrEmpty(oscOwn) && oscOwn != step)
+                            {
+                                LogExitDiag(player, edgeChar, "oscillation override (engine step " + step + ")", oscOwn);
+                                step = oscOwn;
+                            }
+                        }
+                    }
+                }
+                catch { }
 
                 if (!string.IsNullOrEmpty(step) && step != ".")
                 {

@@ -851,6 +851,11 @@ The machine-readable table is `data/grenades.json` (59 grenade blueprints, built
 - **Found because** the human's Esper went from level 1 to level 5 (XP 3000, HP 18 to 31) without a fight after crossing into a new zone and finding a workshop (the zone name read "workshop of Haroq, legendary glover"). The trace shows the autolevel rows (stat plus two skills) right after the crossing into `JoppaWorld.11.21.1.2.10`. The exact marker and its value were not read from the save.
 - **Why it matters:** exploration is a real XP source, so a character that wanders into points of interest levels without fighting, which is a safer route than hunting (compare B40). The brain does not seek these places yet; autoexplore finds them by accident `[unverified]`.
 
+### 14.38 The engine's pathfinders do not swim, and its edge step can lead away from the edge (2026-10-12, `[verified in game 2026-10-12]` from the `[QudAI ExitDiag]` lines of a Dream Tortoise run; the cause inside `TryFindEdgeStep` is `[unverified]`)
+- Zone `JoppaWorld.10.21.2.1.10`: the south border row was `....WWWWWWWWWWWWWW....` (dry cells at both ends, swimming-depth water between) and the character stood on a strip of land at the top of the zone. `AutoAct.TryFindEdgeStep('S')` answered "step N" cell after cell, away from the south edge, along the north shore, and then it flipped between (69,0) and (69,1) for 149 turns; at that point `autoexplore_stuck` was true, `unexplored_cells` 0 and `reachable_edges` empty.
+- So: the engine's route functions (`TryFindPathStep`, `TryFindEdgeStep`, autoexplore) treat deep water as closed, and when the only way on is a lake they can hand back a step that goes nowhere (the same symptom as HANDOFF issue 105). Our own Dijkstra that may swim (`RouteStep`) is the way across; it ignores doors, traps and creatures that the engine route knows about, so it is used as a fallback and as an oscillation override, not as the first choice.
+- Python's own swim handling is only a tie-break (dry move before a swimming move); the real limit was the engine routes.
+
 ---
 *End of Engine Internals Manual.*
 

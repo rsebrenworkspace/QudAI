@@ -7771,3 +7771,14 @@ import ability_registry as _ar174
 assert _ar174.is_wired({"command": "CommandTightenCarapace"}) and _ar174.is_wired({"command": "GasGenerationCommandSleepGas"})
 assert not _ar174.is_wired({"command": "CommandDoesNotExist"})
 print("  [OK] Test 174 Passed: the Dream Tortoise's Tighten and Release Sleep Gas are wired into ability families, so the model sees them in its menu")
+
+# Test 175: the navigator can swim (source check on the C#; HANDOFF issue 163, Dream Tortoise 2026-10-12: the engine's edge step led away along a shore and the engine's pathfinders do not swim)
+# ---------------------------------------------------------------------------
+_cs175 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "private static string RouteStep(GameObject player, Func<int, int, int, int, bool> goal, bool allowSwim)" in _cs175
+assert "return RouteStep(player," in _cs175, "the exit route is a goal of the general router"
+assert "navCellSwim" in _cs175 and "swim route to cell" in _cs175, "NAVIGATE_TO_CELL tries a swimming route when the engine finds no step"
+assert "oscillation override" in _cs175 and "exitStepHistory" in _cs175, "a repeated exit-step cell hands the decision to our own route"
+assert "SwimEdgeReachableCached(player, edge)" in _cs175, "reachable_edges counts edges the navigator can swim to"
+assert _cs175.count("{") == _cs175.count("}"), "braces balanced"
+print("  [OK] Test 175 Passed: the C# has a general swim-capable router; NAVIGATE_TO_CELL falls back to it, NAVIGATE_ZONE_EXIT overrides an oscillating engine step with it, and reachable_edges includes swim-reachable edges (compile and behaviour unverified in game)")
