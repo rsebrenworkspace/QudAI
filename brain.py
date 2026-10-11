@@ -1046,6 +1046,14 @@ def log_item_drop(record):
 # else. Two refusals in a row switch the option off for a while (R4/R5: a command the game keeps refusing must not loop).
 THROW_MIN_DIST = 2
 THROW_MAX_DIST = 7
+GRENADE_MIN_DIST = 4            # a grenade's blast reaches 2-4 tiles (flashbang and EMP radius 2-4, a freeze grenade froze a thrower 2 tiles away: bzzzt_test_1, 2026-10-10)
+
+
+def is_grenade(tw):
+    """True when the exported thrown weapon is a grenade (an area weapon), by blueprint or name."""
+    if not isinstance(tw, dict):
+        return False
+    return "grenade" in str(tw.get("blueprint", "")).lower() or "grenade" in str(tw.get("name", "")).lower()
 THROW_FAIL_LIMIT = 2
 THROW_PAUSE_TURNS = 200
 THROW_CROWD_MIN = 2             # with this many hostiles in view the throw is offered even when one is adjacent (the disc bounces between targets; human, 2026-10-10: "Relax it")
@@ -1075,9 +1083,10 @@ def throw_option(game_state, enemies, adj_threats=None):
     px, py = game_state.get("x"), game_state.get("y")
     if px is None or py is None:
         return None
+    min_dist = GRENADE_MIN_DIST if is_grenade(tw) else THROW_MIN_DIST
     for e in enemies[:3]:
         d = e.get("dist")
-        if e.get("tx") is None or e.get("ty") is None or not isinstance(d, (int, float)) or not (THROW_MIN_DIST <= d <= THROW_MAX_DIST) or e.get("has_los") is False:
+        if e.get("tx") is None or e.get("ty") is None or not isinstance(d, (int, float)) or not (min_dist <= d <= THROW_MAX_DIST) or e.get("has_los") is False:
             continue
         clear, _why = is_line_of_fire_clear((px, py), (e["tx"], e["ty"]), companions=game_state.get("companions", []), target_entity=e, surroundings=game_state.get("surroundings"))
         if clear:
@@ -2652,6 +2661,23 @@ def is_ignorable_stationary_enemy(e):
     return False
 
 
+def repair_bare_ability(action, abilities, enemies, px, py):
+    """The model sometimes answers with an ability NAME ("Proselytize") instead of an action. Actions are upper case or carry a colon; a mixed-case word is a name.
+    Returns the matching `USE_ABILITY:<command>[:<dir>]` when he owns that ability and it is usable, else "" (the caller then falls back to the deterministic logic),
+    and the action unchanged when it is not a bare word (bzzzt_test_1: 'Proselytize' 21 times for a character without it, each answered by a Loop Breaker pass)."""
+    if not re.fullmatch(r"[A-Z][a-z][A-Za-z]*", action or ""):
+        return action
+    want = action.lower()
+    for a in abilities or []:
+        cmd = str(a.get("command", ""))
+        names = {str(a.get("name", "")).lower(), cmd.lower(), cmd.lower().replace("command", "", 1)}
+        if want in names and cmd and a.get("usable", True):
+            near = action_target("", enemies, px, py) if enemies else None
+            d = (near or {}).get("dir")
+            return f"USE_ABILITY:{cmd}:{d}" if d and any(k in cmd.lower() for k in DIRECTIONAL_ABILITIES) else f"USE_ABILITY:{cmd}"
+    return ""
+
+
 def action_target(action, enemies, px, py):
     """The enemy an attack action is aimed at: the one at `@x,y`, else the nearest one in the action's direction, else the nearest. `enemies` is sorted by difficulty, so enemies[0]
     is the HARDEST, not the nearest (the Firefrond run 2026-10-10: a far occluded voider was `enemies[0]`, so every ray was redirected to walk toward it while a croc bit him)."""
@@ -3154,6 +3180,10 @@ VALID ACTIONS:
 
             # Sanitize action (e.g. "MOVE_N (Melee Attack snapjaw)" -> "MOVE_N")
             action = raw_action.split()[0] if raw_action else ""
+            repaired = repair_bare_ability(action, abilities, enemies, px, py)
+            if repaired != action:
+                print(f"[ACTION] The model answered with the bare word '{action}': {'using ' + repaired if repaired else 'not an action he can take, falling back'}")
+                action = repaired
 
             # If the LLM returned a directional ability without a direction (e.g. "USE_ABILITY:CommandLase"),
             # auto-append the closest enemy's direction so the game engine gets the exact vector!

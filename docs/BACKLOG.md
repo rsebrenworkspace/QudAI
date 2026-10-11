@@ -317,6 +317,7 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 ### B33. Grenades and thrown weapons from the pack (found 2026-10-10 in Gardener_Test_1; filed at the human's request, "Yes, file it as B33"; PARKED with the True Kin line, see B35; not promoted)
 - **What exists today `[verified in the live state and code]`:** `thrown_weapon` is null while a grenade sits in the pack: the throw logic (B24 stage 1) sees only a weapon in the thrown-weapon slot, and nothing equips a thrown weapon into an empty slot (the disc earlier was put there by hand). The Horticulturist starts with 2-4 defoliant grenades (`DefoliantGrenade1`) and, in the human's save, acid gas and thermal grenades.
 - **Two pieces:** (1) equip a thrown weapon into the empty thrown slot (the engine's slot prompt now picks a spare hand for a torch, issue 134; the same prompt could carry this); (2) use area grenades safely: acid gas and thermal hurt the thrower and companions at close range, a defoliant kills plants (odd for a plant build), so each needs a range floor, a clear line and no companion near.
+- **First grenade run, bzzzt_test_1 (2026-10-10) `[verified in the capture and the human's screenshot]`:** the brain threw a freeze grenade at a giant amoeba two tiles away (`THROW_ITEM`, distance 2) and froze both of them; the throw log said "hostile hit points 40 -> 40" (a freeze grenade does no damage). **Built (issue 139, Test 153): a grenade is offered only from `GRENADE_MIN_DIST` 4 tiles (the disc still from 2); it is a guess at the blast radius `[unverified]`: flashbang and EMP grenades have radius 2-4 in the XML and the freeze grenade froze a thrower at 2.** Still open: acid gas and fungicide clouds, mines and bombs (Set Bomb, Lay Mine), and companions in the blast.
 - **Unknown `[unknown]`:** the blast radius and fuse of each grenade, whether `PerformThrow` handles them like the disc, and which grenades are worth keeping against the weight they add.
 - **Size (my guess):** medium; research first.
 
@@ -337,6 +338,9 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
   - Starting-kit specifics: the bow and arrows, the gas mask, the bio-scanning bracelet, the pestle and the starting tonics (what each is worth to the brain).
   - Fighting without an ability list: Gardener's escape options are only the border retreat, stairs and the lethal-adjacent guard.
 - **Size (my guess):** large, one project per build.
+
+### B36. A model answer that is not an action (found 2026-10-10 in bzzzt_test_1; fixed in issue 139)
+- **What happened `[verified in the capture]`:** while frozen, the model answered with the bare word "Proselytize" 21 times, for a character that does not have that ability; the mod does not know the word, each answer was undone by a Loop Breaker pass. **Built (Test 153): `repair_bare_ability` turns a bare ability name into the matching `USE_ABILITY:<command>` when he owns it and can use it, and drops it otherwise so the deterministic logic decides.** Not built: skipping the whole decision while he is frozen (the effect did not appear in his effect list, so the brain could not know) `[unverified]`.
 
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.

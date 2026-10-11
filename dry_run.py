@@ -7082,3 +7082,27 @@ _body152 = _c152[_i152:_i152 + 4000]
 assert 'player.HasPart("NightVision")' in _body152, "EnsureLightSource must return early for Night Vision"
 assert _body152.index('player.HasPart("NightVision")') < _body152.index('CommandEquipObject'), "the Night Vision check comes before any torch is equipped"
 print("  [OK] Test 152 Passed: EnsureLightSource returns early when the player has the Night Vision mutation, before it lights or equips any torch (a source check: it runs only in the game)")
+
+
+# Test 153: grenades keep their distance and a bare ability name is not an action (human, 2026-10-10: bzzzt froze himself with a freeze grenade and answered 'Proselytize' 21 times; BACKLOG B33, HANDOFF issue 139)
+# ---------------------------------------------------------------------------
+brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1})
+_gren153 = {"id": "9", "name": "freeze grenade mk I", "blueprint": "ColdGrenade1", "in_thrown_slot": True}
+_disc153 = {"id": "8", "name": "geomagnetic disc", "blueprint": "GeomagneticDisc", "in_thrown_slot": True}
+_en153 = lambda d: [{"name": "giant amoeba", "dist": d, "tx": 50 + d, "ty": 4, "dir": "E", "is_enemy": True, "has_los": True}]
+_st153 = lambda tw: {"x": 50, "y": 4, "thrown_weapon": tw, "companions": [], "surroundings": {}}
+assert brain.is_grenade(_gren153) and not brain.is_grenade(_disc153) and not brain.is_grenade(None)
+assert brain.throw_option(_st153(_gren153), _en153(2)) is None and brain.throw_option(_st153(_gren153), _en153(3)) is None, "a grenade is not thrown inside its blast"
+assert brain.throw_option(_st153(_gren153), _en153(4)) is not None and brain.throw_option(_st153(_gren153), _en153(5)) is not None
+assert brain.throw_option(_st153(_disc153), _en153(2)) is not None, "the disc still goes at 2"
+_ab153 = [{"name": "Discharge [4000 charge]", "command": "CommandDischarge", "usable": True}, {"name": "Spin Webs", "command": "CommandSpinWeb", "usable": True}, {"name": "Sprint", "command": "CommandToggleRunning", "usable": True}]
+_e153 = [{"name": "giant amoeba", "dist": 1, "dir": "W", "tx": 49, "ty": 4}]
+assert brain.repair_bare_ability("Proselytize", _ab153, _e153, 50, 4) == "", "an ability he does not own is not an action"
+assert brain.repair_bare_ability("MOVE_N", _ab153, _e153, 50, 4) == "MOVE_N" and brain.repair_bare_ability("USE_ABILITY:CommandDischarge:W", _ab153, _e153, 50, 4) == "USE_ABILITY:CommandDischarge:W"
+assert brain.repair_bare_ability("FIRE_MISSILE@49,4", _ab153, _e153, 50, 4) == "FIRE_MISSILE@49,4" and brain.repair_bare_ability("WAIT", _ab153, _e153, 50, 4) == "WAIT"
+_rep153 = brain.repair_bare_ability("Sprint", _ab153, _e153, 50, 4)
+assert _rep153.startswith("USE_ABILITY:CommandToggleRunning"), _rep153
+assert brain.repair_bare_ability("Spin Webs", _ab153, _e153, 50, 4) == "Spin Webs", "only a single bare word is repaired"
+assert brain.repair_bare_ability("Proselytize", [{"name": "Proselytize", "command": "CommandProselytize", "usable": False}], _e153, 50, 4) == "", "an unusable ability is not offered either"
+assert brain.repair_bare_ability("Proselytize", [{"name": "Proselytize", "command": "CommandProselytize", "usable": True}], _e153, 50, 4).startswith("USE_ABILITY:CommandProselytize")
+print("  [OK] Test 153 Passed: a grenade is thrown only from 4 tiles or more (the disc still from 2), and a bare ability name from the model becomes the matching USE_ABILITY when he owns and can use it, else it is dropped so the deterministic logic decides")
