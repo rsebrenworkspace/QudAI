@@ -1201,6 +1201,59 @@ def _wait_over(why):
     return None
 
 
+GAS_APPROACH_MAX = 9              # a stuck dangerous target within this many tiles is walked toward until it is at throwing distance (the throw rule takes over at 4-5)
+GAS_APPROACH_BUDGET = 20
+GAS_APPROACH_STATE = {"zone": None, "steps": 0}
+
+
+def gas_approach_decision(game_state):
+    """A MOVE toward a STUCK, dangerous, mobile hostile that is beyond throwing range, while he holds a gas grenade the throw rule would use: the web holds it, so the cloud will stay on it."""
+    try:
+        tw = game_state.get("thrown_weapon")
+        rec = grenade_record(tw)
+        if not isinstance(tw, dict) or not tw.get("in_thrown_slot") or not rec or rec.get("kind") != "gas" or str(rec.get("gas", "")).lower() not in GAS_THROW_OK:
+            return None
+        if throw_blocked_here(game_state) or TURN_CLOCK < THROW_STATE["off_until"]:
+            return None
+        px, py = game_state.get("x"), game_state.get("y")
+        if px is None or py is None:
+            return None
+        max_dist = min(GAS_THROW_RANGE, THROW_STATE.get("max_dist") or GAS_THROW_RANGE)
+        targets = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_companion") and e.get("stuck") and not e.get("is_stationary") and e.get("has_los") is not False
+                   and e.get("difficulty") in ("Tough", "Very Tough", "Impossible") and isinstance(e.get("dist"), (int, float)) and max_dist < e["dist"] <= GAS_APPROACH_MAX
+                   and e.get("tx") is not None and e.get("ty") is not None and not any(w in str(e.get("name", "")).lower() for w in GAS_NOT_BREATHERS)]
+        if not targets:
+            return None
+        zone = game_state.get("zone_id")
+        if GAS_APPROACH_STATE["zone"] != zone:
+            GAS_APPROACH_STATE["zone"], GAS_APPROACH_STATE["steps"] = zone, 0
+        if GAS_APPROACH_STATE["steps"] >= GAS_APPROACH_BUDGET:
+            return None
+        if any(not x.get("stuck") and x.get("is_enemy") and not x.get("is_companion") and isinstance(x.get("dist"), (int, float)) and x["dist"] <= GAS_APPROACH_MAX for x in game_state.get("visible_entities") or []):
+            return None                        # another hostile that is free: not now
+        target = min(targets, key=lambda e: e["dist"])
+        gas = harmful_gas(game_state)
+        ex, ey = target["tx"], target["ty"]
+        surroundings = game_state.get("surroundings") or {}
+        occupied = {(e.get("tx"), e.get("ty")) for e in game_state.get("visible_entities") or []}
+        best = None
+        for m in get_valid_moves(surroundings, (px, py), None, is_in_combat=True):
+            dx, dy = CARDINAL_OFFSETS[m[5:]]
+            cell = (px + dx, py + dy)
+            cheb = max(abs(cell[0] - ex), abs(cell[1] - ey))
+            if cell in occupied or gas.get(cell, 0) > 0 or cheb < GAS_THROW_RANGE or cheb >= target["dist"]:
+                continue
+            key = ((cell[0] - ex) ** 2 + (cell[1] - ey) ** 2, visit_counts[cell])
+            if best is None or key < best[0]:
+                best = (key, m)
+        if not best:
+            return None
+        GAS_APPROACH_STATE["steps"] += 1
+        return {"action": best[1], "reason": f"[GRENADE] {target.get('name', 'the enemy')} is stuck in a web {target['dist']} tiles away: closing to throwing range, not to melee."}
+    except Exception:
+        return None
+
+
 def gas_wait_decision(game_state):
     """While the cloud he threw is working: keep away from a hostile that gets within GAS_KITE_DIST (a step away, off the gas) and otherwise PASS. Ends, with the reason printed, when the cloud
     is gone, a hostile is adjacent or the budget is spent; standing in gas hands over to the avoidance step."""
@@ -1220,7 +1273,7 @@ def gas_wait_decision(game_state):
         if px is not None and gas.get((px, py), 0) > 0:
             return None                        # standing in it: the avoidance step decides
         GAS_THROW_STATE["waited"] += 1
-        close = [e for e in hostiles if e["dist"] <= GAS_KITE_DIST and not e.get("is_stationary") and e.get("tx") is not None and e.get("ty") is not None]
+        close = [e for e in hostiles if e["dist"] <= GAS_KITE_DIST and not e.get("is_stationary") and not e.get("stuck") and e.get("tx") is not None and e.get("ty") is not None]
         if close:
             nearest = min(close, key=lambda e: e["dist"])
             steps = _kite_steps(game_state, gas, nearest)
@@ -1409,8 +1462,8 @@ def retreat_decision(game_state):
         if not threats:
             return None
         nearest = min(threats, key=lambda e: e["dist"])
-        es, ps = creature_speed(nearest), game_state.get("speed") or 100
-        slower = es is not None and es <= RETREAT_SLOW_RATIO * ps
+        es, ps = (0 if nearest.get("stuck") else creature_speed(nearest)), game_state.get("speed") or 100
+        slower = es is not None and es <= RETREAT_SLOW_RATIO * ps          # a stuck enemy (a web) cannot follow: speed 0
         abilities = game_state.get("abilities") or []
         webs_on = any(str(a.get("command", "")).lower() == "commandspinweb" and a.get("active") for a in abilities)
         if not slower and not webs_on:
@@ -1429,7 +1482,7 @@ def retreat_decision(game_state):
         if not steps:
             return None                        # cornered: the fight rules decide
         RETREAT_STATE["steps"] += 1
-        how = f"is much slower than he is (speed {es} against {ps})" if slower else "is not slower, but his webs are on and hold it back"
+        how = ("is stuck and cannot follow" if nearest.get("stuck") else f"is much slower than he is (speed {es} against {ps})") if slower else "is not slower, but his webs are on and hold it back"
         return {"action": steps[0][1], "reason": f"[RETREAT] {nearest.get('name', 'the enemy')} ({nearest.get('difficulty')}, {nearest['dist']} tiles) {how}: stepping away, not fighting it."}
     except Exception:
         return None
@@ -4611,7 +4664,7 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         print(gas_move["reason"])
         STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
         return gas_move
-    grenade_move = gas_grenade_throw_decision(game_state) or gas_wait_decision(game_state)
+    grenade_move = gas_grenade_throw_decision(game_state) or gas_wait_decision(game_state) or gas_approach_decision(game_state)
     if grenade_move:
         print(grenade_move["reason"])
         STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
