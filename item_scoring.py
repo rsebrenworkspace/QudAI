@@ -299,7 +299,7 @@ def is_throwable(inv_item):
     return "grenade" in str(inv_item.get("blueprint", "")).lower() or "grenade" in str(inv_item.get("name", "")).lower()
 
 
-NOT_FOR_THE_THROWN_SLOT = ("defoliant",)       # kills plants, not creatures: useless as a thrown weapon and harmful to a plant build's own crops
+NOT_FOR_THE_THROWN_SLOT = ("defoliant", "fungicide", "glitter", "normality")       # gases that do nothing to a creature (defoliant kills plants, fungicide fungi, glitter only scatters light, normality blocks reality tricks): never held as THE grenade (a fungicide one was equipped after the grenade-rule test, 2026-10-11)
 
 
 def choose_equips(inventory, profile):
