@@ -910,6 +910,31 @@ namespace QudAIBrain
             RecordInventoryAction("equip", ok, failed, player);
         }
 
+        // ---- Use a healing item (BACKLOG B38, human 2026-10-11: promoted after a level 1 character died of poison with four witchwood bark in his pack) ----
+        // The engine's own inventory action: "Apply" for a tonic (Tonic.HandleEvent adds it), "Eat" for food and bark (Food.HandleEvent), the same call the Examine step uses. Reported as
+        // last_inventory_action kind "use": ok = "id|name|action", failed = "id:reason". Python decides what to use and when; this only runs the engine's action on one item.
+        private static void ExecuteUseItem(GameObject player, string id)
+        {
+            var ok = new List<string>(); var failed = new List<string>();
+            try
+            {
+                GameObject item = FindInventoryItem(player, (id ?? "").Trim());
+                if (item == null) failed.Add(id + ":not in pack");
+                else
+                {
+                    string name = StripQudFormatting(item.DisplayNameOnly ?? item.Blueprint ?? "");
+                    string cmd = item.HasPart("Tonic") ? "Apply" : "Eat";
+                    bool ran = false;
+                    string err = null;
+                    try { ran = InventoryActionEvent.Check(item, player, item, cmd, true, true, true, false, false, 0, 0, 0, null, null, null, null); }
+                    catch (Exception ex) { err = ex.GetType().Name; }
+                    if (ran) ok.Add(id + "|" + name + "|" + cmd); else failed.Add(id + ":" + (err ?? "the game did not run " + cmd));
+                }
+            }
+            catch (Exception ex) { failed.Add("error:" + ex.GetType().Name); }
+            RecordInventoryAction("use", ok, failed, player);
+        }
+
         // ---- Examine unidentified items (HANDOFF issue 102, BACKLOG B15, human promotion 2026-10-09) ----
         // The engine's own Examine inventory action (Examiner part): a d100 roll by Intelligence, or the Sifrah minigame when OptionSifrahExamine is on (a modal screen the mod cannot answer, so
         // the command refuses in that case and Python reads `sifrah_examine`). Reported as last_inventory_action kind "examine": ok = "id|name after|outcome" with outcome understood, partial,
@@ -3198,6 +3223,15 @@ namespace QudAIBrain
                 lastMoveFailed = false;
                 lastFailedDir = "";
                 ExecuteEquipItem(player, action.Substring(11));
+                player.UseEnergy(1000, "Inventory");
+                return;
+            }
+
+            if (act.StartsWith("USE_ITEM:"))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                ExecuteUseItem(player, action.Substring(9));
                 player.UseEnergy(1000, "Inventory");
                 return;
             }
