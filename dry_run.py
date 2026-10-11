@@ -7127,8 +7127,8 @@ _dw154 = brain.fallback_melee(_gsw154, _ent154, {"SW": "croc"}, ["MOVE_N"], ["MO
 assert not _dw154["action"].startswith("USE_ABILITY:CommandDischarge"), _dw154
 # the prompt's ready-ability lines include it, with the action the mod understands
 _menu154 = [ab for ab in [_dis154, {"name": "Spin Webs", "command": "CommandSpinWeb", "usable": True, "cooldown": 0}] if brain.ability_registry.is_wired(ab)]
-assert [m["command"] for m in _menu154] == ["CommandDischarge"], "Spin Webs stays unwired (its targeting is not known)"
-print("  [OK] Test 154 Passed: Discharge is in an auto-use family (so the model's menu offers it and gets the direction appended), the melee fallback uses it point-blank on an adjacent enemy and not while wading, and Spin Webs stays unwired")
+assert [m["command"] for m in _menu154] == ["CommandDischarge", "CommandSpinWeb"], "Discharge and (since issue 155, Test 168) Spin Webs are both wired"
+print("  [OK] Test 154 Passed: Discharge is in an auto-use family (so the model's menu offers it and gets the direction appended), the melee fallback uses it point-blank on an adjacent enemy and not while wading, and Spin Webs is wired since issue 155")
 
 
 # Test 155: only a count of exactly zero is "0 charges" (human, 2026-10-10: bzzzt_test_2; 'Discharge [6000 charge]' counted as empty; BACKLOG B37, HANDOFF issue 140)
@@ -7580,3 +7580,37 @@ _c167 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", 
 assert "retreat_move = retreat_decision(game_state)" in _b167 and "SafeSpeed(obj)" in _c167 and "SafeSpeed(currentTarget)" in _c167 and 'SafeSpeed(player)' in _c167
 _reset167()
 print("  [OK] Test 167 Passed: he steps away from an Impossible mobile enemy that is clearly slower (speed from the mod, else the catalogue), not from an equal, faster, lesser, rooted or unseen one or when its speed is unknown, never into gas, not when cornered, not past the zone budget, and in a multi-turn chase against a slow enemy he keeps the gap")
+
+
+# Test 168: Spin Webs: spin first against an enemy he cannot outwalk, then run while the webs are on (human, 2026-10-11: "the bzzzt abilities"; BACKLOG B37, HANDOFF issue 155)
+# ---------------------------------------------------------------------------
+_web168 = {"name": "Spin Webs", "command": "CommandSpinWeb", "usable": True, "cooldown": 0, "active": False}
+_reset167()
+assert brain.ability_registry.is_wired(_web168) and brain.find_ready_ability([_web168], "spin_web") is _web168, "Spin Webs is in an auto-use family"
+_g168 = lambda ents, abil, **k: _s167(ents, abilities=abil, **k)
+_beetle168 = lambda d, **k: _e167(d, **dict({"name": "beetlebum", "blueprint": "Beetlebum", "speed": 100}, **k))
+_reset167(); _d168 = brain.retreat_decision(_g168([_beetle168(5)], [_web168]))
+assert _d168 and _d168["action"] == "USE_ABILITY:CommandSpinWeb" and "spinning webs" in _d168["reason"], _d168
+_reset167(); assert brain.retreat_decision(_g168([_beetle168(5)], [])) is None, "an equal-speed enemy and no webs: nothing (as before)"
+_reset167(); assert brain.retreat_decision(_g168([_beetle168(5)], [dict(_web168, cooldown=40, usable=False)])) is None, "webs on cooldown"
+_reset167(); assert brain.retreat_decision(_g168([_beetle168(8)], [_web168])) is None, "too far to spin yet"
+_reset167(); assert brain.retreat_decision(_g168([_beetle168(1)], [_web168])) is None, "adjacent: spinning would only cost the free hit"
+# the webs are on: now he runs, even from an enemy as fast as he is
+_on168 = dict(_web168, active=True, usable=True)
+_reset167(); _r168 = brain.retreat_decision(_g168([_beetle168(5)], [_on168]))
+assert _r168 and _r168["action"].startswith("MOVE_") and "webs are on" in _r168["reason"], _r168
+_reset167(); assert brain.retreat_decision(_g168([_beetle168(5, difficulty="Average")], [_web168])) is None, "not unwinnable: no webs"
+_reset167(); assert brain.retreat_decision(_g168([_beetle168(5, speed=None, blueprint="NoSuchCreature")], [_web168]))["action"] == "USE_ABILITY:CommandSpinWeb", "unknown speed: webs first"
+# a slow enemy still needs no webs: straight to the retreat
+_reset167(); assert brain.retreat_decision(_g168([_e167(5)], [_web168]))["action"].startswith("MOVE_")
+# MULTI-TURN: a faster-or-equal enemy closes in: one spin, then steps away while the webs stay on, and no second spin
+_reset167(); _abil168 = [dict(_web168)]; _px168 = 50; _acts168 = []
+for _t168 in range(8):
+    _dec168 = brain.retreat_decision(_g168([_beetle168(5)], _abil168, x=_px168))
+    _acts168.append(_dec168["action"] if _dec168 else None)
+    if _dec168 and _dec168["action"] == "USE_ABILITY:CommandSpinWeb":
+        _abil168 = [dict(_web168, active=True, cooldown=80, usable=False)]
+assert _acts168[0] == "USE_ABILITY:CommandSpinWeb" and all(a and a.startswith("MOVE_") for a in _acts168[1:]), _acts168
+assert _acts168.count("USE_ABILITY:CommandSpinWeb") == 1
+_reset167()
+print("  [OK] Test 168 Passed: Spin Webs is an auto-use family; against an Impossible enemy that is not slower (or whose speed is unknown) at 2 to 6 tiles he spins webs once, then runs while they are on; no webs, webs on cooldown, an enemy too far or adjacent, or one he can beat leave it alone; a slow enemy needs no webs")

@@ -1374,6 +1374,7 @@ RETREAT_DIFFICULTIES = ("Impossible",)
 RETREAT_TRIGGER_DIST = 8
 RETREAT_SLOW_RATIO = 0.7          # the enemy's Speed at most this fraction of his: slower enough to outwalk
 RETREAT_STEP_BUDGET = 60
+RETREAT_WEB_DIST = 6              # an unwinnable enemy that is not slower comes within this many tiles: spin webs, then run (the webs are what make running worth it)
 RETREAT_STATE = {"zone": None, "steps": 0}
 _CREATURE_SPEEDS = None
 
@@ -1409,8 +1410,15 @@ def retreat_decision(game_state):
             return None
         nearest = min(threats, key=lambda e: e["dist"])
         es, ps = creature_speed(nearest), game_state.get("speed") or 100
-        if es is None or es > RETREAT_SLOW_RATIO * ps:
-            return None                        # equal, faster or unknown speed: running does not help
+        slower = es is not None and es <= RETREAT_SLOW_RATIO * ps
+        abilities = game_state.get("abilities") or []
+        webs_on = any(str(a.get("command", "")).lower() == "commandspinweb" and a.get("active") for a in abilities)
+        if not slower and not webs_on:
+            # equal, faster or unknown speed: running alone does not help; with Spinnerets it does (the webs left behind hold the pursuer): spin first, run on the next turns
+            web = find_ready_ability(abilities, "spin_web")
+            if web and web.get("command") and 2 <= nearest["dist"] <= RETREAT_WEB_DIST:
+                return {"action": f"USE_ABILITY:{web['command']}", "reason": f"[RETREAT] {nearest.get('name', 'the enemy')} ({nearest.get('difficulty')}, {nearest['dist']} tiles) is not slower than he is: spinning webs first, then running."}
+            return None
         zone = game_state.get("zone_id")
         if RETREAT_STATE["zone"] != zone:
             RETREAT_STATE["zone"], RETREAT_STATE["steps"] = zone, 0
@@ -1421,7 +1429,8 @@ def retreat_decision(game_state):
         if not steps:
             return None                        # cornered: the fight rules decide
         RETREAT_STATE["steps"] += 1
-        return {"action": steps[0][1], "reason": f"[RETREAT] {nearest.get('name', 'the enemy')} ({nearest.get('difficulty')}, {nearest['dist']} tiles) is much slower than he is (speed {es} against {ps}): stepping away, not fighting it."}
+        how = f"is much slower than he is (speed {es} against {ps})" if slower else "is not slower, but his webs are on and hold it back"
+        return {"action": steps[0][1], "reason": f"[RETREAT] {nearest.get('name', 'the enemy')} ({nearest.get('difficulty')}, {nearest['dist']} tiles) {how}: stepping away, not fighting it."}
     except Exception:
         return None
 
