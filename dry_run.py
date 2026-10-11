@@ -7782,3 +7782,9 @@ assert "oscillation override" in _cs175 and "exitStepHistory" in _cs175, "a repe
 assert "SwimEdgeReachableCached(player, edge)" in _cs175, "reachable_edges counts edges the navigator can swim to"
 assert _cs175.count("{") == _cs175.count("}"), "braces balanced"
 print("  [OK] Test 175 Passed: the C# has a general swim-capable router; NAVIGATE_TO_CELL falls back to it, NAVIGATE_ZONE_EXIT overrides an oscillating engine step with it, and reachable_edges includes swim-reachable edges (compile and behaviour unverified in game)")
+
+# Test 176: the ExitDiag cap is per zone, so a long session cannot use it up before a zone that oscillates (Dream Tortoise, 2026-10-12: the entries for the oscillating cells were never written)
+# ---------------------------------------------------------------------------
+_cs176 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "if (z.ZoneID != exitDiagZone) { exitDiagSeen.Clear(); exitDiagZone = z.ZoneID; }" in _cs176 and "private static string exitDiagZone" in _cs176
+print("  [OK] Test 176 Passed: the ExitDiag log cap (150) resets on every zone change, so the entries for a zone that oscillates are written")

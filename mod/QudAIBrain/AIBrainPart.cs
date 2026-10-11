@@ -1361,6 +1361,7 @@ namespace QudAIBrain
         // border row as one character per cell: . passable, W swimming-depth liquid the player may enter, X swimming-depth liquid it may not, w wading-depth liquid, S solid or wall, x other impassable. Never acts, never throws, at most 150 lines per session.
         private static readonly HashSet<string> exitDiagSeen = new HashSet<string>();
         private static readonly Queue<string> exitStepHistory = new Queue<string>();
+        private static string exitDiagZone = null;
 
         private static void LogExitDiag(GameObject player, char edgeChar, string why, string step)
         {
@@ -1370,6 +1371,7 @@ namespace QudAIBrain
                 Zone z = pc != null ? pc.ParentZone : null;
                 if (z == null) return;
                 string key = z.ZoneID + "|" + edgeChar + "|" + why + "|" + pc.X + "," + pc.Y;
+                if (z.ZoneID != exitDiagZone) { exitDiagSeen.Clear(); exitDiagZone = z.ZoneID; }      // the cap is per zone: a session-wide cap of 150 was used up in normal travel before the Dream Tortoise oscillated (2026-10-12)
                 if (exitDiagSeen.Count >= 150 || !exitDiagSeen.Add(key)) return;
                 StringBuilder sb = new StringBuilder();
                 sb.Append("[QudAI ExitDiag] ").Append(edgeChar).Append(" exit of ").Append(z.ZoneID).Append(": ").Append(why);
