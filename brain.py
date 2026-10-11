@@ -1057,7 +1057,8 @@ def is_grenade(tw):
 THROW_FAIL_LIMIT = 2
 THROW_PAUSE_TURNS = 200
 THROW_CROWD_MIN = 2             # with this many hostiles in view the throw is offered even when one is adjacent (the disc bounces between targets; human, 2026-10-10: "Relax it")
-THROW_STATE = {"seq": 0, "fails": 0, "off_until": -1}
+THROW_STATE = {"seq": 0, "fails": 0, "off_until": -1, "max_dist": None}
+THROW_RANGE_RE = re.compile(r"out of range \((\d+) > (\d+)\)")
 
 # TEST SWITCH (human, 2026-10-10): with QUDAI_TEST_NO_COMBAT_ABILITIES=1 the brain does not see his combat abilities (Lase, Stunning Force, Teleport Other, Intimidate and the rest), so a fight has
 # to be won with weapons, movement and the thrown weapon. Non-combat abilities stay (sprint, camp, harvest, butcher, light, burrowing, dig). Off by default; the console's Control tab has the checkbox.
@@ -1084,9 +1085,10 @@ def throw_option(game_state, enemies, adj_threats=None):
     if px is None or py is None:
         return None
     min_dist = GRENADE_MIN_DIST if is_grenade(tw) else THROW_MIN_DIST
+    max_dist = THROW_STATE.get("max_dist") or THROW_MAX_DIST      # the engine said "out of range (6 > 5)" once: that range is used from then on (bzzzt_test_3)
     for e in enemies[:3]:
         d = e.get("dist")
-        if e.get("tx") is None or e.get("ty") is None or not isinstance(d, (int, float)) or not (min_dist <= d <= THROW_MAX_DIST) or e.get("has_los") is False:
+        if e.get("tx") is None or e.get("ty") is None or not isinstance(d, (int, float)) or not (min_dist <= d <= max_dist) or e.get("has_los") is False:
             continue
         clear, _why = is_line_of_fire_clear((px, py), (e["tx"], e["ty"]), companions=game_state.get("companions", []), target_entity=e, surroundings=game_state.get("surroundings"))
         if clear:
@@ -1101,6 +1103,12 @@ def note_throw_result(game_state):
     THROW_STATE["seq"] = lt["seq"]
     if lt.get("ok"):
         THROW_STATE["fails"] = 0
+        return
+    rng = THROW_RANGE_RE.search(str(lt.get("reason", "")))
+    if rng:
+        # a distance problem, not a failing command: remember the engine's range and keep the option on
+        THROW_STATE["max_dist"] = int(rng.group(2))
+        print(f"[THROW] out of range at {rng.group(1)}: the engine's range is {rng.group(2)}, offering throws up to that from now on.")
         return
     THROW_STATE["fails"] += 1
     print(f"[THROW] refused: {lt.get('reason')} (attempt {THROW_STATE['fails']} of {THROW_FAIL_LIMIT})")
@@ -2668,6 +2676,18 @@ def is_ignorable_stationary_enemy(e):
     return False
 
 
+def adjacent_ability_misuse(action, enemies):
+    """True when `action` is an adjacent-only ability (Discharge, Proselytize, Teleport Other, a melee strike) and no hostile stands next to him in its direction (or at all, without a
+    direction). The mod only says "nothing there to ground into" and the turn is spent (bzzzt_test_3: Discharge twice at a puma 4 tiles away)."""
+    m = re.match(r"USE_ABILITY:([A-Za-z0-9_]+)(?::([A-Z]{1,2}))?", action or "")
+    if not m or not ability_registry.adjacent_only(m.group(1)):
+        return False
+    adj = [e for e in enemies or [] if e.get("dist") == 1 and not e.get("is_companion")]
+    if m.group(2):
+        adj = [e for e in adj if e.get("dir") == m.group(2)]
+    return not adj
+
+
 def repair_bare_ability(action, abilities, enemies, px, py):
     """The model sometimes answers with an ability NAME ("Proselytize") instead of an action. Actions are upper case or carry a colon; a mixed-case word is a name.
     Returns the matching `USE_ABILITY:<command>[:<dir>]` when he owns that ability and it is usable, else "" (the caller then falls back to the deterministic logic),
@@ -2785,7 +2805,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 if can_sprint:
                     ready_abilities.append("- Sprint: Ready (Action: ACTIVATE_SPRINT)")
             elif name and cmd:
-                ready_abilities.append(f"- {name}: Ready (Action: USE_ABILITY:{cmd})")
+                note = " [adjacent enemy only]" if ability_registry.adjacent_only(cmd) else ""
+                ready_abilities.append(f"- {name}: Ready (Action: USE_ABILITY:{cmd}){note}")
         elif has_zero_charges(ab.get("name", "")):
             ready_abilities.append(f"- {ab.get('name')}: Empty charges (Recharging...)")
     if is_sprinting:
@@ -3187,6 +3208,9 @@ VALID ACTIONS:
 
             # Sanitize action (e.g. "MOVE_N (Melee Attack snapjaw)" -> "MOVE_N")
             action = raw_action.split()[0] if raw_action else ""
+            if adjacent_ability_misuse(action, enemies):
+                print(f"[ACTION] {action} needs an adjacent enemy and there is none there: not taking it, falling back")
+                action = ""
             repaired = repair_bare_ability(action, abilities, enemies, px, py)
             if repaired != action:
                 print(f"[ACTION] The model answered with the bare word '{action}': {'using ' + repaired if repaired else 'not an action he can take, falling back'}")

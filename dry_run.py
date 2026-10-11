@@ -6643,7 +6643,7 @@ assert "snapjaw2" in brain.throw_option(_gs137(), [_en137(dist=1, tx=11, name="c
 _lt137 = lambda seq, ok, reason="x": {"last_throw": {"seq": seq, "ok": ok, "reason": reason, "weapon": "disc", "x": 14, "y": 10}}
 brain.note_throw_result(_lt137(1, False, "no line of sight")); brain.note_throw_result(_lt137(1, False, "no line of sight"))
 assert brain.THROW_STATE["fails"] == 1 and brain.throw_option(_gs137(), [_en137()])
-brain.note_throw_result(_lt137(2, False, "out of range (8 > 6)"))
+brain.note_throw_result(_lt137(2, False, "a companion is on the line"))   # a real refusal (a range refusal no longer counts, Test 156)
 assert brain.THROW_STATE["off_until"] == 1000 + brain.THROW_PAUSE_TURNS and brain.throw_option(_gs137(), [_en137()]) is None, "off for a while"
 brain.TURN_CLOCK = 1000 + brain.THROW_PAUSE_TURNS + 1
 assert brain.throw_option(_gs137(), [_en137()]), "and back on afterwards"
@@ -7138,3 +7138,31 @@ assert brain.is_ability_ready({"name": "Discharge [6000 charge]", "command": "Co
 assert brain.is_ability_ready({"name": "Discharge [0 charge]", "command": "CommandDischarge", "usable": True}) is False
 assert brain.is_ability_ready({"name": "Lase (0 charges)", "command": "CommandLase", "usable": True}) is False
 print("  [OK] Test 155 Passed: 'Discharge [6000 charge]' and any other count ending in zero is ready, only a count of exactly zero is empty")
+
+
+# Test 156: throws learn the engine's range, and an adjacent-only ability is not used on a far target (human, 2026-10-10: bzzzt_test_3; the grenade was offered at 6 tiles and refused, Discharge went at a puma 4 tiles away; BACKLOG B33, B37, HANDOFF issue 141)
+# ---------------------------------------------------------------------------
+brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1, "max_dist": None})
+_gren156 = {"id": "9", "name": "poison gas grenade mk I", "blueprint": "PoisonGasGrenade1", "in_thrown_slot": True}
+_en156 = lambda d: [{"name": "chitinous puma", "dist": d, "tx": 50 + d, "ty": 4, "dir": "E", "is_enemy": True, "has_los": True}]
+_st156 = {"x": 50, "y": 4, "thrown_weapon": _gren156, "companions": [], "surroundings": {}}
+assert brain.throw_option(_st156, _en156(6)) is not None, "before the engine has said anything the range is the default"
+brain.note_throw_result(dict(_st156, last_throw={"seq": 1, "ok": False, "reason": "out of range (6 > 5)"}))
+assert brain.THROW_STATE["max_dist"] == 5 and brain.THROW_STATE["fails"] == 0 and brain.THROW_STATE["off_until"] < 0, "a range refusal is not a failing command"
+assert brain.throw_option(_st156, _en156(6)) is None and brain.throw_option(_st156, _en156(5)) is not None and brain.throw_option(_st156, _en156(4)) is not None and brain.throw_option(_st156, _en156(3)) is None
+brain.note_throw_result(dict(_st156, last_throw={"seq": 2, "ok": False, "reason": "out of range (6 > 5)"}))
+brain.note_throw_result(dict(_st156, last_throw={"seq": 3, "ok": False, "reason": "no line of sight"}))
+brain.note_throw_result(dict(_st156, last_throw={"seq": 4, "ok": False, "reason": "no line of sight"}))
+assert brain.THROW_STATE["off_until"] > 0, "two real refusals still switch the option off"
+brain.THROW_STATE.update({"seq": 0, "fails": 0, "off_until": -1, "max_dist": None})
+_adj156 = [{"name": "puma", "dist": 1, "dir": "W"}]
+_far156 = [{"name": "puma", "dist": 4, "dir": "SE"}]
+assert brain.ability_registry.adjacent_only("CommandDischarge") and brain.ability_registry.adjacent_only("CommandProselytize")
+assert not brain.ability_registry.adjacent_only("CommandFlamingRay") and not brain.ability_registry.adjacent_only("CommandSpinWeb")
+assert brain.adjacent_ability_misuse("USE_ABILITY:CommandDischarge:SE", _far156) is True
+assert brain.adjacent_ability_misuse("USE_ABILITY:CommandDischarge:W", _adj156) is False
+assert brain.adjacent_ability_misuse("USE_ABILITY:CommandDischarge:E", _adj156) is True, "adjacent, but not in that direction"
+assert brain.adjacent_ability_misuse("USE_ABILITY:CommandDischarge", _adj156) is False and brain.adjacent_ability_misuse("USE_ABILITY:CommandDischarge", _far156) is True
+assert brain.adjacent_ability_misuse("USE_ABILITY:CommandFlamingRay:SE", _far156) is False, "a ray is not adjacent-only"
+assert brain.adjacent_ability_misuse("MOVE_SE", _far156) is False and brain.adjacent_ability_misuse("", []) is False
+print("  [OK] Test 156 Passed: a throw refused as out of range teaches the engine's range and does not count as a failure, and an adjacent-only ability (Discharge, Proselytize, Teleport Other, melee strikes) aimed at nothing adjacent is dropped so the fallback decides")
