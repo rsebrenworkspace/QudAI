@@ -5325,7 +5325,7 @@ def main():
                 # (Ignore if player is using abilities, firing missiles, or actively attacking enemies in melee!)
                 is_attacking = action.startswith("MOVE_") and (action[5:] in adj_threats)
                 is_combat_action = action.startswith("USE_ABILITY") or action.startswith("FIRE_MISSILE") or is_attacking
-                is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_combat_action)
+                is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_combat_action and not str(reason).startswith("[LAB]"))   # the lab hold repeats PASS on purpose (the Loop Breaker walked him away from the gas cloud he was measuring, 2026-10-11)
                 # A committed engine-reachable frontier walk is exempt from the oscillation breaker: its own failure and
                 # pursuit limits (FRONTIER_FAIL_LIMIT / FRONTIER_PURSUIT_MAX) write a bad target off. Without this exemption
                 # the breaker overrode the walk with "move away from the cycle centroid" and he ping-ponged forever

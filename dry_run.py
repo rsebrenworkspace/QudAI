@@ -7243,6 +7243,8 @@ try:
     brain.note_gas({})            # never raises
 finally:
     brain.GAS_LOG_PATH, brain.LAB_HOLD_FLAG = _saved159
+_b159 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert 'not str(reason).startswith("[LAB]")' in _b159, "the Loop Breaker must not undo the lab hold"
 _cs159 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
 assert "GasCellsJson(player)" in _cs159 and "GetPart<Gas>()" in _cs159
 assert any(s["id"] == "grenade-gas-lab" for s in json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "wish_scenarios.json"), encoding="utf-8"))["scenarios"])
