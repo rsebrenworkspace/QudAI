@@ -4868,9 +4868,53 @@ namespace QudAIBrain
             }
         }
 
+        // The skill the engine filters the equipped missile weapons by (Combat.FireMissileWeapon: "You do not have an appropriate missile weapon equipped!" when none match).
+        // It was hard-coded to "Rifle", so a Gunslinger with revolvers never fired a shot (BACKLOG B28). Now the first loaded weapon's own MissileWeapon.Skill; "" means any.
+        private static string EquippedMissileSkill(GameObject player)
+        {
+            try
+            {
+                var body = player.GetPart<Body>();
+                if (body == null) return "";
+                string any = "";
+                foreach (var part in body.GetParts())
+                {
+                    if (part.Type != "Missile Weapon" || part.Equipped == null) continue;
+                    var mw = part.Equipped.GetPart<MissileWeapon>();
+                    if (mw == null || string.IsNullOrEmpty(mw.Skill)) continue;
+                    var loader = part.Equipped.GetPart<MagazineAmmoLoader>();
+                    if (loader != null && loader.Ammo != null && loader.Ammo.Count > 0) return mw.Skill;
+                    if (any == "") any = mw.Skill;
+                }
+                return any;
+            }
+            catch { return ""; }
+        }
+
+        private static int LoadedAmmoTotal(GameObject player)
+        {
+            int total = 0;
+            try
+            {
+                var body = player.GetPart<Body>();
+                if (body == null) return -1;
+                foreach (var part in body.GetParts())
+                {
+                    if (part.Type == "Missile Weapon" && part.Equipped != null)
+                    {
+                        var loader = part.Equipped.GetPart<MagazineAmmoLoader>();
+                        if (loader != null && loader.Ammo != null) total += loader.Ammo.Count;
+                    }
+                }
+            }
+            catch { return -1; }
+            return total;
+        }
+
         private static void ExecuteMissileFire(GameObject player, Cell targetCell)
         {
             if (player == null || targetCell == null) return;
+            UnityEngine.Debug.Log("[QudAI MissileDiag] ExecuteMissileFire entered, loaded ammo " + LoadedAmmoTotal(player));
 
             // Only fire if the missile weapon is equipped and has ammo loaded
             try
@@ -4964,7 +5008,7 @@ namespace QudAIBrain
                         }
                         else if (pName == "skill")
                         {
-                            args[i] = "Rifle";
+                            args[i] = EquippedMissileSkill(player);
                         }
                         else if (p.HasDefaultValue)
                         {
@@ -4981,7 +5025,12 @@ namespace QudAIBrain
                     }
 
                     object instance = cachedFireMethod.IsStatic ? null : player.GetPart<Combat>();
-                    cachedFireMethod.Invoke(instance, args);
+                    int ammoBefore = LoadedAmmoTotal(player);
+                    object fired = cachedFireMethod.Invoke(instance, args);
+                    // Diagnostic (BACKLOG B28): a Gunslinger's FIRE_MISSILE changed nothing (ammo stayed 6/6) and logged nothing.
+                    UnityEngine.Debug.Log("[QudAI MissileDiag] target=" + (targetObj != null ? StripQudFormatting(targetObj.DisplayName) : "none") + " cell=" + targetCell.X + "," + targetCell.Y
+                        + " method=" + cachedFireMethod.DeclaringType?.Name + "." + cachedFireMethod.Name + "(" + parameters.Length + ") returned=" + (fired == null ? "null" : fired.ToString())
+                        + " ammo " + ammoBefore + " -> " + LoadedAmmoTotal(player));
                 }
             }
             catch (Exception ex)

@@ -1398,6 +1398,39 @@ def has_ranged_opener(game_state):
         return False
 
 
+# Hunter sightings (BACKLOG B25, HANDOFF issue 123). The first time a psychic hunter or one of its thralls comes into view, one line goes to memory/hunter_log.jsonl: when, where, how
+# far, how strong, and the glimmer. Gen 32 met an Osprey, four thralls and a second named hunter and nobody could tell which were wished and which were random; this log answers that
+# in the next run, and it is the data for a hunter plan (distance at first sight, how many, how strong).
+HUNTER_LOG_PATH = os.path.join(chronicler.MEMORY_DIR, "hunter_log.jsonl")
+HUNTER_SEEN = {"zone": None, "keys": set()}
+
+
+def note_hunters(game_state):
+    """Logs each psychic hunter or thrall the first time it is in view in a zone. Never raises."""
+    try:
+        zone = game_state.get("zone_id")
+        if HUNTER_SEEN["zone"] != zone:
+            HUNTER_SEEN["zone"], HUNTER_SEEN["keys"] = zone, set()
+        for e in game_state.get("visible_entities") or []:
+            name = str(e.get("name", ""))
+            hunter = bool(e.get("psychic_hunter"))
+            thrall = "psychic thrall" in name
+            if not (hunter or thrall or "-No-Longer" in name):
+                continue
+            key = (name, e.get("blueprint"))
+            if key in HUNTER_SEEN["keys"]:
+                continue
+            HUNTER_SEEN["keys"].add(key)
+            rec = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "turn": TURN_CLOCK, "zone": zone, "kind": "hunter" if hunter else ("thrall" if thrall else "named, unmarked"),
+                   "name": name, "blueprint": e.get("blueprint"), "level": e.get("level"), "difficulty": e.get("difficulty"), "hp": e.get("hp"), "dist": e.get("dist"),
+                   "has_los": e.get("has_los"), "psychic_glimmer": game_state.get("psychic_glimmer"), "player_hp": game_state.get("hp"), "player_level": game_state.get("level")}
+            print(f"[HUNTER] {rec['kind']}: {name} ({e.get('blueprint')}, level {e.get('level')}, {e.get('difficulty')}) at distance {e.get('dist')}; glimmer {rec['psychic_glimmer']}")
+            with open(HUNTER_LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec) + chr(10))
+    except Exception:
+        pass
+
+
 def note_zone_danger(game_state):
     """Flags the current zone when a mobile hostile in view is out of our class, or when the hostiles in view together are. Prints `[ZONE DANGER]` once per new flag. Never acts, never raises."""
     try:
@@ -2993,7 +3026,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     if took_damage:
         damage_alert += "- COMBAT ALERT: [!HIT!] YOU TOOK DAMAGE LAST TURN! You are actively taking damage in combat!\n"
     if is_bleeding:
-        damage_alert += "- CRITICAL BLEEDING ALERT: [!BLEEDING!] You are bleeding heavily! Every step or bump-attack inflicts bleed damage. Prioritize emergency defense (Teleport Other to banish adjacent enemies, Force Bubble barrier) or retreat to safe ground!\n"
+        damage_alert += ("- BLEEDING: you lose a little HP at the end of every turn whatever you do (moving and fighting add nothing, standing still does not stop it); it ends by itself when you pass a Toughness save, "
+                         "and while it lasts you must still act: fight, banish or leave. Never WAIT or rest because of it while enemies are near.\n")
     if has_mw:
         if ammo > 0:
             ammo_display = f"Loaded {ammo}/{max_ammo} (Spare inventory slugs: {inv_ammo})"
@@ -3796,12 +3830,211 @@ def lethal_adjacent_guard(decision, adj_threats, enemies, abilities):
     return new
 
 
+# Hunter protocol (BACKLOG B25, HANDOFF issue 124; the human, 2026-10-10: "That plan has teeth and I like it"). A psychic hunter casts Sunder Mind ("for up to 10 rounds ... dealing damage each
+# round", 12 tiles away with line of sight in Gen 32), and a player locked in that battle PASSES HIS TURNS (ENGINE_INTERNALS 14.29), so nothing decided after the lock matters. The
+# only chance is before it: while a hunter the mod marks (`psychic_hunter`) is in view, shoot it at once with a ready Lase (clear line, not through a companion), and banish it with
+# Teleport Other when it is close and Lase cannot be used. Thralls and everything else are left to the normal logic. The model does not choose this: it rated the first hunter Average
+# and kited it for 70 turns.
+HUNTER_LASE_MAX_DIST = 10
+HUNTER_BANISH_MAX_DIST = 6
+HUNTER_PROTOCOL_STATE = {"last": None}
+
+
+def hunter_protocol_decision(game_state):
+    """USE_ABILITY decision against a marked psychic hunter in view, or None."""
+    ents = game_state.get("visible_entities") or []
+    hunters = sorted([e for e in ents if e.get("psychic_hunter") and e.get("is_enemy") and e.get("has_los") is not False
+                      and e.get("tx") is not None and e.get("ty") is not None and isinstance(e.get("dist"), (int, float)) and (e.get("hp") is None or e.get("hp") > 0)],
+                     key=lambda e: e["dist"])
+    if not hunters:
+        return None
+    px, py = game_state.get("x"), game_state.get("y")
+    if px is None or py is None:
+        return None
+    abilities = game_state.get("abilities") or []
+    companions = game_state.get("companions", [])
+    surroundings = game_state.get("surroundings")
+    ab_lase = find_ready_ability(abilities, "lase")
+    ab_banish = find_ready_ability(abilities, "teleport_other")
+    for h in hunters:
+        tx, ty, d = h["tx"], h["ty"], h["dist"]
+        direction = get_step_direction((px, py), (tx, ty))
+        if not direction:
+            continue
+        clear, _why = is_line_of_fire_clear((px, py), (tx, ty), companions=companions, target_entity=h, surroundings=surroundings)
+        if ab_lase and ab_lase.get("command") and d <= HUNTER_LASE_MAX_DIST and clear:
+            return {"action": f"USE_ABILITY:{ab_lase['command']}:{direction}@{tx},{ty}",
+                    "reason": f"[HUNTER PROTOCOL] {h.get('name')} (psychic hunter, {d} tiles) is in view: Lase it before it can lock him in a psychic battle."}
+        if ab_banish and ab_banish.get("command") and d <= HUNTER_BANISH_MAX_DIST and clear:
+            return {"action": f"USE_ABILITY:{ab_banish['command']}:{direction}@{tx},{ty}",
+                    "reason": f"[HUNTER PROTOCOL] {h.get('name')} (psychic hunter, {d} tiles) is close and Lase is not available: Teleport Other sends it away."}
+    return None
+
+
+# Engulfed (BACKLOG B26, HANDOFF issue 125). Gen 33 was engulfed by a red death dacca (a level 24 tree, the engulf also bleeds him every turn) and stood on one cell for 15 turns choosing
+# WAIT. The game's own text: "Cannot move until @they break free.", and "You cannot do that while engulfed by X." for commands, so abilities are refused and the way out is to TRY TO MOVE
+# Corrected by the 2026-10-10 test and the IL (ENGINE_INTERNALS 14.30): a move attempt does NOT break free, it makes a melee attack on the engulfer (Engulfed.FireEvent BeginMove) and cancels the
+# move; the effect ends only when the engulfer dies or leaves. So while the effect list says `engulfed`, every turn is a move attempt = a melee attack on it, never a WAIT.
+ENGULF_STATE = {"turns": 0}
+
+
+def is_engulfed(game_state):
+    return any("engulfed" in str(ef).lower() for ef in (game_state.get("effects") or []))
+
+
+def engulf_escape_decision(game_state):
+    """MOVE attempt while engulfed, or None. Never WAIT, never an ability (the game refuses it)."""
+    if not is_engulfed(game_state):
+        ENGULF_STATE["turns"] = 0
+        return None
+    ENGULF_STATE["turns"] += 1
+    px, py = game_state.get("x"), game_state.get("y")
+    surroundings = game_state.get("surroundings") or {}
+    if px is None or py is None or not surroundings:
+        return None
+    rooted = [(e.get("tx"), e.get("ty")) for e in (game_state.get("visible_entities") or []) if e.get("is_enemy") and e.get("is_stationary") and e.get("tx") is not None]
+    moves = get_valid_moves(surroundings, (px, py), None, is_in_combat=True)
+    if not moves:
+        moves = [f"MOVE_{d}" for d in ("N", "S", "E", "W", "NE", "NW", "SE", "SW") if "[blocked" not in surroundings.get(d, "").lower()]
+    if not moves:
+        return None
+    def room(m):
+        dx, dy = CARDINAL_OFFSETS[m[5:]]
+        nx, ny = px + dx, py + dy
+        return (min([max(abs(nx - rx), abs(ny - ry)) for rx, ry in rooted] or [99]), -visit_counts[(nx, ny)])
+    best = max(moves, key=room)
+    return {"action": best, "reason": f"[ENGULFED] Abilities are refused and a move only makes a melee attack on the engulfer: attacking it via {best[5:]} (attempt {ENGULF_STATE['turns']}), never waiting."}
+
+
+# Rooted hazards (BACKLOG B25/B26, HANDOFF issue 126). A rooted hostile rated Tough or worse (a red death dacca is a level 24 tree) cannot chase, but it reaches every adjacent cell, and the
+# dacca engulfs ANYONE who steps next to it (Engulfing.FireEvent "ObjectEnteredAdjacentCell", a Strength save, ENGINE_INTERNALS 14.30). Once engulfed, abilities are refused and a move
+# is only a melee attack on it (tested 2026-10-10: a level 1 character died in nine turns), so the only defense is never to end a turn next to one. Two parts:
+#   rooted_hazard_decision: already adjacent to one, step to the cell with no hazard in reach (nearest to where he was going, then least visited);
+#   veto_rooted_approach: a MOVE that would end next to one (or hit it) is replaced by the same kind of step.
+# Both are BOUNDED per hazard (ROOTED_STEP_BUDGET), so if the only way on is past it he goes after a few tries instead of oscillating forever (AGENTS.md: loops are multi-turn properties).
+ROOTED_HAZARD_DIFFICULTIES = ("Tough", "Very Tough", "Impossible")
+ROOTED_STEP_BUDGET = 4
+ROOTED_CLEAR_RESET = 8    # decisions in a row out of every hazard's reach that refill the budget (capture 2026-10-10: the 4 steps were spent after re-engagements and the 5th adjacency went unguarded)
+ROOTED_STATE = {"zone": None, "steps": defaultdict(int), "last": None, "clear": 0}
+
+
+def rooted_hazards(game_state):
+    """(x, y, name) of every visible rooted hostile rated Tough or worse."""
+    out = []
+    for e in game_state.get("visible_entities") or []:
+        if e.get("is_enemy") and e.get("is_stationary") and not e.get("is_companion") and e.get("difficulty") in ROOTED_HAZARD_DIFFICULTIES                 and e.get("tx") is not None and e.get("ty") is not None and (e.get("hp") is None or e.get("hp") > 0):
+            out.append((e["tx"], e["ty"], e.get("name", "rooted hostile")))
+    return out
+
+
+def _hazard_reach(cell, hazards):
+    return [h for h in hazards if max(abs(cell[0] - h[0]), abs(cell[1] - h[1])) <= 1]
+
+
+def _rooted_budget(game_state, hazards):
+    """Resets the per-hazard counts on a new zone and returns the hazards whose budget is not spent."""
+    zone = str(game_state.get("zone"))
+    if ROOTED_STATE["zone"] != zone:
+        ROOTED_STATE["zone"] = zone
+        ROOTED_STATE["steps"].clear()
+        ROOTED_STATE["clear"] = 0
+    return [h for h in hazards if ROOTED_STATE["steps"][(h[0], h[1])] < ROOTED_STEP_BUDGET]
+
+
+def _safe_steps(game_state, hazards, goal=None):
+    """Valid MOVE_<dir> names whose cell is empty and out of every hazard's reach, best first: nearest to `goal`, then least visited."""
+    px, py = game_state.get("x"), game_state.get("y")
+    surroundings = game_state.get("surroundings") or {}
+    if px is None or py is None or not surroundings:
+        return []
+    occupied = {(e.get("tx"), e.get("ty")) for e in game_state.get("visible_entities") or []}
+    moves = get_valid_moves(surroundings, (px, py), None, is_in_combat=True)
+    scored = []
+    for m in moves:
+        dx, dy = CARDINAL_OFFSETS[m[5:]]
+        cell = (px + dx, py + dy)
+        if cell in occupied or _hazard_reach(cell, hazards):
+            continue
+        gd = max(abs(cell[0] - goal[0]), abs(cell[1] - goal[1])) if goal else 0
+        scored.append((gd, visit_counts[cell], m))
+    return [m for _gd, _v, m in sorted(scored)]
+
+
+def rooted_hazard_decision(game_state):
+    """A MOVE out of a rooted hazard's reach when he stands next to one, else None."""
+    hazards = rooted_hazards(game_state)
+    px, py = game_state.get("x"), game_state.get("y")
+    if not hazards or px is None or py is None:
+        return None
+    near = _hazard_reach((px, py), hazards)
+    if not near:
+        ROOTED_STATE["clear"] += 1
+        if ROOTED_STATE["clear"] >= ROOTED_CLEAR_RESET:
+            ROOTED_STATE["steps"].clear()
+        return None
+    ROOTED_STATE["clear"] = 0
+    live = _rooted_budget(game_state, near)
+    if not live:
+        return None
+    steps = _safe_steps(game_state, hazards)
+    if not steps:
+        return None
+    for h in live:
+        ROOTED_STATE["steps"][(h[0], h[1])] += 1
+    return {"action": steps[0], "reason": f"[ROOTED HAZARD] {live[0][2]} is rooted and rated Tough or worse and he stands next to it: stepping out of its reach ({steps[0][5:]}) before it engulfs or strikes him."}
+
+
+def veto_rooted_approach(decision, game_state):
+    """Replaces a MOVE that would end next to a rooted hazard (or attack it) by a step that stays out of reach nearest to the same goal. Others pass through."""
+    action = (decision or {}).get("action", "")
+    if not action.startswith("MOVE_") or action[5:] not in CARDINAL_OFFSETS:
+        return decision
+    hazards = rooted_hazards(game_state)
+    px, py = game_state.get("x"), game_state.get("y")
+    if not hazards or px is None or py is None:
+        return decision
+    dx, dy = CARDINAL_OFFSETS[action[5:]]
+    dest = (px + dx, py + dy)
+    hit = _hazard_reach(dest, hazards)
+    if not hit or _hazard_reach((px, py), hazards):
+        return decision      # nothing wrong, or already in reach (rooted_hazard_decision handles that)
+    live = _rooted_budget(game_state, hit)
+    if not live:
+        return decision
+    steps = _safe_steps(game_state, hazards, goal=dest)
+    if not steps:
+        return decision
+    for h in live:
+        ROOTED_STATE["steps"][(h[0], h[1])] += 1
+    print(f"[ROOTED HAZARD] {action} -> {steps[0]} (would end next to {live[0][2]})")
+    return {"action": steps[0], "reason": f"[ROOTED HAZARD] {live[0][2]} is rooted and rated Tough or worse: {action} would end next to it, sidestepping {steps[0][5:]} instead."}
+
+
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
-    """The decision for this turn: `_query_decision`, the lethal-adjacent guard, then the stand-and-fight rule."""
+    """The decision for this turn: the engulf escape, the hunter protocol, the rooted-hazard step-out, else `_query_decision`, the lethal-adjacent guard, the stand-and-fight rule, then the rooted-approach veto."""
+    engulf_move = engulf_escape_decision(game_state)
+    if engulf_move:
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return engulf_move
+    hunter_move = hunter_protocol_decision(game_state)
+    if hunter_move:
+        if HUNTER_PROTOCOL_STATE["last"] != hunter_move["action"]:
+            print(hunter_move["reason"])
+        HUNTER_PROTOCOL_STATE["last"] = hunter_move["action"]
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return hunter_move
+    rooted_move = rooted_hazard_decision(game_state)
+    if rooted_move:
+        if ROOTED_STATE["last"] != rooted_move["action"]:
+            print(rooted_move["reason"])
+        ROOTED_STATE["last"] = rooted_move["action"]
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return rooted_move
     STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
     decision = _query_decision(game_state, took_damage, enemies, suppress_autolevel)
     decision = lethal_adjacent_guard(decision, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
-    return enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
+    decision = enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
+    return veto_rooted_approach(decision, game_state)
 
 
 # Turrets (HANDOFF issue 77). A level 3 character died to a musket turret that the mod exported with is_enemy false, rated Impossible (level 15), with only 5 hit points:
@@ -4804,6 +5037,7 @@ def main():
                 note_loot(game_state)
                 note_inventory_action(game_state)
                 note_throw_result(game_state)
+                note_hunters(game_state)
                 note_avoid(game_state)
                 note_quests(game_state)
                 note_zone_danger(game_state)

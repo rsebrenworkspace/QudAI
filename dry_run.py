@@ -6780,3 +6780,195 @@ _h141 = next(s for s in _cl.load_wish_scenarios() if s["id"] == "psychic-hunter"
 assert [w["cmd"] for w in _h141["wishes"]] == ["seekerhunter", "extrasolohunter", "extraculthunter"] and all(w["kind"] == "command" for w in _h141["wishes"])
 assert "SNAPSHOT" in " ".join(_h141["setup"]) and "PSYCHIC HUNTER" in " ".join(_h141["watch"])
 print("  [OK] Test 141 Passed: the Lab card for psychic hunters wishes seekerhunter, extrasolohunter and extraculthunter (the names from the game's wish handlers), starts with a snapshot, and says what to watch")
+
+
+# Test 142: the first sight of a psychic hunter or thrall in a zone is logged once (BACKLOG B25, HANDOFF issue 123)
+# ---------------------------------------------------------------------------
+_old142 = brain.HUNTER_LOG_PATH
+brain.HUNTER_LOG_PATH = _os.path.join(tempfile.mkdtemp(), "hunter_log.jsonl")
+try:
+    brain.HUNTER_SEEN.update({"zone": None, "keys": set()}); brain.TURN_CLOCK = 77
+    _e142 = lambda name, bp, **k: dict({"name": name, "blueprint": bp, "level": 8, "difficulty": "Average", "hp": 30, "dist": 7, "has_los": True}, **k)
+    _s142 = {"zone_id": "Z1", "psychic_glimmer": 24, "hp": 42, "level": 8, "visible_entities": [
+        _e142("Kuruwur-No-Longer, Ptoh's 28th Osprey", "PsychicSeekerHunter", psychic_hunter=True), _e142("salamander and psychic thrall", "Salamander", level=1),
+        _e142("Kushworem-No-Longer, servant of Ptoh", "Novice of the Sightless Way 3", psychic_hunter=False), _e142("snapjaw", "Snapjaw", level=1)]}
+    brain.note_hunters(_s142); brain.note_hunters(_s142)
+    _rows142 = [json.loads(l) for l in open(brain.HUNTER_LOG_PATH, encoding="utf-8")]
+    assert [r["kind"] for r in _rows142] == ["hunter", "thrall", "named, unmarked"], _rows142
+    assert _rows142[0]["psychic_glimmer"] == 24 and _rows142[0]["turn"] == 77 and _rows142[0]["dist"] == 7 and _rows142[0]["zone"] == "Z1", _rows142[0]
+    brain.note_hunters(dict(_s142, zone_id="Z2"))
+    assert len(open(brain.HUNTER_LOG_PATH, encoding="utf-8").read().splitlines()) == 6, "a new zone logs the same hunter again (it followed him)"
+    brain.note_hunters({}); brain.note_hunters({"visible_entities": None})
+finally:
+    brain.HUNTER_LOG_PATH = _old142; brain.HUNTER_SEEN.update({"zone": None, "keys": set()})
+assert "hunter_log.jsonl" in _cl.MEMORY_FILES and "hunter_log.jsonl" in _cl.DATA_FILES
+print("  [OK] Test 142 Passed: a psychic hunter, its thrall and a named unmarked creature are each logged once per zone with distance, level, rating and glimmer, a new zone logs them again, and the capture and the console include the log")
+
+
+# Test 143: the hunter protocol: Lase a marked psychic hunter in view before it can cast, banish it when it is close and Lase is not available (BACKLOG B25, HANDOFF issue 124)
+# ---------------------------------------------------------------------------
+_h143 = lambda **k: dict({"name": "Kuruwur-No-Longer, Ptoh's 28th Osprey", "blueprint": "PsychicSeekerHunter", "is_enemy": True, "psychic_hunter": True, "has_los": True, "tx": 18, "ty": 10, "dist": 8, "hp": 30, "level": 8, "difficulty": "Average"}, **k)
+_ab143 = lambda **ready: [{"name": n, "command": c, "cooldown": 0 if ready.get(n, True) else 5, "usable": ready.get(n, True), "active": False} for n, c in (("Lase", "CommandLase"), ("Teleport Other", "CommandTeleportOther"))]
+_s143 = lambda ents, abil=None, **k: dict({"x": 10, "y": 10, "hp": 42, "max_hp": 42, "visible_entities": ents, "abilities": abil if abil is not None else _ab143(), "companions": [], "surroundings": {}}, **k)
+_d143 = brain.hunter_protocol_decision(_s143([_h143()]))
+assert _d143 and _d143["action"] == "USE_ABILITY:CommandLase:E@18,10" and "HUNTER PROTOCOL" in _d143["reason"], _d143
+assert brain.hunter_protocol_decision(_s143([_h143(psychic_hunter=False, name="psychic thrall")])) is None, "a thrall or any other creature is not the protocol's business"
+assert brain.hunter_protocol_decision(_s143([_h143(has_los=False)])) is None, "no line of sight: it cannot cast and the protocol cannot shoot"
+assert brain.hunter_protocol_decision(_s143([_h143(dist=11, tx=21)])) is None, "beyond Lase range, Teleport Other too far: normal logic"
+assert brain.hunter_protocol_decision(_s143([_h143(hp=0)])) is None, "a dead hunter"
+assert brain.hunter_protocol_decision(_s143([])) is None and brain.hunter_protocol_decision({}) is None
+# a companion on the line: no shot through the pet (R8)
+assert brain.hunter_protocol_decision(_s143([_h143()], companions=[{"name": "scorpiock", "tx": 14, "ty": 10}])) is None
+assert brain.hunter_protocol_decision(_s143([_h143()], companions=[{"name": "scorpiock", "tx": 14, "ty": 14}]))["action"].startswith("USE_ABILITY:CommandLase")
+# Lase spent: banish when close, not when far
+_nolase143 = _ab143(Lase=False)
+_close143 = brain.hunter_protocol_decision(_s143([_h143(tx=14, dist=4)], _nolase143))
+assert _close143 and _close143["action"] == "USE_ABILITY:CommandTeleportOther:E@14,10", _close143
+assert brain.hunter_protocol_decision(_s143([_h143()], _nolase143)) is None, "at 8 tiles and no Lase the banish is out of range: normal logic"
+# the combat-ability test switch (hidden abilities) leaves nothing to use
+assert brain.hunter_protocol_decision(_s143([_h143()], [])) is None
+# the nearest hunter first, and a second hunter is used when the first has no clear line
+_two143 = [_h143(name="far", tx=19, dist=9), _h143(name="near", tx=14, dist=4)]
+assert "near" in brain.hunter_protocol_decision(_s143(_two143))["reason"]
+# it is the first thing the decision pipeline does
+brain.HUNTER_PROTOCOL_STATE["last"] = None
+_q143 = brain.query_decision(_s143([_h143()]), False, [_h143()])
+assert _q143["action"] == "USE_ABILITY:CommandLase:E@18,10", _q143
+_b143 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "hunter_move = hunter_protocol_decision(game_state)" in _b143
+print("  [OK] Test 143 Passed: a marked psychic hunter in view is Lased at once through a clear line (never through a companion), banished with Teleport Other when it is close and Lase is spent, ignored when out of sight or range or when the abilities are hidden, thralls are left alone, and it is the first thing the decision pipeline does")
+
+
+# Test 144: engulfed means trying to move every turn, and the bleeding prompt no longer tells the model to stand still (human, 2026-10-10: Gen 33; BACKLOG B26, HANDOFF issue 125)
+# ---------------------------------------------------------------------------
+_DIRS144 = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0), "NE": (1, -1), "NW": (-1, -1), "SE": (1, 1), "SW": (-1, 1)}
+_WALL144 = "[BREAKABLE], [BLOCKED: impassable terrain], [BLOCKED: foamcrete]"
+def _s144(effects, ents=None, surr=None):
+    return {"x": 41, "y": 10, "hp": 13, "max_hp": 42, "effects": effects, "visible_entities": ents or [], "abilities": [], "companions": [],
+            "surroundings": surr if surr is not None else {d: "Empty ground" for d in _DIRS144}}
+brain.visit_counts.clear(); brain.ENGULF_STATE["turns"] = 0
+_eng144 = ["engulfed by a sappy salty bloody red death dacca", "sappy bloody", "bleeding"]
+assert brain.is_engulfed(_s144(_eng144)) and not brain.is_engulfed(_s144(["bleeding"])) and not brain.is_engulfed(_s144([]))
+assert brain.engulf_escape_decision(_s144(["bleeding"])) is None and brain.ENGULF_STATE["turns"] == 0
+_d144 = brain.engulf_escape_decision(_s144(_eng144))
+assert _d144 and _d144["action"].startswith("MOVE_") and "ENGULFED" in _d144["reason"], _d144
+# toward the cell farthest from the rooted hostiles (a dacca to the NW and a lah to the N)
+_ents144 = [{"name": "red death dacca", "is_enemy": True, "is_stationary": True, "tx": 40, "ty": 9}, {"name": "feral lah", "is_enemy": True, "is_stationary": True, "tx": 41, "ty": 8}]
+_d144 = brain.engulf_escape_decision(_s144(_eng144, _ents144))
+assert _d144["action"] in ("MOVE_S", "MOVE_SE", "MOVE_SW", "MOVE_E"), _d144
+# walls are not tried while a free cell exists, and with every neighbour a wall it still tries something rather than waiting
+_surr144 = {d: _WALL144 for d in _DIRS144}; _surr144["E"] = "Empty ground"
+assert brain.engulf_escape_decision(_s144(_eng144, None, _surr144))["action"] == "MOVE_E"
+_all144 = {d: "Empty ground" for d in _DIRS144}
+brain.visit_counts.clear()
+# the pipeline: engulfed is the first thing it does (abilities are refused while engulfed), WAIT is never returned
+_q144 = brain.query_decision(_s144(_eng144, _ents144), True, [])
+assert _q144["action"].startswith("MOVE_"), _q144
+for _n144 in range(30):
+    _a144 = brain.query_decision(_s144(_eng144, _ents144), True, [])["action"]
+    assert _a144.startswith("MOVE_"), (_n144, _a144)
+assert brain.ENGULF_STATE["turns"] >= 30
+# a state that is not engulfed resets the count
+brain.engulf_escape_decision(_s144([])); assert brain.ENGULF_STATE["turns"] == 0
+# the prompt no longer claims that every step costs bleed damage
+_src144 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "Every step or bump-attack inflicts bleed damage" not in _src144 and "Never WAIT or rest because of it while enemies are near" in _src144
+assert "engulf_move = engulf_escape_decision(game_state)" in _src144
+brain.visit_counts.clear(); brain.ENGULF_STATE["turns"] = 0
+print("  [OK] Test 144 Passed: while engulfed every turn is a move attempt toward the cell farthest from rooted hostiles (never WAIT, never an ability), it is the first step of the decision pipeline, not-engulfed states are untouched, and the bleeding prompt no longer says that every step costs bleed damage")
+
+
+# Test 145: rooted hazards: never end a turn next to a rooted hostile rated Tough or worse, bounded so it cannot oscillate (human, 2026-10-10: the dacca engulf; BACKLOG B25/B26, HANDOFF issue 126)
+# ---------------------------------------------------------------------------
+_D145 = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0), "NE": (1, -1), "NW": (-1, -1), "SE": (1, 1), "SW": (-1, 1)}
+def _haz145(x=5, y=5, **k):
+    return dict({"name": "red death dacca", "is_enemy": True, "is_stationary": True, "difficulty": "Impossible", "tx": x, "ty": y, "hp": 120, "dist": 2}, **k)
+def _st145(px, py, ents, zone="Z1"):
+    return {"x": px, "y": py, "zone": zone, "hp": 18, "max_hp": 18, "visible_entities": ents, "abilities": [], "companions": [],
+            "surroundings": {d: ("[BLOCKED: impassable terrain]" if not (0 <= px + dx < 11 and 0 <= py + dy < 11) else "Empty ground") for d, (dx, dy) in _D145.items()}}
+def _reset145():
+    brain.visit_counts.clear(); brain.ROOTED_STATE["zone"] = None; brain.ROOTED_STATE["steps"].clear(); brain.ROOTED_STATE["last"] = None
+_reset145()
+# which creatures count
+assert brain.rooted_hazards(_st145(2, 5, [_haz145()])) == [(5, 5, "red death dacca")]
+for _bad145 in (dict(difficulty="Average"), dict(difficulty="Trivial"), dict(is_stationary=False), dict(is_enemy=False), dict(is_companion=True), dict(hp=0)):
+    assert brain.rooted_hazards(_st145(2, 5, [_haz145(**_bad145)])) == [], _bad145
+# standing next to one: step to a cell out of reach (the hazard at 5,5; he is at 4,5)
+_d145 = brain.rooted_hazard_decision(_st145(4, 5, [_haz145()]))
+assert _d145 and _d145["action"].startswith("MOVE_") and "ROOTED HAZARD" in _d145["reason"], _d145
+_dx145, _dy145 = _D145[_d145["action"][5:]]
+assert max(abs(4 + _dx145 - 5), abs(5 + _dy145 - 5)) >= 2, _d145
+# not adjacent, or no hazard: nothing to do
+_reset145()
+assert brain.rooted_hazard_decision(_st145(2, 5, [_haz145()])) is None and brain.rooted_hazard_decision(_st145(4, 5, [])) is None
+# the veto: a MOVE that would end next to it is replaced, other moves and other actions pass through
+_reset145()
+_v145 = brain.veto_rooted_approach({"action": "MOVE_E", "reason": "x"}, _st145(3, 5, [_haz145()]))
+assert _v145["action"] != "MOVE_E" and "ROOTED HAZARD" in _v145["reason"], _v145
+_dx145, _dy145 = _D145[_v145["action"][5:]]
+assert max(abs(3 + _dx145 - 5), abs(5 + _dy145 - 5)) >= 2
+assert brain.veto_rooted_approach({"action": "MOVE_W", "reason": "x"}, _st145(3, 5, [_haz145()]))["action"] == "MOVE_W"
+assert brain.veto_rooted_approach({"action": "AUTOEXPLORE", "reason": "x"}, _st145(3, 5, [_haz145()]))["action"] == "AUTOEXPLORE"
+assert brain.veto_rooted_approach({"action": "MOVE_E", "reason": "x"}, _st145(3, 5, []))["action"] == "MOVE_E"
+# attacking it (MOVE into its cell from 4,5) is replaced by the step-out, not by a melee
+_reset145()
+assert brain.query_decision(_st145(4, 5, [_haz145()]), False, [])["reason"].startswith("[ROOTED HAZARD]")
+# MULTI-TURN: a model that always wants to walk east through a row with the hazard in the middle. He must (a) never spend more than the budget of
+# turns stepping aside, (b) still get to the goal (the budget runs out, he goes past), (c) not end more than a few turns in its reach.
+_orig145 = brain._query_decision
+def _sim145(goal, hazard_xy, start, turns=60, hazard_for=None):
+    px, py = start; in_reach = 0; rooted_moves = 0; seen = []
+    _reset145()
+    brain._query_decision = lambda gs, td, en, sa=False: {"action": "MOVE_" + ("E" if goal[0] > gs["x"] else "W" if goal[0] < gs["x"] else "N" if goal[1] < gs["y"] else "S"), "reason": "model: walk to the goal"}
+    try:
+        for _t in range(turns):
+            if (px, py) == goal:
+                break
+            d = brain.query_decision(_st145(px, py, [_haz145(*hazard_xy)]), False, [])
+            if "ROOTED HAZARD" in d["reason"]:
+                rooted_moves += 1
+            dx, dy = _D145[d["action"][5:]]
+            px, py = px + dx, py + dy
+            brain.visit_counts[(px, py)] += 1
+            seen.append((px, py))
+            if max(abs(px - hazard_xy[0]), abs(py - hazard_xy[1])) <= 1:
+                in_reach += 1
+    finally:
+        brain._query_decision = _orig145
+    return (px, py), rooted_moves, in_reach, seen
+_end145, _rm145, _ir145, _seen145 = _sim145((9, 5), (5, 5), (1, 5))
+assert _end145 == (9, 5), ("never reached the goal", _end145, _seen145)
+assert _rm145 <= brain.ROOTED_STEP_BUDGET * 2 + 2, ("too many sidesteps", _rm145, _seen145)
+assert _ir145 <= 6, ("stayed in reach too long", _ir145, _seen145)
+# the same with the hazard right on his line from the other side, and from a start already next to it
+_end145, _rm145, _ir145, _seen145 = _sim145((1, 5), (5, 5), (8, 5)); assert _end145 == (1, 5) and _rm145 <= 10, (_end145, _rm145, _seen145)
+_end145, _rm145, _ir145, _seen145 = _sim145((9, 5), (5, 5), (4, 5)); assert _end145 == (9, 5) and _rm145 <= 10, (_end145, _rm145, _seen145)
+# out of reach for ROOTED_CLEAR_RESET decisions in a row refills the budget (capture 2026-10-10), one adjacency in between starts the count again
+_reset145(); brain.ROOTED_STATE["zone"] = "Z1"
+for _i145 in range(brain.ROOTED_STEP_BUDGET):
+    assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()])) is not None
+assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()])) is None, "budget spent"
+for _i145 in range(brain.ROOTED_CLEAR_RESET - 1):
+    brain.rooted_hazard_decision(_st145(2, 5, [_haz145()]))
+assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()])) is None, "one decision short of the refill, and the adjacency restarts the count"
+for _i145 in range(brain.ROOTED_CLEAR_RESET):
+    brain.rooted_hazard_decision(_st145(2, 5, [_haz145()]))
+assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()])) is not None, "refilled after enough clear decisions"
+# a new zone resets the budget
+_reset145(); brain.ROOTED_STATE["zone"] = "Z1"; brain.ROOTED_STATE["steps"][(5, 5)] = 99
+assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()], zone="Z1")) is None
+assert brain.rooted_hazard_decision(_st145(4, 5, [_haz145()], zone="Z2")) is not None
+_src145 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "rooted_move = rooted_hazard_decision(game_state)" in _src145 and "return veto_rooted_approach(decision, game_state)" in _src145
+_reset145()
+print("  [OK] Test 145 Passed: a rooted hostile rated Tough or worse is a hazard (not trivial ones, companions, mobile or dead ones), standing next to it he steps out of its reach, a move that would end next to it is replaced, and a model that keeps walking through it is bounded by a per-hazard budget (multi-turn: still reaches the goal, no endless oscillation)")
+
+
+# Test 146: a Gunslinger with a mental mutation (Force Bubble) is a gunkin, not an Esper; a real Esper is still an Esper (human, 2026-10-10: wrong class after a new character)
+# ---------------------------------------------------------------------------
+_g146 = {"genotype": "Mutated Human", "subtype": "Gunslinger", "calling": "Gunslinger", "mutations": [{"class": "ForceBubble"}, {"class": "Wings"}, {"class": "Beak"}],
+         "abilities": [{"name": "Akimbo"}, {"name": "Force Bubble"}], "equipped_summary": "Missile Weapon: chrome revolver", "attributes": {"Ego": 22}}
+assert build_templates.detect_build(_g146) is build_templates.BUILD_TEMPLATES["gunkin"], build_templates.detect_build(_g146)["name"]
+_e146 = {"genotype": "Mutated Human", "subtype": "Apostle", "calling": "Apostle", "mutations": [{"class": "ForceBubble"}, {"class": "Clairvoyance"}], "abilities": [], "attributes": {"Ego": 22}}
+assert build_templates.detect_build(_e146)["name"].lower().startswith("esper"), build_templates.detect_build(_e146)["name"]
+print("  [OK] Test 146 Passed: a Gunslinger with Force Bubble and a high Ego is a gunkin (not an Esper); an Apostle with mental mutations is still an Esper")

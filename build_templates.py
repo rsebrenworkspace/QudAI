@@ -611,6 +611,11 @@ def detect_build(game_state):
     if "freezingray" in mutations and ("axe" in equipped or "marauder" in calling):
         return BUILD_TEMPLATES["auspicious_beginnings"]
 
+    # 6b. A Gunslinger (or anyone with Akimbo) is a gunkin even with one mental mutation: the human's Mutated Human Gunslinger with Force Bubble was read as an Esper
+    # (2026-10-10), so he levelled Ego and used the Esper doctrine. A real Esper has no Gunslinger calling and no Akimbo.
+    if "gunslinger" in calling or any("akimbo" in a for a in abilities):
+        return BUILD_TEMPLATES["gunkin"]
+
     # 7. Esper-ited Away (Psychic powers / Apostle / Greybeard)
     mental_muts = ["sundermind", "lightmanipulation", "clairvoyance", "forcewall", "forcebubble", "teleportation", "cryokinesis", "pyrokinesis"]
     if any(m in mental_muts for m in mutations) or any(c in calling for c in ["apostle", "greybeard", "pilgrim"]) or ego >= 20:
