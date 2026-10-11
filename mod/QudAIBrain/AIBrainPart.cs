@@ -240,6 +240,39 @@ namespace QudAIBrain
             catch { return "\"thrown_weapon\": null,"; }
         }
 
+        // Gas clouds near the player (BACKLOG B33, the grenade lab, human 2026-10-10: "start with poison gas"): one entry per Gas object within GasCellRadius of him, with its type and
+        // density. A grenade makes a cloud in the thrown cell and its neighbours and the gas then moves on its own, so its size and life can only be measured, not computed. Also the base for
+        // never walking into a cloud he made (not built).
+        private const int GasCellRadius = 12;
+        private const int GasCellMax = 150;
+
+        private static string GasCellsJson(GameObject player)
+        {
+            try
+            {
+                Cell cur = player?.CurrentCell;
+                Zone zone = cur?.ParentZone;
+                if (cur == null || zone == null) return "\"gas_cells\": [],";
+                var entries = new List<string>();
+                foreach (GameObject o in GetSafeZoneObjects(zone))
+                {
+                    try
+                    {
+                        if (o == null || o.CurrentCell == null) continue;
+                        var g = o.GetPart<Gas>();
+                        if (g == null) continue;
+                        int dist = Math.Max(Math.Abs(o.CurrentCell.X - cur.X), Math.Abs(o.CurrentCell.Y - cur.Y));
+                        if (dist > GasCellRadius) continue;
+                        entries.Add("{\"x\": " + o.CurrentCell.X + ", \"y\": " + o.CurrentCell.Y + ", \"gas\": \"" + EscapeJson(g.GasType ?? "") + "\", \"density\": " + g.Density + "}");
+                        if (entries.Count >= GasCellMax) break;
+                    }
+                    catch { }
+                }
+                return "\"gas_cells\": [" + string.Join(",", entries) + "],";
+            }
+            catch { return "\"gas_cells\": [],"; }
+        }
+
         // The total hit points of the hostile creatures in the zone: a thrown weapon that handles its own throw is judged by whether this drops.
         private static int HostileHitpointTotal(GameObject player, Zone zone)
         {
@@ -2387,6 +2420,7 @@ namespace QudAIBrain
                 sb.Append(BuildFrontierJson(player, currentCell, isAutoexploreStuck || isZoneFullyExplored));
                 sb.Append(LastBurrowJson());
                 sb.Append(ThrownWeaponJson(player));
+                sb.Append(GasCellsJson(player));
                 sb.Append("\"psychic_glimmer\": " + PlayerGlimmer(player) + ",");
                 sb.Append(LastThrowJson());
                 sb.Append(LastAbilityUseJson());

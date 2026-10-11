@@ -6,6 +6,7 @@ import brain
 # Never write test decisions into the real exit log (memory/exit_choices.jsonl).
 brain.EXIT_LOG_PATH = os.path.join(tempfile.mkdtemp(), "exit_choices_dry_run.jsonl")
 brain.DECISION_TRACE_PATH = os.path.join(tempfile.mkdtemp(), "decision_trace_dry_run.jsonl")
+brain.GAS_LOG_PATH = os.path.join(tempfile.mkdtemp(), "gas_log_dry_run.jsonl"); brain.LAB_HOLD_FLAG = os.path.join(tempfile.mkdtemp(), "lab_hold.flag")   # the human's real lab flag in memory/ must not turn every test into a PASS
 import danger_ledger
 danger_ledger.LEDGER_PATH = os.path.join(tempfile.mkdtemp(), "danger_ledger_dry_run.json"); danger_ledger.reset_cache()
 import build_templates
@@ -5314,13 +5315,14 @@ for _s in _sc101:
 # every spawn: names a creature blueprint in the catalog and every item: an item blueprint in the item catalog, so a card cannot send the human after a typo
 _items101 = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "items.json"), encoding="utf-8"))["items"]
 _crea101 = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "creatures.json"), encoding="utf-8"))["creatures"]
+_gren101 = _json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "grenades.json"), encoding="utf-8"))["grenades"]   # the tinker-made grenades are not in the item catalogue
 for _s in _sc101:
     for _w in _s["wishes"]:
         _c = _w["cmd"]
         assert not _c.startswith("spawn:"), f"the spawn: prefix failed in game (Unknown blueprint, 2026-10-08): {_s['id']}"
         assert _w.get("kind") in ("blueprint", "command"), (_s["id"], _w)
         if _w["kind"] == "blueprint":
-            assert _c in _crea101 or _c in _items101, f"unknown blueprint typed alone in {_s['id']}: {_c}"
+            assert _c in _crea101 or _c in _items101 or _c in _gren101, f"unknown blueprint typed alone in {_s['id']}: {_c}"
         elif _c.startswith("item:"):
             assert _c[5:] in _items101, f"unknown item in {_s['id']}: {_c}"
 # the XP wish: the game's own curve, and what is still missing
@@ -7216,3 +7218,34 @@ assert _g158["grenades"]["HEGrenade3"]["params"]["Damage"] == "6d6" and _g158["g
 # every grenade has a distance floor for the brain: either its kind says so, or the kind's area is the part's own radius
 assert _g158["kinds"]["gas"]["min_safe_dist"] >= brain.GRENADE_MIN_DIST and _g158["kinds"]["thermal"]["min_safe_dist"] >= brain.GRENADE_MIN_DIST
 print("  [OK] Test 158 Passed: data/grenades.json holds every grenade kind (gas, thermal, high explosive, EMP, flashbang, gravity, sunder, time dilation, phase, deployment) with its numbers, its area and its hazards, every gas names its effect, and the brain's distance floor is not below the table's gas and thermal floors")
+
+
+# Test 159: the grenade lab: gas cells are logged turn by turn and the hold flag makes him stand still (human, 2026-10-10: "start with poison gas"; BACKLOG B33, HANDOFF issue 145)
+# ---------------------------------------------------------------------------
+import tempfile as _tf159
+_d159 = _tf159.mkdtemp()
+_saved159 = (brain.GAS_LOG_PATH, brain.LAB_HOLD_FLAG)
+brain.GAS_LOG_PATH = _os.path.join(_d159, "gas_log.jsonl"); brain.LAB_HOLD_FLAG = _os.path.join(_d159, "lab_hold.flag")
+try:
+    _gs159 = {"x": 50, "y": 10, "hp": 20, "max_hp": 20, "zone_id": "Z", "effects": [], "gas_cells": [{"x": 54, "y": 10, "gas": "PoisonGas", "density": 40}, {"x": 55, "y": 10, "gas": "PoisonGas", "density": 12}, {"x": 54, "y": 11, "gas": "PoisonGas", "density": 8}]}
+    brain.note_gas(dict(_gs159, gas_cells=[]))
+    assert not _os.path.exists(brain.GAS_LOG_PATH), "no gas and no flag: nothing is logged"
+    brain.note_gas(_gs159)
+    _l159 = [json.loads(x) for x in open(brain.GAS_LOG_PATH, encoding="utf-8")]
+    assert len(_l159) == 1 and _l159[0]["seq"] >= 1 and _l159[0]["n"] == 3 and _l159[0]["total_density"] == 60 and _l159[0]["max_density"] == 40 and _l159[0]["min_dist"] == 4 and _l159[0]["max_dist"] == 5 and _l159[0]["gases"] == ["PoisonGas"], _l159
+    assert brain.lab_hold_decision(_gs159) is None, "no flag: the normal logic"
+    open(brain.LAB_HOLD_FLAG, "w").close()
+    assert brain.lab_hold_decision(_gs159)["action"] == "PASS" and "LAB" in brain.lab_hold_decision(_gs159)["reason"]
+    assert brain.lab_hold_decision(dict(_gs159, hp=8)) is None, "under half hit points the lab lets go of him"
+    brain.note_gas(dict(_gs159, gas_cells=[]))
+    assert sum(1 for _ in open(brain.GAS_LOG_PATH, encoding="utf-8")) == 2, "with the flag on, the empty turns are logged too (the cloud's end)"
+    assert brain.query_decision(_gs159, False, [])["action"] == "PASS", "the lab hold is the first step of the pipeline"
+    brain.note_gas({})            # never raises
+finally:
+    brain.GAS_LOG_PATH, brain.LAB_HOLD_FLAG = _saved159
+_b159 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert 'not str(reason).startswith("[LAB]")' in _b159, "the Loop Breaker must not undo the lab hold"
+_cs159 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "GasCellsJson(player)" in _cs159 and "GetPart<Gas>()" in _cs159
+assert any(s["id"] == "grenade-gas-lab" for s in json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "wish_scenarios.json"), encoding="utf-8"))["scenarios"])
+print("  [OK] Test 159 Passed: gas cells are logged per turn with count, density and distance (nothing without gas or the flag, every turn with it), the lab flag makes him PASS until his hit points fall under half, it is the first step of the decision pipeline, and the Lab card exists")
