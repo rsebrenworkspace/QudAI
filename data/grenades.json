@@ -8,7 +8,7 @@
  "kinds": {
   "gas": {
    "area": "A cloud: the thrown cell and its adjacent cells receive the gas (GasGrenade.DoDetonate creates a Gas object in each of them, `[verified in code]`), then it spreads by itself every turn: above density 10 a 25 percent chance to move into 1-4 neighbours, at 10 or less a 50 percent chance to vanish; non-seeping gas stays in corridors for hundreds of turns `[wiki]`. No fixed radius.",
-   "min_safe_dist": 5,
+   "min_safe_dist": 4,
    "hazards": [
     "the cloud drifts back toward the thrower and into corridors and rooms",
     "companions and the thrower take the effect too",

@@ -21,8 +21,10 @@ KINDS = {
     "gas": {
         "parts": ["GasGrenade"],
         "area": "A cloud: the thrown cell and its adjacent cells receive the gas (GasGrenade.DoDetonate creates a Gas object in each of them, `[verified in code]`), then it spreads by itself every turn: above density 10 a 25 percent chance to move into 1-4 neighbours, at 10 or less a 50 percent chance to vanish; non-seeping gas stays in corridors for hundreds of turns `[wiki]`. No fixed radius.",
-        "min_safe_dist": 5,
+        "min_safe_dist": 4,
+        "preferred_dist": 5,
         "hazards": ["the cloud drifts back toward the thrower and into corridors and rooms", "companions and the thrower take the effect too", "seeping gases pass through walls"],
+        "measured": "mark I and II poison gas in the open (grenade lab 2026-10-11): at 5 tiles the gas never reached a thrower who stood still, at 4 it came adjacent but not onto his cell, at 3 a mark II killed a level 1 character, at 2 it is on his cell the next turn; a mark I cloud lasts 14-20 turns, a mark II 44; BACKLOG B33 results 1-5",
     },
     "thermal": {
         "parts": ["ThermalGrenade"],
