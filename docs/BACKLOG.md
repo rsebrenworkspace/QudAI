@@ -265,13 +265,18 @@ Trading (task 7.3), water and hydration economy (7.2), world map navigation and 
 - **Idea:** for Esper builds, Proselytize may turn a dangerous adjacent creature (a rooted hazard, perhaps a psychic hunter or thrall) into a pet instead of a killer. **Unknown `[unknown]`:** whether the dacca actually became a pet or only stopped acting (check its faction), the success chance against a level 24 target, the cost, and whether it works on psychic hunters.
 - **Depends on:** a Proselytize-capable build; B25 (hunters), the rooted-plant rule. **Size (my guess):** research small, rule small.
 
-### B28. FIRE_MISSILE did nothing for a revolver user: the hard-coded skill "Rifle" (found 2026-10-10 in the rooted-hazard test; fixed on `fix/missile-diag`, awaiting a game check; not promoted)
+### B28. FIRE_MISSILE did nothing for a revolver user: the hard-coded skill "Rifle" (found 2026-10-10 in the rooted-hazard test; FIXED and verified in game 2026-10-10: ammo dropped 3, 2, 1, 0 and every call returned True; diagnostics removed; not promoted)
 - **What happened `[verified in the live trace and state]`:** a Mutated Human Gunslinger (two revolvers, 6 slugs each, Akimbo and Force Bubble) with the test switch hiding abilities repeated `FIRE_MISSILE@43,12` at a dacca 6 tiles away for ten turns; `missile_ammo` stayed 6/6, so no shot left the guns, and no mod log line explained it (`ExecuteMissileFire` returns silently on an empty-ammo or missing-weapon branch, and the handler then burns the turn).
 - **Hypothesis (the human):** the class fires through its Akimbo ability and the test switch hid it. `[unverified]` The switch only edits the exported ability list, so the C# should still fire; to check, run the same setup with the switch off.
 - **Reproduced with abilities ON (2026-10-10, same character after a restart): still no shot, ammo 6/6, nothing in `Player.log`. Diagnostics added on `fix/missile-diag` (`[QudAI MissileDiag]` lines: entry, target, the engine method called, its return value and the loaded ammo before and after). **Cause found `[verified in game 2026-10-10 and in code]`: the diagnostics showed the engine call returning False with ammo unchanged; `Combat.FireMissileWeapon` filters the equipped missile weapons by its `skill` argument and fails with "You do not have an appropriate missile weapon equipped!" when none match, and the mod passed a hard-coded "Rifle" to a character with revolvers. Fixed: the skill is now the first loaded weapon's own `MissileWeapon.Skill` (`EquippedMissileSkill`). Unverified in game.**
 - **Related, fixed (issue 127):** this character was detected as an Esper (Force Bubble counted as a mental mutation) and levelled Ego.
 - **Size (my guess):** small once reproduced; R4 says every command should cost a turn only if it did something.
 
+
+### B29. An empty gun and a stationary hazard: no reload in combat, and a flank loop (found 2026-10-10 in the capture after the missile fix; not promoted)
+- **What happened `[verified in the capture]`:** a Gunslinger emptied both revolvers on a wished red death dacca from 6 tiles (the dacca is rooted and was never in reach), HP 26/26 throughout. With 0 loaded the model kept "flanking for a clear line of fire", the reload came only later as a "Safe top-off" after he walked away, and at the end of the trace (`t43-47`) he oscillated W/E between two cells every turn.
+- **Ideas:** reload when the magazine is empty and no hostile is within reach (a rooted one at range counts as none); exempt a rooted hazard from "flank for line of fire"; a rooted Tough+ hostile may not be worth shooting at all (120 HP, 12 slugs).
+- **Size (my guess):** small; needs a multi-turn test (AGENTS.md).
 
 ## 3. Adding an idea
 Write it in your own words first. Then add: what exists today (tag how you know), what you do not know, what it depends on, and a rough size. Do not write an implementation plan until it is Researched.
