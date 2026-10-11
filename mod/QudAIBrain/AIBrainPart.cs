@@ -4891,30 +4891,9 @@ namespace QudAIBrain
             catch { return ""; }
         }
 
-        private static int LoadedAmmoTotal(GameObject player)
-        {
-            int total = 0;
-            try
-            {
-                var body = player.GetPart<Body>();
-                if (body == null) return -1;
-                foreach (var part in body.GetParts())
-                {
-                    if (part.Type == "Missile Weapon" && part.Equipped != null)
-                    {
-                        var loader = part.Equipped.GetPart<MagazineAmmoLoader>();
-                        if (loader != null && loader.Ammo != null) total += loader.Ammo.Count;
-                    }
-                }
-            }
-            catch { return -1; }
-            return total;
-        }
-
         private static void ExecuteMissileFire(GameObject player, Cell targetCell)
         {
             if (player == null || targetCell == null) return;
-            UnityEngine.Debug.Log("[QudAI MissileDiag] ExecuteMissileFire entered, loaded ammo " + LoadedAmmoTotal(player));
 
             // Only fire if the missile weapon is equipped and has ammo loaded
             try
@@ -5025,12 +5004,7 @@ namespace QudAIBrain
                     }
 
                     object instance = cachedFireMethod.IsStatic ? null : player.GetPart<Combat>();
-                    int ammoBefore = LoadedAmmoTotal(player);
-                    object fired = cachedFireMethod.Invoke(instance, args);
-                    // Diagnostic (BACKLOG B28): a Gunslinger's FIRE_MISSILE changed nothing (ammo stayed 6/6) and logged nothing.
-                    UnityEngine.Debug.Log("[QudAI MissileDiag] target=" + (targetObj != null ? StripQudFormatting(targetObj.DisplayName) : "none") + " cell=" + targetCell.X + "," + targetCell.Y
-                        + " method=" + cachedFireMethod.DeclaringType?.Name + "." + cachedFireMethod.Name + "(" + parameters.Length + ") returned=" + (fired == null ? "null" : fired.ToString())
-                        + " ammo " + ammoBefore + " -> " + LoadedAmmoTotal(player));
+                    cachedFireMethod.Invoke(instance, args);
                 }
             }
             catch (Exception ex)
