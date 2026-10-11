@@ -3026,7 +3026,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     if took_damage:
         damage_alert += "- COMBAT ALERT: [!HIT!] YOU TOOK DAMAGE LAST TURN! You are actively taking damage in combat!\n"
     if is_bleeding:
-        damage_alert += "- CRITICAL BLEEDING ALERT: [!BLEEDING!] You are bleeding heavily! Every step or bump-attack inflicts bleed damage. Prioritize emergency defense (Teleport Other to banish adjacent enemies, Force Bubble barrier) or retreat to safe ground!\n"
+        damage_alert += ("- BLEEDING: you lose a little HP at the end of every turn whatever you do (moving and fighting add nothing, standing still does not stop it); it ends by itself when you pass a Toughness save, "
+                         "and while it lasts you must still act: fight, banish or leave. Never WAIT or rest because of it while enemies are near.\n")
     if has_mw:
         if ammo > 0:
             ammo_display = f"Loaded {ammo}/{max_ammo} (Spare inventory slugs: {inv_ammo})"
@@ -3870,8 +3871,46 @@ def hunter_protocol_decision(game_state):
     return None
 
 
+# Engulfed (BACKLOG B26, HANDOFF issue 125). Gen 33 was engulfed by a red death dacca (a level 24 tree, the engulf also bleeds him every turn) and stood on one cell for 15 turns choosing
+# WAIT. The game's own text: "Cannot move until @they break free.", and "You cannot do that while engulfed by X." for commands, so abilities are refused and the way out is to TRY TO MOVE
+# (each try is a break-free attempt, ENGINE_INTERNALS 14.30). So while the effect list says `engulfed`, every turn is a move attempt, toward the cell farthest from rooted hostiles.
+ENGULF_STATE = {"turns": 0}
+
+
+def is_engulfed(game_state):
+    return any("engulfed" in str(ef).lower() for ef in (game_state.get("effects") or []))
+
+
+def engulf_escape_decision(game_state):
+    """MOVE attempt while engulfed, or None. Never WAIT, never an ability (the game refuses it)."""
+    if not is_engulfed(game_state):
+        ENGULF_STATE["turns"] = 0
+        return None
+    ENGULF_STATE["turns"] += 1
+    px, py = game_state.get("x"), game_state.get("y")
+    surroundings = game_state.get("surroundings") or {}
+    if px is None or py is None or not surroundings:
+        return None
+    rooted = [(e.get("tx"), e.get("ty")) for e in (game_state.get("visible_entities") or []) if e.get("is_enemy") and e.get("is_stationary") and e.get("tx") is not None]
+    moves = get_valid_moves(surroundings, (px, py), None, is_in_combat=True)
+    if not moves:
+        moves = [f"MOVE_{d}" for d in ("N", "S", "E", "W", "NE", "NW", "SE", "SW") if "[blocked" not in surroundings.get(d, "").lower()]
+    if not moves:
+        return None
+    def room(m):
+        dx, dy = CARDINAL_OFFSETS[m[5:]]
+        nx, ny = px + dx, py + dy
+        return (min([max(abs(nx - rx), abs(ny - ry)) for rx, ry in rooted] or [99]), -visit_counts[(nx, ny)])
+    best = max(moves, key=room)
+    return {"action": best, "reason": f"[ENGULFED] Cannot move until he breaks free and the game refuses abilities: trying to break free toward {best[5:]} (attempt {ENGULF_STATE['turns']}), never waiting."}
+
+
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
-    """The decision for this turn: the hunter protocol, else `_query_decision`, the lethal-adjacent guard, then the stand-and-fight rule."""
+    """The decision for this turn: the engulf escape, the hunter protocol, else `_query_decision`, the lethal-adjacent guard, then the stand-and-fight rule."""
+    engulf_move = engulf_escape_decision(game_state)
+    if engulf_move:
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return engulf_move
     hunter_move = hunter_protocol_decision(game_state)
     if hunter_move:
         if HUNTER_PROTOCOL_STATE["last"] != hunter_move["action"]:

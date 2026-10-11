@@ -6837,3 +6837,42 @@ assert _q143["action"] == "USE_ABILITY:CommandLase:E@18,10", _q143
 _b143 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 assert "hunter_move = hunter_protocol_decision(game_state)" in _b143
 print("  [OK] Test 143 Passed: a marked psychic hunter in view is Lased at once through a clear line (never through a companion), banished with Teleport Other when it is close and Lase is spent, ignored when out of sight or range or when the abilities are hidden, thralls are left alone, and it is the first thing the decision pipeline does")
+
+
+# Test 144: engulfed means trying to move every turn, and the bleeding prompt no longer tells the model to stand still (human, 2026-10-10: Gen 33; BACKLOG B26, HANDOFF issue 125)
+# ---------------------------------------------------------------------------
+_DIRS144 = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0), "NE": (1, -1), "NW": (-1, -1), "SE": (1, 1), "SW": (-1, 1)}
+_WALL144 = "[BREAKABLE], [BLOCKED: impassable terrain], [BLOCKED: foamcrete]"
+def _s144(effects, ents=None, surr=None):
+    return {"x": 41, "y": 10, "hp": 13, "max_hp": 42, "effects": effects, "visible_entities": ents or [], "abilities": [], "companions": [],
+            "surroundings": surr if surr is not None else {d: "Empty ground" for d in _DIRS144}}
+brain.visit_counts.clear(); brain.ENGULF_STATE["turns"] = 0
+_eng144 = ["engulfed by a sappy salty bloody red death dacca", "sappy bloody", "bleeding"]
+assert brain.is_engulfed(_s144(_eng144)) and not brain.is_engulfed(_s144(["bleeding"])) and not brain.is_engulfed(_s144([]))
+assert brain.engulf_escape_decision(_s144(["bleeding"])) is None and brain.ENGULF_STATE["turns"] == 0
+_d144 = brain.engulf_escape_decision(_s144(_eng144))
+assert _d144 and _d144["action"].startswith("MOVE_") and "ENGULFED" in _d144["reason"], _d144
+# toward the cell farthest from the rooted hostiles (a dacca to the NW and a lah to the N)
+_ents144 = [{"name": "red death dacca", "is_enemy": True, "is_stationary": True, "tx": 40, "ty": 9}, {"name": "feral lah", "is_enemy": True, "is_stationary": True, "tx": 41, "ty": 8}]
+_d144 = brain.engulf_escape_decision(_s144(_eng144, _ents144))
+assert _d144["action"] in ("MOVE_S", "MOVE_SE", "MOVE_SW", "MOVE_E"), _d144
+# walls are not tried while a free cell exists, and with every neighbour a wall it still tries something rather than waiting
+_surr144 = {d: _WALL144 for d in _DIRS144}; _surr144["E"] = "Empty ground"
+assert brain.engulf_escape_decision(_s144(_eng144, None, _surr144))["action"] == "MOVE_E"
+_all144 = {d: "Empty ground" for d in _DIRS144}
+brain.visit_counts.clear()
+# the pipeline: engulfed is the first thing it does (abilities are refused while engulfed), WAIT is never returned
+_q144 = brain.query_decision(_s144(_eng144, _ents144), True, [])
+assert _q144["action"].startswith("MOVE_"), _q144
+for _n144 in range(30):
+    _a144 = brain.query_decision(_s144(_eng144, _ents144), True, [])["action"]
+    assert _a144.startswith("MOVE_"), (_n144, _a144)
+assert brain.ENGULF_STATE["turns"] >= 30
+# a state that is not engulfed resets the count
+brain.engulf_escape_decision(_s144([])); assert brain.ENGULF_STATE["turns"] == 0
+# the prompt no longer claims that every step costs bleed damage
+_src144 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "Every step or bump-attack inflicts bleed damage" not in _src144 and "Never WAIT or rest because of it while enemies are near" in _src144
+assert "engulf_move = engulf_escape_decision(game_state)" in _src144
+brain.visit_counts.clear(); brain.ENGULF_STATE["turns"] = 0
+print("  [OK] Test 144 Passed: while engulfed every turn is a move attempt toward the cell farthest from rooted hostiles (never WAIT, never an ability), it is the first step of the decision pipeline, not-engulfed states are untouched, and the bleeding prompt no longer says that every step costs bleed damage")
