@@ -4868,6 +4868,29 @@ namespace QudAIBrain
             }
         }
 
+        // The skill the engine filters the equipped missile weapons by (Combat.FireMissileWeapon: "You do not have an appropriate missile weapon equipped!" when none match).
+        // It was hard-coded to "Rifle", so a Gunslinger with revolvers never fired a shot (BACKLOG B28). Now the first loaded weapon's own MissileWeapon.Skill; "" means any.
+        private static string EquippedMissileSkill(GameObject player)
+        {
+            try
+            {
+                var body = player.GetPart<Body>();
+                if (body == null) return "";
+                string any = "";
+                foreach (var part in body.GetParts())
+                {
+                    if (part.Type != "Missile Weapon" || part.Equipped == null) continue;
+                    var mw = part.Equipped.GetPart<MissileWeapon>();
+                    if (mw == null || string.IsNullOrEmpty(mw.Skill)) continue;
+                    var loader = part.Equipped.GetPart<MagazineAmmoLoader>();
+                    if (loader != null && loader.Ammo != null && loader.Ammo.Count > 0) return mw.Skill;
+                    if (any == "") any = mw.Skill;
+                }
+                return any;
+            }
+            catch { return ""; }
+        }
+
         private static int LoadedAmmoTotal(GameObject player)
         {
             int total = 0;
@@ -4985,7 +5008,7 @@ namespace QudAIBrain
                         }
                         else if (pName == "skill")
                         {
-                            args[i] = "Rifle";
+                            args[i] = EquippedMissileSkill(player);
                         }
                         else if (p.HasDefaultValue)
                         {
