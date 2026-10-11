@@ -7199,3 +7199,20 @@ for _t157 in range(12):
     _n157 = brain.choose_inventory_action(_gs157(_worn157), _tm157, False)
     assert _n157 is None or not _n157["action"].startswith("EQUIP_ITEM:") or "Thrown" not in _n157["reason"], ("equipped again", _t157, _n157)
 print("  [OK] Test 157 Passed: with the thrown slot empty the best carried grenade (never a defoliant one) is equipped into it once, a held slot or an empty pack gives no action, and after it is worn no further thrown equip is offered over twelve turns")
+
+
+# Test 158: the grenade catalogue is complete and consistent (human, 2026-10-10: "locate the effects, ranges and environmental effects of all grenades"; BACKLOG B33, HANDOFF issue 144)
+# ---------------------------------------------------------------------------
+_g158 = json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "grenades.json"), encoding="utf-8"))
+assert _g158["_meta"]["count"] == len(_g158["grenades"]) >= 55, _g158["_meta"]["count"]
+for _bp158 in ("PoisonGasGrenade1", "StunGasGrenade1", "ColdGrenade1", "AcidGasGrenade1", "DefoliantGrenade1", "HEGrenade2", "EMPGrenade3", "FlashbangGrenade1", "GravityGrenade1", "SleepGasGrenade3", "PhaseGrenade1", "StasisGrenade1"):
+    assert _bp158 in _g158["grenades"], _bp158
+for _bp158, _g in _g158["grenades"].items():
+    assert _g["kind"] in _g158["kinds"] and _g158["kinds"][_g["kind"]]["area"] and _g158["kinds"][_g["kind"]]["hazards"], _bp158
+    if _g["kind"] == "gas":
+        assert _g["gas"] in _g158["gases"] and _g["gas_effect"], _bp158
+assert _g158["grenades"]["ColdGrenade1"]["params"]["TemperatureDelta"] == "-400" and _g158["grenades"]["PoisonGasGrenade2"]["params"]["Density"] == "80"
+assert _g158["grenades"]["HEGrenade3"]["params"]["Damage"] == "6d6" and _g158["grenades"]["EMPGrenade2"]["params"]["Radius"] == "4"
+# every grenade has a distance floor for the brain: either its kind says so, or the kind's area is the part's own radius
+assert _g158["kinds"]["gas"]["min_safe_dist"] >= brain.GRENADE_MIN_DIST and _g158["kinds"]["thermal"]["min_safe_dist"] >= brain.GRENADE_MIN_DIST
+print("  [OK] Test 158 Passed: data/grenades.json holds every grenade kind (gas, thermal, high explosive, EMP, flashbang, gravity, sunder, time dilation, phase, deployment) with its numbers, its area and its hazards, every gas names its effect, and the brain's distance floor is not below the table's gas and thermal floors")
