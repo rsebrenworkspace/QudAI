@@ -7187,6 +7187,10 @@ assert not [a for a in item_scoring.choose_equips(_held157, _prof157) if a[1] ==
 # nothing throwable in the pack, or only a defoliant grenade: nothing
 assert not [a for a in item_scoring.choose_equips(_base157, _prof157) if a[1] == "Thrown"]
 assert not [a for a in item_scoring.choose_equips(_base157 + [_row157("g3", "DefoliantGrenade1", "defoliant grenade mk I")], _prof157) if a[1] == "Thrown"], "a defoliant kills plants, not creatures"
+for _bp157, _nm157 in (("FungicideGrenade1", "fungicide grenade mk I"), ("GlitterGrenade1", "glitter grenade mk I"), ("NormalityGasGrenade1", "normality gas grenade mk I")):
+    assert not [a for a in item_scoring.choose_equips(_base157 + [_row157("g4", _bp157, _nm157)], _prof157) if a[1] == "Thrown"], _bp157
+_mix157 = [a for a in item_scoring.choose_equips(_base157 + [_row157("g5", "FungicideGrenade1", "fungicide grenade mk I"), _row157("g1", "PoisonGasGrenade1", "poison gas grenade mk I")], _prof157) if a[1] == "Thrown"]
+assert len(_mix157) == 1 and _mix157[0][0]["id"] == "g1", "the poison grenade, not the fungicide one, goes into the slot"
 # a disc (a thrown weapon) counts too
 _disc157 = [a for a in item_scoring.choose_equips(_base157 + [_row157("t1", "GeomagneticDisc", "geomagnetic disc")], _prof157) if a[1] == "Thrown"]
 assert _disc157 and _disc157[0][0]["id"] == "t1" or not _disc157, "a disc is either equipped or unknown to the catalogue, never an error"
