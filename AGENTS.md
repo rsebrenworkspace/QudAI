@@ -75,6 +75,7 @@ python sync_mod.py deploy     # only if the C# changed
 - If you learn a verified engine fact, add it to `ENGINE_INTERNALS.md`.
 - **Tag confidence.** Write `[verified in game YYYY-MM-DD]`, `[verified in code @commit]`, or `[unverified]`.
   Never state an inference as fact.
+- **After a death, classify it** in `data/death_ledger.json` (kind: bug, gap, decision, luck or lab, plus a one-line note and the issue that answered it) and run `python tools/generation_report.py`. Only a repeated cause with no fix, or a bug, becomes code; a decision a better agent could have made goes to the agent's memory (ancestral wisdom), not to a rule (DECISIONS calibration note).
 - **End every session by updating `docs/HANDOFF.md`** (what changed, what is unverified, what is broken, next step).
 - `PROJECT_HISTORY.md` is append-only history. Do not use it as the source of truth for current behavior.
 

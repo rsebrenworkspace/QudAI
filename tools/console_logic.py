@@ -582,6 +582,15 @@ def capture_logs(note="", console_lines=(), exchange_dir=None, repo=None, out_di
         f.write(info)
     with open(os.path.join(folder, "brain_console.txt"), "w", encoding="utf-8") as f:
         f.write("\n".join(console_lines or []))
+    try:                                  # the lives so far, so a capture also says how the runs are going (HANDOFF issue 172)
+        try:
+            import generation_report as _gr
+        except ImportError:
+            from tools import generation_report as _gr
+        with open(os.path.join(folder, "generation_report.txt"), "w", encoding="utf-8") as f:
+            f.write(_gr.build_report())
+    except Exception:
+        pass
     text = f"Capture {stamp} | note: {note or '(none)'} | folder: {folder}\n\n" + log_bundle(exchange_dir, repo)
     with open(os.path.join(folder, "bundle.txt"), "w", encoding="utf-8") as f:
         f.write(text)
