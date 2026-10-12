@@ -35,6 +35,7 @@
 
 | Area | Functions / globals |
 |---|---|
+| Death statistics (`death_stats.py`, repo root) | `parse_chronicles`, `load_ledger`, `collection_state`, `counted_lives`, `killer_stats`, `prompt_block` (the known-killers lines for the prompt), `cause_class` |
 | Constants/helpers | `CARDINAL_OFFSETS`, `DIRECTIONAL_ABILITIES`, `PROSELYTIZE_EXCLUSIONS`, `min_level_for_depth`, `is_swim_move`, `get_best_move_towards`, `get_step_direction` |
 | Zone tracking | `update_zone_records` (zone cycles, entry border), `find_zone_unexplored_frontier`, `_compute_adjacent_zone_id`, `check_exit_direction_failure`, `get_zone_exit_target`, `CURRENT_ZONE_CHOSEN_EXIT`, `FAILED_ZONE_EXITS`, `EXPLORED_ZONE_SET`, `UNREACHABLE_SECTORS`, `sector_target_ok`/`SECTOR_GIVEUP` (water-sector progress), `claws_toggle_action` (claws policy), `fire_reaction` (on-fire response), `withhold_corpse_burners`/`filter_corpse_burners` (Lase vs food), `STAIRS_GIVEUP` (delve fallback), `AutolevelBreaker` (autolevel circuit breaker), `choose_loot_action`/`note_loot` (loot walking),  `must_stand_and_fight`/`enforce_stand_and_fight`/`STAND_CONTEXT` (no fleeing from weak adjacent attackers), `border_retreat_decision` (go back through the arrival border from Impossible hostiles) |
 | Stairs | `is_valid_stair_down`, `get_stair_priority`, `update_stair_records`, `KNOWN_STAIRS_DOWN/UP` |

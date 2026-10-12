@@ -12,6 +12,7 @@ import build_templates
 import mutation_policy
 import ability_registry
 import danger_ledger
+import death_stats
 import item_scoring
 import zone_danger
 import creature_threat
@@ -3759,6 +3760,8 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                         action_choices.append(f"{vm} (Kite backpedal {vdir} away from {c_name} to maintain safe standoff)")
 
     ancestral_lore = chronicler.format_ancestral_memory_for_prompt()
+    known_killers = death_stats.prompt_block(enemies, game_state.get("effects"), game_state.get("level"))
+    known_killers = (known_killers + "\n\n") if known_killers else ""
     class_name = template.get("name", "Nomad Wanderer")
     archetype = template.get("archetype", "General Combatant")
     strengths = template.get("strengths", [])
@@ -3797,6 +3800,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
     system_prompt = (
         f"You are an expert tactical AI controlling a {class_name} ({archetype}) in Caves of Qud.\n"
         f"{ancestral_lore}\n\n"
+        f"{known_killers}"
         f"CLASS TACTICAL DOCTRINE ({doctrine_name.upper()} - Preferred Range: {pref_range} tiles):\n"
         f"{pet_rule}"
         f"1. PRIMARY COMBAT GOAL: {open_action}.\n"
@@ -5857,7 +5861,7 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
 # Which code this brain process loaded (human, 2026-10-11: two lab runs were played by a brain started before the heal rule existed; the game client had been restarted, the Python brain had not).
 # main() records the modification time of every Python file the decisions depend on; the console's capture compares them with the files on disk and says STALE when one is newer.
 BRAIN_RUNTIME_PATH = os.path.join(chronicler.MEMORY_DIR, "brain_runtime.json")
-BRAIN_RUNTIME_FILES = ("brain.py", "item_scoring.py", "build_templates.py", "ability_registry.py", "creature_threat.py", "danger_ledger.py", os.path.join("data", "ability_families.json"),
+BRAIN_RUNTIME_FILES = ("brain.py", "item_scoring.py", "build_templates.py", "ability_registry.py", "creature_threat.py", "danger_ledger.py", "death_stats.py", os.path.join("data", "ability_families.json"),
                        os.path.join("data", "grenades.json"))
 
 

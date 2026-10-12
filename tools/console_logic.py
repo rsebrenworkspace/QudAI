@@ -157,6 +157,20 @@ def godmode_health(state_path=None):
     return OK, "off"
 
 
+def collection_health():
+    """(status, text): the human's data collection switch (data/collection.json, HANDOFF issue 173). ON means the deaths of this run count as evidence for the agent."""
+    try:
+        if REPO not in sys.path:
+            sys.path.insert(0, REPO)
+        import death_stats
+        st = death_stats.collection_state()
+    except Exception as e:
+        return UNKNOWN, f"cannot read the switch: {e}"
+    if st["collecting"]:
+        return OK, "ON" + (f" since generation {st['since_generation']}" if st["since_generation"] else "") + ": deaths in this run count as evidence for the agent"
+    return OK, "OFF: development run, deaths do not count (python tools/collection.py on \"note\" when the character can operate)"
+
+
 def mod_health(exchange_dir=None):
     gd = game_dir(exchange_dir)
     ex = exchange_dir or EXCHANGE_DIR
@@ -174,6 +188,7 @@ def mod_health(exchange_dir=None):
     rows.append(("LLM context", *llm_headroom()))
     rows.append(("Brain code", *brain_code_health()))
     rows.append(("Godmode", *godmode_health(os.path.join(ex, "last_state.json"))))
+    rows.append(("Data collection", *collection_health()))
     rows.append(("AI switch", OK if flag_on(ex) else WARN, "ENGAGED (active.flag present)" if flag_on(ex) else "paused (no active.flag): the game plays itself no more"))
     return rows
 

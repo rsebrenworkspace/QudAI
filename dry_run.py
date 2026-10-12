@@ -7993,3 +7993,50 @@ _real183 = _gr183.load_ledger()
 assert _real183.get(42, {}).get("kind") == "gap" and all(v.get("kind") in _gr183.KINDS for v in _real183.values()), "the real ledger uses only the known kinds"
 assert "generation_report" in open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "console_logic.py"), encoding="utf-8").read()
 print("  [OK] Test 183 Passed: causes are classed (turret, poison, fire, bleeding, psychic hunter, the killer's name), a repeat of the same name is a retry, the report gives lives against characters, the last N against the earlier lives, causes with their recorded fixes, repeated causes with no fix and the unclassified deaths (labs left out), a missing folder or ledger does not raise, the real ledger uses only the known kinds, and Capture logs writes it")
+
+# Test 184: known killers in the prompt, only from lives that ended while data collection was ON (human, 2026-10-12: "I would be reluctant to use the current data as we did not have defensive systems in at the time ... turn data collection off ... then start data collection"; HANDOFF issue 173)
+# ---------------------------------------------------------------------------
+import death_stats as _ds184
+import tempfile as _tf184
+_dir184 = _tf184.mkdtemp()
+def _life184(gen, name, level, cause, on):
+    open(_os.path.join(_dir184, f"Chronicle_Gen{gen}_{name}_1.md"), "w", encoding="utf-8").write(
+        f'---\ntitle: "The Chronicle of {name} (Gen {gen})"\ngeneration: {gen}\ndate_recorded: "2026-10-12"\nturns_survived: 500\nlevel: {level}\nresting_place: "x"\ncause_of_death: "{cause}"\ncategory: "killed"\n'
+        + (f'data_collection: "{"on" if on else "off"}"\n' if on is not None else "") + '---\n\nbody\n')
+_PUMA184 = "You were killed by a chitinous puma with an armored claw."
+_life184(1, "Aaa", 2, _PUMA184, None)          # an old chronicle without the field: never counts
+_life184(2, "Bbb", 3, _PUMA184, True)
+_life184(3, "Ccc", 5, _PUMA184, True)
+_life184(4, "Ddd", 1, "You were killed by a musket turret with a lead slug.", True)
+_life184(5, "Eee", 1, _PUMA184, False)         # collection OFF when it ended: never counts
+_life184(6, "Fff", 4, _PUMA184, True)          # marked as a lab in the ledger: never counts
+_led184 = _os.path.join(_dir184, "ledger.json")
+json.dump({"deaths": {"6": {"kind": "lab"}, "4": {"kind": "gap", "cls": "turret", "issue": "98"}}}, open(_led184, "w"))
+_rows184 = _ds184.mark_retries(_ds184.parse_chronicles(_dir184))
+assert [r["collected"] for r in _rows184] == [False, True, True, True, False, True], _rows184
+_led184d = _ds184.load_ledger(_led184)
+assert [r["gen"] for r in _ds184.counted_lives(_rows184, _led184d)] == [2, 3, 4]
+_st184 = _ds184.killer_stats(_rows184, _led184d)
+assert _st184["_all"] == {"characters": 3, "lives": 3} and _st184["chitinous puma"]["characters"] == 2 and _st184["chitinous puma"]["levels"] == [3, 5] and _st184["turret"]["fixed"] is True
+_en184 = [{"name": "chitinous puma", "blueprint": "Chitinous Puma", "dist": 5}]
+_blk184 = _ds184.prompt_block(_en184, [], 1, _dir184, _led184)
+assert _blk184.startswith("KNOWN KILLERS") and "chitinous puma: ended 2 of 3 earlier characters (levels 3 to 5)" in _blk184 and "You are level 1." in _blk184 and "history, not orders" in _blk184, _blk184
+assert _ds184.prompt_block([], [], 1, _dir184, _led184) == "", "nothing known is in view: no block, no tokens"
+assert _ds184.prompt_block([{"name": "snapjaw warrior", "blueprint": "Snapjaw Warrior"}], [], 1, _dir184, _led184) == "", "a creature that has never killed a counted character"
+assert _ds184.prompt_block([{"name": "musket turret", "blueprint": "MusketTurret"}], [], 1, _dir184, _led184) == "", "turret ended one character only: below the minimum of 2"
+_one184 = _ds184.prompt_block([{"name": "chitinous puma"}], [], None, _dir184, _led184)
+assert "You are level" not in _one184
+# with no counted lives at all (the real state today: collection OFF, no chronicle has the field): nothing, ever
+assert _ds184.prompt_block(_en184, [], 1) == "", "the real repo: collection is off and the old lives never count"
+assert _ds184.collection_state(_os.path.join(_dir184, "missing.json")) == {"collecting": False, "since_generation": None, "note": ""}
+_sw184 = _os.path.join(_dir184, "collection.json")
+assert _ds184.set_collecting(True, "ready", _sw184, since_generation=43) == {"collecting": True, "since_generation": 43, "note": "ready"}
+assert _ds184.collecting(_sw184) is True and _ds184.set_collecting(False, "new character", _sw184)["collecting"] is False
+assert _ds184.collecting() is False, "the repo's own switch is OFF until the human turns it on"
+_chr184 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "chronicler.py"), encoding="utf-8").read()
+assert 'data_collection: "{data_collection}"' in _chr184 and "death_stats.collecting()" in _chr184, "a chronicle records the switch state when the life ends"
+_b184 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "death_stats.prompt_block(enemies" in _b184 and 'f"{known_killers}"' in _b184 and '"death_stats.py"' in _b184, "the prompt carries the block and the stale-code check watches the module"
+_cl184 = _cl128.collection_health()
+assert _cl184[0] == _cl128.OK and "OFF" in _cl184[1], _cl184
+print("  [OK] Test 184 Passed: only lives that ended while collection was ON (and are not labs) count; the prompt shows a known-killers line only for a class in view that ended 2 or more counted characters, with the level span and a note when a rule exists, and nothing at all today (switch OFF, old lives never count); the chronicle records the switch, the capture shows it, and the stale-code check watches the module")

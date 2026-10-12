@@ -205,6 +205,13 @@ Doom arrived not with trumpet blast, but with the ruthless fury of the salt. In 
     filename = f"Chronicle_Gen{generation}_{safe_name}_{int(time.time())}.md"
     filepath = os.path.join(CHRONICLES_DIR, filename)
 
+    # The human's data collection switch (data/collection.json, HANDOFF issue 173): only a life that ENDS while it is ON counts as evidence for the agent.
+    try:
+        import death_stats
+        data_collection = "on" if death_stats.collecting() else "off"
+    except Exception:
+        data_collection = "off"
+
     frontmatter = f"""---
 title: "The Chronicle of {name} (Gen {generation})"
 generation: {generation}
@@ -214,6 +221,7 @@ level: {level}
 resting_place: "{zone}"
 cause_of_death: "{cause}"
 category: "{category}"
+data_collection: "{data_collection}"
 tags:
   - caves-of-qud
   - chronicle

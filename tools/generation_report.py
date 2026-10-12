@@ -1,7 +1,7 @@
 """Generation report: what the lives of the agent have looked like (human, 2026-10-12: "death of a character is a mechanic of roguelike games ... learn from the mistakes";
-HANDOFF issue 172). Reads the chronicles the game writes after each death (`chronicles/Chronicle_Gen*.md`, front matter) and the death ledger (`data/death_ledger.json`,
-kept by hand), and prints: the baseline (median level and turns, best life), the last N lives against the earlier ones, the cause classes and which repeat, and the deaths nobody
-has classified yet. Read-only; never writes. `python tools/generation_report.py [--last 10]`.
+HANDOFF issues 172 and 173). The reading of chronicles, the ledger and the collection switch lives in death_stats.py (repo root); this prints: the baseline (median level and turns, best
+life), the last N lives against the earlier ones, the cause classes and which repeat, the deaths nobody has classified yet, and which lives COUNT as evidence for the agent (the lives that
+ended while data collection was ON). Read-only; never writes. `python tools/generation_report.py [--last 10]`.
 
 A death is classified into one of four kinds, so that only some of them become code (see docs/DECISIONS.md, "Calibration note"):
   bug       a loop or a defect: fix it.
@@ -10,128 +10,15 @@ A death is classified into one of four kinds, so that only some of them become c
   luck      accept it.
   lab       a deliberate test run (a wished creature, a retry from a saved state): not a real death.
 """
-import json
 import os
-import re
 import statistics
 import sys
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(_HERE)
-CHRONICLE_DIR = os.path.join(REPO, "chronicles")
-LEDGER_PATH = os.path.join(REPO, "data", "death_ledger.json")
-KINDS = ("bug", "gap", "decision", "luck", "lab")
-
-_KILL_VERBS = r"(?:killed|bitten to death|lased to death|clawed to death|stung to death|gored to death|stabbed to death|shot to death|burned to death|crushed to death|torn apart)"
-_ADJECTIVES = {"wet", "bloody", "sappy", "salty", "tarred", "fiery", "flaming", "slimy", "oozing", "dilute", "wading", "stuck", "engulfed", "shrewd", "feral", "rusty", "glowing"}
-
-
-def clean_cause(text):
-    """The cause line without the game's @@ and ## markers, lower case."""
-    return re.sub(r"@@|##", "", str(text or "")).strip().strip('"').lower()
-
-
-def cause_class(cause):
-    """A short class for a cause-of-death line: 'turret', 'poison', 'fire', 'bleeding', 'psychic hunter', or the killer's name without its adjectives."""
-    c = clean_cause(cause)
-    if not c:
-        return "unknown"
-    if "psychic" in c or "-no-longer" in c or "ptoh" in c:
-        return "psychic hunter"
-    if "turret" in c:
-        return "turret"
-    if "died of poison" in c or "poison" in c.split(" by ")[0]:
-        return "poison"
-    if "immolated" in c or "burned to death" in c:
-        return "fire"
-    if "bled to death" in c:
-        return "bleeding"
-    if " by " not in c:
-        return c[:40]
-    who = c.rsplit(" by ", 1)[1]
-    who = re.sub(r" (?:with|in) .*$", "", who).rstrip(".")
-    who = re.sub(r"^(?:an? |the )", "", who)
-    who = re.sub(r"\[[^\]]*\]", " ", who).replace("|", " ")
-    if ", the " in who:
-        who = who.split(", the ", 1)[1]
-    try:
-        sys.path.insert(0, REPO)
-        import creature_threat
-        entry = creature_threat.lookup(name=who)
-        if entry and entry.get("name"):
-            return str(entry["name"]).lower()
-    except Exception:
-        pass
-    words = [w for w in who.split() if w not in _ADJECTIVES]
-    return " ".join(words) or who
-
-
-def _front_matter(text):
-    """{key: value} from the '---' block at the top of a chronicle, values unquoted."""
-    out = {}
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return out
-    for line in lines[1:]:
-        if line.strip() == "---":
-            break
-        m = re.match(r"^([A-Za-z_]+):\s*(.*)$", line)
-        if m:
-            out[m.group(1)] = m.group(2).strip().strip('"')
-    return out
-
-
-def _name_root(title):
-    """The character's own name: the last word of the title once the [...] tags are gone ('sappy bloody Nashrouun [engulfed by a ...]' -> 'Nashrouun')."""
-    t = re.sub(r"\[[^\]]*\]", " ", str(title or ""))
-    t = re.sub(r"^(?:the )?chronicle of ", "", t.strip(), flags=re.I)
-    t = re.sub(r"\(gen \d+\)", " ", t, flags=re.I)
-    words = [w for w in re.split(r"[\s|]+", t) if w]
-    return words[-1] if words else "?"
-
-
-def parse_chronicles(chron_dir=None):
-    """[{gen, name, root, level, turns, place, cause, cls, category, date}] sorted by generation. A chronicle that cannot be read is skipped."""
-    chron_dir = chron_dir or CHRONICLE_DIR
-    rows = []
-    try:
-        names = sorted(n for n in os.listdir(chron_dir) if n.startswith("Chronicle_Gen") and n.endswith(".md"))
-    except OSError:
-        return rows
-    for n in names:
-        try:
-            with open(os.path.join(chron_dir, n), encoding="utf-8", errors="ignore") as f:
-                head = f.read(2500)
-            fm = _front_matter(head)
-            title = fm.get("title", "")
-            gen = int(fm.get("generation") or re.search(r"Gen(\d+)", n).group(1))
-            cause = fm.get("cause_of_death", "")
-            rows.append({"gen": gen, "name": re.sub(r"^The Chronicle of |\s*\(Gen \d+\)$", "", title).strip(), "root": _name_root(title), "level": int(fm.get("level") or 0),
-                         "turns": int(fm.get("turns_survived") or 0), "place": fm.get("resting_place", ""), "cause": clean_cause(cause), "cls": cause_class(cause),
-                         "category": fm.get("category", ""), "date": fm.get("date_recorded", "")})
-        except (ValueError, AttributeError):
-            continue
-    rows.sort(key=lambda r: r["gen"])
-    return rows
-
-
-def load_ledger(path=None):
-    """{gen (int): {kind, cls, note, issue}} from data/death_ledger.json; {} when missing or unreadable."""
-    try:
-        with open(path or LEDGER_PATH, encoding="utf-8") as f:
-            raw = json.load(f).get("deaths", {})
-        return {int(k): v for k, v in raw.items() if isinstance(v, dict)}
-    except (OSError, ValueError, AttributeError):
-        return {}
-
-
-def mark_retries(rows):
-    """Adds r['retry_of'] = the generation of the previous life when it had the same character name (a retry from a saved state, as Gen 30 to 33 and Gen 38 to 41)."""
-    for prev, cur in zip(rows, rows[1:]):
-        cur["retry_of"] = prev["gen"] if cur["root"] == prev["root"] and cur["root"] != "?" else None
-    if rows:
-        rows[0]["retry_of"] = None
-    return rows
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO not in sys.path:
+    sys.path.insert(0, REPO)
+from death_stats import (CHRONICLE_DIR, LEDGER_PATH, KINDS, clean_cause, cause_class, _front_matter, _name_root, parse_chronicles, load_ledger, mark_retries,  # noqa: E402,F401
+                         collection_state, counted_lives, killer_stats)
 
 
 def _stats(rows):
@@ -164,6 +51,10 @@ def build_report(chron_dir=None, ledger_path=None, last=10):
     out.append(f"== Generation report: {len(rows)} lives of {chars} characters (a life with the same name as the one before it is a retry), generations {rows[0]['gen']} to {rows[-1]['gen']} ==")
     labs = sum(1 for r in rows if (ledger.get(r["gen"], {}).get("kind") == "lab"))
     out.append(f"({len(ledger)} of {len(rows)} lives are in the ledger, {labs} marked as labs; many recent lives were lab runs, so the trend below is only fair once those are marked.)")
+    cs = collection_state()
+    counted = counted_lives(rows, ledger)
+    out.append(f"Data collection: {'ON' if cs['collecting'] else 'OFF'}" + (f" since generation {cs['since_generation']}" if cs["collecting"] and cs["since_generation"] else "")
+               + f". {len(counted)} of {len(rows)} lives count as evidence for the agent (only lives that ended while it was ON); the rest are history.")
     out.append(_fmt_stats("All lives     ", _stats(rows)))
     recent, earlier = rows[-last:], rows[:-last]
     out.append(_fmt_stats(f"Earlier lives ", _stats(earlier)))

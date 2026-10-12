@@ -1,0 +1,7 @@
+{
+  "collecting": false,
+  "since_generation": null,
+  "note": "default: development runs do not count; the lives so far were played without the defensive systems",
+  "changed": "2026-10-11 22:31:38",
+  "_meta": "Human switch (HANDOFF issue 173). ON: lives that END while it is on count as evidence and may be shown to the agent as known killers. OFF: development runs; their deaths do not count."
+}
