@@ -7872,6 +7872,27 @@ assert _pick179 == "MOVE_NE", f"two equal steps, one wet: the list order decides
 _b179 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 _c179 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
 assert "1 if is_swim_move(m, surroundings) else 0" not in _b179, "no swim term left in a sort key"
-assert "int nd = dist[cur] + 1;" in _c179 and "(swim ? 3 : 1)" not in _c179, "the router charges a swimming step the same as a dry one"
+assert "int nd = res.Dist[cur] + 1;" in _c179 and "(swim ? 3 : 1)" not in _c179, "the router charges a swimming step the same as a dry one"
 assert "SafeMoveSpeed(player)" in _c179 and '\\"move_speed\\"' in _c179, "MoveSpeed is exported to measure the swimming penalty"
 print("  [OK] Test 179 Passed: no water bias is left (the move tie-breaks and sort keys ignore swimming, the C# router charges 1 for a swimming step), and the mod exports MoveSpeed to measure the swimming penalty")
+
+# Test 180: shortest-route navigation (human, 2026-10-12: "build 1 and 2"; HANDOFF issue 169). The capture of the water-and-land zone showed 57 of 124 east-exit steps going WEST on the engine's dry detour, and frontier targets picked by straight-line distance.
+# ---------------------------------------------------------------------------
+_c180 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+for _needle180, _why180 in (("private static RouteResult RouteSearch(GameObject player, bool allowSwim", "the router is one search with a distance table"),
+                            ("new SortedSet<long>()", "a priority queue, not a linear scan"),
+                            ("private const int SwimShortcutMinSaving = 6;", "the saving that makes our route win over the engine's dry one"),
+                            ("TryShortestRoute(player, EdgeGoal(edgeChar), out shortStep, out costSwim, out costDry)", "NAVIGATE_ZONE_EXIT takes the shortest route"),
+                            ("\"shortest route to cell \"", "NAVIGATE_TO_CELL takes the shortest route"),
+                            ("RouteResult fr = RouteSearch(player, true, null);", "frontier targets are priced by route length, swimming allowed"),
+                            ('\\"cheb\\": "', "the straight-line distance is still exported next to the route length")):
+    assert _needle180 in _c180, _why180
+assert "AutoAct.TryFindPathStep(a, out step) && !string.IsNullOrEmpty(edgeStep)" not in _c180 and _c180.count("TryFindPathStep(a, out step)") == 0, "the dry-only engine check no longer filters frontier targets"
+assert _c180.count("{") == _c180.count("}")
+# Python side: a frontier priced by route length is chosen by that length (a swim-only target 12 steps away beats a dry one 40 steps away)
+brain.FRONTIER_COMMIT.update({"zone": None, "target": None}); brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0}); brain.UNREACHABLE_SECTORS.clear()
+_gs180 = {"level": 1, "frontier_checked": True, "frontier_targets": [{"x": 70, "y": 20, "dist": 40, "cheb": 8, "q": "SE"}, {"x": 30, "y": 5, "dist": 12, "cheb": 30, "q": "NW"}]}
+_t180, _r180 = brain.pick_frontier_target(_gs180, (60, 12), "Z180")
+assert _t180 == (30, 5) and "12 tiles away" in _r180, (_t180, _r180)
+brain.FRONTIER_COMMIT.update({"zone": None, "target": None}); brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
+print("  [OK] Test 180 Passed: the C# has one priority-queue route search that prices every frontier cell with swimming allowed and exit/cell navigation takes the shortest route when it saves 6 steps or more over the engine's dry one (source checks, compile checked); Python picks the frontier by route length")
