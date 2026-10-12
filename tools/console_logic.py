@@ -157,13 +157,13 @@ def godmode_health(state_path=None):
     return OK, "off"
 
 
-def collection_health():
+def collection_health(switch_path=None):
     """(status, text): the human's data collection switch (memory/collection.json, HANDOFF issue 173). ON means the deaths of this run count as evidence for the agent."""
     try:
         if REPO not in sys.path:
             sys.path.insert(0, REPO)
         import death_stats
-        st = death_stats.collection_state()
+        st = death_stats.collection_state(switch_path)
     except Exception as e:
         return UNKNOWN, f"cannot read the switch: {e}"
     if st["collecting"]:

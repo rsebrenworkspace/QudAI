@@ -8027,7 +8027,8 @@ assert _ds184.prompt_block([{"name": "musket turret", "blueprint": "MusketTurret
 _one184 = _ds184.prompt_block([{"name": "chitinous puma"}], [], None, _dir184, _led184)
 assert "You are level" not in _one184
 # with no counted lives at all (the real state today: collection OFF, no chronicle has the field): nothing, ever
-assert _ds184.prompt_block(_en184, [], 1) == "", "the real repo: collection is off and the old lives never count"
+_empty184 = _tf184.mkdtemp()
+assert _ds184.prompt_block(_en184, [], 1, _empty184, _os.path.join(_empty184, "none.json")) == "", "no chronicle carries the collection field: nothing is shown (the old lives never count)"
 assert _ds184.collection_state(_os.path.join(_dir184, "missing.json")) == {"collecting": False, "since_generation": None, "note": "", "build": "", "target": None}
 _sw184 = _os.path.join(_dir184, "collection.json")
 assert _ds184.set_collecting(True, "ready", _sw184, since_generation=43) == {"collecting": True, "since_generation": 43, "note": "ready", "build": "", "target": None}
@@ -8037,8 +8038,11 @@ _chr184 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "chro
 assert 'data_collection: "{data_collection}"' in _chr184 and "death_stats.counts_for(build)" in _chr184, "a chronicle records the switch state when the life ends"
 _b184 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 assert "death_stats.prompt_block(enemies" in _b184 and 'f"{known_killers}"' in _b184 and '"death_stats.py"' in _b184, "the prompt carries the block and the stale-code check watches the module"
-_cl184 = _cl128.collection_health()
+_cl184 = _cl128.collection_health(_os.path.join(_dir184, "never-written.json"))
 assert _cl184[0] == _cl128.OK and "OFF" in _cl184[1], _cl184
+_cl184on = _cl128.collection_health(_sw184 if _ds184.set_collecting(True, "x", _sw184, since_generation=5) else None)
+assert _cl184on[0] == _cl128.OK and "ON since generation 5" in _cl184on[1], _cl184on
+_ds184.set_collecting(False, "", _sw184)
 print("  [OK] Test 184 Passed: only lives that ended while collection was ON (and are not labs) count; the prompt shows a known-killers line only for a class in view that ended 2 or more counted characters, with the level span and a note when a rule exists, and nothing at all today (switch OFF, old lives never count); the chronicle records the switch, the capture shows it, and the stale-code check watches the module")
 
 
