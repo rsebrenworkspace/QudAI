@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "purpose": "The kind of each death, kept by hand (the human and Claude), read by tools/generation_report.py. Only deaths that are documented in docs/HANDOFF.md are classified here; the rest show up as 'not classified yet' on purpose.",
+    "kinds": {
+      "bug": "a loop or a defect: fix it",
+      "gap": "a rule that was missing and the death repeated or was clearly avoidable: build the rule",
+      "decision": "a choice a better agent could have made: it belongs in the agent's memory (ancestral wisdom), not in code",
+      "luck": "accept it",
+      "lab": "a deliberate test run (a wished creature, a retry from a saved state): not a real death"
+    },
+    "fields": "gen (the key), kind, cls (cause class, optional: overrides the one read from the chronicle), note (one line), issue (the HANDOFF issue that fixed or answered it, when there is one)",
+    "history": "Created 2026-10-12 (HANDOFF issue 172) after the human asked to learn from deaths: 'death of a character is a mechanic of roguelike games'."
+  },
+  "deaths": {
+    "22": {"kind": "gap", "cls": "turret", "note": "level 3, musket turret in the line of a chest walk", "issue": "77, 98"},
+    "24": {"kind": "lab", "cls": "turret", "note": "lab: a wished musket turret 2 tiles away"},
+    "25": {"kind": "lab", "cls": "turret", "note": "lab: a wished turret 6 tiles west"},
+    "26": {"kind": "gap", "cls": "giant amoeba", "note": "the lethal guard teleported an adjacent amoeba rated Average (damage ledger said Impossible)", "issue": "94"},
+    "29": {"kind": "gap", "cls": "turret", "note": "one-shot by a laser turret after 3,604 turns", "issue": "98"},
+    "31": {"kind": "gap", "cls": "psychic hunter", "note": "level 8, 17,744 turns, head exploded by a psychic hunter (glimmer)", "issue": "119, 124"},
+    "32": {"kind": "gap", "cls": "psychic hunter", "note": "a cult hunter the mark missed", "issue": "124"},
+    "42": {"kind": "gap", "cls": "gelatinous wedge", "note": "level 1 shot at, then walked toward, an equal-speed level 13 melee engulfer", "issue": "167"}
+  }
+}

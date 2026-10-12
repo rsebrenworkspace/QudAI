@@ -7956,3 +7956,40 @@ assert "private static string ItemEffectText(GameObject it)" in _c182 and "GetSh
 assert _c182.count("{") == _c182.count("}")
 assert "item_effects.jsonl" in _cl128.MEMORY_FILES, "the capture copies the item effect log"
 print("  [OK] Test 182 Passed: the mod exports each item's own effect lines (cached), the brain reads stat pieces, multipliers and notes from them ('+25 move speed', 'Overbuilt: +3 AV, -2 DV, x2 weight', '+2 Strength and +1 Agility') and logs each distinct item once to memory/item_effects.jsonl without a repeat after a restart")
+
+# Test 183: the generation report and the death ledger (human, 2026-10-12: "death of a character is a mechanic of roguelike games ... learn from the mistakes"; HANDOFF issue 172)
+# ---------------------------------------------------------------------------
+import sys as _sys183
+_sys183.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools"))
+import generation_report as _gr183
+for _c183, _want183 in (("You were @@killed by a wet chitinous puma with an armored claw##.", "chitinous puma"), ("You were killed by a musket turret with a lead slug.", "turret"),
+                        ("You died of poison.", "poison"), ("You were immolated.", "fire"), ("You bled to death because of a sappy salty bloody red death dacca.", "bleeding"),
+                        ("Your head was exploded by Shwubas-No-Longer, Ptoh's Osprey in the Psychic Torus", "psychic hunter"), ("You were bitten to death by a giant dragonfly [flying].", "giant dragonfly"),
+                        ("You were killed by a gelatinous wedge with a gelatinous wedge.", "gelatinous wedge"), ("", "unknown")):
+    assert _gr183.cause_class(_c183) == _want183, (_c183, _gr183.cause_class(_c183))
+assert _gr183._name_root("The Chronicle of sappy bloody Nashrouun [engulfed by a red death dacca] (Gen 33)") == "Nashrouun"
+import tempfile as _tf183
+_dir183 = _tf183.mkdtemp()
+def _chron183(gen, name, level, turns, cause):
+    open(_os.path.join(_dir183, f"Chronicle_Gen{gen}_{name}_1.md"), "w", encoding="utf-8").write(
+        f'---\ntitle: "The Chronicle of {name} (Gen {gen})"\ngeneration: {gen}\ndate_recorded: "2026-10-12 10:00"\nturns_survived: {turns}\nlevel: {level}\nresting_place: "somewhere"\ncause_of_death: "{cause}"\ncategory: "killed"\n---\n\nbody\n')
+_chron183(1, "Aaa", 3, 1000, "You were killed by a snapjaw warrior with a dagger.")
+_chron183(2, "Bbb", 1, 100, "You were killed by a musket turret with a lead slug.")
+_chron183(3, "Bbb", 1, 120, "You were killed by a musket turret with a lead slug.")
+_chron183(4, "wet Ccc", 5, 4000, "You died of poison.")
+_led183 = _os.path.join(_dir183, "ledger.json")
+json.dump({"deaths": {"2": {"kind": "gap", "cls": "turret", "note": "n", "issue": "77"}, "3": {"kind": "lab", "note": "wished"}}}, open(_led183, "w"))
+_rows183 = _gr183.mark_retries(_gr183.parse_chronicles(_dir183))
+assert [r["gen"] for r in _rows183] == [1, 2, 3, 4] and _rows183[2]["retry_of"] == 2 and _rows183[1]["retry_of"] is None and _rows183[3]["root"] == "Ccc", _rows183
+_rep183 = _gr183.build_report(_dir183, _led183, last=2)
+assert "4 lives of 3 characters" in _rep183 and "1 marked as labs" in _rep183, _rep183
+assert "Last 2  lives" in _rep183 and "median level 3" in _rep183, _rep183
+assert "turret  (1 with a fix recorded)" in _rep183 and "== Repeated causes with no recorded fix" in _rep183
+assert "Gen 1 Aaa" in _rep183 and "Gen 4 Ccc" in _rep183, "unclassified deaths are listed"
+assert "Gen 3 " not in _rep183.split("Not classified yet")[1], "a lab is not listed as unclassified"
+assert _gr183.build_report(_os.path.join(_dir183, "nope"), _led183).startswith("Generation report: no chronicles found")
+assert _gr183.load_ledger(_os.path.join(_dir183, "missing.json")) == {}
+_real183 = _gr183.load_ledger()
+assert _real183.get(42, {}).get("kind") == "gap" and all(v.get("kind") in _gr183.KINDS for v in _real183.values()), "the real ledger uses only the known kinds"
+assert "generation_report" in open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "console_logic.py"), encoding="utf-8").read()
+print("  [OK] Test 183 Passed: causes are classed (turret, poison, fire, bleeding, psychic hunter, the killer's name), a repeat of the same name is a retry, the report gives lives against characters, the last N against the earlier lives, causes with their recorded fixes, repeated causes with no fix and the unclassified deaths (labs left out), a missing folder or ledger does not raise, the real ledger uses only the known kinds, and Capture logs writes it")
