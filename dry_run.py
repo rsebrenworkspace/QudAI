@@ -7927,3 +7927,32 @@ assert _b181.count("melee_bow_allowed(game_state, template, closest)") == 1 and 
 assert _b181.count("melee_bow_allowed(game_state, active_template, enemies[0])") == 2, "the Loop Breaker and the sprint-cooldown forced shots both obey it"
 assert "Missile Snipe, Charge" not in _b181, "the melee rule no longer lists the snipe as a must-attack"
 print("  [OK] Test 181 Passed: for a melee build the bow is allowed only against a Tough or worse enemy, or from 3+ tiles while more than 8 arrows remain; casters and ranged builds are untouched; the menu offer, the melee fallback, the Loop Breaker's forced shot and the sprint-cooldown shot all obey it")
+
+# Test 182: the engine's item effect text is exported, read and logged (human, 2026-10-12: the spring-loaded bounding boots, "too many variables to graph?"; HANDOFF issue 171)
+# ---------------------------------------------------------------------------
+_ps182 = brain.parse_item_effects("As long as you have worn this item for at least 100 rounds, you sprint at thrice your movement speed. | +25 move speed | Spring-loaded: This item grants bonus move speed. | Weight: 7 lbs.")
+assert _ps182["stats"] == {"move speed": 25} and len(_ps182["notes"]) == 2 and not _ps182["mults"], _ps182
+_ov182 = brain.parse_item_effects("Overbuilt: +3 AV, -2 DV, -10 move speed, x2 weight")
+assert _ov182["stats"] == {"av": 3, "dv": -2, "move speed": -10} and _ov182["mults"] == {"weight": 2.0} and not _ov182["notes"], _ov182
+_pc182 = brain.parse_item_effects("+10% cold resistance | +2 Strength and +1 Agility")
+assert _pc182["stats"] == {"cold resistance %": 10, "strength": 2, "agility": 1}, _pc182
+assert brain.parse_item_effects("") == {"stats": {}, "mults": {}, "notes": []} and brain.parse_item_effects(None)["stats"] == {}
+# the log: one line per distinct (name, text), not again, written to the given path
+import tempfile as _tf182
+_p182 = _os.path.join(_tf182.mkdtemp(), "item_effects.jsonl")
+brain.ITEM_EFFECTS_SEEN.update({"loaded": False, "keys": set()})
+_inv182 = [{"name": "spring-loaded bounding boots", "blueprint": "Spring-loaded Bounding Boots", "equipped": True, "identified": True, "effect_text": "+25 move speed | Spring-loaded: This item grants bonus move speed."},
+           {"name": "bronze dagger", "effect_text": ""}]
+brain.note_item_effects({"inventory": _inv182}, _p182); brain.note_item_effects({"inventory": _inv182}, _p182)
+_rows182 = [json.loads(l) for l in open(_p182, encoding="utf-8")]
+assert len(_rows182) == 1 and _rows182[0]["stats"] == {"move speed": 25} and _rows182[0]["equipped"] is True, _rows182
+brain.ITEM_EFFECTS_SEEN.update({"loaded": False, "keys": set()})
+brain.note_item_effects({"inventory": _inv182}, _p182)
+assert len(open(_p182, encoding="utf-8").read().splitlines()) == 1, "a restart reads the file and does not write the same item again"
+brain.ITEM_EFFECTS_SEEN.update({"loaded": False, "keys": set()})
+brain.note_item_effects({"inventory": "not a list"}, _p182); brain.note_item_effects({}, _p182)
+_c182 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "private static string ItemEffectText(GameObject it)" in _c182 and "GetShortDescription(false, true)" in _c182 and '\\"effect_text\\"' in _c182
+assert _c182.count("{") == _c182.count("}")
+assert "item_effects.jsonl" in _cl128.MEMORY_FILES, "the capture copies the item effect log"
+print("  [OK] Test 182 Passed: the mod exports each item's own effect lines (cached), the brain reads stat pieces, multipliers and notes from them ('+25 move speed', 'Overbuilt: +3 AV, -2 DV, x2 weight', '+2 Strength and +1 Agility') and logs each distinct item once to memory/item_effects.jsonl without a repeat after a restart")
