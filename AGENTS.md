@@ -63,6 +63,8 @@ pwsh -NoProfile -File tools/compile_check.ps1   # only if the C# changed: needs 
 python sync_mod.py deploy     # only if the C# changed
 ```
 
+**Check the exit code, not the last line:** `python dry_run.py` must exit 0; piping it through `tail` or `grep` hides a failure (a failing suite was pushed to `main` once, 2026-10-12, by a `&&` chain that ended in `| tail -1`). Redirect to a file and test `$?` / `$LASTEXITCODE`. Tests must never read the real `memory/collection.json`, the real chronicles or other live state: use a temporary path.
+
 `dry_run.py` tests single decisions. Oscillation is a multi-turn property. When fixing a loop/stall bug, add a
 **multi-turn** regression test (simulate N turns on a small grid and assert progress), not just a snapshot.
 
