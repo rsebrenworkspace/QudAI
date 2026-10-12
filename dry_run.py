@@ -7861,3 +7861,17 @@ for _t178 in range(40):
 assert min(_gap178) >= 2, ("he was caught", _gap178[:12])
 _reset178()
 print("  [OK] Test 178 Passed: he walks away from an Impossible equal-speed melee-only enemy that is 2 or more tiles off (not from a shooter, a faster, a lesser, a stuck or an unknown one), the model's missile, throw, aimed ability or closing step against it becomes a step away unless he is cornered, and across 40 turns of an equal-speed chase the gap never closes below 2")
+
+# Test 179: no water bias in movement (human, 2026-10-12: "drop the bias entirely for now, I want cleaner, smoother movement until we encounter an issue that has us rethink it"; HANDOFF issue 168)
+# ---------------------------------------------------------------------------
+_s179 = {d: "Empty ground" for d in ("N", "S", "E", "W", "NE", "NW", "SE", "SW")}
+_s179["NE"] = "[SWIM: deep pool of rules|4000 drams of salty water]"
+brain.visit_counts.clear()
+_pick179 = brain.get_best_move_towards((10, 10), (10, 2), ["MOVE_NE", "MOVE_NW"], _s179)
+assert _pick179 == "MOVE_NE", f"two equal steps, one wet: the list order decides now, not the water ({_pick179})"
+_b179 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+_c179 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert "1 if is_swim_move(m, surroundings) else 0" not in _b179, "no swim term left in a sort key"
+assert "int nd = dist[cur] + 1;" in _c179 and "(swim ? 3 : 1)" not in _c179, "the router charges a swimming step the same as a dry one"
+assert "SafeMoveSpeed(player)" in _c179 and '\\"move_speed\\"' in _c179, "MoveSpeed is exported to measure the swimming penalty"
+print("  [OK] Test 179 Passed: no water bias is left (the move tie-breaks and sort keys ignore swimming, the C# router charges 1 for a swimming step), and the mod exports MoveSpeed to measure the swimming penalty")
