@@ -1423,15 +1423,27 @@ def rest_in_progress(action, last_executed, game_state):
 # Retreat from a fight he cannot win (BACKLOG B39, human 2026-10-11: "build the retreat rule"). The brain pursues: the deterministic fallbacks advance into melee on anything, and a level 1 bzzzt walked into
 # an Impossible Cragmensch twice (luck saved him). The existing retreats need an exit near (the arrival border within 6 tiles, known stairs underground). This one is the open-field case, and it is only
 # useful against an enemy that is SLOWER than he is (the engine's Speed stat, exported as `speed`; the creature catalogue's Speed when the mod does not send it): then every step away widens the gap, and
-# the zone-danger flags (zone_danger.py) steer exploring away from where it was seen. Against an equal or unknown speed running only delays the fight, so this rule does nothing and the exit retreats and
-# the fight rules decide. Bounded per zone (RETREAT_STEP_BUDGET) so a chase that never ends is not a loop.
+# the zone-danger flags (zone_danger.py) steer exploring away from where it was seen. Equal speed (issue 167): a creature the catalogue knows to be melee-only and at 2 or more tiles never closes the gap
+# while he keeps walking, so it is walked away from too; a faster, unknown-speed or shooting enemy is not (the exit retreats and the fight rules decide). Bounded per zone (RETREAT_STEP_BUDGET) so a chase that never ends is not a loop.
 RETREAT_DIFFICULTIES = ("Impossible",)
 RETREAT_TRIGGER_DIST = 8
 RETREAT_SLOW_RATIO = 0.7          # the enemy's Speed at most this fraction of his: slower enough to outwalk
 RETREAT_STEP_BUDGET = 60
 RETREAT_WEB_DIST = 6              # an unwinnable enemy that is not slower comes within this many tiles: spin webs, then run (the webs are what make running worth it)
 RETREAT_STATE = {"zone": None, "steps": 0}
+RETREAT_EQUAL_MIN_DIST = 2        # an equal-speed melee chaser is outwalked only while a gap exists: at 2 tiles or more (HANDOFF issue 167)
 _CREATURE_SPEEDS = None
+
+
+def enemy_is_melee_only(entity):
+    """True only when the catalogue KNOWS the creature has no ranged attack. Unknown counts as not melee-only, so nothing is assumed about a creature we cannot look up."""
+    try:
+        if entity.get("is_ranged") or entity.get("ranged"):
+            return False
+        entry = creature_threat.lookup(blueprint=entity.get("blueprint"), name=entity.get("name"))
+    except Exception:
+        return False
+    return entry is not None and not (entry.get("is_ranged") or entry.get("ranged"))
 
 
 def creature_speed(entity):
@@ -1466,6 +1478,9 @@ def retreat_decision(game_state):
         nearest = min(threats, key=lambda e: e["dist"])
         es, ps = (0 if nearest.get("stuck") else creature_speed(nearest)), game_state.get("speed") or 100
         slower = es is not None and es <= RETREAT_SLOW_RATIO * ps          # a stuck enemy (a web) cannot follow: speed 0
+        # equal speed, melee only, a gap of at least 2: it never closes the gap while he keeps walking (no attacks of opportunity in Qud `[inferred]`); a level 1 Dream Tortoise died to an
+        # equal-speed gelatinous wedge (level 13) that the old rule left to the fight rules (Gen 42, 2026-10-12, HANDOFF issue 167). Faster or unknown speed, or a shooter: unchanged.
+        equal_melee = (not slower and es is not None and es <= ps and nearest["dist"] >= RETREAT_EQUAL_MIN_DIST and enemy_is_melee_only(nearest))
         abilities = game_state.get("abilities") or []
         webs_on = any(str(a.get("command", "")).lower() == "commandspinweb" and a.get("active") for a in abilities)
         if not slower and not webs_on:
@@ -1473,7 +1488,8 @@ def retreat_decision(game_state):
             web = find_ready_ability(abilities, "spin_web")
             if web and web.get("command") and 2 <= nearest["dist"] <= RETREAT_WEB_DIST:
                 return {"action": f"USE_ABILITY:{web['command']}", "reason": f"[RETREAT] {nearest.get('name', 'the enemy')} ({nearest.get('difficulty')}, {nearest['dist']} tiles) is not slower than he is: spinning webs first, then running."}
-            return None
+            if not equal_melee:
+                return None
         zone = game_state.get("zone_id")
         if RETREAT_STATE["zone"] != zone:
             RETREAT_STATE["zone"], RETREAT_STATE["steps"] = zone, 0
@@ -1484,7 +1500,7 @@ def retreat_decision(game_state):
         if not steps:
             return None                        # cornered: the fight rules decide
         RETREAT_STATE["steps"] += 1
-        how = ("is stuck and cannot follow" if nearest.get("stuck") else f"is much slower than he is (speed {es} against {ps})") if slower else "is not slower, but his webs are on and hold it back"
+        how = ("is stuck and cannot follow" if nearest.get("stuck") else f"is much slower than he is (speed {es} against {ps})") if slower else ("is not slower, but his webs are on and hold it back" if webs_on else f"is a melee-only chaser of equal speed (speed {es} against {ps}), so walking away keeps the gap")
         return {"action": steps[0][1], "reason": f"[RETREAT] {nearest.get('name', 'the enemy')} ({nearest.get('difficulty')}, {nearest['dist']} tiles) {how}: stepping away, not fighting it."}
     except Exception:
         return None
@@ -4743,7 +4759,51 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     decision = lethal_adjacent_guard(decision, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
     decision = enforce_stand_and_fight(decision, game_state, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
     decision = veto_ability_repeat(decision, STAND_CONTEXT["enemies"])
+    decision = veto_engage_unwinnable(decision, game_state)
     return veto_gas_approach(veto_rooted_approach(decision, game_state), game_state)
+
+
+# Do not START a fight with an unwinnable melee chaser (HANDOFF issue 167, part 2). The Dream Tortoise (level 1, 18 HP) fired three arrows at a gelatinous wedge (level 13, 50 HP) 4 tiles away and then
+# stepped toward it "to prioritize the high-threat enemy": engulfed and dead in four turns (Gen 42, 2026-10-12). The retreat rule steps away first; this veto covers what it leaves: an engage action
+# (a missile, a throw, an aimed ability, or a step that closes the distance) against a mobile, melee-only Impossible enemy (Very Tough when hurt) that is 2 or more tiles away and not stuck becomes a
+# step away, when one exists and the shared step budget allows; otherwise the decision stands (cornered: the fight rules decide). Adjacent enemies are not touched here.
+def veto_engage_unwinnable(decision, game_state):
+    action = (decision or {}).get("action", "")
+    try:
+        engage = action.startswith("FIRE_MISSILE@") or action.startswith("THROW_ITEM@") or (action.startswith("USE_ABILITY:") and action.count(":") == 2) or (action.startswith("MOVE_") and action[5:] in CARDINAL_OFFSETS)
+        if not engage:
+            return decision
+        px, py = game_state.get("x"), game_state.get("y")
+        if px is None or py is None:
+            return decision
+        hp, mx = game_state.get("hp"), game_state.get("max_hp")
+        hurt = bool(hp is not None and mx and hp / mx < 0.5)
+        diffs = RETREAT_DIFFICULTIES + (("Very Tough",) if hurt else ())
+        threats = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_companion") and not e.get("is_stationary") and not e.get("stuck")
+                   and e.get("has_los") is not False and e.get("difficulty") in diffs and isinstance(e.get("dist"), (int, float)) and RETREAT_EQUAL_MIN_DIST <= e["dist"] <= RETREAT_TRIGGER_DIST
+                   and e.get("tx") is not None and e.get("ty") is not None and enemy_is_melee_only(e)]
+        if not threats:
+            return decision
+        nearest = min(threats, key=lambda e: e["dist"])
+        if action.startswith("MOVE_"):
+            dx, dy = CARDINAL_OFFSETS[action[5:]]
+            before = (px - nearest["tx"]) ** 2 + (py - nearest["ty"]) ** 2
+            after = (px + dx - nearest["tx"]) ** 2 + (py + dy - nearest["ty"]) ** 2
+            if after >= before:
+                return decision          # a step that does not close the distance is fine
+        zone = game_state.get("zone_id")
+        if RETREAT_STATE["zone"] != zone:
+            RETREAT_STATE["zone"], RETREAT_STATE["steps"] = zone, 0
+        if RETREAT_STATE["steps"] >= RETREAT_STEP_BUDGET:
+            return decision
+        steps = _kite_steps(game_state, harmful_gas(game_state), nearest)
+        if not steps:
+            return decision
+        RETREAT_STATE["steps"] += 1
+        print(f"[NO FIGHT] {action} against {nearest.get('name', 'the enemy')} ({nearest.get('difficulty')}, {nearest['dist']} tiles) vetoed: stepping {steps[0][1][5:]} away instead.")
+        return {"action": steps[0][1], "reason": f"[NO FIGHT] {nearest.get('name', 'the enemy')} is rated {nearest.get('difficulty')} and melee-only, {nearest['dist']} tiles away: {action} would start a fight he cannot win, stepping away instead."}
+    except Exception:
+        return decision
 
 
 # A self-targeted ability used again and again while an enemy stands next to him (HANDOFF issue 166): the Dream Tortoise's model used Tighten Carapace 61 turns in a row against a crocodile and

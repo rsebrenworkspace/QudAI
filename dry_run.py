@@ -7548,7 +7548,7 @@ def _reset167():
 _reset167(); _d167 = brain.retreat_decision(_s167([_e167(5)]))
 assert _d167 and _d167["action"][5:] in ("W", "NW", "SW") and "RETREAT" in _d167["reason"], _d167
 _reset167(); assert brain.retreat_decision(_s167([_e167(1)])) is not None, "adjacent but much slower: walk away"
-for _bad167, _why167 in ((_s167([_e167(5, speed=100)]), "equal speed: running is pointless"), (_s167([_e167(5, speed=150)]), "faster"), (_s167([_e167(5, difficulty="Tough")]), "Tough is not unwinnable"),
+for _bad167, _why167 in ((_s167([_e167(5, speed=100, is_ranged=True)]), "equal speed but a shooter: running just feeds it (equal-speed MELEE is Test 178)"), (_s167([_e167(5, speed=150)]), "faster"), (_s167([_e167(5, difficulty="Tough")]), "Tough is not unwinnable"),
                          (_s167([_e167(5, difficulty="Average")]), "average"), (_s167([_e167(5, is_stationary=True)]), "rooted"), (_s167([_e167(5, has_los=False)]), "out of sight"),
                          (_s167([_e167(9)]), "too far to matter"), (_s167([_e167(5, is_enemy=False)]), "not hostile"), (_s167([_e167(5, is_companion=True)]), "a companion"), ({}, "empty state")):
     _reset167(); assert brain.retreat_decision(_bad167) is None, _why167
@@ -7596,9 +7596,9 @@ _g168 = lambda ents, abil, **k: _s167(ents, abilities=abil, **k)
 _beetle168 = lambda d, **k: _e167(d, **dict({"name": "beetlebum", "blueprint": "Beetlebum", "speed": 100}, **k))
 _reset167(); _d168 = brain.retreat_decision(_g168([_beetle168(5)], [_web168]))
 assert _d168 and _d168["action"] == "USE_ABILITY:CommandSpinWeb" and "spinning webs" in _d168["reason"], _d168
-_reset167(); assert brain.retreat_decision(_g168([_beetle168(5)], [])) is None, "an equal-speed enemy and no webs: nothing (as before)"
-_reset167(); assert brain.retreat_decision(_g168([_beetle168(5)], [dict(_web168, cooldown=40, usable=False)])) is None, "webs on cooldown"
-_reset167(); assert brain.retreat_decision(_g168([_beetle168(8)], [_web168])) is None, "too far to spin yet"
+_reset167(); _n168 = brain.retreat_decision(_g168([_beetle168(5)], [])); assert _n168 and _n168["action"].startswith("MOVE_"), "an equal-speed MELEE enemy and no webs: a step away (issue 167; before it was nothing)"
+_reset167(); _c168 = brain.retreat_decision(_g168([_beetle168(5)], [dict(_web168, cooldown=40, usable=False)])); assert _c168 and _c168["action"].startswith("MOVE_"), "webs on cooldown: a plain step away"
+_reset167(); _f168 = brain.retreat_decision(_g168([_beetle168(8)], [_web168])); assert _f168 and _f168["action"].startswith("MOVE_"), "too far to spin yet: a plain step away"
 _reset167(); assert brain.retreat_decision(_g168([_beetle168(1)], [_web168])) is None, "adjacent: spinning would only cost the free hit"
 # the webs are on: now he runs, even from an enemy as fast as he is
 _on168 = dict(_web168, active=True, usable=True)
@@ -7629,8 +7629,8 @@ def _g169(ents, **k):
     return dict(_s167(ents, thrown_weapon=_gren169, abilities=[]), **k)
 def _reset169():
     _reset167(); _reset164(); brain.GAS_APPROACH_STATE.update({"zone": None, "steps": 0})
-# retreat: an equal-speed Impossible enemy is not retreated from when free, and is when stuck
-_reset169(); assert brain.retreat_decision(_s167([_stk169(5, stuck=False)])) is None, "free, equal speed, no webs: nothing"
+# retreat: an equal-speed Impossible MELEE enemy is walked away from when free (issue 167; before it was nothing) and when stuck
+_reset169(); _fr169 = brain.retreat_decision(_s167([_stk169(5, stuck=False)])); assert _fr169 and "equal speed" in _fr169["reason"], "free, equal speed, melee only: a step away"
 _reset169(); _r169 = brain.retreat_decision(_s167([_stk169(5)]))
 assert _r169 and _r169["action"].startswith("MOVE_") and "stuck" in _r169["reason"], _r169
 # the throw rule accepts a stuck target at 4-5 tiles
@@ -7818,3 +7818,46 @@ assert _ar177.is_wired({"command": "GasGenerationCommandSleepGas"})
 _cs177 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
 assert 'cmd == "CommandTightenCarapace" && CarapaceTight(player)' in _cs177
 print("  [OK] Test 177 Passed: the third identical self-ability turn with an enemy adjacent becomes a melee attack and the ability is banned; nothing changes without an adjacent enemy or for directional abilities; Tighten is hidden from the menu and the mod exports its stance as active")
+
+
+# Test 178: an equal-speed melee-only chaser is outwalked, and a fight with it is not started (Dream Tortoise Gen 42, 2026-10-12: level 1, 18 HP, shot at a level 13 gelatinous wedge 4 tiles away, closed in and died engulfed in four turns; HANDOFF issue 167)
+# ---------------------------------------------------------------------------
+def _w178(d, **k):
+    return dict({"name": "gelatinous wedge", "blueprint": "Gelatinous Wedge", "dist": d, "tx": 50 - d, "ty": 10, "is_enemy": True, "has_los": True, "difficulty": "Impossible", "speed": 100}, **k)
+def _s178(ents, **k):
+    return dict({"x": 50, "y": 10, "hp": 18, "max_hp": 18, "speed": 100, "zone_id": "Z178", "visible_entities": ents, "gas_cells": [], "effects": [],
+                 "surroundings": {d: "Empty ground" for d in _D167}}, **k)
+def _reset178():
+    brain.RETREAT_STATE.update({"zone": None, "steps": 0}); brain.visit_counts.clear()
+# part 1: the retreat fires at 2 or more tiles, not at 1, not for a shooter, a faster one, unknown speed or an unknown creature
+_reset178(); _r178 = brain.retreat_decision(_s178([_w178(4)]))
+assert _r178 and _r178["action"][5:] in ("E", "NE", "SE") and "equal speed" in _r178["reason"], _r178
+for _bad178, _why178 in ((_s178([_w178(1)]), "adjacent: the fight rules decide"), (_s178([_w178(4, is_ranged=True)]), "a shooter"), (_s178([_w178(4, speed=150)]), "faster"),
+                         (_s178([_w178(4, speed=None, blueprint="NoSuch", name="mystery thing")]), "unknown creature and speed"), (_s178([_w178(4, difficulty="Tough")]), "Tough is a fight he can take")):
+    _reset178(); assert brain.retreat_decision(_bad178) is None, _why178
+# part 2: the model's opening moves are replaced by a step away
+for _act178 in ("FIRE_MISSILE@46,10", "THROW_ITEM@46,10", "USE_ABILITY:CommandFreezingRay:W", "MOVE_W", "MOVE_NW"):
+    _reset178(); _v178 = brain.veto_engage_unwinnable({"action": _act178, "reason": "model"}, _s178([_w178(4)]))
+    assert _v178["action"][5:] in ("E", "NE", "SE") and "NO FIGHT" in _v178["reason"], (_act178, _v178)
+_reset178(); assert brain.veto_engage_unwinnable({"action": "MOVE_E", "reason": "m"}, _s178([_w178(4)]))["action"] == "MOVE_E", "a step away is not touched"
+_reset178(); assert brain.veto_engage_unwinnable({"action": "FIRE_MISSILE@49,10", "reason": "m"}, _s178([_w178(1)]))["action"].startswith("FIRE_MISSILE"), "adjacent: not this rule"
+_reset178(); assert brain.veto_engage_unwinnable({"action": "FIRE_MISSILE@46,10", "reason": "m"}, _s178([_w178(4, difficulty="Average")]))["action"].startswith("FIRE_MISSILE"), "a lesser enemy may be shot"
+_reset178(); assert brain.veto_engage_unwinnable({"action": "FIRE_MISSILE@46,10", "reason": "m"}, _s178([_w178(4, stuck=True)]))["action"].startswith("FIRE_MISSILE"), "a stuck one may be shot (grenade tactic)"
+_reset178(); _walls178 = dict({d: "Empty ground" for d in _D167}, **{d: "[BLOCKED: impassable terrain]" for d in ("E", "NE", "SE", "N", "S")})
+assert brain.veto_engage_unwinnable({"action": "FIRE_MISSILE@46,10", "reason": "m"}, _s178([_w178(4)], surroundings=_walls178))["action"].startswith("FIRE_MISSILE"), "cornered: the fight rules decide"
+# MULTI-TURN: an equal-speed wedge chases him across an open field for 40 turns; it moves one cell toward him after each of his moves. The gap must never close below 2.
+_reset178(); _px178, _py178, _ex178 = 50, 10, 46; _gap178 = []
+for _t178 in range(40):
+    _ent = [dict(_w178(max(1, abs(_px178 - _ex178))), tx=_ex178, ty=10)]
+    _st = dict(_s178(_ent), x=_px178, y=_py178)
+    _dec = brain.retreat_decision(_st) or brain.veto_engage_unwinnable({"action": "FIRE_MISSILE@%d,10" % _ex178, "reason": "model"}, _st)
+    if _dec["action"].startswith("MOVE_"):
+        _mx, _my = _D167[_dec["action"][5:]]
+        _px178, _py178 = _px178 + _mx, _py178 + _my
+    _ex178 += 1 if _px178 > _ex178 else (-1 if _px178 < _ex178 else 0)          # the wedge closes one cell a turn
+    _gap178.append(max(abs(_px178 - _ex178), abs(_py178 - 10)))
+    if brain.RETREAT_STATE["steps"] >= brain.RETREAT_STEP_BUDGET:
+        break
+assert min(_gap178) >= 2, ("he was caught", _gap178[:12])
+_reset178()
+print("  [OK] Test 178 Passed: he walks away from an Impossible equal-speed melee-only enemy that is 2 or more tiles off (not from a shooter, a faster, a lesser, a stuck or an unknown one), the model's missile, throw, aimed ability or closing step against it becomes a step away unless he is cornered, and across 40 turns of an equal-speed chase the gap never closes below 2")
