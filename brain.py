@@ -1624,6 +1624,84 @@ def note_godmode(game_state):
         pass
 
 
+# Item effect text (HANDOFF issue 171, ENGINE_INTERNALS 14.42): the mod exports each carried or worn item's own effect lines (`effect_text`, lines joined by " | "), exactly what the game's item
+# popup shows. This reads them into a small generic form and keeps a log of every distinct item seen, so item weights can be fitted from data later. It scores nothing and changes no decision.
+ITEM_EFFECTS_PATH = os.path.join(chronicler.MEMORY_DIR, "item_effects.jsonl")
+ITEM_EFFECTS_SEEN = {"loaded": False, "keys": set()}
+_STAT_PIECE = re.compile(r"^([+-]\d+)(%?)\s+([A-Za-z][A-Za-z' ]*?)\.?$")
+_MULT_PIECE = re.compile(r"^x(\d+(?:\.\d+)?)\s+([A-Za-z][A-Za-z' ]*?)\.?$")
+
+
+def parse_item_effects(text):
+    """{"stats": {"move speed": 25, "av": 3}, "mults": {"weight": 2.0}, "notes": ["Spring-loaded: ..."]} from an exported `effect_text`. Stat pieces are "+25 move speed", "-2 DV", "+10% cold resistance";
+    a line may hold several ("Overbuilt: +3 AV, -2 DV, -10 move speed, x2 weight"); a weight line is dropped; everything else is kept as a note (an artifact's power is prose)."""
+    out = {"stats": {}, "mults": {}, "notes": []}
+    for seg in str(text or "").split(" | "):
+        seg = seg.strip()
+        if not seg or seg.lower().startswith("weight:"):
+            continue
+        body = seg.split(": ", 1)[1] if ": " in seg and not seg.split(": ", 1)[0].strip()[:1] in "+-x" and len(seg.split(": ", 1)[0]) <= 40 else seg
+        pieces = [p.strip() for p in re.split(r",\s*|\s+and\s+", body) if p.strip()]
+        parsed = {}
+        mults = {}
+        ok = bool(pieces)
+        for p in pieces:
+            m = _STAT_PIECE.match(p)
+            mm = _MULT_PIECE.match(p)
+            if m:
+                parsed[m.group(3).strip().lower() + (" %" if m.group(2) else "")] = int(m.group(1))
+            elif mm:
+                mults[mm.group(2).strip().lower()] = float(mm.group(1))
+            else:
+                ok = False
+                break
+        if ok:
+            out["stats"].update(parsed)
+            out["mults"].update(mults)
+        else:
+            out["notes"].append(seg[:200])
+    return out
+
+
+def note_item_effects(game_state, path=None):
+    """Appends one line per distinct (item name, effect text) seen in the inventory to memory/item_effects.jsonl. Never raises."""
+    try:
+        inv = game_state.get("inventory")
+        if not isinstance(inv, list):
+            return
+        path = path or ITEM_EFFECTS_PATH
+        if not ITEM_EFFECTS_SEEN["loaded"]:
+            ITEM_EFFECTS_SEEN["loaded"] = True
+            try:
+                with open(path, encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            r = json.loads(line)
+                            ITEM_EFFECTS_SEEN["keys"].add((r.get("name"), r.get("text")))
+                        except ValueError:
+                            pass
+            except OSError:
+                pass
+        rows = []
+        for it in inv:
+            text = (it.get("effect_text") or "").strip()
+            key = (it.get("name"), text)
+            if not text or key in ITEM_EFFECTS_SEEN["keys"]:
+                continue
+            ITEM_EFFECTS_SEEN["keys"].add(key)
+            parsed = parse_item_effects(text)
+            rows.append({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "name": it.get("name"), "blueprint": it.get("blueprint"), "equipped": bool(it.get("equipped")),
+                         "identified": it.get("identified"), "text": text, "stats": parsed["stats"], "mults": parsed["mults"], "notes": parsed["notes"]})
+            if len(rows) >= 10:
+                break
+        if rows:
+            with open(path, "a", encoding="utf-8") as f:
+                for r in rows:
+                    f.write(json.dumps(r, ensure_ascii=False) + chr(10))
+    except Exception:
+        pass
+
+
 def note_inventory_action(game_state):
     """Reads the mod's report of the last equip or drop once: logs drops, and stops retrying an id the game refused twice. Never raises."""
     try:
@@ -5884,6 +5962,7 @@ def main():
                 note_hunters(game_state)
                 note_gas(game_state)
                 note_godmode(game_state)
+                note_item_effects(game_state)
                 note_avoid(game_state)
                 note_quests(game_state)
                 note_zone_danger(game_state)

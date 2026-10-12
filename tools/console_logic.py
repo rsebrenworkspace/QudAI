@@ -489,7 +489,7 @@ CAPTURE_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{6}")
 GAME_FILES = ("Player.log", "Player-prev.log", "build_log.txt", "game_log.txt")
 EXCHANGE_FILES = ("last_state.json", "last_action_executed.txt", "active.flag", "mutation_ranking.txt")
 MEMORY_FILES = ("decision_trace.jsonl", "decision_trace.jsonl.1", "exit_choices.jsonl", "examine_log.jsonl", "danger_ledger.json", "item_drops.jsonl",
-                "proselytize_log.jsonl", "ability_stats.json", "lab_runs.jsonl", "generation_counter.json", "hunter_log.jsonl", "gas_log.jsonl")
+                "proselytize_log.jsonl", "ability_stats.json", "lab_runs.jsonl", "generation_counter.json", "hunter_log.jsonl", "gas_log.jsonl", "item_effects.jsonl")
 
 
 def capture_files(exchange_dir=None, repo=None):

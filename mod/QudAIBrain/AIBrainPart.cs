@@ -821,6 +821,31 @@ namespace QudAIBrain
 
         private static string LastInvActionJson() { return "\"last_inventory_action\": " + lastInvActionJson + ","; }
 
+        // The item's own effect text, as the game shows it in the item popup (HANDOFF issue 171, ENGINE_INTERNALS 14.42): `Description.GetShortDescription` runs the GetShortDescription event, so every part
+        // (a stat shift, a mod, an artifact power) adds its own line ("+25 move speed", "Spring-loaded: This item grants bonus move speed."). The flavour paragraph before the first blank line is
+        // dropped, colour codes are stripped, newlines become " | ", and the answer is cached per item and name (identifying an item changes the name and so the text).
+        private static readonly Dictionary<string, string> itemEffectCache = new Dictionary<string, string>();
+        private static string ItemEffectText(GameObject it)
+        {
+            try
+            {
+                string key = (it.ID ?? "") + "|" + (it.DisplayNameOnly ?? "");
+                string hit;
+                if (itemEffectCache.TryGetValue(key, out hit)) return hit;
+                string text = "";
+                var desc = it.GetPart<Description>();
+                if (desc != null) text = StripQudFormatting(desc.GetShortDescription(false, true) ?? "").Replace("\r", "");
+                int cut = text.IndexOf("\n\n");
+                string eff = cut >= 0 ? text.Substring(cut + 2).Trim() : "";
+                eff = eff.Replace("\n\n", "\n").Replace("\n", " | ");
+                if (eff.Length > 400) eff = eff.Substring(0, 400);
+                if (itemEffectCache.Count > 2000) itemEffectCache.Clear();
+                itemEffectCache[key] = eff;
+                return eff;
+            }
+            catch { return ""; }
+        }
+
         private static string BuildInventoryJson(GameObject player)
         {
             var entries = new List<string>();
@@ -866,6 +891,7 @@ namespace QudAIBrain
                                 EscapeJson(StripQudFormatting(it.DisplayNameOnly ?? bp)) + "\", \"count\": " + n + ", \"weight\": " + w +
                                 ", \"equipped\": " + (eq ? "true" : "false") + ", \"identified\": " + (ident ? "true" : "false") +
                                 ", \"partial\": " + (partial ? "true" : "false") + ", \"cursed\": " + (cursed ? "true" : "false") +
+                                ", \"effect_text\": \"" + EscapeJson(ItemEffectText(it)) + "\"" +
                                 ", \"slots\": [" + string.Join(",", (mySlots ?? new List<string>()).Select(s => "\"" + EscapeJson(s) + "\"")) + "]}");
                     if (entries.Count >= MaxInventoryExport) break;
                 }
