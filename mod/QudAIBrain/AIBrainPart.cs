@@ -275,6 +275,12 @@ namespace QudAIBrain
             try { return o != null ? o.Stat("Speed") : 0; } catch { return 0; }
         }
 
+        // The MoveSpeed stat (swimming shifts it, Swimming.BASE_MOVE_SPEED_PENALTY 50; ENGINE_INTERNALS 14.40): exported only to MEASURE the swimming penalty, nothing reads it yet.
+        private static int SafeMoveSpeed(GameObject o)
+        {
+            try { return o != null ? o.Stat("MoveSpeed") : 0; } catch { return 0; }
+        }
+
         // Gas clouds near the player (BACKLOG B33, the grenade lab, human 2026-10-10: "start with poison gas"): one entry per Gas object within GasCellRadius of him, with its type and
         // density. A grenade makes a cloud in the thrown cell and its neighbours and the gas then moves on its own, so its size and life can only be measured, not computed. Also the base for
         // never walking into a cloud he made (not built).
@@ -1430,7 +1436,7 @@ namespace QudAIBrain
         }
 
         // First step of a route to the given edge that may swim (HANDOFF issue 105: the only way out of three zones was a lake, and the engine's edge step found none).
-        // Dijkstra over the zone's cells: a step costs 1, a swimming-depth cell 3 (dry land is preferred); cells that are not passable for the player, solid, walls or
+        // Dijkstra over the zone's cells: a step costs 1, swimming or not (the water bias was dropped on 2026-10-12); cells that are not passable for the player, solid, walls or
         // dangerous open liquid (acid, lava) are never entered. With allowSwim false the same search is dry-only, which tells whether the edge is reachable without swimming. Returns a direction or null.
         private static string SwimExitStep(GameObject player, char edgeChar, bool allowSwim)
         {
@@ -1506,7 +1512,7 @@ namespace QudAIBrain
                         }
                         catch { ok = false; }
                         if (!ok) continue;
-                        int nd = dist[cur] + (swim ? 3 : 1);
+                        int nd = dist[cur] + 1;      // no water bias: a swimming step costs the same as a dry one (human, 2026-10-12)
                         if (nd < dist[ni]) { dist[ni] = nd; prev[ni] = cur; }
                     }
                 }
@@ -2408,6 +2414,7 @@ namespace QudAIBrain
                 sb.Append($"\"mp\": {mpPoints},");
                 sb.Append($"\"av\": {statAV}, \"dv\": {statDV},");
                 sb.Append("\"speed\": " + SafeSpeed(player) + ",");
+                sb.Append("\"move_speed\": " + SafeMoveSpeed(player) + ",");
                 sb.Append("\"godmode\": " + (GodmodeOn() ? "true" : "false") + ",");
                 sb.Append($"\"melee\": {{\"weapon\": \"{EscapeJson(meleeName)}\", \"damage\": \"{EscapeJson(meleeDamage)}\", \"penetration\": {meleePen}, \"hit_bonus\": {meleeHit}}},");
                 sb.Append($"\"attributes\": {{\"Strength\": {statStr}, \"Agility\": {statAgi}, \"Toughness\": {statTou}, \"Intelligence\": {statInt}, \"Willpower\": {statWil}, \"Ego\": {statEgo}}},");

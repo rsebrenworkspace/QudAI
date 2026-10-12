@@ -863,6 +863,11 @@ The machine-readable table is `data/grenades.json` (59 grenade blueprints, built
 - **Found because** the Dream Tortoise's model used Tighten Carapace 61 turns in a row against a bloody crocodile, HP 18 down to 10, never attacking (the human stopped it). The engine's own AI adds it as a defensive choice only when `!Tight` and a HP-based dice roll succeeds.
 - **Consequence:** in melee Tighten is one turn of double armor that is lost when he attacks, so it is a lost attack; it fits a character that is going to wait. The brain now hides it (`tighten` family `auto_use: false`), exports the stance as the ability's `active` flag, and a general guard replaces a third identical self-ability turn by an attack (HANDOFF issue 166).
 
+### 14.40 Swimming slows movement; the size and the sign of the shift are not settled (2026-10-12, `[verified in code via ilspycmd]` except where marked)
+- `Effects.Swimming` has `BASE_MOVE_SPEED_PENALTY = 50`; `GetSwimmingPerformanceEvent` adjusts it and the skill `Endurance_Swimming` takes 25 off (penalty 25). The effect calls `StatShifter.SetStatShift("MoveSpeed", penalty)` and its description shows "-50 move speed" (or "-25"). The effect itself drops and damages no items. While it is on, `CanChangeMovementMode` refuses every mode but Flying, Wading, Stuck and Engulfed ("You cannot do that while swimming"). It ends when the cell has no aquatic support, a bridge, or the creature flies.
+- `GameObject.UseEnergy` for a movement with `MoveSpeed != 100` adds `100 - (int)(100 / ((100 - MoveSpeed)/100 + 1))` percent to the energy cost: MoveSpeed 50 gives +34 percent, 75 gives +20 percent, 150 gives -100 percent (before the minimum of a twentieth of the cost). **Contradiction `[unverified]`:** `SetStatShift` ADDS the amount, so +50 would read as MoveSpeed 150, a bonus, while the effect calls it a penalty. Either the shift is applied negative somewhere I did not read, or the formula reads the other way. The mod now exports `move_speed`; a capture taken while swimming settles it.
+- **Decision (human, 2026-10-12):** drop every water bias in movement for now (HANDOFF issue 168).
+
 ---
 *End of Engine Internals Manual.*
 

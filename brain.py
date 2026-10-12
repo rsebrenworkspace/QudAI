@@ -195,7 +195,7 @@ def get_best_move_towards(cur_pos, target_pos, valid_moves, surroundings=None):
     """
     Selects the valid move that gets closest to target_pos (tx, ty).
     Uses Chebyshev distance primary, Euclidean distance secondary, breaking ties with least-visited coordinates
-    and preferring dry land over swimming liquid when distances and visits are equal.
+    (No preference for dry land over swimming liquid: dropped by the human, 2026-10-12, "a cleaner, smoother movement until an issue makes us rethink it".)
     """
     if not valid_moves:
         return None
@@ -208,8 +208,7 @@ def get_best_move_towards(cur_pos, target_pos, valid_moves, surroundings=None):
         cheb_dist = max(abs(nx - tx), abs(ny - ty))
         euc_dist_sq = (nx - tx) ** 2 + (ny - ty) ** 2
         visits = visit_counts.get((nx, ny), 0)
-        swim_penalty = 1 if is_swim_move(m, surroundings) else 0
-        return (cheb_dist, euc_dist_sq, visits, swim_penalty)
+        return (cheb_dist, euc_dist_sq, visits)
 
     sorted_moves = sorted(valid_moves, key=score_move)
     return sorted_moves[0]
@@ -5598,7 +5597,6 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 if visit_counts.get((cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]), 0) == 0
             ]
             if unvisited_local:
-                unvisited_local.sort(key=lambda m: (1 if is_swim_move(m, surroundings) else 0))
                 return {"action": unvisited_local[0], "reason": f"Scouting zone frontier {unvisited_local[0]}"}
 
         # If autoexplore is stuck and there is no reachable local frontier, give up on this zone for now and leave.
@@ -5698,7 +5696,6 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                 fallback_moves = _kept or valid_moves
             ranked = sorted(fallback_moves, key=lambda m: (
                 visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],
-                1 if is_swim_move(m, surroundings) else 0
             ))
             return {"action": ranked[0], "reason": f"{zone_label}: scouting zone frontier {ranked[0]}"}
 
@@ -6133,7 +6130,6 @@ def main():
                     elif open_escapes:
                         open_escapes.sort(key=lambda m: (
                             visit_counts[(cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1])],
-                            1 if is_swim_move(m, surroundings) else 0
                         ))
                         action = open_escapes[0]
                         reason = f"[Loop Breaker] Oscillation detected at {cur_pos} (freq: {pos_frequency}, unique: {unique_positions}). Escaping cycle towards unvisited frontier {action}."
@@ -6150,7 +6146,7 @@ def main():
                                 dx, dy = CARDINAL_OFFSETS[m[5:]]
                                 nx, ny = cur_pos[0] + dx, cur_pos[1] + dy
                                 euc_dist = (nx - avg_rx)**2 + (ny - avg_ry)**2
-                                return (-euc_dist, visit_counts[(nx, ny)], 1 if is_swim_move(m, surroundings) else 0)
+                                return (-euc_dist, visit_counts[(nx, ny)])
                             valid_m.sort(key=dist_away_from_cycle)
                             action = valid_m[0]
                             reason = f"[Loop Breaker] Oscillation trapped in cycle. Forcing move {action} away from cycle centroid."
