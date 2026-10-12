@@ -80,7 +80,7 @@ in a small context window.
 
 ## Reversing the decisions of 2026-10-12 (the water, retreat and safety changes)
 
-Each row says what was decided, why, what evidence should make us reverse it, and the cheapest way back. Commits are on `main`; `git revert <hash>` undoes a whole change but also its tests, so the notes name the tests that moved. Always run the checks in AGENTS.md section 3 after a reversal, and note the reversal in `docs/HANDOFF.md` and here. Do not reverse by deleting code; use the knob where there is one.
+Each row says what was decided, why, what evidence should make us reverse it, and the cheapest way back. Commits are on `main`; `git revert <hash>` undoes a whole change but also its tests, so the notes name the tests that moved. Always run the checks in AGENTS.md section 3 after a reversal, and note the reversal in `docs/HANDOFF.md` and here. Do not reverse by deleting code; use the knob where there is one. Revert newest first (169 before 168, 168 before 163): the later commits rewrite the lines the earlier ones touched, and an out-of-order revert conflicts.
 
 | Decision (issue, commit) | Why | Reverse it when | The knob (cheapest) | The full revert |
 |---|---|---|---|---|
