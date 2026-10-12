@@ -79,6 +79,35 @@ class Console(tk.Tk):
         ttk.Label(top, text="Applies the next time you press Start (sets QUDAI_LM_MODEL).").grid(row=1, column=1, sticky="w", padx=6)
         self.test_no_abilities = tk.BooleanVar(value=False)
         ttk.Checkbutton(top, text="TEST: hide combat abilities from the brain (applies the next time you press Start)", variable=self.test_no_abilities).grid(row=2, column=1, sticky="w", padx=6, pady=4)
+        coll = ttk.LabelFrame(f, text="Data collection (which deaths count as evidence for the agent; the lives before this switch existed never count)")
+        coll.pack(fill="x", padx=12, pady=6)
+        self.collection_var = tk.StringVar(value="")
+        self.collection_label = tk.Label(coll, textvariable=self.collection_var, font=("Segoe UI", 12, "bold"), anchor="w", padx=8, pady=4)
+        self.collection_label.pack(fill="x", padx=6, pady=(6, 2))
+        self.collection_hint = tk.StringVar(value="")
+        ttk.Label(coll, textvariable=self.collection_hint, wraplength=1100, justify="left").pack(anchor="w", padx=10)
+        crow = ttk.Frame(coll)
+        crow.pack(fill="x", padx=6, pady=6)
+        ttk.Label(crow, text="Build (prefix, empty = all)").pack(side="left", padx=4)
+        self.collection_build = tk.StringVar(value="")
+        build_ids = [""]
+        try:
+            sys.path.insert(0, REPO)
+            import build_templates
+            build_ids += ["esper"] + sorted(build_templates.BUILD_TEMPLATES.keys())
+        except Exception:
+            build_ids += ["esper"]
+        ttk.Combobox(crow, textvariable=self.collection_build, values=build_ids, width=22).pack(side="left", padx=4)
+        ttk.Label(crow, text="Target lives").pack(side="left", padx=4)
+        self.collection_target = tk.StringVar(value="10")
+        ttk.Spinbox(crow, from_=1, to=200, textvariable=self.collection_target, width=5).pack(side="left", padx=4)
+        ttk.Label(crow, text="Note").pack(side="left", padx=4)
+        self.collection_note = tk.StringVar(value="")
+        ttk.Entry(crow, textvariable=self.collection_note, width=36).pack(side="left", padx=4)
+        ttk.Button(crow, text="Turn ON", command=self.collection_on_clicked).pack(side="left", padx=6)
+        ttk.Button(crow, text="Turn OFF", command=self.collection_off_clicked).pack(side="left", padx=2)
+        self._collection_reminded = False
+        self.collection_refresh()
         btns = ttk.Frame(f)
         btns.pack(fill="x", padx=12, pady=4)
         self.btn_start = ttk.Button(btns, text="Start brain", command=self.start_brain)
@@ -452,6 +481,7 @@ class Console(tk.Tk):
     def start_brain(self):
         if self.proc and self.proc.poll() is None:
             return
+        self._collection_reminded = False            # a new brain start gets its own reminder when AI is engaged
         env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
         model = self.model_var.get().strip()
         if model and model != AUTO_MODEL:
@@ -484,9 +514,37 @@ class Console(tk.Tk):
             self._log("--- stop requested ---")
         self._sync_buttons()
 
+    # ----------------------------------------------------------------- data collection (HANDOFF issue 174)
+    def collection_refresh(self):
+        try:
+            head, hint, tone = cl.collection_view()
+        except Exception as e:  # a refresh must never kill the window
+            head, hint, tone = f"DATA COLLECTION: cannot read ({e})", "", "off"
+        self.collection_var.set(head)
+        self.collection_hint.set(hint)
+        bg, fg = {"off": ("#fff8c5", "#4d2d00"), "on": ("#dafbe1", "#116329"), "done": ("#ddf4ff", "#0a3069")}.get(tone, ("#fff8c5", "#4d2d00"))
+        self.collection_label.configure(bg=bg, fg=fg)
+
+    def collection_on_clicked(self):
+        try:
+            tgt = int(self.collection_target.get())
+        except ValueError:
+            tgt = None
+        cl.collection_set(True, self.collection_build.get(), tgt, self.collection_note.get())
+        self.collection_refresh()
+
+    def collection_off_clicked(self):
+        cl.collection_set(False, note=self.collection_note.get())
+        self.collection_refresh()
+
     def toggle_ai(self):
         if not (self.proc and self.proc.poll() is None):
             return
+        if not self._collection_reminded and cl.collection_reminder_needed():
+            self._collection_reminded = True          # once per brain start, not every press
+            if messagebox.askyesno("QudAI: data collection is OFF",
+                                   "Deaths in this run will NOT count as evidence for the agent.\n\nTurn data collection ON now (with the build, target and note in the Data collection box)?"):
+                self.collection_on_clicked()
         try:
             self.proc.stdin.write(cl.pause_resume_bytes())
             self.proc.stdin.flush()
@@ -636,6 +694,9 @@ class Console(tk.Tk):
                 self.show_logs()
             if self._changed("drops", DROPS):
                 self._set(self.drop_text, cl.drop_log_text(DROPS))
+            self._collection_tick = getattr(self, "_collection_tick", 0) + 1
+            if self._collection_tick % 3 == 0:           # every 6 seconds: a death moves the progress count
+                self.collection_refresh()
         except Exception as e:  # a refresh must never kill the window
             self.status_var.set(f"refresh error: {e}")
         self.after(2000, self._tick)

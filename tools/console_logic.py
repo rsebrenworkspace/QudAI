@@ -157,6 +157,59 @@ def godmode_health(state_path=None):
     return OK, "off"
 
 
+def collection_health():
+    """(status, text): the human's data collection switch (memory/collection.json, HANDOFF issue 173). ON means the deaths of this run count as evidence for the agent."""
+    try:
+        if REPO not in sys.path:
+            sys.path.insert(0, REPO)
+        import death_stats
+        st = death_stats.collection_state()
+    except Exception as e:
+        return UNKNOWN, f"cannot read the switch: {e}"
+    if st["collecting"]:
+        return OK, "ON" + (f" since generation {st['since_generation']}" if st["since_generation"] else "") + ": deaths in this run count as evidence for the agent"
+    return OK, "OFF: development run, deaths do not count (python tools/collection.py on \"note\" when the character can operate)"
+
+
+# ---------------------------------------------------------------------------
+# Data collection switch (HANDOFF issue 174): the human's switch for which deaths count as evidence for the agent
+# ---------------------------------------------------------------------------
+def collection_view(chron_dir=None, ledger_path=None, switch_path=None):
+    """(headline, hint, tone) for the Control tab; tone is 'off', 'on' or 'done'. The hint is the reminder of WHEN to flip the switch."""
+    import death_stats
+    st = death_stats.collection_state(switch_path)
+    if not st["collecting"]:
+        return ("DATA COLLECTION: OFF - deaths in this run do NOT count",
+                "Reminder: turn it ON when a character can operate (it uses its abilities, retreats, heals). Leave it OFF while you work on a new character.", "off")
+    rows = death_stats.mark_retries(death_stats.parse_chronicles(chron_dir))
+    ledger = death_stats.load_ledger(ledger_path)
+    n, tgt = death_stats.collection_progress(rows, ledger, switch_path)
+    who = f" for {st['build']}*" if st["build"] else ""
+    head = f"DATA COLLECTION: ON{who} - {n} of {tgt} lives counted" if tgt else f"DATA COLLECTION: ON{who} - {n} lives counted"
+    if tgt and n >= tgt:
+        return (head + " - target reached", "Target reached. Turn it OFF (or set a new target) and tell Claude: it reads the generation report.", "done")
+    return (head, "Every death while this is ON counts. After a death press Capture logs and tell Claude: it classifies the death and says whether something needs fixing now.", "on")
+
+
+def collection_set(on, build="", target=None, note="", switch_path=None):
+    """Turns the switch on (since the next generation) or off. -> the new state."""
+    import death_stats
+    since = None
+    if on:
+        try:
+            gen = read_json(os.path.join(REPO, "memory", "generation_counter.json"), {}) or {}
+            since = int(gen.get("highest", 0)) + 1
+        except (TypeError, ValueError):
+            since = None
+    return death_stats.set_collecting(on, note, switch_path, since_generation=since, build=build.strip(), target=target)
+
+
+def collection_reminder_needed(switch_path=None):
+    """True when pressing Engage AI should remind the human that data collection is off."""
+    import death_stats
+    return not death_stats.collecting(switch_path)
+
+
 def mod_health(exchange_dir=None):
     gd = game_dir(exchange_dir)
     ex = exchange_dir or EXCHANGE_DIR
@@ -174,6 +227,7 @@ def mod_health(exchange_dir=None):
     rows.append(("LLM context", *llm_headroom()))
     rows.append(("Brain code", *brain_code_health()))
     rows.append(("Godmode", *godmode_health(os.path.join(ex, "last_state.json"))))
+    rows.append(("Data collection", *collection_health()))
     rows.append(("AI switch", OK if flag_on(ex) else WARN, "ENGAGED (active.flag present)" if flag_on(ex) else "paused (no active.flag): the game plays itself no more"))
     return rows
 

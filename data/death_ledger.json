@@ -8,7 +8,7 @@
       "luck": "accept it",
       "lab": "a deliberate test run (a wished creature, a retry from a saved state): not a real death"
     },
-    "fields": "gen (the key), kind, cls (cause class, optional: overrides the one read from the chronicle), note (one line), issue (the HANDOFF issue that fixed or answered it, when there is one)",
+    "fields": "gen (the key), kind, cls (cause class, optional: overrides the one read from the chronicle), note (one line), issue (the HANDOFF issue that fixed or answered it, when there is one), urgent (true when the death shows a defect or gap that should be addressed immediately, before the next run; shown under NEEDS ATTENTION NOW until an issue is recorded)",
     "history": "Created 2026-10-12 (HANDOFF issue 172) after the human asked to learn from deaths: 'death of a character is a mechanic of roguelike games'."
   },
   "deaths": {
