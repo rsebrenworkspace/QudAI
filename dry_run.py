@@ -8028,15 +8028,64 @@ _one184 = _ds184.prompt_block([{"name": "chitinous puma"}], [], None, _dir184, _
 assert "You are level" not in _one184
 # with no counted lives at all (the real state today: collection OFF, no chronicle has the field): nothing, ever
 assert _ds184.prompt_block(_en184, [], 1) == "", "the real repo: collection is off and the old lives never count"
-assert _ds184.collection_state(_os.path.join(_dir184, "missing.json")) == {"collecting": False, "since_generation": None, "note": ""}
+assert _ds184.collection_state(_os.path.join(_dir184, "missing.json")) == {"collecting": False, "since_generation": None, "note": "", "build": "", "target": None}
 _sw184 = _os.path.join(_dir184, "collection.json")
-assert _ds184.set_collecting(True, "ready", _sw184, since_generation=43) == {"collecting": True, "since_generation": 43, "note": "ready"}
+assert _ds184.set_collecting(True, "ready", _sw184, since_generation=43) == {"collecting": True, "since_generation": 43, "note": "ready", "build": "", "target": None}
 assert _ds184.collecting(_sw184) is True and _ds184.set_collecting(False, "new character", _sw184)["collecting"] is False
-assert _ds184.collecting() is False, "the repo's own switch is OFF until the human turns it on"
+assert _ds184.collecting(_os.path.join(_dir184, "never-written.json")) is False, "a switch that was never written is OFF"
 _chr184 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "chronicler.py"), encoding="utf-8").read()
-assert 'data_collection: "{data_collection}"' in _chr184 and "death_stats.collecting()" in _chr184, "a chronicle records the switch state when the life ends"
+assert 'data_collection: "{data_collection}"' in _chr184 and "death_stats.counts_for(build)" in _chr184, "a chronicle records the switch state when the life ends"
 _b184 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 assert "death_stats.prompt_block(enemies" in _b184 and 'f"{known_killers}"' in _b184 and '"death_stats.py"' in _b184, "the prompt carries the block and the stale-code check watches the module"
 _cl184 = _cl128.collection_health()
 assert _cl184[0] == _cl128.OK and "OFF" in _cl184[1], _cl184
 print("  [OK] Test 184 Passed: only lives that ended while collection was ON (and are not labs) count; the prompt shows a known-killers line only for a class in view that ended 2 or more counted characters, with the level span and a note when a rule exists, and nothing at all today (switch OFF, old lives never count); the chronicle records the switch, the capture shows it, and the stale-code check watches the module")
+
+
+
+# Test 185: the collection switch lives in the console, counts one build, shows progress and reminds (human, 2026-10-12: "put the collection switch into the mod console ... remind me when I should flip it on ... ten runs for the Esper"; HANDOFF issue 174)
+# ---------------------------------------------------------------------------
+_sw185 = _os.path.join(_tf184.mkdtemp(), "memory", "collection.json")
+assert _ds184.COLLECTION_PATH.endswith(_os.path.join("memory", "collection.json")), "the switch is local state in memory/, never committed"
+assert _cl128.collection_reminder_needed(_sw185) is True, "OFF: Engage AI reminds"
+_h185, _hint185, _tone185 = _cl128.collection_view(_dir184, _led184, _sw185)
+assert _tone185 == "off" and "OFF" in _h185 and "Reminder" in _hint185 and "can operate" in _hint185, (_h185, _hint185)
+_st185 = _cl128.collection_set(True, "esper", 10, "Esper class: ten runs", _sw185)
+assert _st185["collecting"] and _st185["build"] == "esper" and _st185["target"] == 10, _st185
+assert _cl128.collection_reminder_needed(_sw185) is False
+assert _ds184.counts_for("esper_ited_away", _sw185) and _ds184.counts_for("Esper_MindFlayer", _sw185) and not _ds184.counts_for("dream_tortoise", _sw185) and not _ds184.counts_for("", _sw185), "a prefix filter on the build id"
+_sa185 = _cl128.collection_set(True, "", None, "", _sw185)
+assert _ds184.counts_for("dream_tortoise", _sw185) and _ds184.counts_for("", _sw185), "no filter: every build counts"
+_cl128.collection_set(True, "", 3, "", _sw185)
+# progress: counted lives since the switch was turned on (generation counter file is the real one: so force 'since' directly)
+json.dump({"collecting": True, "since_generation": 3, "build": "", "target": 3, "note": ""}, open(_sw185, "w"))
+_h185, _hint185, _tone185 = _cl128.collection_view(_dir184, _led184, _sw185)
+assert _tone185 == "on" and "2 of 3 lives counted" in _h185 and "Capture logs" in _hint185 and "classifies" in _hint185, (_h185, _hint185)
+json.dump({"collecting": True, "since_generation": 3, "build": "", "target": 2, "note": ""}, open(_sw185, "w"))
+_h185, _hint185, _tone185 = _cl128.collection_view(_dir184, _led184, _sw185)
+assert _tone185 == "done" and "target reached" in _h185 and "Turn it OFF" in _hint185, (_h185, _hint185)
+_cl128.collection_set(False, note="new character", switch_path=_sw185)
+assert _ds184.collecting(_sw185) is False and _ds184.collection_state(_sw185)["build"] == ""
+# the chronicle records the build of the life that ended and counts it only when the switch and the filter say so
+_chr185 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "chronicler.py"), encoding="utf-8").read()
+assert 'build: "{build}"' in _chr185 and "death_stats.counts_for(build)" in _chr185 and 'death_data["build"] = (build_templates.detect_build(last_state or {}) or {}).get("id", "")' in _chr185
+_gui185 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "tools", "qudai_console.py"), encoding="utf-8").read()
+for _s185 in ("def collection_on_clicked(self)", "def collection_off_clicked(self)", "def collection_refresh(self)", "cl.collection_reminder_needed()", "self.collection_refresh()", 'text="Turn ON"', 'text="Turn OFF"'):
+    assert _s185 in _gui185, _s185
+print("  [OK] Test 185 Passed: the switch is local state in memory/, the console shows it with ON/OFF buttons, a build prefix, a target and a note, the headline shows the progress (2 of 3 lives counted, target reached), a reminder says when to flip it ON and a prompt appears when Engage AI is pressed while it is OFF, a chronicle records the build and counts only a matching build while the switch is ON")
+
+# Test 186: an urgent death without a recorded fix is listed first (human: "I will have you notate if the death is due to an issue we should address immediately"; HANDOFF issue 174)
+# ---------------------------------------------------------------------------
+_dir186 = _tf184.mkdtemp()
+for _g186, _nm186, _ca186 in ((1, "Aaa", "You were killed by a snapjaw warrior with a dagger."), (2, "Bbb", "You were killed by a musket turret with a lead slug.")):
+    open(_os.path.join(_dir186, f"Chronicle_Gen{_g186}_{_nm186}_1.md"), "w", encoding="utf-8").write(
+        f'---\ntitle: "The Chronicle of {_nm186} (Gen {_g186})"\ngeneration: {_g186}\nturns_survived: 300\nlevel: 2\nresting_place: "x"\ncause_of_death: "{_ca186}"\ncategory: "killed"\ndata_collection: "on"\nbuild: "esper_ited_away"\n---\n\nbody\n')
+_l186 = _os.path.join(_dir186, "ledger.json")
+json.dump({"deaths": {"1": {"kind": "bug", "urgent": True, "note": "loop in a doorway"}, "2": {"kind": "gap", "urgent": True, "issue": "98", "note": "turret"}}}, open(_l186, "w"))
+_r186 = _gr183.build_report(_dir186, _l186)
+assert "NEEDS ATTENTION NOW" in _r186 and "Gen 1 Aaa" in _r186.split("NEEDS ATTENTION NOW")[1].split("==")[1], _r186
+assert "Gen 2 Bbb" not in _r186.split("NEEDS ATTENTION NOW")[1].split("== Not classified")[0], "a death that has a recorded fix is no longer urgent"
+json.dump({"deaths": {"1": {"kind": "bug", "urgent": True, "issue": "175"}}}, open(_l186, "w"))
+assert "NEEDS ATTENTION NOW" not in _gr183.build_report(_dir186, _l186), "recording the fix clears it"
+assert _ds184.parse_chronicles(_dir186)[0]["build"] == "esper_ited_away"
+print("  [OK] Test 186 Passed: a death marked urgent in the ledger is listed under NEEDS ATTENTION NOW until a fix (issue) is recorded, and the chronicle's build is read")

@@ -205,10 +205,11 @@ Doom arrived not with trumpet blast, but with the ruthless fury of the salt. In 
     filename = f"Chronicle_Gen{generation}_{safe_name}_{int(time.time())}.md"
     filepath = os.path.join(CHRONICLES_DIR, filename)
 
-    # The human's data collection switch (data/collection.json, HANDOFF issue 173): only a life that ENDS while it is ON counts as evidence for the agent.
+    # The human's data collection switch (memory/collection.json, HANDOFF issue 173): only a life that ENDS while it is ON counts as evidence for the agent.
+    build = str(death_data.get("build", ""))
     try:
         import death_stats
-        data_collection = "on" if death_stats.collecting() else "off"
+        data_collection = "on" if death_stats.counts_for(build) else "off"
     except Exception:
         data_collection = "off"
 
@@ -222,6 +223,7 @@ resting_place: "{zone}"
 cause_of_death: "{cause}"
 category: "{category}"
 data_collection: "{data_collection}"
+build: "{build}"
 tags:
   - caves-of-qud
   - chronicle
@@ -286,7 +288,12 @@ def process_death_event(death_data, recent_actions, active_model_id=None, last_s
 
     print(f"[Ancestral Wisdom Updated] Gen {generation} Lesson (NOT approved, not shown to the model): {lesson}")
 
-    # 3. Generate Obsidian Chronicle
+    # 3. Generate Obsidian Chronicle. The build id of the life that ended (HANDOFF issue 174) lets the data collection switch count only the builds the human is collecting for.
+    try:
+        import build_templates
+        death_data["build"] = (build_templates.detect_build(last_state or {}) or {}).get("id", "")
+    except Exception:
+        death_data["build"] = ""
     chronicle_path = generate_obsidian_chronicle(death_data, recent_actions, generation, lesson, active_model_id)
 
     # 4. Evidence, not flavour: a deterministic post-mortem from the decision trace and the last game state (HANDOFF issue 63)

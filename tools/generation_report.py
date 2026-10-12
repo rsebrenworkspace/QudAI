@@ -46,6 +46,7 @@ def build_report(chron_dir=None, ledger_path=None, last=10):
         r["lcls"] = led.get("cls") or r["cls"]
         r["note"] = led.get("note", "")
         r["issue"] = led.get("issue", "")
+        r["urgent"] = bool(led.get("urgent")) and not led.get("issue")
     out = []
     chars = 1 + sum(1 for r in rows[1:] if not r.get("retry_of"))
     out.append(f"== Generation report: {len(rows)} lives of {chars} characters (a life with the same name as the one before it is a retry), generations {rows[0]['gen']} to {rows[-1]['gen']} ==")
@@ -79,6 +80,11 @@ def build_report(chron_dir=None, ledger_path=None, last=10):
     out.append("")
     out.append("== Repeated causes with no recorded fix (candidates for a rule, DECISIONS calibration note) ==")
     out.extend([f"  {c} ({len(counts[c])} lives, generations {', '.join(str(x['gen']) for x in counts[c])})" for c in sorted(repeats, key=lambda c: -len(counts[c]))] or ["  none"])
+    urgent = [r for r in rows if r.get("urgent")]
+    if urgent:
+        out.append("")
+        out.append("== NEEDS ATTENTION NOW (marked urgent in the ledger, no fix recorded yet) ==")
+        out.extend([f"  Gen {r['gen']} {r['root']} (level {r['level']}, {r['turns']} turns): {r['cause'][:60]} - {r['note']}" for r in urgent])
     unclassified = [r for r in real if not r["kind"]]
     out.append("")
     out.append(f"== Not classified yet: {len(unclassified)} of {len(real)} real deaths (add them to data/death_ledger.json: kind, cls, note, issue) ==")

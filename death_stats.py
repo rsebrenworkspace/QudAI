@@ -1,6 +1,6 @@
 """Death statistics shared by the generation report (tools/generation_report.py), the chronicler and the prompt (HANDOFF issues 172 and 173).
 
-Chronicles are the record of every life; the death ledger (data/death_ledger.json, by hand) says what kind of death it was; the COLLECTION SWITCH (data/collection.json, human) says which
+Chronicles are the record of every life; the death ledger (data/death_ledger.json, by hand) says what kind of death it was; the COLLECTION SWITCH (memory/collection.json, human) says which
 lives count as evidence for the agent. The human's rule (2026-10-12): the lives so far were played without the defensive systems, so they are history and are never shown to the agent; data
 collection is OFF while a new character is being worked on and is switched ON when that character can operate (it uses its abilities, retreats, heals), and only lives that ENDED while it was
 ON count.
@@ -17,7 +17,7 @@ import time
 REPO = os.path.dirname(os.path.abspath(__file__))
 CHRONICLE_DIR = os.path.join(REPO, "chronicles")
 LEDGER_PATH = os.path.join(REPO, "data", "death_ledger.json")
-COLLECTION_PATH = os.path.join(REPO, "data", "collection.json")
+COLLECTION_PATH = os.path.join(REPO, "memory", "collection.json")      # local runtime state like memory/lab_hold.flag: the human's switch, never committed
 KINDS = ("bug", "gap", "decision", "luck", "lab")
 KNOWN_KILLER_MIN_CHARACTERS = 2         # a class is shown to the agent only when it has ended at least this many different characters
 KNOWN_KILLER_MAX_LINES = 3
@@ -110,7 +110,7 @@ def parse_chronicles(chron_dir=None):
             cause = fm.get("cause_of_death", "")
             rows.append({"gen": gen, "name": re.sub(r"^The Chronicle of |\s*\(Gen \d+\)$", "", title).strip(), "root": _name_root(title), "level": int(fm.get("level") or 0),
                          "turns": int(fm.get("turns_survived") or 0), "place": fm.get("resting_place", ""), "cause": clean_cause(cause), "cls": cause_class(cause),
-                         "category": fm.get("category", ""), "date": fm.get("date_recorded", ""), "collected": fm.get("data_collection", "").lower() == "on"})
+                         "category": fm.get("category", ""), "date": fm.get("date_recorded", ""), "collected": fm.get("data_collection", "").lower() == "on", "build": fm.get("build", "")})
         except (ValueError, AttributeError):
             continue
     rows.sort(key=lambda r: r["gen"])
@@ -137,29 +137,50 @@ def mark_retries(rows):
 
 
 def collection_state(path=None):
-    """{"collecting": bool, "since_generation": int or None, "note": str}. A missing or unreadable file means OFF."""
+    """{"collecting": bool, "since_generation": int or None, "note": str, "build": str, "target": int or None}. A missing or unreadable file means OFF. `build` is a prefix of a build id
+    ("esper" covers esper_ited_away and esper_mindflayer); empty means every build. `target` is the number of lives the human wants this collection to run for."""
     try:
         with open(path or COLLECTION_PATH, encoding="utf-8") as f:
             d = json.load(f)
-        return {"collecting": bool(d.get("collecting")), "since_generation": d.get("since_generation"), "note": str(d.get("note", ""))}
+        tgt = d.get("target")
+        return {"collecting": bool(d.get("collecting")), "since_generation": d.get("since_generation"), "note": str(d.get("note", "")), "build": str(d.get("build") or ""),
+                "target": int(tgt) if isinstance(tgt, (int, float)) and tgt > 0 else None}
     except (OSError, ValueError, AttributeError):
-        return {"collecting": False, "since_generation": None, "note": ""}
+        return {"collecting": False, "since_generation": None, "note": "", "build": "", "target": None}
 
 
 def collecting(path=None):
     return collection_state(path)["collecting"]
 
 
-def set_collecting(on, note="", path=None, since_generation=None):
+def counts_for(build, path=None):
+    """True when a life of this build that ends now counts: the switch is ON and the build matches its filter (a prefix; empty filter matches all)."""
+    st = collection_state(path)
+    if not st["collecting"]:
+        return False
+    flt = st["build"].lower()
+    return not flt or str(build or "").lower().startswith(flt)
+
+
+def set_collecting(on, note="", path=None, since_generation=None, build="", target=None):
     """Writes the switch and returns the new state."""
     path = path or COLLECTION_PATH
-    state = {"collecting": bool(on), "since_generation": since_generation if on else None, "note": note, "changed": time.strftime("%Y-%m-%d %H:%M:%S"),
-             "_meta": "Human switch (HANDOFF issue 173). ON: lives that END while it is on count as evidence and may be shown to the agent as known killers. OFF: development runs; their deaths do not count."}
+    state = {"collecting": bool(on), "since_generation": since_generation if on else None, "note": note, "build": build if on else "", "target": target if on else None,
+             "changed": time.strftime("%Y-%m-%d %H:%M:%S"),
+             "_meta": "Human switch (HANDOFF issues 173, 174). ON: lives that END while it is on (and match `build`) count as evidence and may be shown to the agent as known killers. OFF: development runs; their deaths do not count."}
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
         f.write("\n")
     return collection_state(path)
+
+
+def collection_progress(rows, ledger, path=None):
+    """(counted, target): the counted lives since the switch was turned on, and the target (None when there is none)."""
+    st = collection_state(path)
+    since = st["since_generation"] or 0
+    n = sum(1 for r in counted_lives(rows, ledger) if r["gen"] >= since)
+    return n, st["target"]
 
 
 def counted_lives(rows, ledger):
