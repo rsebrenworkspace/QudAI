@@ -520,26 +520,28 @@ namespace QudAIBrain
                             }
                         }
                         frontierCells = access.Count;
-                        var ordered = access.Values
-                            .OrderBy(tp => Math.Max(Math.Abs(tp.Item1.X - px), Math.Abs(tp.Item1.Y - py)))
-                            .ToList();
+                        // HANDOFF issue 169: a frontier is listed when OUR router (swimming allowed) reaches it, and "dist" is the length of that route, not the straight-line distance; one search prices them all.
+                        RouteResult fr = RouteSearch(player, true, null);
+                        var priced = new List<Tuple<Cell, Cell, int>>();
+                        if (fr != null)
+                        {
+                            foreach (var tp in access.Values)
+                            {
+                                int di = fr.Dist[tp.Item1.Y * fr.W + tp.Item1.X];
+                                if (di == int.MaxValue || di == 0) continue;
+                                priced.Add(Tuple.Create(tp.Item1, tp.Item2, di));
+                            }
+                        }
                         var perQuad = new Dictionary<string, int>();
-                        var checksQuad = new Dictionary<string, int>();
-                        foreach (var tp in ordered)
+                        foreach (var tp in priced.OrderBy(q => q.Item3))
                         {
                             Cell a = tp.Item1;
                             string quad = (a.Y < zone.Height / 2 ? "N" : "S") + (a.X < zone.Width / 2 ? "W" : "E");
                             int have; perQuad.TryGetValue(quad, out have);
-                            int tried; checksQuad.TryGetValue(quad, out tried);
-                            if (have >= FrontierPerQuadrant || tried >= FrontierPathChecksPerQuadrant) continue;
-                            checksQuad[quad] = tried + 1;
-                            string step = null;
-                            bool ok = false;
-                            try { ok = AutoAct.TryFindPathStep(a, out step) && !string.IsNullOrEmpty(step) && step != "."; } catch { }
-                            if (!ok) continue;
+                            if (have >= FrontierPerQuadrant) continue;
                             perQuad[quad] = have + 1;
-                            int fdist = Math.Max(Math.Abs(a.X - px), Math.Abs(a.Y - py));
-                            entries.Add("{\"q\": \"" + quad + "\", \"x\": " + a.X + ", \"y\": " + a.Y + ", \"ux\": " + tp.Item2.X + ", \"uy\": " + tp.Item2.Y + ", \"dist\": " + fdist + "}");
+                            int cheb = Math.Max(Math.Abs(a.X - px), Math.Abs(a.Y - py));
+                            entries.Add("{\"q\": \"" + quad + "\", \"x\": " + a.X + ", \"y\": " + a.Y + ", \"ux\": " + tp.Item2.X + ", \"uy\": " + tp.Item2.Y + ", \"dist\": " + tp.Item3 + ", \"cheb\": " + cheb + "}");
                         }
                     }
                 }
@@ -1463,7 +1465,14 @@ namespace QudAIBrain
         }
 
         // The same search for any goal (HANDOFF issue 163: the engine's pathfinders do not swim, so a frontier, a chest or the stairs across a lake came back "no route"). The goal test gets the cell and the zone size.
-        private static string RouteStep(GameObject player, Func<int, int, int, int, bool> goal, bool allowSwim)
+        // HANDOFF issue 169: the search is a priority queue and keeps the whole distance table, so one run also prices every frontier cell, and the cost of the best route is returned (RouteInfo).
+        private sealed class RouteResult
+        {
+            public int W, H, Start, GoalIdx = -1;
+            public int[] Dist, Prev;
+        }
+
+        private static RouteResult RouteSearch(GameObject player, bool allowSwim, Func<int, int, int, int, bool> goal)
         {
             try
             {
@@ -1471,30 +1480,25 @@ namespace QudAIBrain
                 Zone z = pc != null ? pc.ParentZone : null;
                 if (z == null) return null;
                 int w = z.Width, h = z.Height;
-                int[] dist = new int[w * h];
-                int[] prev = new int[w * h];
-                bool[] done = new bool[w * h];
-                for (int i = 0; i < dist.Length; i++) { dist[i] = int.MaxValue; prev[i] = -1; }
+                var res = new RouteResult { W = w, H = h, Dist = new int[w * h], Prev = new int[w * h] };
+                for (int i = 0; i < res.Dist.Length; i++) { res.Dist[i] = int.MaxValue; res.Prev[i] = -1; }
                 int start = pc.Y * w + pc.X;
-                dist[start] = 0;
+                res.Start = start;
+                res.Dist[start] = 0;
+                var done = new bool[w * h];
+                var pq = new SortedSet<long>();
+                pq.Add(start);
                 int[] dxs = { 0, 1, 1, 1, 0, -1, -1, -1 };
                 int[] dys = { -1, -1, 0, 1, 1, 1, 0, -1 };
-                while (true)
+                while (pq.Count > 0)
                 {
-                    int cur = -1, best = int.MaxValue;
-                    for (int i = 0; i < dist.Length; i++) if (!done[i] && dist[i] < best) { best = dist[i]; cur = i; }
-                    if (cur < 0) return null;
+                    long top = pq.Min;
+                    pq.Remove(top);
+                    int cur = (int)(top & 4095);
+                    if (done[cur]) continue;
                     done[cur] = true;
                     int cx = cur % w, cy = cur / w;
-                    bool onEdge = goal(cx, cy, w, h);
-                    if (onEdge && cur != start)
-                    {
-                        int at = cur;
-                        while (prev[at] != start && prev[at] >= 0) at = prev[at];
-                        int sx = at % w - pc.X, sy = at / w - pc.Y;
-                        for (int k = 0; k < 8; k++) if (dxs[k] == sx && dys[k] == sy) return pathDiagDirs[k];
-                        return null;
-                    }
+                    if (goal != null && cur != start && goal(cx, cy, w, h)) { res.GoalIdx = cur; return res; }
                     for (int k = 0; k < 8; k++)
                     {
                         int nx = cx + dxs[k], ny = cy + dys[k];
@@ -1512,12 +1516,61 @@ namespace QudAIBrain
                         }
                         catch { ok = false; }
                         if (!ok) continue;
-                        int nd = dist[cur] + 1;      // no water bias: a swimming step costs the same as a dry one (human, 2026-10-12)
-                        if (nd < dist[ni]) { dist[ni] = nd; prev[ni] = cur; }
+                        int nd = res.Dist[cur] + 1;      // no water bias: a swimming step costs the same as a dry one (human, 2026-10-12)
+                        if (nd < res.Dist[ni]) { res.Dist[ni] = nd; res.Prev[ni] = cur; pq.Add(((long)nd << 12) | (long)ni); }
                     }
                 }
+                return res;
             }
             catch { return null; }
+        }
+
+        // The first step (a direction name) of the route that RouteSearch found to its goal cell, or null.
+        private static string RouteFirstStep(RouteResult r, int goalIdx)
+        {
+            if (r == null || goalIdx < 0) return null;
+            int at = goalIdx;
+            while (r.Prev[at] != r.Start && r.Prev[at] >= 0) at = r.Prev[at];
+            if (r.Prev[at] < 0) return null;
+            int sx = at % r.W - r.Start % r.W, sy = at / r.W - r.Start / r.W;
+            int[] dxs = { 0, 1, 1, 1, 0, -1, -1, -1 };
+            int[] dys = { -1, -1, 0, 1, 1, 1, 0, -1 };
+            for (int k = 0; k < 8; k++) if (dxs[k] == sx && dys[k] == sy) return pathDiagDirs[k];
+            return null;
+        }
+
+        // First step and cost (in steps) of the shortest route to the nearest goal cell; null and int.MaxValue when there is none.
+        private static string RouteInfo(GameObject player, Func<int, int, int, int, bool> goal, bool allowSwim, out int cost)
+        {
+            cost = int.MaxValue;
+            RouteResult r = RouteSearch(player, allowSwim, goal);
+            if (r == null || r.GoalIdx < 0) return null;
+            cost = r.Dist[r.GoalIdx];
+            return RouteFirstStep(r, r.GoalIdx);
+        }
+
+        private static string RouteStep(GameObject player, Func<int, int, int, int, bool> goal, bool allowSwim)
+        {
+            int ignored;
+            return RouteInfo(player, goal, allowSwim, out ignored);
+        }
+
+        // The engine's route functions are dry-only and can wind a long way round a lake; our route is taken instead when it is at least this many steps shorter (HANDOFF issue 169).
+        private const int SwimShortcutMinSaving = 6;
+
+        private static Func<int, int, int, int, bool> EdgeGoal(char edgeChar)
+        {
+            return (ex, ey, ew, eh) => (edgeChar == 'W' && ex == 0) || (edgeChar == 'E' && ex == ew - 1) || (edgeChar == 'N' && ey == 0) || (edgeChar == 'S' && ey == eh - 1);
+        }
+
+        // True with the step when our shortest route (swimming allowed) beats the dry route by SwimShortcutMinSaving steps, or when there is no dry route at all.
+        private static bool TryShortestRoute(GameObject player, Func<int, int, int, int, bool> goal, out string step, out int costSwim, out int costDry)
+        {
+            step = RouteInfo(player, goal, true, out costSwim);
+            costDry = int.MaxValue;
+            if (string.IsNullOrEmpty(step)) return false;
+            RouteInfo(player, goal, false, out costDry);
+            return costDry == int.MaxValue || costSwim + SwimShortcutMinSaving <= costDry;
         }
 
         // The engine's own marks for a psychic hunter (PsychicHunterSystem, ENGINE_INTERNALS 14.29): the solo, deviant AND cult hunters get the STRING property `PsychicHunter` (SetStringProperty);
@@ -4038,6 +4091,20 @@ namespace QudAIBrain
                         }
                         catch { }
 
+                        // HANDOFF issue 169: our own shortest route replaces the engine's dry step when it is SwimShortcutMinSaving steps shorter (a lake between him and the target).
+                        try
+                        {
+                            bool shortTargetPassable = targetCell.IsPassable(player, false);
+                            Func<int, int, int, int, bool> shortGoal = (rtX, rtY, rtW, rtH) => (rtX == tx && rtY == ty) || (!shortTargetPassable && Math.Abs(rtX - tx) <= 1 && Math.Abs(rtY - ty) <= 1);
+                            string shortCellStep; int shortSwim, shortDry;
+                            if (!string.IsNullOrEmpty(step) && step != "." && TryShortestRoute(player, shortGoal, out shortCellStep, out shortSwim, out shortDry) && shortDry != int.MaxValue)
+                            {
+                                step = shortCellStep;
+                                LogExitDiag(player, 'C', "shortest route to cell " + tx + "," + ty + ": " + shortSwim + " steps against " + shortDry + " dry", shortCellStep);
+                            }
+                        }
+                        catch { }
+
                         if (string.IsNullOrEmpty(step) || step == ".")
                         {
                             LogPathDiag(player, targetCell);      // once per target: why does the engine find no step? (HANDOFF issue 92)
@@ -4194,15 +4261,18 @@ namespace QudAIBrain
 
                 // The engine's edge step does not route through deep water and, when the only way out is a lake, it hands back a step that leads nowhere (the player walks to the
                 // shore and back: HANDOFF issue 105). So: if the edge cannot be reached dry but can be reached by swimming, take the swimming route; otherwise the engine decides.
-                if (SwimExitStep(player, edgeChar, false) == null)
+                // HANDOFF issue 169: take our own shortest route (swimming allowed, a swimming step costs the same as a dry one) when there is no dry route or it saves SwimShortcutMinSaving steps or more;
+                // the Esper and the Dream Tortoise walked 20 to 25 steps of the engine's dry detour away from the exit (2026-10-12 capture: 57 of 124 east-exit steps went west).
+                try
                 {
-                    string lakeStep = SwimExitStep(player, edgeChar, true);
-                    if (!string.IsNullOrEmpty(lakeStep))
+                    string shortStep; int costSwim, costDry;
+                    if (TryShortestRoute(player, EdgeGoal(edgeChar), out shortStep, out costSwim, out costDry))
                     {
-                        step = lakeStep;
-                        LogExitDiag(player, edgeChar, "swim route (no dry route)", lakeStep);
+                        step = shortStep;
+                        LogExitDiag(player, edgeChar, "shortest route " + costSwim + " steps, dry route " + (costDry == int.MaxValue ? "none" : costDry.ToString()), shortStep);
                     }
                 }
+                catch { }
 
                 if (string.IsNullOrEmpty(step) || step == ".")
                 {
