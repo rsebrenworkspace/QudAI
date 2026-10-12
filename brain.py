@@ -2524,6 +2524,30 @@ def is_pure_caster_or_ranged(template):
     return pref_range >= 5
 
 
+# Arrows are finite and not recoverable (the arrow projectile is a TemporaryProjectile with Physics IsReal false, Items.xml `[verified in game data]`; the bow loads one arrow from the pack per
+# shot, MaxAmmo 1). The Dream Tortoise, a dagger build, opened 14 of 31 fights with the bow and fired all 70 arrows by row 3263 (capture 2026-10-12, HANDOFF issue 170): the menu listed the snipe
+# first as "SAFE RANGED ATTACK", the melee rule said "if an offensive action is listed, YOU MUST ATTACK", and the Loop Breaker forced a missile shot on a repeated action. For a build that is not a
+# caster or a ranged specialist the bow is now an optional opener: only at an enemy worth softening (Tough or worse) or from 3 or more tiles while more than BOW_RESERVE arrows remain.
+BOW_RESERVE = 8
+BOW_MIN_DIST = 3
+BOW_WORTH_DIFFICULTIES = ("Tough", "Very Tough", "Impossible")
+
+
+def melee_bow_allowed(game_state, template, target):
+    """True when a missile shot at `target` is allowed for this build. Casters and ranged specialists: always. Others: see BOW_*. Never raises (an error allows the shot)."""
+    try:
+        if is_pure_caster_or_ranged(template):
+            return True
+        arrows = int(game_state.get("missile_ammo") or 0) + int(game_state.get("inventory_ammo") or 0)
+        if arrows <= 0 or not target:
+            return False
+        if target.get("difficulty") in BOW_WORTH_DIFFICULTIES:
+            return True
+        return (target.get("dist") or 0) >= BOW_MIN_DIST and arrows > BOW_RESERVE
+    except Exception:
+        return True
+
+
 current_zone_id = None
 zone_step_count = 0
 last_action = None
@@ -3413,7 +3437,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
                 vdir = vm[5:]
                 action_choices.append(f"{vm} (Sprint Retreat {vdir} into open ground)")
         else:
-            if has_mw and ammo > 0 and enemies and not adj_threats:
+            if has_mw and ammo > 0 and enemies and not adj_threats and melee_bow_allowed(game_state, template, enemies[0]):
                 closest = enemies[0]
                 action_choices.append(f"FIRE_MISSILE@{closest.get('tx')},{closest.get('ty')} (Ranged Snipe {closest.get('name')} at dist {closest.get('dist')})")
             for vm in open_moves:
@@ -3477,7 +3501,7 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
         # 1. RANGED ATTACKS: Missile Fire & Ranged Mental/Beam Abilities (HIGHEST PRIORITY)
         # A. Missile Fire (Requires clear line of fire past companions)
         if has_mw and ammo > 0 and enemies and c_lof_clear:
-            if not adj_threats:
+            if not adj_threats and melee_bow_allowed(game_state, template, closest):
                 action_choices.append(f"FIRE_MISSILE@{c_tx},{c_ty} (Ranged Snipe {c_name} at dist {c_dist} - SAFE RANGED ATTACK)")
             elif len(adj_threats) == 1 and not open_moves:
                 action_choices.append(f"FIRE_MISSILE@{c_tx},{c_ty} (Point-blank blast at {c_name})")
@@ -3681,8 +3705,9 @@ def query_llm_decision(game_state, enemies, valid_moves, abilities, template=Non
         )
     else:
         rule2 = (
-            "2. ATTACK PRIORITY: If an offensive action (Missile Snipe, Charge, Dismember, Cleave, or Melee Attack) is listed in VALID ACTIONS, "
-            "YOU MUST ATTACK. Never waste a turn walking away when you can already strike or charge the enemy!"
+            "2. ATTACK PRIORITY: If an offensive action (Charge, Dismember, Cleave, or Melee Attack) is listed in VALID ACTIONS, "
+            "YOU MUST ATTACK. Never waste a turn walking away when you can already strike or charge the enemy! "
+            "Your main attack is melee. A Missile Snipe is listed only when an arrow is worth spending (a tough enemy, or a distant one while you have plenty); arrows cannot be picked up again."
         )
 
     pet_rule = (
@@ -3938,7 +3963,7 @@ def fallback_melee(game_state, enemies, adj_threats, open_moves, valid_moves, ab
 
     # 4. Long-range approach or suppressive missile fire
     if closest_enemy:
-        if closest_dist >= 6 and has_missile and ammo > 0:
+        if closest_dist >= 6 and has_missile and ammo > 0 and melee_bow_allowed(game_state, template, closest_enemy):
             surroundings = game_state.get("surroundings", {})
             is_clear, _ = is_line_of_fire_clear((px, py), (c_tx, c_ty), companions=companions, blocked_set=blocked_coords, target_entity=closest_enemy, surroundings=surroundings)
             if is_clear:
@@ -5977,7 +6002,7 @@ def main():
                     if valid_m:
                         action = valid_m[0]
                         reason = f"[Sprint Cooldown] Sprint fired last turn. Repositioning {action}."
-                    elif has_mw and cur_ammo > 0 and enemies:
+                    elif has_mw and cur_ammo > 0 and enemies and melee_bow_allowed(game_state, active_template, enemies[0]):
                         closest = enemies[0]
                         action = f"FIRE_MISSILE@{closest.get('tx')},{closest.get('ty')}"
                         reason = f"[Sprint Cooldown] Sprint fired last turn. Firing missile."
@@ -6021,7 +6046,7 @@ def main():
                             atk_dir = list(adj_threats.keys())[0]
                             action = f"MOVE_{atk_dir}"
                             reason = f"[Loop Breaker] Counter-attacking adjacent threat {adj_threats[atk_dir]} ({atk_dir}) in melee."
-                        elif has_mw and cur_ammo > 0 and enemies:
+                        elif has_mw and cur_ammo > 0 and enemies and melee_bow_allowed(game_state, active_template, enemies[0]):
                             closest = enemies[0]
                             action = f"FIRE_MISSILE@{closest.get('tx')},{closest.get('ty')}"
                             reason = f"[Loop Breaker] Action repeated {action_repeat_count}x at {cur_pos}. Forcing missile shot."
