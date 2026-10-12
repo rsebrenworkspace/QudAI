@@ -7896,3 +7896,34 @@ _t180, _r180 = brain.pick_frontier_target(_gs180, (60, 12), "Z180")
 assert _t180 == (30, 5) and "12 tiles away" in _r180, (_t180, _r180)
 brain.FRONTIER_COMMIT.update({"zone": None, "target": None}); brain.FRONTIER_PURSUIT.update({"key": None, "turns": 0})
 print("  [OK] Test 180 Passed: the C# has one priority-queue route search that prices every frontier cell with swimming allowed and exit/cell navigation takes the shortest route when it saves 6 steps or more over the engine's dry one (source checks, compile checked); Python picks the frontier by route length")
+
+# Test 181: a melee build's bow is an optional opener, not the first move (human, 2026-10-12: "most combats were initiated using the bow ... until the character ran out of ammo"; capture: 14 of 31 fights opened with a missile, 70 arrows; HANDOFF issue 170)
+# ---------------------------------------------------------------------------
+import build_templates as _bt181
+_tort181 = _bt181.BUILD_TEMPLATES["dream_tortoise"]
+_esper181 = _bt181.BUILD_TEMPLATES["esper_ited_away"]
+_gs181 = lambda inv, loaded=1: {"missile_ammo": loaded, "inventory_ammo": inv}
+_en181 = lambda d, diff="Average": {"name": "snapjaw", "dist": d, "difficulty": diff}
+# plenty of arrows: a distant easy enemy may be shot, a near one not
+assert brain.melee_bow_allowed(_gs181(20), _tort181, _en181(6)) is True
+assert brain.melee_bow_allowed(_gs181(20), _tort181, _en181(2)) is False, "close and easy: use the dagger"
+# at or under the reserve the bow is kept for tough enemies
+assert brain.melee_bow_allowed(_gs181(5), _tort181, _en181(6)) is False, "6 arrows left (1 loaded + 5): keep them"
+assert brain.melee_bow_allowed(_gs181(5), _tort181, _en181(2, "Tough")) is True and brain.melee_bow_allowed(_gs181(5), _tort181, _en181(6, "Very Tough")) is True
+# no arrows or no target: no
+assert brain.melee_bow_allowed(_gs181(0, 0), _tort181, _en181(6, "Tough")) is False and brain.melee_bow_allowed(_gs181(20), _tort181, None) is False
+# casters and ranged specialists are untouched
+assert brain.melee_bow_allowed(_gs181(2), _esper181, _en181(2)) is True
+# the melee fallback's suppressive fire obeys it
+def _fb181(arrows, dist=7):
+    gs = {"x": 10, "y": 10, "hp": 20, "max_hp": 20, "level": 1, "missile_ammo": 1, "inventory_ammo": arrows, "has_missile_weapon": True, "surroundings": {d: "Empty ground" for d in ("N", "S", "E", "W", "NE", "NW", "SE", "SW")},
+          "visible_entities": [], "companions": [], "abilities": []}
+    en = [{"name": "snapjaw", "dist": dist, "tx": 10 + dist, "ty": 10, "dir": "E", "difficulty": "Average", "is_enemy": True, "has_los": True}]
+    return brain.fallback_melee(gs, en, {}, [f"MOVE_{d}" for d in ("N", "S", "E", "W")], [f"MOVE_{d}" for d in ("N", "S", "E", "W")], [], _tort181, (10, 10), 10, 10, 20, 20, False, True, 1, 1, arrows)
+assert _fb181(20)["action"].startswith("FIRE_MISSILE"), "plenty of arrows and a distant enemy: suppressive fire is allowed"
+assert not _fb181(4)["action"].startswith("FIRE_MISSILE"), _fb181(4)
+_b181 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert _b181.count("melee_bow_allowed(game_state, template, closest)") == 1 and "melee_bow_allowed(game_state, active_template, enemies[0])" in _b181
+assert _b181.count("melee_bow_allowed(game_state, active_template, enemies[0])") == 2, "the Loop Breaker and the sprint-cooldown forced shots both obey it"
+assert "Missile Snipe, Charge" not in _b181, "the melee rule no longer lists the snipe as a must-attack"
+print("  [OK] Test 181 Passed: for a melee build the bow is allowed only against a Tough or worse enemy, or from 3+ tiles while more than 8 arrows remain; casters and ranged builds are untouched; the menu offer, the melee fallback, the Loop Breaker's forced shot and the sprint-cooldown shot all obey it")

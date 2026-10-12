@@ -868,6 +868,10 @@ The machine-readable table is `data/grenades.json` (59 grenade blueprints, built
 - `GameObject.UseEnergy` for a movement with `MoveSpeed != 100` adds `100 - (int)(100 / ((100 - MoveSpeed)/100 + 1))` percent to the energy cost: MoveSpeed 50 gives +34 percent, 75 gives +20 percent, 150 gives -100 percent (before the minimum of a twentieth of the cost). **Contradiction `[unverified]`:** `SetStatShift` ADDS the amount, so +50 would read as MoveSpeed 150, a bonus, while the effect calls it a penalty. Either the shift is applied negative somewhere I did not read, or the formula reads the other way. The mod now exports `move_speed`; a capture taken while swimming settles it.
 - **Decision (human, 2026-10-12):** drop every water bias in movement for now (HANDOFF issue 168).
 
+### 14.41 Arrows are consumed, not recovered (2026-10-12, `[verified in game data]` from Items.xml; recovery by other means not checked)
+- A bow (`MagazineAmmoLoader`, `MaxAmmo="1"`, `ReloadEnergy="0"`, `AmmoPart="AmmoArrow"`) holds one arrow and loads the next from the pack at no energy cost, which is why the console shows `Ammo: 1/1 (Inv: N)`. The fired arrow is a `BaseArrowProjectile`, which inherits `TemporaryProjectile` (`Physics IsReal="false"`): a temporary effect object, not an item that can lie on the ground. So the arrow item is spent when it is loaded and nothing is left to pick up.
+- **Found because** the human saw a dagger-wielding Dream Tortoise open most fights with the bow until it was empty (70 arrows in 3,722 rows, last shot at row 3263), and asked whether the arrows are picked up again (HANDOFF issue 170).
+
 ---
 *End of Engine Internals Manual.*
 
