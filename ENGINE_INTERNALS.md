@@ -878,6 +878,11 @@ The machine-readable table is `data/grenades.json` (59 grenade blueprints, built
 - The mod exports the text after the first blank line as `effect_text` per inventory item (HANDOFF issue 171) and the brain logs each distinct item to `memory/item_effects.jsonl`. Colour codes are stripped; an item the character has not identified shows only what is known, as for a player (`AsIfKnown` false).
 - **Found because** the human's Dream Tortoise, using Rifle Through Trash, found spring-loaded bounding boots (+25 move speed, "sprint at thrice your movement speed" after 100 rounds worn) and asked whether the item variety is too wide to graph.
 
+### 14.43 Heroes ("legendary" creatures): what the engine changes, and that our rating ignores it (2026-10-12, `[verified in code via ilspycmd]` for `HeroMaker`; the numbers of the Gen 44 hermit `[verified in game]`)
+- `HeroMaker.MakeHero` turns a creature into a hero: it sets the int property `Hero` to 1 and the string property `Role` to "Hero", boosts stats by the template tags (`HeroStrBoost`, `HeroTouBoost`, and so on, default 1), multiplies Hitpoints by `HeroHPBoost` (default 2, the baboon template says 2), multiplies Level by `HeroLevelMultiplier` (default 1.5), adds skills (`HeroSkills`) and 0 to 2 mental and 0 to 2 physical mutations, an inventory tier, and often guards, slaves or thralls. The creature gets a generated name ("Ooo-HOO-OOO-OO-e, the 10-ringed Baboon Hermit") and a blueprint ending in "Hero N" (`Baboon Hero 1`).
+- The mod's own difficulty rating (`AIBrainPart.cs`, `levelDiff <= 2` is "Average") compares the Level stat only and ignores hit points, mutations and the Hero property. The Gen 44 hermit was level 5 against the player's level 5: rated Average, with 167 max HP and 8 to 12 damage a turn against a 31 HP character. Heroes also killed Gen 2 and Gen 13 (named snapjaws).
+- The mod now exports `hero` per entity and Python floors a hero's rating at Very Tough (HANDOFF issue 179). The rating stays level-only for everything else; hit points are exported per entity (`hp`, `max_hp`) and could price a long fight, which is not done.
+
 ---
 *End of Engine Internals Manual.*
 
