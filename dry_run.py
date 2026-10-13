@@ -8107,7 +8107,7 @@ def _reset187():
 # the hunt: a calm glowfish 6 tiles away is walked to, an adjacent one is attacked
 _reset187(); _h187 = brain.xp_hunt_decision(_st187([_fish187(6)]))
 assert _h187 and _h187["action"] == "NAVIGATE_TO_CELL:46,10" and "XP HUNT" in _h187["reason"] and "glowfish" in _h187["reason"], _h187
-_reset187(); assert brain.xp_hunt_decision(_st187([_fish187(1)]))["action"] == "MOVE_E"
+_reset187(); assert brain.xp_hunt_decision(_st187([_fish187(1)]))["action"] == "ATTACK_CREATURE:E:Glowfish"      # (was MOVE_E until issue 180: moving into a calm creature swaps places)
 # a hostile Easy creature is hunted too; Average, Tough and above are not
 _reset187(); assert brain.xp_hunt_decision(_st187([{"name": "snapjaw scavenger", "blueprint": "Snapjaw Scavenger", "dist": 5, "tx": 45, "ty": 10, "dir": "E", "is_enemy": True, "has_los": True, "difficulty": "Easy"}])) is not None
 _reset187(); assert brain.xp_hunt_decision(_st187([{"name": "snapjaw scavenger", "blueprint": "Snapjaw Scavenger", "dist": 5, "tx": 45, "ty": 10, "dir": "E", "is_enemy": True, "has_los": True, "difficulty": "Average"}])) is None
@@ -8132,7 +8132,7 @@ for _t187 in range(30):
     _acts187.append(_dec187["action"])
     if _dec187["action"].startswith("NAVIGATE_TO_CELL"): _px187 += 1
     else: break                                                  # adjacent: the blow lands (the fish dies)
-assert _acts187[-1] == "MOVE_E" and len(_acts187) == 12 and all(a == "NAVIGATE_TO_CELL:52,10" for a in _acts187[:-1]), _acts187
+assert _acts187[-1] == "ATTACK_CREATURE:E:Glowfish" and len(_acts187) == 12 and all(a == "NAVIGATE_TO_CELL:52,10" for a in _acts187[:-1]), _acts187
 _reset187(); _stuck187 = [brain.xp_hunt_decision(_st187([_fish187(8)])) for _ in range(brain.XP_HUNT_TARGET_TURNS + 5)]
 assert sum(1 for x in _stuck187 if x) == brain.XP_HUNT_TARGET_TURNS and _stuck187[-1] is None, "an unreachable target is dropped after its turns"
 _reset187(); brain.XP_HUNT_STATE.update({"zone": "JoppaWorld.11.22.1.1.10", "turns": brain.XP_HUNT_ZONE_BUDGET}); assert brain.xp_hunt_decision(_st187([_fish187(6)])) is None, "the zone budget ends the hunt"
@@ -8246,3 +8246,65 @@ assert "private static bool IsHeroCreature(GameObject o)" in _c189 and _c189.cou
 assert "game_state = apply_hero_floor(game_state)" in _b189 and "escape_move = low_hp_escape_decision(game_state)" in _b189
 assert _b189.index("escape_move = low_hp_escape_decision(game_state)") < _b189.index("heal_move = heal_item_decision(game_state)"), "the escape comes before the heal"
 print("  [OK] Test 189 Passed: a hero creature (the mod's flag, or the blueprint word) is rated Very Tough at least so the lethal guard answers it, a low-HP escape (Teleport Other, Force Bubble or Intimidate) fires with a hostile adjacent at 30 percent HP or right after a hit that could nearly repeat, before healing, not when alone, not without a ready escape; in a 10-damage-a-turn fight he lives with the rule and dies without it")
+
+# Test 190: the hunt attacks a calm creature with a named blow (moving into it swaps places), a loot walk continues past the mod's list radius, and the walk to the stairs is committed (human, 2026-10-12: "the farming calm creatures also created some back and forth behaviour and the character never attacked"; "oscillation ... wanted to descend again"; HANDOFF issue 180)
+# ---------------------------------------------------------------------------
+# 1. the hunt: a calm glowfish next to him is hit with ATTACK_CREATURE (dir and blueprint), a hostile Easy one is still walked into
+def _fish190(d, **k):
+    return dict({"name": "glowfish", "blueprint": "Glowfish", "dist": d, "tx": 40 + d, "ty": 10, "dir": "E", "is_enemy": False, "has_los": True, "difficulty": "Trivial"}, **k)
+def _st190(ents, **k):
+    return dict({"x": 40, "y": 10, "level": 1, "hp": 18, "max_hp": 18, "zone_id": "JoppaWorld.11.22.1.1.10", "visible_entities": ents, "gas_cells": [], "effects": [], "surroundings": {}}, **k)
+_reset187()
+_a190 = brain.xp_hunt_decision(_st190([_fish190(1)]))
+assert _a190["action"] == "ATTACK_CREATURE:E:Glowfish" and "XP HUNT" in _a190["reason"], _a190
+_reset187(); assert brain.xp_hunt_decision(_st190([{"name": "snapjaw scavenger", "blueprint": "Snapjaw Scavenger", "dist": 1, "tx": 41, "ty": 10, "dir": "E", "is_enemy": True, "has_los": True, "difficulty": "Easy"}]))["action"] == "MOVE_E", "a hostile one is walked into"
+_reset187(); assert brain.xp_hunt_decision(_st190([_fish190(1, blueprint="")]))["action"] == "MOVE_E", "no blueprint: the old move"
+_reset187()
+# 2. a loot walk whose item leaves the mod's list (14 tiles) keeps walking; it ends at arrival, on a failed step, and after its turns
+def _loot190(sources, x, y, **k):
+    return dict({"x": x, "y": y, "loot_sources": sources, "visible_entities": [], "zone_id": "Z190"}, **k)
+def _reset190():
+    brain.LOOT_BLACKLIST.clear(); brain.LOOT_PURSUIT.update({"key": None, "turns": 0}); brain.LOOT_STREAK.update({"key": None, "count": 0}); brain.LOOT_NAV_FAILS.clear(); brain.LOOT_TURN = 0
+_reset190()
+_item190 = {"kind": "item", "name": "vinewafer", "tx": 28, "ty": 22, "dist": 14}
+_d1 = brain.choose_loot_action(_loot190([_item190], 42, 14), "Z190", "", False)
+assert _d1["action"] == "NAVIGATE_TO_CELL:28,22", _d1
+# the engine's route leads away: the item is now 15 tiles off and no longer listed; before the fix this was None
+_d2 = brain.choose_loot_action(_loot190([], 43, 16), "Z190", _d1["action"], False)
+assert _d2 and _d2["action"] == "NAVIGATE_TO_CELL:28,22" and "still walking" in _d2["reason"], _d2
+_d3 = brain.choose_loot_action(_loot190([], 44, 17), "Z190", _d2["action"], False)
+assert _d3 and _d3["action"] == "NAVIGATE_TO_CELL:28,22"
+assert brain.choose_loot_action(_loot190([], 30, 20), "Z190", _d3["action"], False) is not None, "two tiles off: still walking"
+assert brain.choose_loot_action(_loot190([], 28, 21), "Z190", _d3["action"], False) is None, "arrived next to it and it is not listed: the pursuit ends"
+_reset190(); _x1 = brain.choose_loot_action(_loot190([_item190], 42, 14), "Z190", "", False)
+assert brain.choose_loot_action(_loot190([], 43, 16, last_move_failed=True), "Z190", _x1["action"], False) is None and ("Z190", 28, 22) in brain.LOOT_BLACKLIST, "a failed step writes it off"
+_reset190(); _y1 = brain.choose_loot_action(_loot190([_item190], 42, 14), "Z190", "", False)
+_n190 = 0
+for _i190 in range(brain.LOOT_PURSUIT_MAX_TURNS + 5):
+    _r190 = brain.choose_loot_action(_loot190([], 43, 16), "Z190", "NAVIGATE_TO_CELL:28,22", False)
+    if _r190 is None: break
+    _n190 += 1
+assert _n190 <= brain.LOOT_PURSUIT_MAX_TURNS and _r190 is None, "the pursuit ends after its turns"
+_reset190(); brain.choose_loot_action(_loot190([_item190], 42, 14), "Z190", "", False)
+assert brain.choose_loot_action(_loot190([], 43, 16), "Z190", "AUTOEXPLORE", False) is None, "another action in between: no sticky walk"
+assert brain.choose_loot_action(_loot190([], 43, 16), "Z190", "NAVIGATE_TO_CELL:28,22", True) is None, "never in a settlement"
+_reset190()
+# MULTI-TURN: the loot walk's route heads away (distance 12, 13, 14, 15, 16 ...) and then toward the item: with the item listed only within 14 tiles he never turns back
+_pos190 = [(42, 14), (43, 15), (44, 16), (44, 17), (43, 18), (41, 19), (37, 20), (32, 21), (29, 21)]
+_last190, _acts190 = "", []
+for _p190 in _pos190:
+    _dist190 = max(abs(_p190[0] - 28), abs(_p190[1] - 22))
+    _listed190 = [dict(_item190, dist=_dist190)] if _dist190 <= 14 else []
+    _r190 = brain.choose_loot_action(_loot190(_listed190, _p190[0], _p190[1]), "Z190", _last190, False)
+    _acts190.append(_r190["action"] if _r190 else None); _last190 = _r190["action"] if _r190 else "AUTOEXPLORE"
+assert all(a == "NAVIGATE_TO_CELL:28,22" for a in _acts190[:-1]) and _acts190[-1] == "LOOT", _acts190      # 14 listed, then 15 to 16 tiles unlisted, then back inside and the item is taken
+_reset190()
+# 3. the walk to the stairs is committed: once started it is not dropped on the 6 tile boundary; it lapses after DELVE_COMMIT_MAX turns
+_b190 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert 'DELVE_COMMIT = {"zone": None, "turns": 0}' in _b190 and "delve_committed = DELVE_COMMIT[\"zone\"] == zone_id and DELVE_COMMIT[\"turns\"] < DELVE_COMMIT_MAX" in _b190
+assert "if is_zone_cleared or delve_committed or (is_subterranean and cur_pos != sd_pos" in _b190 and "DELVE_COMMIT.update({\"zone\": zone_id, \"turns\": 1})" in _b190
+# 4. the C# has the command and refuses what it must refuse
+_c190 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+assert 'act.StartsWith("ATTACK_CREATURE:")' in _c190 and "string.Equals(o.Blueprint, acBlueprint, StringComparison.OrdinalIgnoreCase)" in _c190 and "!IsSettlementZone(player?.CurrentCell?.ParentZone) && acCell != null" in _c190 and "IsCompanion(o, player)" in _c190 and "player.PerformMeleeAttack(acVictim)" in _c190
+assert _c190.count("{") == _c190.count("}")
+print("  [OK] Test 190 Passed: the hunt hits a calm creature with ATTACK_CREATURE:<dir>:<blueprint> (a hostile one is still walked into), a loot walk keeps going when its item leaves the mod's 14 tile list and ends on arrival, a failed step or its turns, in a 9 step route that heads away first he never turns back, the walk to the stairs is committed, and the C# command attacks only the named blueprint, never in a settlement, a companion or an owned creature")

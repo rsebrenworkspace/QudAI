@@ -337,6 +337,44 @@
     "the screen: take a screenshot at turns 1, 3, 6 and 12 after the throw if you can"
    ],
    "tests": "Test 159"
+  },
+  {
+   "id": "zone-hop-lab",
+   "title": "Zone-hop lab: do hostiles follow through an edge or stairs, what a frozen zone does, and does Lase recharge while away (ENGINE_INTERNALS 14.46)",
+   "why": "The engine code says only ONE zone is active, hostiles are never carried across an edge or stairs (only the player's party is), a left zone is frozen, and Lase recharges on his own turns wherever he is (14.45, 14.46). That was read, not seen. Three possible rules depend on it: retreat to the nearest exit and cross it, a peek-and-leave descent into deeper strata, and leaving a fight to recharge Lase. This lab answers four questions in the game itself: (1) does anything follow him across an edge or down stairs, adjacent or not; (2) is the pack where he left it when he comes back, after 60 and after 300 rounds; (3) how many charges does Lase regain in 60 rounds away; (4) who acts first on the return, and does the pack get a free hit.",
+   "setup": [
+    "Use a THROWAWAY Esper (it has Lase; any build works for questions 1 and 2) and take a SNAPSHOT first (Control tab). Pause the AI for the whole lab: you play by hand. Turn godmode ON so the snapjaws cannot kill him (do not fight them; with godmode on his own hits would also be 999). WARNING (ENGINE_INTERNALS 14.36): godmode stays on in the running client; turn it OFF for series E and restart the game when the lab ends.",
+    "SERIES A, an EDGE. Walk to the edge of an open surface zone (a cell on x 0 or 79, or y 0 or 24) with no water or walls beside the edge cell. Wish three Snapjaws, one wish at a time (below); they land next to you. Take a screenshot (their cells). Press Capture logs with the note 'zone-hop A1: three adjacent at the edge'.",
+    "Step across the edge. Look at the new zone at once: is any snapjaw with you (count them, screenshot)? Press Capture logs 'zone-hop A2: just crossed, N followed' (the capture's exchange_last_state.json lists every creature in view with its zone).",
+    "SERIES C, the Lase charge, before the rest: fire Lase into empty space until the ability list shows 'Lase (1 charges)' (it shows 'Lase (4 charges)' when full at mutation level 1). Write down the charges. Then REST in the new zone for exactly 60 rounds (the game's wait command: the `Z` menu or the wait key; count the rounds, `[unverified]` which key your game uses). Press Capture logs 'zone-hop C: rested 60 rounds, Lase N charges' and write the charges you see.",
+    "Step back across the edge. Screenshot the pack at once: same cells as in A1, or different? Press Capture logs 'zone-hop A3: back after 60 rounds'. Count the rounds until the first snapjaw acts (the first time one moves or hits).",
+    "SERIES D, a LONG absence. Cross the edge again, rest 300 rounds (food and water are fine for this), come back and screenshot the pack: still the same cells as in A1? Capture 'zone-hop D: back after 300 rounds'. If they moved, the zone does catch up on thaw (note by how much).",
+    "SERIES B, STAIRS. Find stairs down (any cave or ruin entrance; the brain's console prints known stairs, or use the entrance of the zone where the Esper delved). Stand next to the stairs on the upper level, wish three Snapjaws, screenshot, Capture 'zone-hop B1', take the stairs down, check who came (B2), come back up after 60 rounds and screenshot (B3). Note whether you arrive ON the stairs and who is next to them.",
+    "SERIES E, ARRIVAL (optional, godmode OFF, full HP, ONE snapjaw only): repeat the edge crossing with one Snapjaw adjacent, come back after 60 rounds and write down HP at the return and after the next two turns: who acts first on arrival, and does a creature that was adjacent when you left hit you before you can act? Then restart the game."
+   ],
+   "wishes": [
+    {
+     "cmd": "godmode",
+     "kind": "command",
+     "confidence": "documented",
+     "note": "ON for series A to D; OFF for series E. WARNING (ENGINE_INTERNALS 14.36): it also makes EVERY damage event on anything but you 999 and stays on in the running client even when you load another character: restart the game when the lab ends."
+    },
+    {
+     "cmd": "Snapjaw",
+     "kind": "blueprint",
+     "confidence": "named",
+     "note": "a hostile, mobile, level 1 melee creature that lands next to you; wish it three times for a pack (one wish per line); the blueprint is in the creature catalogue; untried as a wish, tell me if the name is wrong (try 'snapjaw')"
+    }
+   ],
+   "watch": [
+    "after every crossing: does any snapjaw stand in the new zone with you (screenshot and the capture's exchange_last_state.json visible_entities, with zone_id)",
+    "the pack's cells before leaving and after coming back (same cells = frozen), after 60 and after 300 rounds",
+    "Lase charges before and after 60 rounds away (the ability name in exchange_last_state.json abilities); expected 1 charge back per 15 rounds at Willpower 16, so 4 charges after 60 rounds, faster with higher Willpower (ENGINE_INTERNALS 14.45)",
+    "on the stairs: where you arrive, what is next to the stairs, and whether anything follows",
+    "series E: HP at the return and after the next two turns, and who moved first",
+    "anything that surprises you: a message about followers, a snapjaw that arrives a few turns later"
+   ],
+   "tests": "none yet; the answers go into ENGINE_INTERNALS 14.46 and decide whether the retreat-to-exit, peek-descent and recharge-hop rules are built"
   }
  ]
 }

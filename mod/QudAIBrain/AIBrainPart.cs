@@ -3321,6 +3321,48 @@ namespace QudAIBrain
                 return;
             }
 
+            // ATTACK_CREATURE:<dir>:<blueprint>: a melee blow at ONE named creature in the neighbouring cell (HANDOFF issue 180). Moving into a calm creature swaps places with it (the Esper and a glowfish
+            // swapped cells for hundreds of turns, 2026-10-12), and ATTACK_WALL picks the first object with a Physics part, which in water is the puddle. The blueprint must match, so this can never hit
+            // a villager or a pet; refused in settlements, never at a companion or an owned creature.
+            if (act.StartsWith("ATTACK_CREATURE:"))
+            {
+                lastMoveFailed = false;
+                lastFailedDir = "";
+                string[] acParts = act.Split(':');
+                string acDir = acParts.Length > 1 ? acParts[1].Trim().ToUpper() : "";
+                string acBlueprint = acParts.Length > 2 ? acParts[2].Trim() : "";
+                Cell acCell = null;
+                try { acCell = player?.CurrentCell?.GetCellFromDirection(acDir, false); } catch { }
+                GameObject acVictim = null;
+                if (!IsSettlementZone(player?.CurrentCell?.ParentZone) && acCell != null && acCell.Objects != null && !string.IsNullOrEmpty(acBlueprint))
+                {
+                    for (int i = 0; i < acCell.Objects.Count; i++)
+                    {
+                        GameObject o = acCell.Objects[i];
+                        if (o == null || o.IsPlayer() || !o.HasPart("Brain") || IsCompanion(o, player) || !string.Equals(o.Blueprint, acBlueprint, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (o.IsOwned() || !string.IsNullOrEmpty(o.Owner) || o.HasProperty("Owned") || o.HasProperty("OwnedBy")) continue;
+                        acVictim = o;
+                        break;
+                    }
+                }
+                if (acVictim == null)
+                {
+                    lastMoveFailed = true;
+                    lastFailedDir = acDir;
+                    UnityEngine.Debug.Log($"[QudAI ATTACK_CREATURE] nothing to attack ({acBlueprint}) at {acDir}");
+                    if (player.Energy != null) player.UseEnergy(1000, "Pass");
+                    return;
+                }
+                int acEnergyBefore = player.Energy?.Value ?? 0;
+                int acHpBefore = 0;
+                try { acHpBefore = acVictim.hitpoints; } catch { }
+                try { player.PerformMeleeAttack(acVictim); }
+                catch (Exception ex) { UnityEngine.Debug.LogError("[QudAI ATTACK_CREATURE Error] " + ex.ToString()); }
+                try { UnityEngine.Debug.Log($"[QudAI ATTACK_CREATURE] {acVictim.DisplayNameOnly} ({acDir}): HP {acHpBefore} -> {acVictim.hitpoints}"); } catch { }
+                if (player.Energy != null && player.Energy.Value >= acEnergyBefore) player.UseEnergy(1000, "Attack");
+                return;
+            }
+
             if (act == "USE_STAIRS_DOWN")
             {
                 lastMoveFailed = false;
