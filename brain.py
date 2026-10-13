@@ -3132,6 +3132,8 @@ LOOT_PURSUIT = {"key": None, "turns": 0}
 LOOT_TURN = 0
 LOOT_PURSUIT_MAX_TURNS = 40
 LOOT_BLACKLIST_TURNS = 300
+DELVE_COMMIT = {"zone": None, "turns": 0}      # the committed walk to the stairs down (HANDOFF issue 180)
+DELVE_COMMIT_MAX = 80                         # turns before the commitment lapses (the walk is then decided again)
 LOOT_NAV_FAILS = {}            # loot key -> failed NAVIGATE_TO_CELL walks toward it (any reason)
 LOOT_NAV_FAIL_MAX = 2
 LOOT_STREAK_MAX = 4            # consecutive LOOT actions at one spot before the spot is written off
@@ -3146,6 +3148,23 @@ def choose_loot_action(game_state, zone_id, last_act, is_town):
     for k in [k for k, exp in LOOT_BLACKLIST.items() if exp <= LOOT_TURN]:
         del LOOT_BLACKLIST[k]
     sources = game_state.get("loot_sources") or []
+    # A pursuit continues when its source drops out of the list (HANDOFF issue 180): the mod lists sources within LootRadius (14) tiles, and the engine's route to an item can lead AWAY from it, so the
+    # walk reached 14, the item vanished from the list, autoexplore stepped back, the item reappeared: 600 turns of loot, autoexplore and delving taking turns (Esper, 2026-10-12).
+    pk = LOOT_PURSUIT["key"]
+    px_, py_ = game_state.get("x"), game_state.get("y")
+    if (pk and not is_town and not game_state.get("is_swimming") and not turret_hazards(game_state) and px_ is not None and py_ is not None and pk not in LOOT_BLACKLIST
+            and pk[0] == zone_id and pk[1] is not None and pk[2] is not None and last_act == f"NAVIGATE_TO_CELL:{pk[1]},{pk[2]}"
+            and max(abs(px_ - pk[1]), abs(py_ - pk[2])) > 1 and not any((zone_id, s.get("tx"), s.get("ty")) == pk for s in sources)):
+        if game_state.get("last_move_failed"):
+            LOOT_BLACKLIST[pk] = LOOT_TURN + LOOT_BLACKLIST_TURNS
+            LOOT_PURSUIT.update({"key": None, "turns": 0})
+            return None
+        LOOT_PURSUIT["turns"] += 1
+        if LOOT_PURSUIT["turns"] > LOOT_PURSUIT_MAX_TURNS:
+            LOOT_BLACKLIST[pk] = LOOT_TURN + LOOT_BLACKLIST_TURNS
+            LOOT_PURSUIT.update({"key": None, "turns": 0})
+            return None
+        return {"action": f"NAVIGATE_TO_CELL:{pk[1]},{pk[2]}", "reason": f"Loot: still walking to the item at ({pk[1]}, {pk[2]}) (out of the mod's list range, the pursuit continues)"}
     if is_town or game_state.get("is_swimming") or not sources or turret_hazards(game_state):
         LOOT_PURSUIT.update({"key": None, "turns": 0})
         LOOT_STREAK.update({"key": None, "count": 0})
@@ -4953,6 +4972,9 @@ def xp_hunt_decision(game_state):
         what = f"{cname} ({'calm' if calm else e.get('difficulty')})"
         direction = e.get("dir")
         if dist <= 1 and direction in CARDINAL_OFFSETS:
+            if calm and e.get("blueprint"):
+                # moving into a calm creature swaps places with it (HANDOFF issue 180): a named, checked blow instead
+                return {"action": f"ATTACK_CREATURE:{direction}:{e['blueprint']}", "reason": f"[XP HUNT] Level {lvl} needs XP: attacking the {what} next to him ({direction})."}
             return {"action": f"MOVE_{direction}", "reason": f"[XP HUNT] Level {lvl} needs XP: attacking the {what} next to him ({direction})."}
         return {"action": f"NAVIGATE_TO_CELL:{e['tx']},{e['ty']}", "reason": f"[XP HUNT] Level {lvl} needs XP: going for the {what}, {int(dist)} tiles away."}
     except Exception:
@@ -5781,7 +5803,11 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
             sd_info = KNOWN_STAIRS_DOWN[zone_id]
             sd_pos = (sd_info["tx"], sd_info["ty"])
             # In dungeons, if zone is cleared (or subterranean with no visible threats), route to stairs down
-            if is_zone_cleared or (is_subterranean and cur_pos != sd_pos and max(abs(px - sd_pos[0]), abs(py - sd_pos[1])) <= 6):
+            # The walk to the stairs is a committed intent (HANDOFF issue 180): the "within 6 tiles" gate alone made it start and stop on that boundary while loot, autoexplore and the exit walk took turns.
+            if DELVE_COMMIT["zone"] != zone_id or cur_pos == sd_pos:
+                DELVE_COMMIT.update({"zone": None, "turns": 0})
+            delve_committed = DELVE_COMMIT["zone"] == zone_id and DELVE_COMMIT["turns"] < DELVE_COMMIT_MAX
+            if is_zone_cleared or delve_committed or (is_subterranean and cur_pos != sd_pos and max(abs(px - sd_pos[0]), abs(py - sd_pos[1])) <= 6):
                 # The engine pathfinder, not a greedy step: a wall between him and the stairs made the greedy step flip back and
                 # forth for 40+ turns (HANDOFF issue 55, R6). A PATH_BLOCKED report puts the stairs in UNREACHABLE_SECTORS and
                 # delving is skipped until another route opens up.
@@ -5789,6 +5815,10 @@ def _query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
                     delve_type = "Dungeon Delving" if is_subterranean else "Dungeon Entry"
                     rec_str = f"Level {cur_lvl} >= Req {req_depth_lvl}" if cur_lvl >= req_depth_lvl else f"Level {cur_lvl} < Rec {req_depth_lvl}"
                     if (zone_id, sd_pos) not in UNREACHABLE_SECTORS:
+                        if DELVE_COMMIT["zone"] == zone_id:
+                            DELVE_COMMIT["turns"] += 1
+                        else:
+                            DELVE_COMMIT.update({"zone": zone_id, "turns": 1})
                         return {"action": f"NAVIGATE_TO_CELL:{sd_pos[0]},{sd_pos[1]}", "reason": f"{delve_type}: Navigating to stairs down at {sd_pos} to delve stratum {cur_z + 1} ({rec_str})"}
                     # The engine pathfinder reported no route (it may not swim). Greedy steps only as a guarded fallback.
                     if (zone_id, sd_pos) in STAIRS_RETRY_ACTIVE:
