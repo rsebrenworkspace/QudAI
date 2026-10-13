@@ -8308,3 +8308,23 @@ _c190 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", 
 assert 'act.StartsWith("ATTACK_CREATURE:")' in _c190 and "string.Equals(o.Blueprint, acBlueprint, StringComparison.OrdinalIgnoreCase)" in _c190 and "!IsSettlementZone(player?.CurrentCell?.ParentZone) && acCell != null" in _c190 and "IsCompanion(o, player)" in _c190 and "player.PerformMeleeAttack(acVictim)" in _c190
 assert _c190.count("{") == _c190.count("}")
 print("  [OK] Test 190 Passed: the hunt hits a calm creature with ATTACK_CREATURE:<dir>:<blueprint> (a hostile one is still walked into), a loot walk keeps going when its item leaves the mod's 14 tile list and ends on arrival, a failed step or its turns, in a 9 step route that heads away first he never turns back, the walk to the stairs is committed, and the C# command attacks only the named blueprint, never in a settlement, a companion or an owned creature")
+
+# Test 191: pruning removes capture folders that carry the read-only attribute (2026-10-12: 50 folders were left, 30 of them empty shells, because rmtree ignored the access denied on read-only directories; HANDOFF issue 183)
+# ---------------------------------------------------------------------------
+import stat as _stat191
+_root191 = _tf184.mkdtemp()
+for _n191 in ("2026-10-01_100000", "2026-10-02_100000", "2026-10-03_100000", "2026-10-04_100000"):
+    _d191 = _os.path.join(_root191, _n191)
+    _os.makedirs(_os.path.join(_d191, "sub"))
+    for _f191 in (_os.path.join(_d191, "a.txt"), _os.path.join(_d191, "sub", "b.txt")):
+        open(_f191, "w").write("x")
+    _os.chmod(_os.path.join(_d191, "a.txt"), _stat191.S_IREAD)
+    _os.chmod(_os.path.join(_d191, "sub"), _stat191.S_IREAD)
+    _os.chmod(_d191, _stat191.S_IREAD)                      # the read-only directory attribute
+_os.makedirs(_os.path.join(_root191, "latest")); _os.makedirs(_os.path.join(_root191, "notes"))
+_gone191 = _cl128.prune_captures(_root191, keep=2)
+assert _gone191 == ["2026-10-01_100000", "2026-10-02_100000"], _gone191
+assert sorted(_os.listdir(_root191)) == ["2026-10-03_100000", "2026-10-04_100000", "latest", "notes"], sorted(_os.listdir(_root191))
+for _n191 in ("2026-10-03_100000", "2026-10-04_100000"):
+    _os.chmod(_os.path.join(_root191, _n191), _stat191.S_IWRITE | _stat191.S_IREAD)
+print("  [OK] Test 191 Passed: pruning removes the oldest capture folders even when the folder, a subfolder and a file are read-only, keeps the newest ones, `latest` and anything not named like a stamp")
