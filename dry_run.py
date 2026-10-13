@@ -3410,7 +3410,7 @@ brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = Non
 brain.LAST_ZONE_ENTRY = {"reverse_dir": "S"}
 brain.EXPLORED_ZONE_SET.add(brain._compute_adjacent_zone_id(_Z, "W"))   # the west neighbour was already explored
 with _ctx.redirect_stdout(_io.StringIO()):
-    _, _, _chosen = brain.get_zone_exit_target((40, 12), {"zone_id": _Z, "z": 10, "reachable_edges": "NSEW", "surroundings": {}})
+    _, _, _chosen = brain.get_zone_exit_target((40, 12), {"zone_id": _Z, "z": 10, "level": 5, "reachable_edges": "NSEW", "surroundings": {}})   # level 5: this test is about the exit log, the weak radius is Test 187
 _lines = [_json.loads(l) for l in open(_log, encoding="utf-8")]
 assert len(_lines) == 1, f"One decision must log one line, got {len(_lines)}"
 _rec = _lines[0]
@@ -6008,10 +6008,12 @@ try:
     # exits: while the flag holds, the exit into the flagged zone is not chosen if another exists; with only that one it is taken
     def _pick122(turn, edges="NSEW", n=60):
         picks = []
+        brain.WEAK_FREE_LEVEL = 1          # this test is about the swarm block; the weak radius (Test 187) must not hide it
         for _s in range(n):
             _rnd122.seed(_s); brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None; brain.LAST_ZONE_ENTRY = None; brain.TURN_CLOCK = turn
             brain.ZONE_DANGER.observe(2, 1.5, turn)
             picks.append(brain.get_zone_exit_target((40, 12), {"zone_id": _PREV122, "z": 10, "x": 40, "y": 12, "level": 2, "reachable_edges": edges, "surroundings": {}})[2])
+        brain.WEAK_FREE_LEVEL = 5
         return picks
     _fresh122(); brain.border_retreat_decision(_gs122(), _Z122, (78, 6), _swarm122)
     _p1 = _pick122(2090)
@@ -7248,7 +7250,7 @@ try:
 finally:
     brain.GAS_LOG_PATH, brain.LAB_HOLD_FLAG = _saved159
 _b159 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
-assert 'not str(reason).startswith(("[LAB]", "[GRENADE]"))' in _b159, "the Loop Breaker must not undo the lab hold"
+assert 'not str(reason).startswith(("[LAB]", "[GRENADE]", "[XP HUNT]"))' in _b159, "the Loop Breaker must not undo the lab hold"
 _cs159 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
 assert "GasCellsJson(player)" in _cs159 and "GetPart<Gas>()" in _cs159
 assert any(s["id"] == "grenade-gas-lab" for s in json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "wish_scenarios.json"), encoding="utf-8"))["scenarios"])
@@ -7411,7 +7413,7 @@ _ok163 = [brain.rest_in_progress("REST", "REST", _r163(10)) for _ in range(brain
 assert _ok163[0] is True and _ok163[-1] is False and sum(_ok163) == brain.REST_NO_PROGRESS_MAX - 1, _ok163
 assert brain.rest_in_progress("REST", "REST", _r163(11)) is True, "progress again: allowed again"
 _b163 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
-assert "took_damage = took_real_damage(game_state, hp, last_hp)" in _b163 and "and not rest_exempt)" in _b163 and "not is_frontier_nav and not rest_exempt and (" in _b163
+assert "took_damage = took_real_damage(game_state, hp, last_hp)" in _b163 and "and not rest_exempt)" in _b163 and "not is_frontier_nav and not rest_exempt and not str(reason).startswith(\"[XP HUNT]\") and (" in _b163
 brain.REST_STATE.update({"best_hp": -1, "since_progress": 0})
 print("  [OK] Test 163 Passed: a damage-over-time tick with nothing hostile near is not counted as being hit (bleeding, burning and poison; a big drop or a hostile within 2 tiles still is), and a REST that is raising his hit points is never interrupted by the Loop Breaker, while one that heals nothing is after 12 turns (multi-turn)")
 
@@ -7463,7 +7465,7 @@ brain.GAS_THROW_STATE.update({"target": (55, 10), "waited": 0, "active": True})
 assert brain.gas_wait_decision(_gs164([_en164(5)], gas_cells=[{"x": 50, "y": 10, "gas": "PoisonGas", "density": 40}, {"x": 55, "y": 10, "gas": "PoisonGas", "density": 40}])) is None, "in the gas: the avoidance decides"
 _reset164()
 _b164 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
-assert "grenade_move = gas_grenade_throw_decision(game_state) or gas_wait_decision(game_state)" in _b164 and 'startswith(("[LAB]", "[GRENADE]"))' in _b164
+assert "grenade_move = gas_grenade_throw_decision(game_state) or gas_wait_decision(game_state)" in _b164 and 'startswith(("[LAB]", "[GRENADE]", "[XP HUNT]"))' in _b164
 assert json.load(open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "grenades.json"), encoding="utf-8"))["kinds"]["gas"]["min_safe_dist"] == brain.GAS_THROW_MIN_DIST
 print("  [OK] Test 164 Passed: a held gas grenade is thrown at a Tough (or a group of) mobile breathing hostile 4 to 5 tiles away with a clear line and no companion near, never at 3 tiles or less, a rooted or robot target, with a cloud already near or another kind of grenade; then he waits (PASS) while the cloud works, the wait ends when it is gone, a hostile arrives or he must leave the gas, and no second grenade is thrown on top of it (multi-turn)")
 
@@ -8093,3 +8095,96 @@ json.dump({"deaths": {"1": {"kind": "bug", "urgent": True, "issue": "175"}}}, op
 assert "NEEDS ATTENTION NOW" not in _gr183.build_report(_dir186, _l186), "recording the fix clears it"
 assert _ds184.parse_chronicles(_dir186)[0]["build"] == "esper_ited_away"
 print("  [OK] Test 186 Passed: a death marked urgent in the ledger is listed under NEEDS ATTENTION NOW until a fix (issue) is recorded, and the chronicle's build is read")
+
+# Test 187: early leveling: hunt calm farmable and Easy creatures while weak and healthy, stay within the weak radius of home (human, 2026-10-12, after Gen 43: level 1 after 2,875 turns, 23 zones, 6 fights; "go ahead with 1 ... we may have to attack non-aggro mobs; multiple water bound targets in the starting area could be farmed for XP"; HANDOFF issue 177)
+# ---------------------------------------------------------------------------
+def _fish187(d, **k):
+    return dict({"name": "glowfish", "blueprint": "Glowfish", "dist": d, "tx": 40 + d, "ty": 10, "dir": "E", "is_enemy": False, "has_los": True, "difficulty": "Trivial"}, **k)
+def _st187(ents, **k):
+    return dict({"x": 40, "y": 10, "level": 1, "hp": 18, "max_hp": 18, "zone_id": "JoppaWorld.11.22.1.1.10", "visible_entities": ents, "gas_cells": [], "effects": [], "surroundings": {}}, **k)
+def _reset187():
+    brain.XP_HUNT_STATE.update({"zone": None, "turns": 0, "key": None, "key_turns": 0, "last": None}); brain.XP_HUNT_BLOCKED.clear()
+# the hunt: a calm glowfish 6 tiles away is walked to, an adjacent one is attacked
+_reset187(); _h187 = brain.xp_hunt_decision(_st187([_fish187(6)]))
+assert _h187 and _h187["action"] == "NAVIGATE_TO_CELL:46,10" and "XP HUNT" in _h187["reason"] and "glowfish" in _h187["reason"], _h187
+_reset187(); assert brain.xp_hunt_decision(_st187([_fish187(1)]))["action"] == "MOVE_E"
+# a hostile Easy creature is hunted too; Average, Tough and above are not
+_reset187(); assert brain.xp_hunt_decision(_st187([{"name": "snapjaw scavenger", "blueprint": "Snapjaw Scavenger", "dist": 5, "tx": 45, "ty": 10, "dir": "E", "is_enemy": True, "has_los": True, "difficulty": "Easy"}])) is not None
+_reset187(); assert brain.xp_hunt_decision(_st187([{"name": "snapjaw scavenger", "blueprint": "Snapjaw Scavenger", "dist": 5, "tx": 45, "ty": 10, "dir": "E", "is_enemy": True, "has_los": True, "difficulty": "Average"}])) is None
+# never: a strong or hurt character, a settlement, something dangerous in view, gas, a companion, a stationary or unlisted calm creature, a pig (owned farm animals are not on the list)
+for _bad187, _why187 in ((_st187([_fish187(6)], level=3), "level 3: enough"), (_st187([_fish187(6)], hp=10), "hurt"), (_st187([_fish187(6), {"name": "salthopper", "blueprint": "Salthopper", "dist": 8, "tx": 48, "ty": 10, "is_enemy": True, "difficulty": "Very Tough", "has_los": True}]), "a Very Tough hostile in view"),
+                         (_st187([_fish187(6, is_companion=True)]), "a companion"), (_st187([_fish187(6, is_stationary=True)]), "stationary"), (_st187([_fish187(20)]), "too far"),
+                         (_st187([{"name": "pig", "blueprint": "Pig", "dist": 4, "tx": 44, "ty": 10, "dir": "E", "is_enemy": False, "has_los": True, "difficulty": "Trivial"}]), "a farm pig is not farmable (R7: owned animals)"),
+                         (_st187([_fish187(6, has_los=False)]), "no line of sight"), (_st187([{"name": "gun turret", "blueprint": "MusketTurret", "dist": 5, "tx": 45, "ty": 10, "is_enemy": True, "difficulty": "Easy", "has_los": True}]), "a turret")):
+    _reset187(); assert brain.xp_hunt_decision(_bad187) is None, _why187
+_reset187(); _tw187 = _st187([_fish187(6)]); _orig_town187 = brain.is_town_zone
+brain.is_town_zone = lambda gs: True
+try:
+    assert brain.xp_hunt_decision(_tw187) is None, "never in a settlement (R7)"
+finally:
+    brain.is_town_zone = _orig_town187
+# MULTI-TURN: he walks to a fish 12 tiles away and attacks it; a target he cannot reach is written off after XP_HUNT_TARGET_TURNS turns (never a loop)
+_reset187(); _px187 = 40; _acts187 = []
+for _t187 in range(30):
+    _d187 = max(1, 52 - _px187)
+    _dec187 = brain.xp_hunt_decision(_st187([_fish187(_d187, tx=52)], x=_px187))
+    if not _dec187: break
+    _acts187.append(_dec187["action"])
+    if _dec187["action"].startswith("NAVIGATE_TO_CELL"): _px187 += 1
+    else: break                                                  # adjacent: the blow lands (the fish dies)
+assert _acts187[-1] == "MOVE_E" and len(_acts187) == 12 and all(a == "NAVIGATE_TO_CELL:52,10" for a in _acts187[:-1]), _acts187
+_reset187(); _stuck187 = [brain.xp_hunt_decision(_st187([_fish187(8)])) for _ in range(brain.XP_HUNT_TARGET_TURNS + 5)]
+assert sum(1 for x in _stuck187 if x) == brain.XP_HUNT_TARGET_TURNS and _stuck187[-1] is None, "an unreachable target is dropped after its turns"
+_reset187(); brain.XP_HUNT_STATE.update({"zone": "JoppaWorld.11.22.1.1.10", "turns": brain.XP_HUNT_ZONE_BUDGET}); assert brain.xp_hunt_decision(_st187([_fish187(6)])) is None, "the zone budget ends the hunt"
+_reset187()
+# the pipeline and the Loop Breaker know about it
+_b187 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "hunt_move = xp_hunt_decision(game_state)" in _b187 and '"[XP HUNT]"' in _b187 and 'startswith("[XP HUNT]")' in _b187
+# stay near home: the grid, the radius and the filter
+assert brain.zone_grid("JoppaWorld.11.22.1.1.10") == (34, 67) and brain.zone_grid("nonsense") is None
+assert brain.weak_radius(1) == 6 and brain.weak_radius(4) == 15 and brain.weak_radius(5) is None
+_kept187, _far187 = brain.weak_outward_filter("JoppaWorld.11.22.1.1.10", ["N", "S", "E", "W"], 1)
+assert _kept187 == ["N", "S", "E", "W"] and _far187 == [], "at home nothing is far"
+_k, _f = brain.weak_outward_filter("JoppaWorld.11.19.1.1.10", ["N", "S", "E", "W"], 1)         # 6 zones north of home (gy 58 vs 67 = 9): beyond the radius
+assert "N" in _f and "S" in _k, (_k, _f)
+_k, _f = brain.weak_outward_filter("JoppaWorld.11.19.1.1.10", ["N", "S", "E", "W"], 5)
+assert _f == [], "level 5: no limit"
+_k, _f = brain.weak_outward_filter("JoppaWorld.10.18.2.1.10", ["N", "S", "E", "W"], 1)          # where Gen 43 died: 12 zones from home
+assert set(_f) == {"N", "W", "E"}, (_k, _f)
+assert _k == ["S"], "only the way back toward home is kept"
+assert brain.weak_outward_filter("garbage", ["N", "S"], 1) == (["N", "S"], []), "an unreadable zone id blocks nothing"
+_k, _f = brain.weak_outward_filter("JoppaWorld.11.20.1.1.10", ["N", "S", "E", "W"], 1)      # 6 zones from home: at the edge of the radius
+assert _f == ["N"] and set(_k) == {"S", "E", "W"}, (_k, _f)
+
+assert "weak_outward_filter(cur_zone, candidates, _lvl)" in _b187
+print("  [OK] Test 187 Passed: a weak, healthy character walks to and attacks a calm glowfish or a Trivial/Easy hostile (never a farm pig, a companion, a turret, a stationary or unseen one, anything while hurt, in a settlement, with something Tough in view, or at level 3), a 12 tile walk ends in a blow, an unreachable target is dropped after 40 turns and a zone after 200, and exits that lead beyond 3 zones plus 3 per level from home are left out unless nothing else remains (steps toward home are always kept)")
+
+# Test 188: MULTI-TURN: a level 1 character hopping from zone to zone stays within the weak radius of home, and one that starts far away walks back (HANDOFF issue 177; Gen 43 drifted 12 zones out and died there)
+# ---------------------------------------------------------------------------
+def _hop188(start, level, hops, seed):
+    import random as _r188
+    rnd = _r188.Random(seed)
+    zone, trail = start, []
+    for _h in range(hops):
+        brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None; brain.LAST_ZONE_ENTRY = None
+        brain.EXPLORED_ZONE_SET.clear(); brain.FAILED_ZONE_EXITS.clear(); brain.EXIT_SUPPRESS_UNTIL.clear()
+        import random as _rr
+        _rr.seed(rnd.random())
+        with _ctx.redirect_stdout(_io.StringIO()):
+            _, _, d = brain.get_zone_exit_target((40, 12), {"zone_id": zone, "z": 10, "x": 40, "y": 12, "level": level, "reachable_edges": "NSEW", "surroundings": {}})
+        nxt = brain._compute_adjacent_zone_id(zone, d) if d else None
+        if not nxt:
+            break
+        zone = nxt
+        g, h = brain.zone_grid(zone), brain.zone_grid(brain.LEVELING_HOME)
+        trail.append(max(abs(g[0] - h[0]), abs(g[1] - h[1])))
+    return trail
+for _seed188 in range(6):
+    _tr188 = _hop188("JoppaWorld.11.22.1.1.10", 1, 80, _seed188)
+    assert len(_tr188) >= 60 and max(_tr188) <= brain.weak_radius(1), ("left the radius", max(_tr188), _seed188)
+_tr188 = _hop188("JoppaWorld.10.18.2.1.10", 1, 40, 1)           # where Gen 43 died, 12 zones from home
+assert _tr188[0] == 11 and max(_tr188[:10]) <= 12 and min(_tr188) <= brain.weak_radius(1) + 1, ("did not come home", _tr188[:20])
+_tr188 = _hop188("JoppaWorld.11.22.1.1.10", 5, 80, 2)           # level 5: no limit, so it may roam as before
+assert max(_tr188) > brain.weak_radius(1), "a strong character is not held back"
+brain.EXPLORED_ZONE_SET.clear(); brain.FAILED_ZONE_EXITS.clear(); brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+print("  [OK] Test 188 Passed: over 80 zone hops a level 1 character stays within 6 zones of home (six seeds), one that starts where Gen 43 died (12 zones out) walks back inside the radius within a few hops, and a level 5 character roams freely")

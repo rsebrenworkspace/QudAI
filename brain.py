@@ -2235,6 +2235,15 @@ def get_zone_exit_target(cur_pos, game_state=None):
         else:
             print(f"[SWARM] The only way on leads into a flagged zone ({','.join(_swarm_blocked)}); it is entered anyway (no other exit).")
 
+    # A weak character stays near home (HANDOFF issue 177): exits that lead beyond the weak radius are left out while another way on exists.
+    _kept, _far = weak_outward_filter(cur_zone, candidates, _lvl) if (game_state or {}).get("level") else (list(candidates), [])     # a state without a level is a character of unknown strength: no limit
+    if _far:
+        if _kept:
+            print(f"[STAY NEAR HOME] Level {_lvl}: not leaving toward {','.join(_far)} (beyond {weak_radius(_lvl)} zones from home); choosing among {','.join(_kept)}.")
+            candidates = _kept
+        else:
+            print(f"[STAY NEAR HOME] Level {_lvl}: every way on leads beyond {weak_radius(_lvl)} zones from home ({','.join(_far)}); going anyway.")
+
     # In subterranean strata (z > 10), prioritize directions suggested by unexplored boundaries / corridors
     cur_z = game_state.get("z", 10) if game_state else 10
     prioritized = []
@@ -4815,6 +4824,141 @@ def veto_rooted_approach(decision, game_state):
     return {"action": steps[0], "reason": f"[ROOTED HAZARD] {live[0][2]} is rooted and rated Tough or worse: {action} would end next to it, sidestepping {steps[0][5:]} instead."}
 
 
+# Early leveling (HANDOFF issue 177; human, 2026-10-12, after Gen 43: "go ahead with 1 ... we may have to attack non-aggro mobs; there are multiple water bound targets in the starting area that could be
+# farmed for XP to get one or two levels"). A level 1 Esper wandered 23 zones in 2,875 turns, fought six times, never leveled and died to the first swarm (a level 9 salthopper, three dragonflies and a
+# boar in a dead-end canyon). Two parts, both only while the character is weak:
+#   1. HUNT: with healthy HP and nothing Tough or worse in view, walk to and attack a creature that is worth the XP: a calm one from the farmable list (the glowfish that fill the starting waters:
+#      level 1, 5 HP, calm, `Fish-100`, 25 XP each and full pay while the killer is below level 5, ENGINE_INTERNALS 14.35) or a hostile one the engine rates Trivial or Easy. Never in a settlement (R7).
+#   2. STAY NEAR HOME: among unexplored exits prefer the ones that do not lead farther from the starting zone than the weak radius (3 zones plus 3 per level); when nothing else is left the old choice
+#      stands (never strand him). The radius grows with every level and is gone from level 5.
+XP_HUNT_MAX_LEVEL = 2                     # hunt while the level is at most this (a kill is worth full XP up to level 4; the human asked for one or two levels)
+XP_HUNT_MIN_HP = 0.7                      # share of max HP
+XP_HUNT_RANGE = 14                        # tiles
+XP_HUNT_TARGET_TURNS = 40                 # turns spent on one target before it is written off
+XP_HUNT_ZONE_BUDGET = 200                 # hunt turns per zone
+XP_HUNT_BLOCK_TURNS = 300
+XP_HUNT_FARMABLE = ("glowfish",)          # calm creatures that are safe and worth hunting: catalogue names, lower case (Fish-100: killing them costs no reputation worth having)
+XP_HUNT_DANGER = ("Tough", "Very Tough", "Impossible")
+XP_HUNT_STATE = {"zone": None, "turns": 0, "key": None, "key_turns": 0, "last": None}
+XP_HUNT_BLOCKED = {}                      # (zone, name) -> TURN_CLOCK until which it is not hunted
+LEVELING_HOME = "JoppaWorld.11.22.1.1.10"   # every character starts in Joppa; the zone id of the starting zone
+WEAK_RADIUS_BASE = 3
+WEAK_RADIUS_PER_LEVEL = 3
+WEAK_FREE_LEVEL = 5
+
+
+def zone_grid(zone_id):
+    """(gx, gy) on the grid of zones (3 by 3 per world cell) from a zone id 'JoppaWorld.WX.WY.SX.SY.Z', or None."""
+    try:
+        parts = str(zone_id).split(".")
+        return int(parts[1]) * 3 + int(parts[3]), int(parts[2]) * 3 + int(parts[4])
+    except (IndexError, ValueError):
+        return None
+
+
+def weak_radius(level):
+    """How many zones from home a character of this level should roam, or None when there is no limit."""
+    lvl = int(level or 1)
+    return None if lvl >= WEAK_FREE_LEVEL else WEAK_RADIUS_BASE + WEAK_RADIUS_PER_LEVEL * lvl
+
+
+def weak_outward_filter(cur_zone, candidates, level, home=None):
+    """(kept, blocked): inside the weak radius the exits that would lead beyond it are blocked; beyond it only the exits that lead back toward home are kept (when there is one). Nothing is blocked for a strong character or when a zone id cannot be read."""
+    radius = weak_radius(level)
+    h = zone_grid(home or LEVELING_HOME)
+    cur = zone_grid(cur_zone)
+    if radius is None or h is None or cur is None:
+        return list(candidates), []
+    cur_d = max(abs(cur[0] - h[0]), abs(cur[1] - h[1]))
+    dists = {}
+    for d in candidates:
+        adj = zone_grid(_compute_adjacent_zone_id(cur_zone, d))
+        dists[d] = None if adj is None else max(abs(adj[0] - h[0]), abs(adj[1] - h[1]))
+    if cur_d > radius:
+        # already beyond the radius: only the exits that lead back toward home (when there is one)
+        closer = [d for d in candidates if dists[d] is not None and dists[d] < cur_d]
+        if closer:
+            return closer, [d for d in candidates if d not in closer]
+        return list(candidates), []
+    kept, blocked = [], []
+    for d in candidates:
+        (blocked if dists[d] is not None and dists[d] > radius else kept).append(d)
+    return kept, blocked
+
+
+def xp_hunt_target(game_state):
+    """The entity worth hunting now, or None: a calm farmable creature, or a hostile one rated Trivial or Easy; nearest first; never a companion, a turret, a stationary hazard or a blocked one."""
+    px, py = game_state.get("x"), game_state.get("y")
+    if px is None or py is None:
+        return None
+    zone = game_state.get("zone_id")
+    best = None
+    for e in game_state.get("visible_entities") or []:
+        d = e.get("dist")
+        if not isinstance(d, (int, float)) or d < 1 or d > XP_HUNT_RANGE or e.get("tx") is None or e.get("ty") is None:
+            continue
+        if e.get("is_companion") or e.get("is_stationary") or e.get("has_los") is False:
+            continue
+        blob = f"{e.get('blueprint', '')} {e.get('name', '')}".lower()
+        if "turret" in blob or "[flying]" in blob or e.get("flying"):
+            continue
+        try:
+            entry = creature_threat.lookup(blueprint=e.get("blueprint"), name=e.get("name"))
+        except Exception:
+            entry = None
+        cname = str(entry.get("name", "")).lower() if entry else ""
+        calm_ok = cname in XP_HUNT_FARMABLE
+        easy_ok = bool(e.get("is_enemy")) and e.get("difficulty") in ("Trivial", "Easy") and not (entry and (entry.get("is_ranged") or entry.get("ranged")))
+        if not (calm_ok or easy_ok):
+            continue
+        if XP_HUNT_BLOCKED.get((zone, cname or str(e.get("name"))), 0) > TURN_CLOCK:
+            continue
+        if best is None or d < best[0]:
+            best = (d, e, cname or str(e.get("name")), calm_ok)
+    return best
+
+
+def xp_hunt_decision(game_state):
+    """A step toward, or a blow at, a creature worth the XP while the character is weak and healthy, or None. See the block comment above."""
+    try:
+        lvl = int(game_state.get("level") or 1)
+        hp, mx = game_state.get("hp"), game_state.get("max_hp")
+        if lvl > XP_HUNT_MAX_LEVEL or not hp or not mx or hp / mx < XP_HUNT_MIN_HP or is_town_zone(game_state) or game_state.get("lab_hold"):
+            return None
+        for e in game_state.get("visible_entities") or []:
+            if e.get("is_enemy") and not e.get("is_companion") and e.get("difficulty") in XP_HUNT_DANGER and e.get("has_los") is not False and isinstance(e.get("dist"), (int, float)) and e["dist"] <= 12:
+                return None                      # something he should not fight is in view: the other rules decide
+        if harmful_gas(game_state):
+            return None
+        found = xp_hunt_target(game_state)
+        if not found:
+            XP_HUNT_STATE.update({"key": None, "key_turns": 0})
+            return None
+        dist, e, cname, calm = found
+        zone = game_state.get("zone_id")
+        if XP_HUNT_STATE["zone"] != zone:
+            XP_HUNT_STATE.update({"zone": zone, "turns": 0})
+        if XP_HUNT_STATE["turns"] >= XP_HUNT_ZONE_BUDGET:
+            return None
+        key = (zone, cname)
+        if XP_HUNT_STATE["key"] == key:
+            XP_HUNT_STATE["key_turns"] += 1
+        else:
+            XP_HUNT_STATE.update({"key": key, "key_turns": 1})
+        if XP_HUNT_STATE["key_turns"] > XP_HUNT_TARGET_TURNS:
+            XP_HUNT_BLOCKED[key] = TURN_CLOCK + XP_HUNT_BLOCK_TURNS
+            XP_HUNT_STATE.update({"key": None, "key_turns": 0})
+            return None
+        XP_HUNT_STATE["turns"] += 1
+        what = f"{cname} ({'calm' if calm else e.get('difficulty')})"
+        direction = e.get("dir")
+        if dist <= 1 and direction in CARDINAL_OFFSETS:
+            return {"action": f"MOVE_{direction}", "reason": f"[XP HUNT] Level {lvl} needs XP: attacking the {what} next to him ({direction})."}
+        return {"action": f"NAVIGATE_TO_CELL:{e['tx']},{e['ty']}", "reason": f"[XP HUNT] Level {lvl} needs XP: going for the {what}, {int(dist)} tiles away."}
+    except Exception:
+        return None
+
+
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     """The decision for this turn: the engulf escape, the hunter protocol, the rooted-hazard step-out, else `_query_decision`, the lethal-adjacent guard, the stand-and-fight rule, then the rooted-approach veto."""
     lab_move = lab_hold_decision(game_state)
@@ -4860,6 +5004,13 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         ROOTED_STATE["last"] = rooted_move["action"]
         STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
         return rooted_move
+    hunt_move = xp_hunt_decision(game_state)
+    if hunt_move:
+        if XP_HUNT_STATE["last"] != hunt_move["action"].split(":")[0]:
+            print(hunt_move["reason"])
+        XP_HUNT_STATE["last"] = hunt_move["action"].split(":")[0]
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return hunt_move
     STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
     decision = _query_decision(game_state, took_damage, enemies, suppress_autolevel)
     decision = lethal_adjacent_guard(decision, STAND_CONTEXT["adj_threats"], STAND_CONTEXT["enemies"], STAND_CONTEXT["abilities"])
@@ -6098,13 +6249,13 @@ def main():
                 is_attacking = action.startswith("MOVE_") and (action[5:] in adj_threats)
                 is_combat_action = action.startswith("USE_ABILITY") or action.startswith("FIRE_MISSILE") or is_attacking
                 rest_exempt = rest_in_progress(action, last_executed_action, game_state)
-                is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_combat_action and not str(reason).startswith(("[LAB]", "[GRENADE]")) and not rest_exempt)   # the lab hold repeats PASS on purpose (the Loop Breaker walked him away from the gas cloud he was measuring, 2026-10-11)
+                is_stationary_repeat = (action == last_executed_action and cur_pos == last_executed_pos and not is_combat_action and not str(reason).startswith(("[LAB]", "[GRENADE]", "[XP HUNT]")) and not rest_exempt)   # the lab hold repeats PASS on purpose (the Loop Breaker walked him away from the gas cloud he was measuring, 2026-10-11)
                 # A committed engine-reachable frontier walk is exempt from the oscillation breaker: its own failure and
                 # pursuit limits (FRONTIER_FAIL_LIMIT / FRONTIER_PURSUIT_MAX) write a bad target off. Without this exemption
                 # the breaker overrode the walk with "move away from the cycle centroid" and he ping-ponged forever
                 # (HANDOFF issue 47).
                 is_frontier_nav = is_frontier_walk(action, reason)
-                is_oscillating = not is_in_combat and not is_combat_action and not is_frontier_nav and not rest_exempt and (
+                is_oscillating = not is_in_combat and not is_combat_action and not is_frontier_nav and not rest_exempt and not str(reason).startswith("[XP HUNT]") and (
                     (pos_frequency >= 3) or
                     (len(recent_positions) >= 10 and unique_positions <= 5)
                 )
