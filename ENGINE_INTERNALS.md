@@ -883,6 +883,11 @@ The machine-readable table is `data/grenades.json` (59 grenade blueprints, built
 - The mod's own difficulty rating (`AIBrainPart.cs`, `levelDiff <= 2` is "Average") compares the Level stat only and ignores hit points, mutations and the Hero property. The Gen 44 hermit was level 5 against the player's level 5: rated Average, with 167 max HP and 8 to 12 damage a turn against a 31 HP character. Heroes also killed Gen 2 and Gen 13 (named snapjaws).
 - The mod now exports `hero` per entity and Python floors a hero's rating at Very Tough (HANDOFF issue 179). The rating stays level-only for everything else; hit points are exported per entity (`hp`, `max_hp`) and could price a long fight, which is not done.
 
+### 14.44 Moving into a calm creature swaps places; the mod's loot list stops at 14 tiles (2026-10-12, behaviour `[verified in game 2026-10-12]` from the Esper trace, the swap rule itself `[inferred]`, the radius `[verified in code]`)
+- The XP hunt's "attack" at a glowfish was a `MOVE_<dir>` into its cell. The trace shows the player alternating between two cells (`(42,1)`, `(43,0)`, `(42,1)`, ...) with directions NE, SW, NE, SW for dozens of turns and no kill: moving into a calm (non-hostile) creature swaps places with it instead of attacking. A blow needs `PerformMeleeAttack` on the creature, now `ATTACK_CREATURE:<dir>:<blueprint>` (HANDOFF issue 180).
+- `ATTACK_WALL` is no substitute: it takes the first object of the cell with a Physics, Combat, Wall or Plant part, and a glowfish cell also holds the water puddle.
+- `loot_sources` lists unowned items only within `LootRadius` = 14 tiles. The engine's route to an item can lead away from it, so a walk that reaches the boundary loses its target and another rule moves him back: the 600-turn loot/autoexplore/delve flip-flop at (43,10) in the Esper's third run.
+
 ---
 *End of Engine Internals Manual.*
 
