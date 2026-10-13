@@ -8328,3 +8328,31 @@ assert sorted(_os.listdir(_root191)) == ["2026-10-03_100000", "2026-10-04_100000
 for _n191 in ("2026-10-03_100000", "2026-10-04_100000"):
     _os.chmod(_os.path.join(_root191, _n191), _stat191.S_IWRITE | _stat191.S_IREAD)
 print("  [OK] Test 191 Passed: pruning removes the oldest capture folders even when the folder, a subfolder and a file are read-only, keeps the newest ones, `latest` and anything not named like a stamp")
+
+# Test 192: a two-cell ping-pong is recognised, so the Loop Breaker escalates instead of stepping to the other cell (Esper Gen 45, 2026-10-12: NE and SE between (29, 18) and (30, 19) for 20 turns on stratum 12; HANDOFF issue 184)
+# ---------------------------------------------------------------------------
+brain.recent_positions.clear()
+assert brain.two_cell_cycle() is False, "empty window"
+_seen192 = []
+for _p192 in [(29, 19), (30, 19), (29, 18), (30, 19), (29, 18), (30, 19), (29, 18), (30, 19)]:
+    brain.record_position(_p192)
+    _seen192.append(brain.two_cell_cycle())
+assert _seen192 == [False, False, False, False, False, False, True, True] or _seen192.index(True) in (5, 6), _seen192            # the cluster's own positions: detected within 8 moves
+assert brain.two_cell_cycle() is True
+brain.recent_positions.clear()
+for _p192 in [(1, 1), (2, 2), (1, 1), (2, 2), (1, 1), (3, 3)]:
+    brain.record_position(_p192)
+assert brain.two_cell_cycle() is False, "a third cell in the window is not a two-cell cycle"
+brain.recent_positions.clear()
+for _p192 in [(1, 1), (2, 2), (1, 1)]:
+    brain.record_position(_p192)
+assert brain.two_cell_cycle() is False, "too few moves"
+for _p192 in [(5, 5)] * 6:
+    brain.record_position(_p192)
+assert brain.two_cell_cycle() is False, "standing still adds one entry only (record_position)"
+assert brain.two_cell_cycle([(1, 1), (2, 2)] * 3) is True and brain.two_cell_cycle([(1, 1), (2, 2), (3, 3)] * 2) is False and brain.two_cell_cycle([(1, 1), (2, 2)] * 3, window=8) is False
+brain.recent_positions.clear()
+_b192 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "if open_escapes and two_cell_cycle():" in _b192 and "open_escapes = []          # a two-cell ping-pong" in _b192
+assert _b192.index("if open_escapes and two_cell_cycle():") < _b192.index("frontier_target, frontier_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)")
+print("  [OK] Test 192 Passed: a pure two-cell ping-pong over 6 changes of cell is recognised (the Gen 45 cluster's own positions are caught within 8 moves), a third cell, too few moves or standing still are not, and the Loop Breaker drops its 'unvisited neighbour' step for it and escalates")
