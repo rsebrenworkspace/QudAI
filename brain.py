@@ -613,8 +613,34 @@ def pack_danger(game_state, enemies):
         return None
 
 
+# The retreat is a committed intent (HANDOFF issue 185, R6). In the Gen 46 lair the Impossible wet puma was in view only every other turn (it swam), so "Danger retreat" (toward the border he
+# arrived by, 3 steps away) and "Water Traversal" (exploring on) took turns for four turns while the puma closed from 3 tiles to 1 and hit for 21 of 25 HP. Once a retreat has been decided it
+# is continued for BORDER_RETREAT_LATCH_TURNS more turns after the trigger drops out of view, unless he has left the zone or the radius.
+BORDER_RETREAT_LATCH_TURNS = 6
+BORDER_RETREAT_LATCH = {"zone": None, "left": 0}
+
+
 def border_retreat_decision(game_state, zone_id, cur_pos, enemies):
-    """A retreat decision through the border he arrived by, or None."""
+    """A retreat decision through the border he arrived by, or None. A decision that was made keeps being made for a few turns after its trigger leaves the view (the latch above)."""
+    dec = _border_retreat_core(game_state, zone_id, cur_pos, enemies)
+    entry = LAST_ZONE_ENTRY
+    if dec and dec.get("flee_ok"):
+        BORDER_RETREAT_LATCH.update({"zone": zone_id, "left": BORDER_RETREAT_LATCH_TURNS})
+        return dec
+    if (BORDER_RETREAT_LATCH["zone"] == zone_id and BORDER_RETREAT_LATCH["left"] > 0 and entry and entry.get("to_zone") == zone_id and entry.get("reverse_dir")):
+        ex, ey = entry.get("entry_pos", (None, None))
+        if ex is not None and max(abs(cur_pos[0] - ex), abs(cur_pos[1] - ey)) <= BORDER_RETREAT_RADIUS:
+            BORDER_RETREAT_LATCH["left"] -= 1
+            rev, (px, py) = entry["reverse_dir"], cur_pos
+            on_border = (rev == "W" and px == 0) or (rev == "E" and px == 79) or (rev == "N" and py == 0) or (rev == "S" and py == 24)
+            why = f"Danger retreat (continued, the threat dropped out of view): going back through the {rev} border I arrived by"
+            return {"action": f"MOVE_{rev}" if on_border else f"NAVIGATE_ZONE_EXIT:{rev}", "reason": why, "flee_ok": True}
+    BORDER_RETREAT_LATCH.update({"zone": None, "left": 0})
+    return None
+
+
+def _border_retreat_core(game_state, zone_id, cur_pos, enemies):
+    """The retreat rule itself: a decision through the border he arrived by when an Impossible hostile or a deadly swarm is in view, or None."""
     entry = LAST_ZONE_ENTRY
     if not entry or entry.get("to_zone") != zone_id or not entry.get("reverse_dir"):
         return None

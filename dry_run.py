@@ -4330,11 +4330,11 @@ assert _d["action"] == "MOVE_N" and _d.get("flee_ok"), f"On the border: step bac
 assert ("JoppaWorld.11.22.1.1.12", "S") in brain.FAILED_ZONE_EXITS, "The exit that leads into the danger zone must be written off"
 _d = brain.border_retreat_decision({}, _BZ, (50, 2), [_jell])
 assert _d["action"] == "NAVIGATE_ZONE_EXIT:N", f"Near the border: walk back to it, got {_d}"
-assert brain.border_retreat_decision({}, _BZ, (60, 12), [_jell]) is None, "Far from the arrival border: no border retreat"
-assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, difficulty="Tough")]) is None, "Only Impossible hostiles trigger it"
-assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, has_los=False)]) is None, "Out of sight: no retreat"
-assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, dist=14)]) is None, "Too far away to matter yet"
-assert brain.border_retreat_decision({}, "SomeOtherZone", (48, 0), [_jell]) is None, "Only in the zone he just entered"
+brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); assert brain.border_retreat_decision({}, _BZ, (60, 12), [_jell]) is None, "Far from the arrival border: no border retreat"
+brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, difficulty="Tough")]) is None, "Only Impossible hostiles trigger it"
+brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, has_los=False)]) is None, "Out of sight: no retreat"
+brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); assert brain.border_retreat_decision({}, _BZ, (48, 0), [dict(_jell, dist=14)]) is None, "Too far away to matter yet"
+brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); assert brain.border_retreat_decision({}, "SomeOtherZone", (48, 0), [_jell]) is None, "Only in the zone he just entered"
 # the stand-and-fight rule must not undo it, even with a weak hostile adjacent
 _weak = {"name": "snapjaw", "dist": 1, "dir": "E", "difficulty": "Easy", "is_enemy": True}
 _flee = {"action": "MOVE_N", "reason": "Danger retreat", "flee_ok": True}
@@ -4460,6 +4460,7 @@ _st["visible_entities"] = [_foe]; _st["surroundings"] = {"N": "[ZONE_EXIT: N]", 
 _dec = brain.query_decision(dict(_st), took_damage=False, enemies=[_foe])
 assert _dec["action"] == "MOVE_N" and "Danger retreat" in _dec["reason"], f"The ledger makes the amoeba Impossible for this character, got {_dec}"
 _dl.LEDGER_PATH = _os.path.join(_tempfile.mkdtemp(), "ledger84b.json"); _dl.reset_cache()
+brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0})          # a retreat just decided would be continued for 6 turns (issue 185); this is a different situation
 _dec = brain.query_decision(dict(_st), took_damage=False, enemies=[_foe])
 assert "Danger retreat" not in _dec["reason"], "Without the record the engine's Average rating stands"
 brain.LAST_ZONE_ENTRY = None
@@ -5983,11 +5984,11 @@ try:
     assert _d["action"] == "MOVE_E", "standing on the border: step across"
     # what does not trigger it: too few, too weak for his hit points, far from the border he came by, nothing in view
     _fresh122()
-    assert brain.border_retreat_decision(_gs122(), _Z122, (78, 6), _swarm122[:2]) is None, "two flies are not a swarm"
-    assert brain.border_retreat_decision(_gs122(hp=200, max_hp=200), _Z122, (78, 6), _swarm122) is None, "a swarm that cannot kill him in four turns is fought"
-    assert brain.border_retreat_decision(_gs122(), _Z122, (60, 6), _swarm122) is None, "too far from the entry border"
-    assert brain.border_retreat_decision(_gs122(), _Z122, (78, 6), []) is None
-    assert brain.border_retreat_decision(_gs122(), _Z122, (78, 6), [_fly122(d, los=False) for d in (1, 2, 3, 4)]) is None, "out of line of sight"
+    brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); assert brain.border_retreat_decision(_gs122(), _Z122, (78, 6), _swarm122[:2]) is None, "two flies are not a swarm"
+    brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); assert brain.border_retreat_decision(_gs122(hp=200, max_hp=200), _Z122, (78, 6), _swarm122) is None, "a swarm that cannot kill him in four turns is fought"
+    brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); assert brain.border_retreat_decision(_gs122(), _Z122, (60, 6), _swarm122) is None, "too far from the entry border"
+    brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); assert brain.border_retreat_decision(_gs122(), _Z122, (78, 6), []) is None
+    brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); assert brain.border_retreat_decision(_gs122(), _Z122, (78, 6), [_fly122(d, los=False) for d in (1, 2, 3, 4)]) is None, "out of line of sight"
     # the flag lapses on a level, on armor, on a better weapon, or on time: each alone
     def _blocked122(level=2, av=2, melee=1.5, turn=2083):
         _fresh122(); brain.border_retreat_decision(_gs122(), _Z122, (78, 6), _swarm122)
@@ -6002,6 +6003,7 @@ try:
     _fresh122(); _n = 0
     for _i in range(10):
         brain.TURN_CLOCK += 5
+        brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0})          # this counts the rule's own decisions; the latch only continues one for a few turns (issue 185)
         if brain.border_retreat_decision(_gs122(), _Z122, (78, 6), _swarm122):
             _n += 1
     assert _n == _zd122.SWARM_RETREAT_MAX == 3, _n
@@ -7027,7 +7029,7 @@ _BZ148 = "ZoneB148"
 brain.LAST_ZONE_ENTRY = {"from_zone": "ZoneA148", "to_zone": _BZ148, "entry_pos": (28, 24), "reverse_dir": "S"}
 _imp148 = {"name": "voider", "dist": 4, "dir": "NE", "tx": 31, "ty": 15, "is_enemy": True, "has_los": True, "difficulty": "Impossible"}
 assert brain.border_retreat_decision({}, _BZ148, (28, 19), [_imp148])["action"].startswith("NAVIGATE_ZONE_EXIT"), "nothing adjacent: the retreat stands"
-assert brain.border_retreat_decision({}, _BZ148, (28, 19), [_imp148, _croc148]) is None, "five steps from the border with a croc adjacent: no walk, the fight rules decide"
+brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); assert brain.border_retreat_decision({}, _BZ148, (28, 19), [_imp148, _croc148]) is None, "five steps from the border with a croc adjacent: no walk, the fight rules decide"
 assert brain.border_retreat_decision({}, _BZ148, (28, 22), [_imp148, _croc148]) is not None, "two steps from the border: still go"
 assert brain.border_retreat_decision({}, _BZ148, (28, 19), [_imp148, dict(_croc148, is_stationary=True)]) is not None, "a rooted neighbour does not follow him"
 brain.LAST_ZONE_ENTRY = None
@@ -8356,3 +8358,39 @@ _b192 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.
 assert "if open_escapes and two_cell_cycle():" in _b192 and "open_escapes = []          # a two-cell ping-pong" in _b192
 assert _b192.index("if open_escapes and two_cell_cycle():") < _b192.index("frontier_target, frontier_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)")
 print("  [OK] Test 192 Passed: a pure two-cell ping-pong over 6 changes of cell is recognised (the Gen 45 cluster's own positions are caught within 8 moves), a third cell, too few moves or standing still are not, and the Loop Breaker drops its 'unvisited neighbour' step for it and escalates")
+
+# Test 193: a danger retreat is a committed intent (Gen 46, 2026-10-12: the Impossible wet puma was in view every other turn, "Danger retreat" and "Water Traversal" took turns for four turns while it closed from 3 tiles to 1 and hit for 21 of 25 HP; HANDOFF issue 185)
+# ---------------------------------------------------------------------------
+_Z193 = "JoppaWorld.10.20.1.0.10"
+def _puma193(d=3):
+    return {"name": "wet chitinous puma [swimming]", "blueprint": "Chitinous Puma", "difficulty": "Impossible", "has_los": True, "dist": d, "tx": 40, "ty": 20, "dir": "N", "is_enemy": True}
+def _reset193():
+    brain.LAST_ZONE_ENTRY = {"from_zone": "JoppaWorld.10.20.1.1.10", "to_zone": _Z193, "entry_pos": (37, 24), "reverse_dir": "S"}
+    brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); brain.FAILED_ZONE_EXITS.clear()
+_gs193 = lambda x, y: {"x": x, "y": y, "hp": 25, "max_hp": 25, "level": 4, "zone_id": _Z193, "visible_entities": [], "surroundings": {}}
+# the flip-flop: the puma is in view on turns 1, 3, 5 and not on 2, 4, 6
+_reset193(); _acts193 = []
+for _t193, _vis193 in enumerate([True, False, True, False, True, False, False, False, False, False, False, False]):
+    _en193 = [_puma193(3 - min(_t193 // 2, 2))] if _vis193 else []
+    _d193 = brain.border_retreat_decision(_gs193(39, 21), _Z193, (39, 21), _en193)
+    _acts193.append(_d193["action"] if _d193 else None)
+assert _acts193[:9] == ["NAVIGATE_ZONE_EXIT:S"] * 9, _acts193           # triggered on 0 and 2 (on 4 the puma is adjacent and the rule itself holds back: five steps from the border), continued on 1, 3 to 8
+assert _acts193[9:] == [None] * 3, _acts193                              # six turns after the last trigger (turn 2) it lapses
+_reset193(); assert brain.border_retreat_decision(_gs193(39, 21), _Z193, (39, 21), []) is None, "no latch without a first trigger"
+# the continued step reads as a continuation and crosses when he stands on the border
+_reset193(); brain.border_retreat_decision(_gs193(39, 21), _Z193, (39, 21), [_puma193()])
+_c193 = brain.border_retreat_decision(_gs193(39, 22), _Z193, (39, 22), [])
+assert "continued" in _c193["reason"] and _c193["flee_ok"] is True, _c193
+_b193 = brain.border_retreat_decision(_gs193(39, 24), _Z193, (39, 24), [])
+assert _b193["action"] == "MOVE_S", _b193
+# it ends: in another zone, beyond the radius, or when he arrived by another entry
+_reset193(); brain.border_retreat_decision(_gs193(39, 21), _Z193, (39, 21), [_puma193()])
+assert brain.border_retreat_decision(_gs193(10, 10), "JoppaWorld.10.20.1.0.11", (10, 10), []) is None and brain.BORDER_RETREAT_LATCH["zone"] is None
+_reset193(); brain.border_retreat_decision(_gs193(39, 21), _Z193, (39, 21), [_puma193()])
+assert brain.border_retreat_decision(_gs193(39, 5), _Z193, (39, 5), []) is None, "far from the border he arrived by: the other rules decide"
+_reset193(); brain.border_retreat_decision(_gs193(39, 21), _Z193, (39, 21), [_puma193()]); brain.LAST_ZONE_ENTRY = None
+assert brain.border_retreat_decision(_gs193(39, 21), _Z193, (39, 21), []) is None
+brain.LAST_ZONE_ENTRY = None; brain.BORDER_RETREAT_LATCH.update({"zone": None, "left": 0}); brain.FAILED_ZONE_EXITS.clear()
+_b193s = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "def _border_retreat_core(game_state, zone_id, cur_pos, enemies):" in _b193s and "dec = _border_retreat_core(game_state, zone_id, cur_pos, enemies)" in _b193s
+print("  [OK] Test 193 Passed: once a danger or swarm retreat has been decided it continues for 6 turns after the trigger leaves the view (the puma in view every other turn gives 7 retreat steps in a row instead of alternating with exploring), crosses the border when he stands on it, and ends in another zone, beyond the radius or without a recorded entry")
