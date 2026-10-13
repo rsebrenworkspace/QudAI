@@ -4959,6 +4959,70 @@ def xp_hunt_decision(game_state):
         return None
 
 
+# Heroes (the player calls them legendary) and the low-HP escape (HANDOFF issue 179; human, 2026-10-12, after Gen 44: "build A first"). Gen 44, level 5 with 31 HP, died to a hero Baboon Hermit
+# (blueprint "Baboon Hero 1", 167 max HP, 8 to 12 damage a turn) that the difficulty rating called Average: the rating compares levels only, so the lethal adjacent guard (Very Tough or worse) never
+# fired and he kept Lasing at 5 HP and at 1 HP with Teleport Other ready. 1. `apply_hero_floor`: a creature the engine marks as a hero (the mod exports `hero`, ENGINE_INTERNALS 14.43; the blueprint
+# word "Hero" is the fallback for a state from an older mod) is rated Very Tough at least, so every rule that reads `difficulty` (the guard, the retreat, the hunt, avoidance) treats it so.
+# 2. `low_hp_escape_decision`: whatever the rating, with a hostile next to him and either low HP or HP that the last hit could nearly repeat, use the first ready escape or control ability
+# (Teleport Other, Force Bubble, Intimidate) before attacking or healing; healing 13 under 12 damage a turn is a wasted turn.
+HERO_FLOOR = "Very Tough"
+LOW_HP_ESCAPE_RATIO = 0.30
+LOW_HP_ESCAPE_LOSS_FACTOR = 1.5
+LOW_HP_STATE = {"hp": None, "zone": None}
+_HERO_WORD = re.compile(r"\bhero\b", re.I)
+
+
+def apply_hero_floor(game_state):
+    """A copy of the state where every hero creature is rated at least HERO_FLOOR (`difficulty_engine` keeps the mod's rating, `hero_floor` marks the change). The state itself is not mutated."""
+    try:
+        ents = game_state.get("visible_entities")
+        if not isinstance(ents, list) or not ents:
+            return game_state
+        order = danger_ledger.ORDER
+        out, changed = [], False
+        for e in ents:
+            is_hero = bool(e.get("hero")) or bool(_HERO_WORD.search(str(e.get("blueprint", ""))))
+            cur = e.get("difficulty", "")
+            if is_hero and not e.get("is_companion") and (cur not in order or order.index(cur) < order.index(HERO_FLOOR)):
+                e = dict(e, difficulty=HERO_FLOOR, difficulty_engine=cur, hero_floor=True)
+                changed = True
+            out.append(e)
+        return dict(game_state, visible_entities=out) if changed else game_state
+    except Exception:
+        return game_state
+
+
+def low_hp_escape_decision(game_state):
+    """An escape or control ability when a hostile is adjacent and he is about to die, or None. See the block comment above."""
+    try:
+        hp, mx = game_state.get("hp"), game_state.get("max_hp")
+        if not hp or not mx:
+            return None
+        zone = game_state.get("zone_id")
+        prev = LOW_HP_STATE["hp"] if LOW_HP_STATE["zone"] == zone else None
+        LOW_HP_STATE.update({"hp": hp, "zone": zone})
+        loss = (prev - hp) if prev is not None and prev > hp else 0
+        if not (hp / mx <= LOW_HP_ESCAPE_RATIO or (loss > 0 and hp <= loss * LOW_HP_ESCAPE_LOSS_FACTOR + 2)):
+            return None
+        adj = [e for e in game_state.get("visible_entities") or [] if e.get("is_enemy") and not e.get("is_companion") and not e.get("is_stationary")
+               and e.get("dist") == 1 and e.get("dir") in CARDINAL_OFFSETS and (e.get("hp") is None or e.get("hp") > 0)]
+        if not adj:
+            return None
+        abilities = [a for a in (game_state.get("abilities") or []) if not ability_just_issued((a or {}).get("command"))]
+        ab = first_ready_by_priority(abilities, LETHAL_GUARD_FAMILIES)
+        if not ab or not ab.get("command"):
+            return None
+        target = max(adj, key=lambda e: e.get("max_hp") or 0)
+        d = target.get("dir")
+        needs_dir = ab["command"] == "CommandTeleportOther"
+        why = f"HP {hp}/{mx}" + (f" after losing {loss}" if loss else "")
+        print(f"[LOW HP ESCAPE] {why} with {target.get('name', 'a hostile')} adjacent ({d}): {ab.get('name', ab['command'])}.")
+        return {"action": f"USE_ABILITY:{ab['command']}" + (f":{d}" if needs_dir else ""),
+                "reason": f"[LOW HP ESCAPE] {why}; {target.get('name', 'a hostile')} ({target.get('difficulty')}) is adjacent ({d}): {ab.get('name', 'an ability')} before anything else."}
+    except Exception:
+        return None
+
+
 def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
     """The decision for this turn: the engulf escape, the hunter protocol, the rooted-hazard step-out, else `_query_decision`, the lethal-adjacent guard, the stand-and-fight rule, then the rooted-approach veto."""
     lab_move = lab_hold_decision(game_state)
@@ -4976,6 +5040,10 @@ def query_decision(game_state, took_damage, enemies, suppress_autolevel=False):
         HUNTER_PROTOCOL_STATE["last"] = hunter_move["action"]
         STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
         return hunter_move
+    escape_move = low_hp_escape_decision(game_state)
+    if escape_move:
+        STAND_CONTEXT.update({"adj_threats": {}, "enemies": [], "abilities": []})
+        return escape_move
     heal_move = heal_item_decision(game_state)
     if heal_move:
         print(heal_move["reason"])
@@ -6099,6 +6167,7 @@ def main():
             if not game_state:
                 continue
             game_state = apply_test_switches(game_state)
+            game_state = apply_hero_floor(game_state)          # a hero is rated Very Tough at least (HANDOFF issue 179)
 
             try:
                 px = game_state.get("x", 0)

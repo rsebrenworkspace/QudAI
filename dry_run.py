@@ -8188,3 +8188,61 @@ _tr188 = _hop188("JoppaWorld.11.22.1.1.10", 5, 80, 2)           # level 5: no li
 assert max(_tr188) > brain.weak_radius(1), "a strong character is not held back"
 brain.EXPLORED_ZONE_SET.clear(); brain.FAILED_ZONE_EXITS.clear(); brain.CURRENT_ZONE_CHOSEN_EXIT = None; brain.CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
 print("  [OK] Test 188 Passed: over 80 zone hops a level 1 character stays within 6 zones of home (six seeds), one that starts where Gen 43 died (12 zones out) walks back inside the radius within a few hops, and a level 5 character roams freely")
+
+# Test 189: a hero (legendary) creature is rated Very Tough at least, and a low-HP escape fires whatever the rating (human, 2026-10-12, after Gen 44: a hero Baboon Hermit rated Average, 167 HP, 8 to 12 a turn, killed a level 5 Esper that kept Lasing at 5 and 1 HP with Teleport Other ready; "build A first"; HANDOFF issue 179)
+# ---------------------------------------------------------------------------
+def _hero189(**k):
+    return dict({"name": "bloody Ooo-HOO-OOO-OO-e, the 10-ringed Baboon Hermit", "blueprint": "Baboon Hero 1", "dist": 1, "dir": "E", "tx": 11, "ty": 10, "is_enemy": True, "has_los": True,
+                 "level": 5, "difficulty": "Average", "hp": 167, "max_hp": 167, "hero": True, "speed": 100}, **k)
+_tp189 = {"name": "Teleport Other", "command": "CommandTeleportOther", "usable": True, "cooldown": 0, "active": False}
+def _st189(ents, hp=31, **k):
+    return dict({"x": 10, "y": 10, "hp": hp, "max_hp": 31, "level": 5, "zone_id": "Z189", "visible_entities": ents, "abilities": [_tp189], "gas_cells": [], "effects": []}, **k)
+def _reset189():
+    brain.LOW_HP_STATE.update({"hp": None, "zone": None}); brain.ABILITY_REPEAT.update({"action": None, "count": 0, "turn": -10}); brain.ABILITY_BAN.clear()
+# the floor: the mod's flag, or the blueprint word when the state is from an older mod; companions, plain creatures and worse ratings are left alone; the state is not mutated
+_s189 = _st189([_hero189(), {"name": "baboon", "blueprint": "Baboon", "dist": 3, "difficulty": "Average", "is_enemy": True}, _hero189(hero=None, blueprint="Snapjaw Hero 2", difficulty="Easy"),
+                _hero189(is_enemy=False, is_companion=True), _hero189(difficulty="Impossible")])
+_f189 = brain.apply_hero_floor(_s189)
+assert [e["difficulty"] for e in _f189["visible_entities"]] == ["Very Tough", "Average", "Very Tough", "Average", "Impossible"], [e["difficulty"] for e in _f189["visible_entities"]]
+assert _f189["visible_entities"][0]["difficulty_engine"] == "Average" and _f189["visible_entities"][0]["hero_floor"] is True and _s189["visible_entities"][0]["difficulty"] == "Average", "the original is kept"
+assert brain.apply_hero_floor({"visible_entities": []}) == {"visible_entities": []} and brain.apply_hero_floor({}) == {}
+# every rule that reads the rating now sees a Very Tough creature: the lethal guard answers with Teleport Other
+_en189 = _f189["visible_entities"][:1]
+_g189 = brain.lethal_adjacent_guard({"action": "USE_ABILITY:CommandLase:E", "reason": "model"}, {"E": "hero"}, _en189, [_tp189])
+assert _g189["action"] == "USE_ABILITY:CommandTeleportOther:E", _g189
+assert brain.lethal_adjacent_guard({"action": "USE_ABILITY:CommandLase:E", "reason": "model"}, {"E": "hero"}, _s189["visible_entities"][:1], [_tp189])["action"] == "USE_ABILITY:CommandLase:E", "unfloored it was Average: the old behaviour"
+# the low-HP escape: HP 5 of 31 with the hero adjacent; or HP 11 right after a loss of 10; not at good HP, not alone, not without a ready escape, not with a companion next to him
+_reset189(); _e189 = brain.low_hp_escape_decision(_st189([_hero189(difficulty="Average")], hp=5))
+assert _e189 and _e189["action"] == "USE_ABILITY:CommandTeleportOther:E" and "LOW HP ESCAPE" in _e189["reason"], _e189
+_reset189(); assert brain.low_hp_escape_decision(_st189([_hero189()], hp=21)) is None, "first sight at 21 of 31: no loss known yet"
+assert brain.low_hp_escape_decision(_st189([_hero189()], hp=11)) is not None, "11 after 21: a loss of 10 and 11 is within 1.5 hits plus 2"
+_reset189(); assert brain.low_hp_escape_decision(_st189([_hero189()], hp=24)) is None
+_reset189(); assert brain.low_hp_escape_decision(_st189([], hp=5)) is None, "nothing adjacent"
+_reset189(); assert brain.low_hp_escape_decision(_st189([_hero189(dist=4, dir="E")], hp=5)) is None, "not adjacent"
+_reset189(); assert brain.low_hp_escape_decision(_st189([_hero189()], hp=5, abilities=[dict(_tp189, cooldown=12, usable=False)])) is None, "no ready escape: the other rules decide"
+_reset189(); assert brain.low_hp_escape_decision(_st189([_hero189(is_enemy=False, is_companion=True)], hp=5)) is None
+_reset189(); assert brain.low_hp_escape_decision(_st189([_hero189(is_stationary=True)], hp=5)) is None, "a rooted creature can be walked away from"
+# it comes before healing: the whole pipeline at HP 5 with the hero next to him and a heal item in the pack
+_reset189(); _full189 = brain.query_decision(_st189([_hero189()], hp=5, inventory=[{"id": "9", "name": "witchwood bark", "count": 3, "blueprint": "WitchwoodBark"}], effects=["bleeding"]), True, [_hero189()])
+assert _full189["action"] == "USE_ABILITY:CommandTeleportOther:E", _full189
+# MULTI-TURN: the hero hits for 10 a turn; he attacks until the rule fires; with it he lives, without it he does not
+def _fight189(rule):
+    _reset189(); hp, near, log = 31, True, []
+    for t in range(1, 8):
+        if near: hp -= 10
+        if hp <= 0: return "dead", hp, log
+        dec = brain.low_hp_escape_decision(_st189([_hero189()] if near else [], hp=hp)) if rule else None
+        log.append(dec["action"] if dec else "attack")
+        if dec: near = False
+        if not near: return "alive", hp, log
+    return "dead", hp, log
+_w189 = _fight189(True); _wo189 = _fight189(False)
+assert _w189[0] == "alive" and _w189[1] >= 1 and _w189[2][-1].startswith("USE_ABILITY:CommandTeleportOther"), _w189
+assert _wo189[0] == "dead", _wo189
+_reset189()
+_c189 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "mod", "QudAIBrain", "AIBrainPart.cs"), encoding="utf-8").read()
+_b189 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "private static bool IsHeroCreature(GameObject o)" in _c189 and _c189.count('\\"hero\\": {(IsHeroCreature(') == 2 and 'GetIntProperty("Hero", 0) > 0' in _c189
+assert "game_state = apply_hero_floor(game_state)" in _b189 and "escape_move = low_hp_escape_decision(game_state)" in _b189
+assert _b189.index("escape_move = low_hp_escape_decision(game_state)") < _b189.index("heal_move = heal_item_decision(game_state)"), "the escape comes before the heal"
+print("  [OK] Test 189 Passed: a hero creature (the mod's flag, or the blueprint word) is rated Very Tough at least so the lethal guard answers it, a low-HP escape (Teleport Other, Force Bubble or Intimidate) fires with a hostile adjacent at 30 percent HP or right after a hit that could nearly repeat, before healing, not when alone, not without a ready escape; in a 10-damage-a-turn fight he lives with the rule and dies without it")
