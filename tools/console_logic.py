@@ -582,16 +582,36 @@ def git_info(repo=None, runner=None):
     return f"branch {run(['rev-parse', '--abbrev-ref', 'HEAD']) or '?'}, commit {run(['rev-parse', '--short', 'HEAD']) or '?'}, {len(lines)} modified tracked file(s)"
 
 
+def _remove_tree(path):
+    """Removes a folder tree on Windows even when the folders carry the read-only attribute (the capture folders do: with ignore_errors the files went and every empty folder stayed, 50 of
+    them by 2026-10-12, because RemoveDirectory refuses a read-only directory). Clears the attribute and retries; never raises."""
+    import shutil
+    import stat
+
+    def clear_and_retry(func, p, exc_info_or_exc):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except OSError:
+            pass
+    try:
+        try:
+            shutil.rmtree(path, onexc=clear_and_retry)          # Python 3.12 and later
+        except TypeError:
+            shutil.rmtree(path, onerror=clear_and_retry)
+    except OSError:
+        pass
+
+
 def prune_captures(out_dir, keep=CAPTURE_KEEP):
     """Deletes the oldest timestamped capture folders beyond `keep` (never `latest`, never anything not named like a stamp)."""
-    import shutil
     try:
         names = sorted(n for n in os.listdir(out_dir) if CAPTURE_STAMP.match(n) and os.path.isdir(os.path.join(out_dir, n)))
     except OSError:
         return []
     gone = names[:-keep] if keep > 0 else names
     for n in gone:
-        shutil.rmtree(os.path.join(out_dir, n), ignore_errors=True)
+        _remove_tree(os.path.join(out_dir, n))
     return gone
 
 
