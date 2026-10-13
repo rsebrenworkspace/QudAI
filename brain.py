@@ -244,6 +244,17 @@ def engine_confirms_explored(game_state):
     return not (unexp is not None and unexp > 35 and not game_state.get("autoexplore_stuck", False))
 
 
+TWO_CELL_WINDOW = 6          # the last this many cells he stood on (a change of cell each) are only two distinct cells: a pure ping-pong A-B-A-B-A-B
+
+
+def two_cell_cycle(positions=None, window=None):
+    """True when the last `window` distinct-in-a-row cells (record_position keeps one entry per change of cell) are only two cells. The Loop Breaker's own step to "an unvisited neighbour"
+    ping-ponged NE and SE between (29, 18) and (30, 19) for 20 turns on stratum 12 (Esper Gen 45, 2026-10-12, HANDOFF issue 184): both cells were neighbours of each other and the step it picked
+    was always the other one. With a two-cell cycle that step is skipped and the escalation branches (burrow, exit, away from the cycle centroid) decide at once."""
+    seq = list(recent_positions if positions is None else positions)[-(window or TWO_CELL_WINDOW):]
+    return len(seq) >= (window or TWO_CELL_WINDOW) and len(set(seq)) <= 2
+
+
 def record_position(cur_pos):
     """Adds the cell to the oscillation window only when he actually changed cell, and returns (times this cell is in the window, distinct cells).
 
@@ -6416,6 +6427,8 @@ def main():
                     valid_m = get_valid_moves(surroundings, cur_pos, None, is_in_combat=is_in_combat)
                     open_escapes = [m for m in valid_m
                                     if (cur_pos[0] + CARDINAL_OFFSETS[m[5:]][0], cur_pos[1] + CARDINAL_OFFSETS[m[5:]][1]) not in recent_positions]
+                    if open_escapes and two_cell_cycle():
+                        open_escapes = []          # a two-cell ping-pong: no "unvisited neighbour" step, escalate (HANDOFF issue 184)
 
                     frontier_target, frontier_reason = find_zone_unexplored_frontier(game_state, cur_pos, visit_counts)
 
