@@ -2480,6 +2480,49 @@ DESTRUCTIBLE_OBSTACLE_KEYWORDS = [
 ]
 
 
+# A border crossing that the other side refuses (HANDOFF issue 186). Crossing an edge puts him in the neighbouring zone; when the cell there is solid the game says "The way is blocked by some shale"
+# and nothing happens (the Esper's capture of 2026-10-12: 120 turns of MOVE_S at (60, 24), "committing to cross", the message log full of it). The Loop Breaker's two border branches kept choosing the
+# same cell. Now a cell where the crossing was tried BORDER_CROSS_TRIES times with no change of zone is written off, he slides along the border BORDER_SLIDE_STEP cells at a time to the nearest cell
+# not written off, and after BORDER_SLIDE_MAX slides the exit itself is given up (the exit chooser takes another).
+BORDER_CROSS_TRIES = 2
+BORDER_SLIDE_STEP = 3
+BORDER_SLIDE_MAX = 8
+BORDER_CROSS_STATE = {"zone": None, "dir": None, "tries": {}, "failed": set(), "slides": 0}
+
+
+def border_cell_of(cur_pos, exit_dir):
+    """The border cell that the exit direction leads to from a cell on or next to the border (the cell itself when it is on the border)."""
+    px, py = cur_pos
+    return {"N": (px, 0), "S": (px, 24), "W": (0, py), "E": (79, py)}.get(exit_dir, cur_pos)
+
+
+def border_cross_plan(zone_id, cur_pos, exit_dir):
+    """('cross', None) to try the crossing from `cur_pos` (a border cell), ('slide', (x, y)) to walk to another border cell, or ('giveup', None) when the exit cannot be crossed anywhere near."""
+    st = BORDER_CROSS_STATE
+    if st["zone"] != zone_id or st["dir"] != exit_dir:
+        st.update({"zone": zone_id, "dir": exit_dir, "tries": {}, "failed": set(), "slides": 0})
+    cell = border_cell_of(cur_pos, exit_dir)
+    if cell not in st["failed"]:
+        st["tries"][cell] = st["tries"].get(cell, 0) + 1
+        if st["tries"][cell] <= BORDER_CROSS_TRIES:
+            return "cross", None
+        st["failed"].add(cell)
+    if st["slides"] >= BORDER_SLIDE_MAX:
+        return "giveup", None
+    vertical = exit_dir in ("N", "S")
+    lo, hi = (1, 78) if vertical else (1, 23)
+    here = cell[0] if vertical else cell[1]
+    for k in range(1, 40):
+        for sign in (1, -1):
+            v = here + sign * k * BORDER_SLIDE_STEP
+            if lo <= v <= hi:
+                target = (v, cell[1]) if vertical else (cell[0], v)
+                if target not in st["failed"]:
+                    st["slides"] += 1
+                    return "slide", target
+    return "giveup", None
+
+
 def near_exit_border(exit_dir, px, py):
     """True when (px, py) is within a cell of the zone edge the chosen exit crosses. Oscillating along a DIFFERENT edge (the Dream Tortoise paced
     the north shore trying to reach a south exit across deep water, 149 turns, 2026-10-12) must still write the exit off."""
@@ -6511,9 +6554,20 @@ def main():
                         action = f"ATTACK_WALL:{burrow_d}"
                         reason = f"[Loop Breaker] Trapped in enclosed pocket with {unexp_c} unrevealed cells. Burrowing through {burrow_info} ({burrow_d}) to breach open corridor."
                     elif is_on_border and chosen_border_m and (chosen_border_m in valid_m or "[zone_exit" in surroundings.get(exit_dir or "", "").lower()):
-                        action = chosen_border_m
-                        reason = f"[Loop Breaker] Standing directly on exit border: committing to {chosen_border_m} to cross into adjacent zone."
-                    elif is_adj_border and chosen_border_m and (chosen_border_m in valid_m):
+                        _plan, _tgt = border_cross_plan(current_zone_id, cur_pos, exit_dir)
+                        if _plan == "cross":
+                            action = chosen_border_m
+                            reason = f"[Loop Breaker] Standing directly on exit border: committing to {chosen_border_m} to cross into adjacent zone."
+                        elif _plan == "slide":
+                            action = f"NAVIGATE_TO_CELL:{_tgt[0]},{_tgt[1]}"
+                            reason = f"[Loop Breaker] The {exit_dir} crossing at {cur_pos} is refused (blocked on the other side): sliding along the border to {_tgt}."
+                        else:
+                            note_exit_failure(current_zone_id, exit_dir)
+                            CURRENT_ZONE_CHOSEN_EXIT = None
+                            CURRENT_ZONE_CHOSEN_EXIT_ZONE = None
+                            action = "PASS"
+                            reason = f"[Loop Breaker] The {exit_dir} exit cannot be crossed anywhere along {cur_pos}: giving it up, another exit will be chosen."
+                    elif is_adj_border and chosen_border_m and (chosen_border_m in valid_m) and not (BORDER_CROSS_STATE["zone"] == current_zone_id and BORDER_CROSS_STATE["dir"] == exit_dir and border_cell_of(cur_pos, exit_dir) in BORDER_CROSS_STATE["failed"]):
                         action = chosen_border_m
                         reason = f"[Loop Breaker] Adjacent to exit border: stepping {chosen_border_m} onto border edge."
                     elif not is_town and not is_stuck_explore and frontier_target and unexp_c > 35 and cur_z <= 10 and not nav_cell_failed and (current_zone_id, frontier_target) not in UNREACHABLE_SECTORS:

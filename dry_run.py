@@ -8394,3 +8394,48 @@ brain.LAST_ZONE_ENTRY = None; brain.BORDER_RETREAT_LATCH.update({"zone": None, "
 _b193s = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
 assert "def _border_retreat_core(game_state, zone_id, cur_pos, enemies):" in _b193s and "dec = _border_retreat_core(game_state, zone_id, cur_pos, enemies)" in _b193s
 print("  [OK] Test 193 Passed: once a danger or swarm retreat has been decided it continues for 6 turns after the trigger leaves the view (the puma in view every other turn gives 7 retreat steps in a row instead of alternating with exploring), crosses the border when he stands on it, and ends in another zone, beyond the radius or without a recorded entry")
+
+# Test 194: a border crossing that the other side refuses is written off and he slides along the border (Esper 2026-10-12: 120 turns of MOVE_S at (60, 24), "The way is blocked by some shale" filling the message log; HANDOFF issue 186)
+# ---------------------------------------------------------------------------
+def _reset194():
+    brain.BORDER_CROSS_STATE.update({"zone": None, "dir": None, "tries": {}, "failed": set(), "slides": 0})
+_reset194()
+_Z194 = "JoppaWorld.12.20.1.1.10"
+assert brain.border_cell_of((60, 23), "S") == (60, 24) and brain.border_cell_of((60, 24), "S") == (60, 24) and brain.border_cell_of((5, 9), "W") == (0, 9) and brain.border_cell_of((5, 9), "E") == (79, 9) and brain.border_cell_of((5, 9), "N") == (5, 0)
+# two tries at the cell, then it is written off and a slide to the nearest other cell (3 along, east first)
+assert brain.border_cross_plan(_Z194, (60, 24), "S") == ("cross", None) and brain.border_cross_plan(_Z194, (60, 24), "S") == ("cross", None)
+_p194 = brain.border_cross_plan(_Z194, (60, 24), "S")
+assert _p194 == ("slide", (63, 24)) and (60, 24) in brain.BORDER_CROSS_STATE["failed"], _p194
+assert brain.border_cross_plan(_Z194, (63, 24), "S") == ("cross", None), "the new cell gets its own tries"
+# a vertical crossing slides along x; an east or west one along y
+_reset194(); [brain.border_cross_plan(_Z194, (79, 10), "E") for _ in range(2)]
+assert brain.border_cross_plan(_Z194, (79, 10), "E") == ("slide", (79, 13))
+_reset194(); [brain.border_cross_plan(_Z194, (2, 24), "S") for _ in range(2)]
+assert brain.border_cross_plan(_Z194, (2, 24), "S") == ("slide", (5, 24)), "near the corner the first candidate that fits"
+# another zone or another exit starts clean
+_reset194(); [brain.border_cross_plan(_Z194, (60, 24), "S") for _ in range(3)]
+assert brain.border_cross_plan("JoppaWorld.12.20.1.2.10", (60, 24), "S") == ("cross", None) and brain.BORDER_CROSS_STATE["failed"] == set()
+# the exit is given up after BORDER_SLIDE_MAX slides
+_reset194(); _x194 = 60; _acts194 = []
+for _i194 in range(200):
+    _pl194 = brain.border_cross_plan(_Z194, (_x194, 24), "S")
+    _acts194.append(_pl194[0])
+    if _pl194[0] == "slide": _x194 = _pl194[1][0]
+    elif _pl194[0] == "giveup": break
+assert _acts194[-1] == "giveup" and _acts194.count("slide") == brain.BORDER_SLIDE_MAX, (_acts194.count("slide"), _acts194[-3:])
+# MULTI-TURN: the cells x 55 to 66 are refused from the other side; he starts at x 60 and gets across within a bounded number of turns
+_reset194(); _x194 = 60; _turns194 = 0; _crossed194 = False
+for _i194 in range(60):
+    _turns194 += 1
+    _pl194 = brain.border_cross_plan(_Z194, (_x194, 24), "S")
+    if _pl194[0] == "cross":
+        if not (55 <= _x194 <= 66): _crossed194 = True; break
+    elif _pl194[0] == "slide":
+        _x194 = _pl194[1][0]; _turns194 += abs(_pl194[1][0] - _x194) + 3        # the walk to the next cell
+    else: break
+assert _crossed194 and _turns194 <= 40 and not (55 <= _x194 <= 66), (_crossed194, _turns194, _x194)
+_reset194()
+_b194 = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "brain.py"), encoding="utf-8").read()
+assert "_plan, _tgt = border_cross_plan(current_zone_id, cur_pos, exit_dir)" in _b194 and "sliding along the border to" in _b194 and "giving it up, another exit will be chosen" in _b194
+assert 'BORDER_CROSS_STATE["zone"] == current_zone_id and BORDER_CROSS_STATE["dir"] == exit_dir and border_cell_of(cur_pos, exit_dir) in BORDER_CROSS_STATE["failed"]' in _b194
+print("  [OK] Test 194 Passed: a border cell where the crossing was tried twice is written off, he slides 3 cells at a time along the border (east first), the new cell gets its own tries, another zone or exit starts clean, the exit is given up after 8 slides, and with 12 refused cells in a row he crosses at the first open one within 40 turns")
