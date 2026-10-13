@@ -883,6 +883,11 @@ The machine-readable table is `data/grenades.json` (59 grenade blueprints, built
 - The mod's own difficulty rating (`AIBrainPart.cs`, `levelDiff <= 2` is "Average") compares the Level stat only and ignores hit points, mutations and the Hero property. The Gen 44 hermit was level 5 against the player's level 5: rated Average, with 167 max HP and 8 to 12 damage a turn against a 31 HP character. Heroes also killed Gen 2 and Gen 13 (named snapjaws).
 - The mod now exports `hero` per entity and Python floors a hero's rating at Very Tough (HANDOFF issue 179). The rating stays level-only for everything else; hit points are exported per entity (`hp`, `max_hp`) and could price a long fight, which is not done.
 
+### 14.45 Lase (Light Manipulation): charges, recharge and damage (2026-10-12, `[verified in code via ilspycmd]`; the Willpower setting's default and what other zones do while he is away are `[unverified]`)
+- `Lase` is the Mental mutation `LightManipulation`. Its charges are `MaxLightRadius = 4 + floor(MutationLevel / 2)` (the MUTATION level, not the character level: 4 charges at mutation level 1, the ability name shows "Lase (4 charges)"); each use raises `RadiusPenalty`, and on every `EndTurn` (a game round, not wall-clock time) `RadiusRegrowthTimer` counts up and gives one charge back every `GetRadiusRegrowthTurns()` rounds: 15 at Willpower 16, shortened by `(Willpower - 16) * 5` percent when the game setting `LightManipulationWillpowerRecharge` is on (floor 3, ceiling 75 rounds). A full refill from empty is about 60 rounds at Willpower 16.
+- Damage: `Stat.RollDamagePenetrations(target AV, bonus, bonus)` with `bonus = 4 + (MutationLevel - 1) / 2` gives a number of penetrations, and each adds one roll of the mutation level's dice (1d3 at level 1, 1d4, 1d5, 1d4+1 ... 1d5+3 at level 9). So a hit is penetrations times a small die: low AV targets take several penetrations, which is why it kills equal-level creatures in one beam. `Attributes: "Light Laser"`, so a kill by Lase can burn the corpse (ENGINE_INTERNALS 12.1b).
+- Charges regrow only while turns pass, wherever he is; resting (REST or PASS) spends rounds, so a full recharge costs about 60 rounds of food, water and wandering-monster risk, not real time.
+
 ---
 *End of Engine Internals Manual.*
 
